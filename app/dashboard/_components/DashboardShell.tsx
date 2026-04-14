@@ -1,0 +1,326 @@
+'use client'
+
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+import { BrandLogo } from '@/app/_components/BrandLogo'
+import type { Feature, Plan } from '@/lib/plan'
+import { hasFeature, minPlanForFeature, planBadgeLabel } from '@/lib/plan'
+import { DashboardLogoutButton } from './DashboardLogoutButton'
+import { DashboardTopBar } from './DashboardTopBar'
+import {
+  IconBag,
+  IconBolt,
+  IconCart,
+  IconChartBars,
+  IconCog,
+  IconCube,
+  IconCurrency,
+  IconExternal,
+  IconHome,
+  IconKds,
+  IconLock,
+  IconMenuBook,
+  IconPalette,
+  IconPrinter,
+  IconTag,
+} from './NavIcons'
+
+const nav: Array<{
+  href: string
+  label: string
+  icon: (p: { className?: string }) => React.ReactNode
+  feature: Feature
+  lock?: boolean
+}> = [
+  { href: '/dashboard', label: 'Dashboard', icon: IconHome, feature: 'dashboard' },
+  {
+    href: '/dashboard/menu',
+    label: 'Produtos',
+    icon: IconMenuBook,
+    feature: 'products',
+  },
+  {
+    href: '/dashboard/inventory',
+    label: 'Estoque',
+    icon: IconCube,
+    feature: 'inventory',
+    lock: true,
+  },
+  {
+    href: '/dashboard/orders',
+    label: 'Pedidos',
+    icon: IconCart,
+    feature: 'orders',
+    lock: true,
+  },
+  {
+    href: '/dashboard/pdv',
+    label: 'PDV',
+    icon: IconBag,
+    feature: 'pdv',
+    lock: true,
+  },
+  {
+    href: '/dashboard/kds',
+    label: 'KDS',
+    icon: IconKds,
+    feature: 'kds',
+    lock: true,
+  },
+  {
+    href: '/dashboard/finance',
+    label: 'Financeiro',
+    icon: IconCurrency,
+    feature: 'finance',
+  },
+  {
+    href: '/dashboard/promotions',
+    label: 'Promoções',
+    icon: IconTag,
+    feature: 'promotions',
+    lock: true,
+  },
+  {
+    href: '/dashboard/reports',
+    label: 'Relatórios',
+    icon: IconChartBars,
+    feature: 'reports',
+    lock: true,
+  },
+  {
+    href: '/dashboard/settings',
+    label: 'Configurações',
+    icon: IconCog,
+    feature: 'settings',
+  },
+  {
+    href: '/dashboard/appearance',
+    label: 'Aparência',
+    icon: IconPalette,
+    feature: 'appearance',
+    lock: true,
+  },
+  {
+    href: '/dashboard/automations',
+    label: 'Automações',
+    icon: IconBolt,
+    feature: 'automations',
+    lock: true,
+  },
+  {
+    href: '/dashboard/printing',
+    label: 'Impressão',
+    icon: IconPrinter,
+    feature: 'printing',
+    lock: true,
+  },
+]
+
+function DashboardNavLinks({
+  pathname,
+  plan,
+  layout,
+}: {
+  pathname: string
+  plan: Plan
+  layout: 'sidebar' | 'bottom'
+}) {
+  const navClass =
+    layout === 'sidebar'
+      ? 'flex touch-pan-x gap-1 overflow-x-auto overscroll-x-contain p-2 [-ms-overflow-style:none] [scrollbar-width:none] md:flex-col md:overflow-visible md:gap-0.5 md:p-3 md:pt-2 [&::-webkit-scrollbar]:hidden'
+      : 'flex touch-pan-x gap-1 overflow-x-auto overscroll-x-contain p-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
+
+  return (
+    <nav className={navClass} aria-label="Navegação do painel">
+      {nav.map(({ href, label, icon: Icon, feature, lock }) => {
+        const active =
+          href === '/dashboard'
+            ? pathname === '/dashboard'
+            : pathname.startsWith(href)
+        const allowed = hasFeature(plan, feature)
+        const locked = !allowed && !!lock
+        const minPlan = minPlanForFeature(feature)
+        const badgeText =
+          locked && minPlan ? planBadgeLabel(minPlan) : null
+        const resolvedHref = locked
+          ? `/dashboard/upgrade?feature=${encodeURIComponent(feature)}`
+          : href
+
+        const linkSidebar =
+          `flex shrink-0 items-center gap-3 px-3 py-2.5 text-sm font-medium transition-colors md:w-full md:rounded-full ${
+            active
+              ? 'rounded-full bg-[var(--dash-primary)] text-white shadow-md shadow-[var(--dash-primary)]/25'
+              : locked
+                ? 'rounded-full text-white/35 hover:bg-white/[0.06]'
+                : 'rounded-full text-white/65 hover:bg-white/10 hover:text-white'
+          }`
+
+        const linkBottom =
+          `flex shrink-0 items-center gap-2 rounded-full px-2.5 py-2 text-xs font-medium transition-colors ${
+            active
+              ? 'bg-[var(--dash-primary)] text-white shadow-md shadow-[var(--dash-primary)]/25'
+              : locked
+                ? 'text-white/35 hover:bg-white/[0.06]'
+                : 'text-white/70 hover:bg-white/10 hover:text-white'
+          }`
+
+        return (
+          <Link
+            key={href}
+            href={resolvedHref}
+            aria-disabled={locked}
+            className={layout === 'sidebar' ? linkSidebar : linkBottom}
+          >
+            <Icon
+              className={`shrink-0 opacity-95 ${layout === 'bottom' ? 'h-4 w-4' : 'h-5 w-5'}`}
+            />
+            <span className="whitespace-nowrap">{label}</span>
+            {locked && badgeText ? (
+              <span
+                className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide md:ml-auto md:px-2 md:text-[10px] ${
+                  minPlan === 'MASTER'
+                    ? 'bg-violet-400/15 text-violet-100 ring-1 ring-violet-300/25'
+                    : minPlan === 'PRO'
+                      ? 'bg-white/10 text-white/90 ring-1 ring-white/15'
+                      : 'bg-amber-400/15 text-amber-100 ring-1 ring-amber-300/20'
+                }`}
+              >
+                <IconLock className="h-2.5 w-2.5 shrink-0 opacity-90 md:h-3 md:w-3" />
+                {badgeText}
+              </span>
+            ) : null}
+          </Link>
+        )
+      })}
+    </nav>
+  )
+}
+
+export function DashboardShell({
+  children,
+  storeName,
+  storeSlug,
+  storeLogoUrl,
+  isAuthenticated,
+  plan,
+  notificationCount = 0,
+}: {
+  children: React.ReactNode
+  storeName: string | null
+  storeSlug: string | null
+  storeLogoUrl: string | null
+  isAuthenticated: boolean
+  plan: Plan
+  notificationCount?: number
+}) {
+  const pathname = usePathname()
+
+  return (
+    <div className="flex min-h-dvh flex-col bg-[var(--dash-surface)] md:flex-row">
+      <aside className="sticky top-0 z-30 flex w-full flex-col border-b border-white/10 bg-[var(--dash-sidebar)] shadow-lg shadow-black/25 md:fixed md:inset-y-0 md:w-60 md:border-b-0 md:border-r md:border-white/10 md:shadow-xl lg:w-64">
+        <div className="flex h-14 shrink-0 items-center gap-3 border-b border-white/10 px-3 py-2 md:h-auto md:flex-col md:items-stretch md:gap-3 md:px-4 md:py-5">
+          <Link
+            href="/dashboard"
+            className="flex min-w-0 flex-1 items-center gap-3 md:flex-initial"
+          >
+            <span className="flex h-10 max-w-[9.5rem] shrink-0 items-center overflow-hidden rounded-xl bg-white/95 px-2 py-1 shadow-md shadow-black/15 ring-1 ring-black/10">
+              <BrandLogo width={132} priority className="max-h-8 object-contain object-left" />
+            </span>
+            <span className="min-w-0 md:w-full">
+              <span className="block font-brand text-lg font-bold leading-tight tracking-tight text-white">
+                Vyria
+              </span>
+              <span className="block text-[11px] font-medium text-white/50">
+                Painel Admin
+              </span>
+            </span>
+          </Link>
+        </div>
+
+        <div className="hidden md:contents">
+          <DashboardNavLinks pathname={pathname} plan={plan} layout="sidebar" />
+        </div>
+
+        <div className="mt-auto hidden space-y-2 border-t border-white/10 p-3 md:block">
+          {storeSlug ? (
+            <a
+              href={`/${storeSlug}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hidden w-full items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm font-medium text-white/85 transition-colors hover:border-white/25 hover:bg-white/10 hover:text-white md:flex"
+            >
+              <IconExternal className="h-4 w-4 shrink-0" />
+              Ver minha loja
+            </a>
+          ) : (
+            <p className="hidden px-1 text-center text-[11px] text-white/40 md:block">
+              Cria a tua loja para veres o link público
+            </p>
+          )}
+          {isAuthenticated ? <DashboardLogoutButton /> : null}
+        </div>
+      </aside>
+
+      <div className="flex min-h-dvh min-w-0 flex-1 flex-col md:min-h-dvh md:pl-60 lg:pl-64">
+        <header className="sticky top-0 z-20 shrink-0 border-b border-[var(--card-border)] bg-white/95 shadow-sm shadow-black/[0.03] backdrop-blur-md">
+          <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-3 px-4 py-3 sm:px-5 md:flex-row md:items-center md:gap-4 md:px-6 md:py-3.5 lg:px-8 xl:max-w-[1400px] xl:px-10">
+            {isAuthenticated ? (
+              <DashboardTopBar
+                storeName={storeName}
+                storeLogoUrl={storeLogoUrl}
+                plan={plan}
+                notificationCount={notificationCount}
+              />
+            ) : (
+              <div className="flex w-full items-center justify-between">
+                <span className="text-sm font-medium text-[#6b7280]">
+                  Inicia sessão
+                </span>
+                <Link
+                  href="/login"
+                  className="rounded-full bg-[var(--dash-primary)] px-4 py-2 text-sm font-semibold text-white shadow-sm"
+                >
+                  Entrar
+                </Link>
+              </div>
+            )}
+          </div>
+        </header>
+
+        <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
+          <main className="mx-auto w-full max-w-[1280px] px-4 pb-[calc(7.25rem+env(safe-area-inset-bottom,0px))] pt-4 sm:px-5 sm:pt-5 md:px-6 md:pb-10 md:pt-6 lg:px-8 lg:pt-8 xl:max-w-[1400px] xl:px-10 xl:pb-12">
+            {children}
+          </main>
+        </div>
+      </div>
+
+      <div
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-[var(--dash-sidebar)] pb-[env(safe-area-inset-bottom,0px)] shadow-[0_-8px_32px_rgba(0,0,0,0.18)] md:hidden"
+        role="navigation"
+        aria-label="Navegação inferior"
+      >
+        <DashboardNavLinks pathname={pathname} plan={plan} layout="bottom" />
+        <div className="flex items-center justify-between gap-2 border-t border-white/10 px-3 py-2">
+          {storeSlug ? (
+            <a
+              href={`/${storeSlug}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 truncate rounded-lg bg-white/10 px-2.5 py-1.5 text-center text-xs font-semibold text-white/90 backdrop-blur-sm"
+            >
+              <IconExternal className="h-3.5 w-3.5 shrink-0" />
+              Ver minha loja
+            </a>
+          ) : (
+            <span className="min-w-0 flex-1 text-[11px] text-white/40">
+              Cria a tua loja para veres o link público
+            </span>
+          )}
+          {isAuthenticated ? (
+            <DashboardLogoutButton size="compact" className="shrink-0" />
+          ) : null}
+        </div>
+      </div>
+    </div>
+  )
+}

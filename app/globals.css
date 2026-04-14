@@ -1,26 +1,100 @@
 @import "tailwindcss";
 
+/* Vyria Delivery — identidade da marca */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --vyria-navy: #1d2d44;
+  --vyria-navy-deep: #152032;
+  --vyria-navy-muted: #24374e;
+  --vyria-plum: #801b4d;
+  --vyria-orange: #f27121;
+  --vyria-gold: #fbb03b;
+  --background: #f9f9f9;
+  --foreground: var(--vyria-navy);
+  --card: #ffffff;
+  --card-border: #e8eaef;
+  --muted: #5c6b7f;
+  --gradient-cta: linear-gradient(
+    135deg,
+    var(--vyria-plum) 0%,
+    var(--vyria-orange) 52%,
+    var(--vyria-gold) 100%
+  );
+  /* Painel lojista — referência visual moderna (sidebar escura + laranja) */
+  --dash-sidebar: #1a1614;
+  --dash-surface: #f8f9fa;
+  --dash-primary: #ff5c26;
+  --dash-success: #28a745;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --color-vyria-navy: var(--vyria-navy);
+  --color-vyria-navy-deep: var(--vyria-navy-deep);
+  --color-vyria-navy-muted: var(--vyria-navy-muted);
+  --color-vyria-plum: var(--vyria-plum);
+  --color-vyria-orange: var(--vyria-orange);
+  --color-vyria-gold: var(--vyria-gold);
+  --font-sans: var(--font-montserrat), ui-sans-serif, system-ui, sans-serif;
+  --font-brand: var(--font-playfair), ui-serif, Georgia, serif;
   --font-mono: var(--font-geist-mono);
 }
 
+/* Preferência escura do SO: mantém fundo de shell claro para alinhar com landing/painel
+   (evita faixa inferior escura quando altura percentual não preenche o viewport). */
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #f9f9f9;
+    --foreground: var(--vyria-navy);
+    --card: #ffffff;
+    --card-border: #e8eaef;
+    --muted: #5c6b7f;
   }
 }
 
+html {
+  min-height: 100dvh;
+}
+
 body {
+  min-height: 100dvh;
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-montserrat), system-ui, sans-serif;
+}
+
+.font-brand {
+  font-family: var(--font-playfair), ui-serif, Georgia, serif;
+}
+
+/* Botões e destaques com gradiente da marca */
+.btn-vyria-gradient {
+  background: var(--gradient-cta);
+  color: white;
+  box-shadow: 0 10px 28px -8px rgba(128, 27, 77, 0.45),
+    0 4px 12px -4px rgba(242, 113, 33, 0.35);
+  transition: filter 0.2s ease, transform 0.15s ease;
+}
+
+.btn-vyria-gradient:hover {
+  filter: brightness(1.06);
+}
+
+.btn-vyria-gradient:active {
+  transform: scale(0.98);
+}
+
+/* Badge “online” / estados positivos (tom quente da marca) */
+.badge-vyria-live {
+  background: rgba(251, 176, 59, 0.12);
+  color: #b45309;
+  border: 1px solid rgba(242, 113, 33, 0.25);
+}
+
+@media (prefers-color-scheme: dark) {
+  .badge-vyria-live {
+    background: rgba(251, 176, 59, 0.15);
+    color: #fcd34d;
+    border-color: rgba(251, 176, 59, 0.3);
+  }
 }
