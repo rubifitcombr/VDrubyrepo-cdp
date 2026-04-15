@@ -138,7 +138,6 @@ const FEATURE_MIN_PLAN: Partial<Record<Feature, MinPlanForFeature>> = {
   pdv: 'GROWTH',
   automations: 'GROWTH',
   appearance: 'PRO',
-  automations: 'PRO',
   printing: 'PRO',
   kds: 'PRO',
   reports_advanced: 'MASTER',
