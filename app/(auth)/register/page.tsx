@@ -16,18 +16,26 @@ export default function Register() {
   const router = useRouter()
 
   async function handleRegister() {
-    const { data, error } = await signUp(email, password)
+    try {
+      const { data, error } = await signUp(email, password)
 
-    if (error) {
-      alert(error.message)
-      return
-    }
+      if (error) {
+        alert(error.message)
+        return
+      }
 
-    const userId = data.user?.id
+      const userId = data.user?.id
 
-    if (userId) {
-      await createStore(userId, storeName)
-      router.push('/dashboard')
+      if (userId) {
+        await createStore(userId, storeName)
+        router.push('/dashboard')
+      }
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'Erro ao criar conta. Verifica as variáveis de ambiente do Supabase no deploy.'
+      alert(message)
     }
   }
 

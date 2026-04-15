@@ -14,14 +14,22 @@ export default function Login() {
   const router = useRouter()
 
   async function handleLogin() {
-    const { error } = await signIn(email, password)
+    try {
+      const { error } = await signIn(email, password)
 
-    if (error) {
-      alert(error.message)
-      return
+      if (error) {
+        alert(error.message)
+        return
+      }
+
+      router.push('/dashboard')
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'Erro ao iniciar sessão. Verifica as variáveis de ambiente do Supabase no deploy.'
+      alert(message)
     }
-
-    router.push('/dashboard')
   }
 
   return (
