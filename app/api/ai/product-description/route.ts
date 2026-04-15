@@ -11,10 +11,6 @@ import {
 import OpenAI from 'openai'
 import { NextRequest, NextResponse } from 'next/server'
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
-
 export const maxDuration = 45
 
 function buildPrompt(input: {
@@ -56,12 +52,14 @@ Retorne apenas a nova descrição.`
 
 export async function POST(req: NextRequest) {
   try {
-    if (!process.env.OPENAI_API_KEY?.trim()) {
+    const apiKey = process.env.OPENAI_API_KEY?.trim()
+    if (!apiKey) {
       return NextResponse.json(
         { error: 'OPENAI_API_KEY não configurada.' },
         { status: 503 }
       )
     }
+    const openai = new OpenAI({ apiKey })
 
     let body: unknown
     try {

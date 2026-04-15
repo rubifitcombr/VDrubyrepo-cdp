@@ -13,10 +13,6 @@ const MAX_BYTES = 12 * 1024 * 1024
 
 export const maxDuration = 60
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
-
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient()
@@ -66,12 +62,14 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    if (!process.env.OPENAI_API_KEY?.trim()) {
+    const apiKey = process.env.OPENAI_API_KEY?.trim()
+    if (!apiKey) {
       return NextResponse.json(
         { error: 'OPENAI_API_KEY não configurada no servidor.' },
         { status: 503 }
       )
     }
+    const openai = new OpenAI({ apiKey })
 
     const formData = await req.formData()
     const file = formData.get('file') as File | null
