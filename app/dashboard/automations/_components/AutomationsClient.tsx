@@ -150,7 +150,6 @@ export function AutomationsClient({
   const [waSaving, setWaSaving] = useState(false)
   const [waConfig, setWaConfig] = useState(initialWhatsappAutomation)
   const [connectionState, setConnectionState] = useState<string>('unknown')
-  const [instanceName, setInstanceName] = useState<string>('')
   const [qrCode, setQrCode] = useState<string | null>(null)
   const [qrKeepUntil, setQrKeepUntil] = useState<number>(0)
   const [qrCountdown, setQrCountdown] = useState<number>(0)
@@ -163,7 +162,7 @@ export function AutomationsClient({
     return 'unknown'
   }
 
-  const isConnected = ['open', 'connected'].includes(connectionState)
+  const isConnected = connectionState === 'open'
   const statusLabel = isConnected
     ? 'Conectado'
     : connectionState === 'connecting'
@@ -235,7 +234,6 @@ export function AutomationsClient({
     setError(null)
     try {
       const data = await getWhatsAppInstanceStatus(storeId, includeQr)
-      setInstanceName(data.instanceName)
       setConnectionState(normalizeConnectionState(data.connectionState))
       const now = Date.now()
       if (data.qrCode) {
@@ -252,7 +250,6 @@ export function AutomationsClient({
     setInstanceLoading(true)
     try {
       const data = await connectWhatsAppInstance(storeId)
-      setInstanceName(data.instanceName)
       setConnectionState(normalizeConnectionState(data.connectionState))
       setQrCode(data.qrCode)
       setQrKeepUntil(Date.now() + 30_000)
@@ -271,7 +268,6 @@ export function AutomationsClient({
     setInstanceLoading(true)
     try {
       const data = await logoutWhatsAppInstance(storeId)
-      setInstanceName(data.instanceName)
       setConnectionState(normalizeConnectionState(data.connectionState))
       setQrCode(null)
       setQrKeepUntil(0)
@@ -292,7 +288,6 @@ export function AutomationsClient({
     setInstanceLoading(true)
     try {
       const data = await deleteWhatsAppInstance(storeId)
-      setInstanceName(data.instanceName)
       setConnectionState(normalizeConnectionState(data.connectionState))
       setQrCode(null)
       setQrKeepUntil(0)
@@ -393,10 +388,10 @@ export function AutomationsClient({
         <div className="mb-6 rounded-xl border border-[var(--card-border)] bg-[#f9fafb] p-4">
           <h2 className="font-semibold text-vyria-navy">Conexão da instância WhatsApp</h2>
           <p className="mt-1 text-sm text-vyria-navy-muted">
-            Cada logista usa a própria instância da Evolution. Gere o QR Code para
-            conectar este número da loja. Se o painel da Evolution mostrar{' '}
-            <code className="text-[11px]">Error: [object Object]</code>, usa os botões
-            abaixo: chamam a API diretamente e mostram a mensagem real de erro.
+            Cada logista usa a própria instância da Evolution. Gere o QR Code para conectar
+            este número da loja. Usa <strong className="font-medium">Desligar</strong> para
+            terminar a sessão ou <strong className="font-medium">Remover</strong> para apagar
+            a instância na Evolution e voltar a ligar com um QR novo.
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <span
@@ -435,7 +430,7 @@ export function AutomationsClient({
               disabled={instanceLoading}
               className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-50"
             >
-              Desligar sessão (logout)
+              Desligar
             </button>
             <button
               type="button"
@@ -443,14 +438,9 @@ export function AutomationsClient({
               disabled={instanceLoading}
               className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-900 hover:bg-red-100 disabled:opacity-50"
             >
-              Remover instância na Evolution
+              Remover
             </button>
           </div>
-          {instanceName ? (
-            <p className="mt-3 text-[11px] text-vyria-navy-muted">
-              Instância: <code>{instanceName}</code>
-            </p>
-          ) : null}
           {qrCode ? (
             <div className="mt-4">
               <p className="text-xs text-vyria-navy-muted">

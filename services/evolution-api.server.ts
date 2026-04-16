@@ -73,6 +73,7 @@ async function evolutionRequest(
   try {
     const response = await fetch(url, {
       method,
+      cache: 'no-store',
       headers: {
         'Content-Type': 'application/json',
         apikey: cfg.apiKey,
@@ -123,19 +124,42 @@ function extractConnectionState(payload: EvolutionJson | null): string {
     payload.instance && typeof payload.instance === 'object'
       ? (payload.instance as Record<string, unknown>)
       : null
-  const candidates = [
-    payload.state,
-    payload.status,
-    payload.connectionStatus,
-    payload.connection_state,
-    instanceObj?.state,
-    instanceObj?.status,
-  ]
-  for (const candidate of candidates) {
-    if (typeof candidate === 'string' && candidate.trim()) {
-      return candidate.trim().toLowerCase()
+
+  // Prefer estado dentro de `instance` (Baileys: open | close | connecting).
+  // Alguns payloads trazem `connectionStatus` no topo com valor "connected" a significar
+  // outra coisa — ler isso antes de `instance.state` marcava "Conectado" com sessão fechada.
+  if (instanceObj) {
+    const waState = pickString(instanceObj.state)
+    if (waState) return waState.toLowerCase()
+    const nestedCs = instanceObj.connectionStatus
+    if (typeof nestedCs === 'string') {
+      const s = pickString(nestedCs)
+      if (s) return s.toLowerCase()
+    }
+    if (nestedCs && typeof nestedCs === 'object') {
+      const inner = pickString((nestedCs as Record<string, unknown>).state)
+      if (inner) return inner.toLowerCase()
+    }
+    const instStatus = pickString(instanceObj.status)
+    if (instStatus) {
+      const low = instStatus.toLowerCase()
+      if (['open', 'close', 'closed', 'connecting', 'qrcode', 'pairing'].includes(low)) return low
     }
   }
+
+  const topState = pickString(payload.state)
+  if (topState) return topState.toLowerCase()
+
+  const topConn = pickString(payload.connectionStatus) || pickString(payload.connection_state)
+  if (topConn) return topConn.toLowerCase()
+
+  const topStatus = pickString(payload.status)
+  if (topStatus) {
+    const low = topStatus.toLowerCase()
+    if (['success', 'error', 'ok', 'fail', 'failed'].includes(low)) return 'unknown'
+    return low
+  }
+
   return 'unknown'
 }
 
@@ -179,6 +203,30 @@ export async function getEvolutionConnectionState(instanceName: string): Promise
   const attempt = await evolutionRequest('GET', `/instance/connectionState/${encodeURIComponent(instanceName)}`)
   if (!attempt.ok) return 'unknown'
   return extractConnectionState(attempt.data)
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+export async function waitForEvolutionConnectionState(
+  instanceName: string,
+  expectedStates: string[],
+  maxAttempts: number = 6,
+  delayMs: number = 500
+): Promise<string> {
+  const wanted = new Set(expectedStates.map((value) => value.toLowerCase()))
+  let lastState = 'unknown'
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    lastState = await getEvolutionConnectionState(instanceName)
+    if (wanted.has(lastState)) return lastState
+    if (attempt < maxAttempts - 1) {
+      await sleep(delayMs)
+    }
+  }
+
+  return lastState
 }
 
 export async function logoutEvolutionInstance(instanceName: string): Promise<void> {

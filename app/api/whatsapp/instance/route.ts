@@ -7,7 +7,10 @@ import {
   getEvolutionQrCode,
   getStoreEvolutionInstanceName,
   logoutEvolutionInstance,
+  waitForEvolutionConnectionState,
 } from '@/services/evolution-api.server'
+
+export const dynamic = 'force-dynamic'
 
 async function getOwnedStoreId(storeId: string): Promise<string | null> {
   const supabase = await createClient()
@@ -81,7 +84,11 @@ export async function POST(req: NextRequest) {
 
     if (action === 'logout') {
       await logoutEvolutionInstance(instanceName)
-      const connectionState = await getEvolutionConnectionState(instanceName)
+      const connectionState = await waitForEvolutionConnectionState(instanceName, [
+        'close',
+        'closed',
+        'unknown',
+      ])
       return NextResponse.json({
         instanceName,
         connectionState,
@@ -91,6 +98,7 @@ export async function POST(req: NextRequest) {
 
     if (action === 'delete') {
       await deleteEvolutionInstance(instanceName)
+      await waitForEvolutionConnectionState(instanceName, ['close', 'closed', 'unknown'], 4, 400)
       return NextResponse.json({
         instanceName,
         connectionState: 'close',

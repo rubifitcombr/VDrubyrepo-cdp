@@ -18,6 +18,7 @@ export async function getWhatsAppInstanceStatus(
   })
   const res = await fetch(`/api/whatsapp/instance?${params.toString()}`, {
     method: 'GET',
+    cache: 'no-store',
     headers: { 'Content-Type': 'application/json' },
   })
   const data = await parseJson<InstanceResponse & { error?: string }>(res)
@@ -30,6 +31,7 @@ export async function connectWhatsAppInstance(
 ): Promise<InstanceResponse> {
   const res = await fetch('/api/whatsapp/instance', {
     method: 'POST',
+    cache: 'no-store',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ storeId, action: 'connect' }),
   })
@@ -41,6 +43,7 @@ export async function connectWhatsAppInstance(
 export async function logoutWhatsAppInstance(storeId: string): Promise<InstanceResponse> {
   const res = await fetch('/api/whatsapp/instance', {
     method: 'POST',
+    cache: 'no-store',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ storeId, action: 'logout' }),
   })
@@ -52,6 +55,7 @@ export async function logoutWhatsAppInstance(storeId: string): Promise<InstanceR
 export async function deleteWhatsAppInstance(storeId: string): Promise<InstanceResponse> {
   const res = await fetch('/api/whatsapp/instance', {
     method: 'POST',
+    cache: 'no-store',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ storeId, action: 'delete' }),
   })
