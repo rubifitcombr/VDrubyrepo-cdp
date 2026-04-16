@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import {
+  deleteEvolutionInstance,
   ensureEvolutionInstance,
   getEvolutionConnectionState,
   getEvolutionQrCode,
   getStoreEvolutionInstanceName,
+  logoutEvolutionInstance,
 } from '@/services/evolution-api.server'
 
 async function getOwnedStoreId(storeId: string): Promise<string | null> {
@@ -76,11 +78,31 @@ export async function POST(req: NextRequest) {
     }
 
     const instanceName = getStoreEvolutionInstanceName(ownedStoreId)
-    await ensureEvolutionInstance(instanceName)
+
+    if (action === 'logout') {
+      await logoutEvolutionInstance(instanceName)
+      const connectionState = await getEvolutionConnectionState(instanceName)
+      return NextResponse.json({
+        instanceName,
+        connectionState,
+        qrCode: null,
+      })
+    }
+
+    if (action === 'delete') {
+      await deleteEvolutionInstance(instanceName)
+      return NextResponse.json({
+        instanceName,
+        connectionState: 'close',
+        qrCode: null,
+      })
+    }
 
     if (action !== 'connect') {
       return NextResponse.json({ error: 'Ação inválida.' }, { status: 400 })
     }
+
+    await ensureEvolutionInstance(instanceName)
 
     const qrCode = await getEvolutionQrCode(instanceName)
     const connectionState = await getEvolutionConnectionState(instanceName)

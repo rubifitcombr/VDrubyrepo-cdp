@@ -12,7 +12,9 @@ import { updateStore } from '@/services/store'
 import { upsertWhatsAppAutomation } from '@/services/whatsapp-automations'
 import {
   connectWhatsAppInstance,
+  deleteWhatsAppInstance,
   getWhatsAppInstanceStatus,
+  logoutWhatsAppInstance,
 } from '@/services/whatsapp-instance'
 import { IconBolt, IconBell } from '@/app/dashboard/_components/NavIcons'
 
@@ -264,6 +266,43 @@ export function AutomationsClient({
     }
   }
 
+  async function handleLogoutWhatsApp() {
+    setError(null)
+    setInstanceLoading(true)
+    try {
+      const data = await logoutWhatsAppInstance(storeId)
+      setInstanceName(data.instanceName)
+      setConnectionState(normalizeConnectionState(data.connectionState))
+      setQrCode(null)
+      setQrKeepUntil(0)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao desligar sessão.')
+    } finally {
+      setInstanceLoading(false)
+    }
+  }
+
+  async function handleDeleteWhatsAppInstance() {
+    const ok = window.confirm(
+      'Isto remove a instância na Evolution API (sessão e dados locais dessa instância). ' +
+        'Depois podes voltar a gerar o QR Code para criar de novo. Continuar?'
+    )
+    if (!ok) return
+    setError(null)
+    setInstanceLoading(true)
+    try {
+      const data = await deleteWhatsAppInstance(storeId)
+      setInstanceName(data.instanceName)
+      setConnectionState(normalizeConnectionState(data.connectionState))
+      setQrCode(null)
+      setQrKeepUntil(0)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao remover instância.')
+    } finally {
+      setInstanceLoading(false)
+    }
+  }
+
   useEffect(() => {
     void refreshInstanceStatus(false)
     // storeId é estável por página
@@ -355,7 +394,9 @@ export function AutomationsClient({
           <h2 className="font-semibold text-vyria-navy">Conexão da instância WhatsApp</h2>
           <p className="mt-1 text-sm text-vyria-navy-muted">
             Cada logista usa a própria instância da Evolution. Gere o QR Code para
-            conectar este número da loja.
+            conectar este número da loja. Se o painel da Evolution mostrar{' '}
+            <code className="text-[11px]">Error: [object Object]</code>, usa os botões
+            abaixo: chamam a API diretamente e mostram a mensagem real de erro.
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <span
@@ -387,6 +428,22 @@ export function AutomationsClient({
               className="rounded-lg bg-[var(--dash-primary)] px-3 py-2 text-xs font-semibold text-white shadow-sm shadow-[var(--dash-primary)]/20 hover:brightness-105 disabled:opacity-50"
             >
               {instanceLoading ? 'A gerar…' : 'Gerar/Atualizar QR Code'}
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleLogoutWhatsApp()}
+              disabled={instanceLoading}
+              className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+            >
+              Desligar sessão (logout)
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleDeleteWhatsAppInstance()}
+              disabled={instanceLoading}
+              className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-900 hover:bg-red-100 disabled:opacity-50"
+            >
+              Remover instância na Evolution
             </button>
           </div>
           {instanceName ? (

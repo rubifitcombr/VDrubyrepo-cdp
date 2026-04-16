@@ -40,8 +40,28 @@ async function safeJson(response: Response): Promise<EvolutionJson | null> {
   }
 }
 
+function formatEvolutionApiFailure(
+  status: number,
+  data: EvolutionJson | null,
+  rawText: string
+): string {
+  if (data) {
+    const errField = data.error
+    if (typeof errField === 'string' && errField.trim()) return errField.trim()
+    const resp = data.response
+    if (resp && typeof resp === 'object') {
+      const msg = (resp as Record<string, unknown>).message
+      if (typeof msg === 'string' && msg.trim()) return msg.trim()
+      if (Array.isArray(msg) && msg.length) return msg.map(String).join('; ')
+    }
+    return JSON.stringify(data).slice(0, 400)
+  }
+  if (rawText.trim()) return rawText.trim().slice(0, 400)
+  return `HTTP ${status}`
+}
+
 async function evolutionRequest(
-  method: 'GET' | 'POST',
+  method: 'GET' | 'POST' | 'DELETE',
   path: string,
   body?: EvolutionJson
 ): Promise<{ ok: boolean; status: number; data: EvolutionJson | null; rawText: string }> {
@@ -159,6 +179,40 @@ export async function getEvolutionConnectionState(instanceName: string): Promise
   const attempt = await evolutionRequest('GET', `/instance/connectionState/${encodeURIComponent(instanceName)}`)
   if (!attempt.ok) return 'unknown'
   return extractConnectionState(attempt.data)
+}
+
+export async function logoutEvolutionInstance(instanceName: string): Promise<void> {
+  const attempt = await evolutionRequest(
+    'DELETE',
+    `/instance/logout/${encodeURIComponent(instanceName)}`
+  )
+  if (attempt.ok) {
+    const errFlag = attempt.data?.error
+    if (errFlag === true || errFlag === 'true') {
+      const details = formatEvolutionApiFailure(attempt.status, attempt.data, attempt.rawText)
+      throw new Error(`Evolution API recusou logout: ${details}`)
+    }
+    return
+  }
+  const details = formatEvolutionApiFailure(attempt.status, attempt.data, attempt.rawText)
+  throw new Error(`Falha ao desligar sessão WhatsApp (${attempt.status}): ${details}`)
+}
+
+export async function deleteEvolutionInstance(instanceName: string): Promise<void> {
+  const attempt = await evolutionRequest(
+    'DELETE',
+    `/instance/delete/${encodeURIComponent(instanceName)}`
+  )
+  if (attempt.ok) {
+    const errFlag = attempt.data?.error
+    if (errFlag === true || errFlag === 'true') {
+      const details = formatEvolutionApiFailure(attempt.status, attempt.data, attempt.rawText)
+      throw new Error(`Evolution API recusou remover instância: ${details}`)
+    }
+    return
+  }
+  const details = formatEvolutionApiFailure(attempt.status, attempt.data, attempt.rawText)
+  throw new Error(`Falha ao remover instância (${attempt.status}): ${details}`)
 }
 
 export async function getEvolutionQrCode(instanceName: string): Promise<string | null> {

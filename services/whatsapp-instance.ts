@@ -37,3 +37,25 @@ export async function connectWhatsAppInstance(
   if (!res.ok) throw new Error(data.error || 'Falha ao gerar QR Code.')
   return data
 }
+
+export async function logoutWhatsAppInstance(storeId: string): Promise<InstanceResponse> {
+  const res = await fetch('/api/whatsapp/instance', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ storeId, action: 'logout' }),
+  })
+  const data = await parseJson<InstanceResponse & { error?: string }>(res)
+  if (!res.ok) throw new Error(data.error || 'Falha ao desligar sessão.')
+  return data
+}
+
+export async function deleteWhatsAppInstance(storeId: string): Promise<InstanceResponse> {
+  const res = await fetch('/api/whatsapp/instance', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ storeId, action: 'delete' }),
+  })
+  const data = await parseJson<InstanceResponse & { error?: string }>(res)
+  if (!res.ok) throw new Error(data.error || 'Falha ao remover instância.')
+  return data
+}
