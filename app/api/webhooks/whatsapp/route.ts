@@ -53,6 +53,20 @@ function extractStoreIdFromInstance(instanceName: string): string {
   return tail
 }
 
+/** Browser abre em GET — só para confirmar que a rota existe; a Evolution usa POST. */
+export async function GET() {
+  return NextResponse.json({
+    ok: true,
+    message:
+      'Webhook Vyria ativo. A Evolution deve enviar eventos com método POST para este URL.',
+  })
+}
+
+/** Alguns health checks usam HEAD e devolviam 405. */
+export async function HEAD() {
+  return new NextResponse(null, { status: 200 })
+}
+
 function extractWebhookInput(body: WebhookPayload): {
   storeId: string
   from: string
