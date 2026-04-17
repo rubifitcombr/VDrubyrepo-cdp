@@ -6,7 +6,11 @@ import {
   shouldSkipAutoReply,
 } from '@/services/whatsapp-sender.server'
 
+/** Vercel: aumenta limite para delays + chamada à Evolution (ajusta no painel se precisares de mais). */
+export const maxDuration = 60
+
 type WebhookPayload = {
+  event?: string
   message?: string
   from?: string
   store_id?: string
@@ -16,24 +20,46 @@ type WebhookPayload = {
     key?: {
       fromMe?: boolean
       remoteJid?: string
+      remoteJidAlt?: string
     }
-    message?: {
-      conversation?: string
-      extendedTextMessage?: {
-        text?: string
-      }
-      imageMessage?: {
-        caption?: string
-      }
-      videoMessage?: {
-        caption?: string
-      }
-    }
+    message?: Record<string, unknown>
   }
 }
 
 function toText(v: unknown): string {
   return typeof v === 'string' ? v.trim() : ''
+}
+
+/** Texto em mensagens Baileys (incl. ephemeral / viewOnce). */
+function extractBaileysMessageText(message: Record<string, unknown> | undefined): string {
+  if (!message) return ''
+  if (typeof message.conversation === 'string') return message.conversation.trim()
+  const ext = message.extendedTextMessage
+  if (ext && typeof ext === 'object') {
+    const t = (ext as { text?: string }).text
+    if (typeof t === 'string') return t.trim()
+  }
+  for (const wrap of ['ephemeralMessage', 'viewOnceMessage', 'viewOnceMessageV2']) {
+    const inner = message[wrap]
+    if (inner && typeof inner === 'object' && 'message' in inner) {
+      const nested = (inner as { message?: Record<string, unknown> }).message
+      if (nested && typeof nested === 'object') {
+        const t = extractBaileysMessageText(nested)
+        if (t) return t
+      }
+    }
+  }
+  const img = message.imageMessage
+  if (img && typeof img === 'object') {
+    const c = (img as { caption?: string }).caption
+    if (typeof c === 'string') return c.trim()
+  }
+  const vid = message.videoMessage
+  if (vid && typeof vid === 'object') {
+    const c = (vid as { caption?: string }).caption
+    if (typeof c === 'string') return c.trim()
+  }
+  return ''
 }
 
 function buildStoreLink(req: NextRequest, slug: string): string {
@@ -74,7 +100,11 @@ function extractWebhookInput(body: WebhookPayload): {
   ignore: boolean
 } {
   const fromMe = body?.data?.key?.fromMe === true
-  const remoteJid = toText(body?.data?.key?.remoteJid)
+  let remoteJid = toText(body?.data?.key?.remoteJid)
+  const remoteJidAlt = toText(body?.data?.key?.remoteJidAlt)
+  if (remoteJid.includes('@lid') && remoteJidAlt) {
+    remoteJid = remoteJidAlt
+  }
   const isGroup = remoteJid.endsWith('@g.us')
   const isBroadcast = remoteJid.includes('status@broadcast')
 
@@ -86,12 +116,12 @@ function extractWebhookInput(body: WebhookPayload): {
   const instanceName = toText(body?.instance || body?.instanceName)
   const storeId = directStoreId || extractStoreIdFromInstance(instanceName)
 
+  const msgObj = body?.data?.message
   const incomingMessage =
     toText(body?.message) ||
-    toText(body?.data?.message?.conversation) ||
-    toText(body?.data?.message?.extendedTextMessage?.text) ||
-    toText(body?.data?.message?.imageMessage?.caption) ||
-    toText(body?.data?.message?.videoMessage?.caption)
+    (msgObj && typeof msgObj === 'object'
+      ? extractBaileysMessageText(msgObj as Record<string, unknown>)
+      : '')
 
   return {
     storeId,
@@ -104,6 +134,16 @@ function extractWebhookInput(body: WebhookPayload): {
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as WebhookPayload
+
+    const ev = typeof body.event === 'string' ? body.event.trim().toLowerCase() : ''
+    if (ev && ev !== 'messages.upsert') {
+      return NextResponse.json({
+        ok: true,
+        skipped: true,
+        reason: `Evento "${body.event}" não dispara resposta automática (só messages.upsert).`,
+      })
+    }
+
     const { from, storeId, incomingMessage, ignore } = extractWebhookInput(body)
 
     if (ignore) {
@@ -116,7 +156,13 @@ export async function POST(req: NextRequest) {
 
     if (!from || !storeId) {
       return NextResponse.json(
-        { ok: true, skipped: true, reason: 'Webhook sem from/store_id válidos.' },
+        {
+          ok: true,
+          skipped: true,
+          reason: 'Webhook sem from/store_id válidos.',
+          hint:
+            'Confirma instance tipo store_<uuid> e mensagem com remoteJid; evento messages.upsert.',
+        },
         { status: 200 }
       )
     }
@@ -181,9 +227,10 @@ export async function POST(req: NextRequest) {
     const link = buildStoreLink(req, slug)
     const template = toText(automation.message_template) || 'Olá 👋 faça seu pedido aqui: {link}'
     const outgoingMessage = template.replaceAll('{link}', link)
+    /** No Vercel o tempo de função é limitado; evita sleep longo que corta antes do envio. */
     const delaySeconds = Math.min(
-      300,
-      Math.max(0, Number(automation.delay_seconds) || 0)
+      25,
+      Math.min(300, Math.max(0, Number(automation.delay_seconds) || 0))
     )
 
     if (delaySeconds > 0) {
