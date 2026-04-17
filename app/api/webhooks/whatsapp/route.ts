@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createServiceRoleClient } from '@/lib/supabase/service-role.server'
 import { hasAutomationAccess } from '@/lib/plan'
 import {
   sendWhatsAppMessage,
@@ -121,7 +121,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const supabase = await createClient()
+    const supabase = createServiceRoleClient()
     const { data: store, error: storeError } = await supabase
       .from('stores')
       .select('id, slug, plan')
