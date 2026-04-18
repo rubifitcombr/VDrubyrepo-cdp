@@ -1,3 +1,12 @@
+# Variáveis: na pasta DESTE ficheiro (ex.: /opt/evolution no VPS):
+#   cp evolution-stack.env.example .env
+# O .env.example vem do repositório (vyria-delivery/); se não existir no servidor,
+# faz git pull / copia o ficheiro por SCP a partir do teu PC.
+# docker compose lê .env automaticamente para ${...} e injeta nos serviços.
+#
+# SERVER_URL: em produção usa HTTPS (reverse proxy + domínio); ver evolution-stack.env.example.
+# Redis: default DB 0; só mudes o índice se este Redis for partilhado com outra aplicação.
+
 services:
   postgres:
     image: postgres:15
@@ -6,7 +15,7 @@ services:
     environment:
       POSTGRES_DB: evolution
       POSTGRES_USER: evolution
-      POSTGRES_PASSWORD: "Vyria_postpass2026"
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Cria .env a partir de evolution-stack.env.example}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -42,12 +51,13 @@ services:
     environment:
       SERVER_TYPE: http
       SERVER_PORT: 8080
-      AUTHENTICATION_API_KEY: "vyria_2110Fa@zap_2026"
+      SERVER_URL: ${SERVER_URL:?Define SERVER_URL no .env — URL pública da Evolution}
+      AUTHENTICATION_API_KEY: ${AUTHENTICATION_API_KEY:?Define AUTHENTICATION_API_KEY no .env}
       DATABASE_ENABLED: "true"
       DATABASE_PROVIDER: postgresql
-      DATABASE_CONNECTION_URI: postgresql://evolution:Vyria_postpass2026@postgres:5432/evolution
+      DATABASE_CONNECTION_URI: postgresql://evolution:${POSTGRES_PASSWORD}@postgres:5432/evolution
       CACHE_REDIS_ENABLED: "true"
-      CACHE_REDIS_URI: redis://redis:6379/6
+      CACHE_REDIS_URI: ${CACHE_REDIS_URI:-redis://redis:6379/0}
       CACHE_REDIS_PREFIX_KEY: evolution
       CACHE_REDIS_SAVE_INSTANCES: "false"
       LOG_LEVEL: ERROR
