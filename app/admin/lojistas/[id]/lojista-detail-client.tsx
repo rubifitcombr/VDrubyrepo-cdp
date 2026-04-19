@@ -113,6 +113,11 @@ export function LojistaDetailClient() {
   const [confirmCancel, setConfirmCancel] = useState(false)
   const [busy, setBusy] = useState(false)
 
+  const [fatDesc, setFatDesc] = useState('')
+  const [fatValor, setFatValor] = useState('')
+  const [fatStatus, setFatStatus] = useState<'pago' | 'pendente' | 'falhou'>('pendente')
+  const [fatBusy, setFatBusy] = useState(false)
+
   const load = useCallback(async () => {
     setLoading(true)
     const res = await fetch(`/api/admin/lojistas/${id}`, { credentials: 'include' })
@@ -221,6 +226,42 @@ export function LojistaDetailClient() {
       router.refresh()
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function postRegistrarFatura() {
+    if (!fatDesc.trim()) {
+      alert('Preenche a descrição.')
+      return
+    }
+    const v = Number(String(fatValor).replace(',', '.'))
+    if (!Number.isFinite(v) || v < 0) {
+      alert('Valor inválido.')
+      return
+    }
+    setFatBusy(true)
+    try {
+      const res = await fetch(`/api/admin/lojistas/${id}/faturas`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          descricao: fatDesc.trim(),
+          valor: v,
+          status: fatStatus,
+        }),
+      })
+      const j = (await res.json()) as { error?: string }
+      if (!res.ok) {
+        alert(j.error || 'Erro')
+        return
+      }
+      setFatDesc('')
+      setFatValor('')
+      setFatStatus('pendente')
+      alert('Fatura registada.')
+    } finally {
+      setFatBusy(false)
     }
   }
 
@@ -344,6 +385,61 @@ export function LojistaDetailClient() {
             </button>
           )}
         </div>
+      </section>
+
+      <section className="rounded-2xl border border-[var(--card-border)] bg-white p-6 shadow-sm">
+        <h2 className="text-base font-bold text-[#1a1614]">Registrar fatura</h2>
+        <p className="mt-1 text-sm text-[#6b7280]">
+          Regista manualmente uma fatura para o lojista (aparece em Assinatura no painel).
+        </p>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <label className="block text-sm font-medium text-[#374151] sm:col-span-2">
+            Descrição
+            <input
+              type="text"
+              className="mt-2 w-full rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm"
+              placeholder='Ex.: Vyria Growth — Maio 2026'
+              value={fatDesc}
+              onChange={(e) => setFatDesc(e.target.value)}
+              disabled={fatBusy}
+            />
+          </label>
+          <label className="block text-sm font-medium text-[#374151]">
+            Valor (R$)
+            <input
+              type="text"
+              inputMode="decimal"
+              className="mt-2 w-full rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm"
+              placeholder="0,00"
+              value={fatValor}
+              onChange={(e) => setFatValor(e.target.value)}
+              disabled={fatBusy}
+            />
+          </label>
+          <label className="block text-sm font-medium text-[#374151]">
+            Estado
+            <select
+              className="mt-2 w-full rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm"
+              value={fatStatus}
+              onChange={(e) =>
+                setFatStatus(e.target.value as 'pago' | 'pendente' | 'falhou')
+              }
+              disabled={fatBusy}
+            >
+              <option value="pago">Pago</option>
+              <option value="pendente">Pendente</option>
+              <option value="falhou">Falhou</option>
+            </select>
+          </label>
+        </div>
+        <button
+          type="button"
+          disabled={fatBusy}
+          onClick={() => void postRegistrarFatura()}
+          className="mt-4 rounded-xl bg-[var(--dash-primary)] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+        >
+          {fatBusy ? 'A registar…' : 'Registrar'}
+        </button>
       </section>
 
       <section className="rounded-2xl border border-[var(--card-border)] bg-white p-6 shadow-sm">

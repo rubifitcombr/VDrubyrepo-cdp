@@ -8,14 +8,8 @@ import { getUser } from '@/services/auth.server'
 import { getStoreByUser } from '@/services/store.server'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
+import { getAdminWhatsappHref } from '@/lib/admin-whatsapp-href.server'
 import { AcessoSuspensoClient } from './acesso-suspenso-client'
-
-function adminWhatsappHref(): string | null {
-  const raw = process.env.NEXT_PUBLIC_ADMIN_WHATSAPP?.trim() ?? ''
-  const digits = raw.replace(/\D/g, '')
-  if (!digits) return null
-  return `https://wa.me/${digits}`
-}
 
 export default async function AcessoSuspensoPage() {
   const user = await getUser()
@@ -41,5 +35,5 @@ export default async function AcessoSuspensoPage() {
     redirect('/dashboard')
   }
 
-  return <AcessoSuspensoClient whatsappHref={adminWhatsappHref()} />
+  return <AcessoSuspensoClient whatsappHref={getAdminWhatsappHref()} />
 }

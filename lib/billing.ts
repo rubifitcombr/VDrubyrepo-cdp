@@ -20,10 +20,11 @@ export type AssinaturaPageModel = {
   planBadgeLabel: string
   priceLabel: string
   nextChargeDateLabel: string
+  /** Data de vencimento do plano (YYYY-MM-DD), da loja. */
+  planoVenceEm: string | null
   subscriptionStatus: BillingSubscriptionStatus
-  paymentMethod: BillingPaymentMethod | null
-  paymentChangeUrl: string | null
   invoices: BillingInvoiceRow[]
+  whatsappHref: string | null
 }
 
 const OVERDUE_BLOCK_DAYS = 3

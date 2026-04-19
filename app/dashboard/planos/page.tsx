@@ -1,18 +1,9 @@
 import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
+import { getAdminWhatsappHref } from '@/lib/admin-whatsapp-href.server'
 import { readStorePlano } from '@/lib/store-columns'
 import { getUser } from '@/services/auth.server'
 import { getStoreByUser } from '@/services/store.server'
 import { PlanosPageClient } from './planos-page-client'
-
-function adminWhatsappHref(): string | null {
-  const raw =
-    process.env.NEXT_PUBLIC_ADMIN_WHATSAPP?.trim() ||
-    process.env.ADMIN_WHATSAPP?.trim() ||
-    ''
-  const digits = raw.replace(/\D/g, '')
-  if (!digits) return null
-  return `https://wa.me/${digits}`
-}
 
 export default async function PlanosPage() {
   const user = await getUser()
@@ -26,7 +17,7 @@ export default async function PlanosPage() {
   return (
     <PlanosPageClient
       currentPlan={currentPlan}
-      whatsappHref={adminWhatsappHref()}
+      whatsappHref={getAdminWhatsappHref()}
     />
   )
 }

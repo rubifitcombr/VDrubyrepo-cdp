@@ -78,6 +78,23 @@ export async function notificarAdminListaVencimentos(
   await sendResendEmail({ subject: input.assunto, html })
 }
 
+export async function notificarAdminSolicitacaoCancelamentoAssinatura(input: {
+  nomeLoja: string
+  emailLojista: string | null
+  motivoLabel: string
+}): Promise<void> {
+  const subject = `Vyria — Pedido de cancelamento de assinatura — ${input.nomeLoja}`
+  const html = `
+    <p><strong>Solicitação de cancelamento</strong> (painel do lojista)</p>
+    <ul>
+      <li><strong>Loja:</strong> ${escapeHtml(input.nomeLoja)}</li>
+      <li><strong>Email:</strong> ${escapeHtml(input.emailLojista || '—')}</li>
+      <li><strong>Motivo:</strong> ${escapeHtml(input.motivoLabel)}</li>
+    </ul>
+  `
+  await sendResendEmail({ subject, html })
+}
+
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')

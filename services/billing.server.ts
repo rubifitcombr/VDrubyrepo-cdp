@@ -1,12 +1,8 @@
 import 'server-only'
 
-import type { BillingSubscriptionStatus } from '@/lib/billing'
-import {
-  parseBillingInvoices,
-  parsePaymentMethod,
-  shouldBlockDashboardAfterOverdue,
-} from '@/lib/billing'
-import type { AssinaturaPageModel } from '@/lib/billing'
+import type { AssinaturaPageModel, BillingSubscriptionStatus } from '@/lib/billing'
+import { shouldBlockDashboardAfterOverdue } from '@/lib/billing'
+import { getAdminWhatsappHref } from '@/lib/admin-whatsapp-href.server'
 import type { Plan } from '@/lib/plan'
 import { planMonthlyPriceLabel, planShortLabel } from '@/lib/plan'
 
@@ -85,10 +81,11 @@ export function getDashboardBillingBlock(
   return { payUrl: payUrl || null }
 }
 
-export function getAssinaturaPageModel(
+export async function getAssinaturaPageModel(
   store: Record<string, unknown> | null | undefined,
-  effectivePlan: Plan
-): AssinaturaPageModel {
+  effectivePlan: Plan,
+  invoicesFromDb: import('@/lib/billing').BillingInvoiceRow[]
+): Promise<AssinaturaPageModel> {
   const plan = effectivePlan
   const nextRaw = store?.billing_next_charge_at
   let nextChargeDateLabel = ''
@@ -97,21 +94,19 @@ export function getAssinaturaPageModel(
   }
   if (!nextChargeDateLabel) nextChargeDateLabel = nextChargeFallback()
 
-  const paymentChangeUrl =
-    typeof store?.billing_payment_update_url === 'string'
-      ? store.billing_payment_update_url.trim() || null
+  const planoVenceEm =
+    typeof store?.plano_vence_em === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(store.plano_vence_em.trim())
+      ? store.plano_vence_em.trim()
       : null
-
-  const invoices = parseBillingInvoices(store?.billing_invoices)
 
   return {
     plan,
     planBadgeLabel: planShortLabel(plan),
     priceLabel: planMonthlyPriceLabel(plan),
     nextChargeDateLabel,
+    planoVenceEm,
     subscriptionStatus: parseStatus(store?.billing_subscription_status),
-    paymentMethod: parsePaymentMethod(store?.billing_payment_method),
-    paymentChangeUrl,
-    invoices,
+    invoices: invoicesFromDb,
+    whatsappHref: getAdminWhatsappHref(),
   }
 }
