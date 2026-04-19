@@ -1,17 +1,23 @@
 'use client'
 
 import Link from 'next/link'
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import { signIn } from '@/services/auth'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 
 const inputClass =
   'mt-2 w-full rounded-xl border border-[var(--card-border)] bg-white px-4 py-3 text-sm text-vyria-navy outline-none transition-colors placeholder:text-vyria-navy-muted/70 focus:border-vyria-plum focus:ring-2 focus:ring-vyria-orange/20'
 
-export default function Login() {
+function safeNextPath(raw: string | null): string {
+  if (!raw || !raw.startsWith('/') || raw.startsWith('//')) return '/dashboard'
+  return raw
+}
+
+function LoginForm() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const router = useRouter()
+  const searchParams = useSearchParams()
 
   async function handleLogin() {
     try {
@@ -22,7 +28,8 @@ export default function Login() {
         return
       }
 
-      router.push('/dashboard')
+      const next = safeNextPath(searchParams.get('next'))
+      router.push(next)
     } catch (err) {
       const message =
         err instanceof Error
@@ -90,5 +97,19 @@ export default function Login() {
         </Link>
       </p>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="rounded-2xl border border-[var(--card-border)] bg-white p-8 text-center text-sm text-vyria-navy-muted shadow-xl">
+          A carregar…
+        </div>
+      }
+    >
+      <LoginForm />
+    </Suspense>
   )
 }
