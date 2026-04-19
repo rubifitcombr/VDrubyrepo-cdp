@@ -107,7 +107,7 @@ export function LojistasPageClient() {
   const [renovarOpen, setRenovarOpen] = useState(false)
   const [renovarRow, setRenovarRow] = useState<LojistaRow | null>(null)
   const [renovarPlano, setRenovarPlano] = useState<Plan>('START')
-  const [renovarVence, setRenovarVence] = useState('')
+  const [renovarDias, setRenovarDias] = useState(30)
 
   const [confirmBlock, setConfirmBlock] = useState<LojistaRow | null>(null)
   const [confirmCancel, setConfirmCancel] = useState<LojistaRow | null>(null)
@@ -148,7 +148,7 @@ export function LojistasPageClient() {
   function openRenovar(row: LojistaRow) {
     setRenovarRow(row)
     setRenovarPlano(row.plano)
-    setRenovarVence(addDaysIso(row.plano_vence_em, 30))
+    setRenovarDias(30)
     setRenovarOpen(true)
   }
 
@@ -183,7 +183,7 @@ export function LojistasPageClient() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ plano: renovarPlano, plano_vence_em: renovarVence }),
+        body: JSON.stringify({ plano: renovarPlano, dias: renovarDias }),
       })
       const data = (await res.json()) as { error?: string }
       if (!res.ok) {
@@ -483,12 +483,14 @@ export function LojistasPageClient() {
               </select>
             </label>
             <label className="block text-sm font-medium text-[#374151]">
-              Nova data de vencimento
+              Estender (dias) a partir do vencimento atual ou de hoje
               <input
-                type="date"
+                type="number"
+                min={1}
+                max={730}
                 className="mt-2 w-full rounded-xl border border-[var(--card-border)] bg-white px-3 py-2.5 text-sm"
-                value={renovarVence}
-                onChange={(e) => setRenovarVence(e.target.value)}
+                value={renovarDias}
+                onChange={(e) => setRenovarDias(Math.max(1, Number(e.target.value) || 30))}
               />
             </label>
             <button

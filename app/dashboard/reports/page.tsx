@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { ReportsDashboardClient } from './_components/ReportsDashboardClient'
 import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
 import { hasFeature } from '@/lib/plan'
+import { readStorePlano } from '@/lib/store-columns'
 import { getUser } from '@/services/auth.server'
 import { getReportsDashboardData } from '@/services/reports.server'
 import { getStoreByUser } from '@/services/store.server'
@@ -46,8 +47,8 @@ export default async function ReportsPage() {
 
   const storeId = store.id as string
   const rawPlan =
-    store && typeof store === 'object' && 'plan' in store
-      ? (store as Record<string, unknown>).plan
+    store && typeof store === 'object'
+      ? readStorePlano(store as Record<string, unknown>)
       : undefined
   const plan = effectiveDashboardPlan(user.email ?? null, rawPlan)
   const reportsAdvanced = hasFeature(plan, 'reports_advanced')

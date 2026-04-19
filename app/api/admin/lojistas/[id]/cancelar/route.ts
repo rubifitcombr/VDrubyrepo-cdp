@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { requireAdminApi } from '@/lib/admin-auth.server'
+import { readStoreStatus } from '@/lib/store-columns'
 import { fetchLojistaDetail } from '@/lib/admin-lojistas-query.server'
 import { insertAdminLog } from '@/services/admin-logs.server'
 
@@ -14,7 +15,7 @@ export async function POST(
 
   const { data: existing } = await ctx.svc
     .from('stores')
-    .select('merchant_status, name')
+    .select('*')
     .eq('id', id)
     .maybeSingle()
 
@@ -22,7 +23,7 @@ export async function POST(
     return NextResponse.json({ error: 'Loja não encontrada' }, { status: 404 })
   }
 
-  const st = (existing as { merchant_status?: string }).merchant_status
+  const st = String(readStoreStatus(existing as Record<string, unknown>) || '')
   if (st !== 'ativo' && st !== 'bloqueado') {
     return NextResponse.json(
       { error: 'Cancelamento só para ativos ou bloqueados' },
@@ -34,7 +35,7 @@ export async function POST(
   const { error } = await ctx.svc
     .from('stores')
     .update({
-      merchant_status: 'cancelado',
+      status: 'cancelado',
       plano_atualizado_em: now,
     })
     .eq('id', id)

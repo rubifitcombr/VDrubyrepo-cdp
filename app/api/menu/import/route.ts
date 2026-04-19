@@ -1,5 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
+import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
+import { readStorePlano } from '@/lib/store-columns'
 import { currentYearMonthUtc, getMenuImportMonthlyLimit } from '@/lib/menu-import-quota'
 import { hasAiMenuPhotoImport } from '@/lib/plan'
 import {
@@ -24,13 +26,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Sessão necessária.' }, { status: 401 })
     }
 
-    const { data: storeRow } = await supabase
-      .from('stores')
-      .select('id, plan')
-      .eq('owner_id', user.id)
-      .maybeSingle()
+    const gate = await requireLojistaAtivoApi(user.id)
+    if (!gate.ok) return gate.response
 
-    const plan = effectiveDashboardPlan(user.email, storeRow?.plan)
+    const plan = effectiveDashboardPlan(
+      user.email,
+      readStorePlano(gate.ctx.store)
+    )
     if (!hasAiMenuPhotoImport(plan)) {
       return NextResponse.json(
         {
@@ -41,13 +43,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const storeId =
-      storeRow && typeof storeRow === 'object' && 'id' in storeRow
-        ? String((storeRow as { id: string }).id)
-        : null
-    if (!storeId) {
-      return NextResponse.json({ error: 'Loja não encontrada.' }, { status: 403 })
-    }
+    const storeId = gate.ctx.storeId
 
     const ym = currentYearMonthUtc()
     const limit = getMenuImportMonthlyLimit(plan)

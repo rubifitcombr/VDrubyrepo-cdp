@@ -107,7 +107,7 @@ export function LojistaDetailClient() {
 
   const [renovarOpen, setRenovarOpen] = useState(false)
   const [renovarPlano, setRenovarPlano] = useState<Plan>('START')
-  const [renovarVence, setRenovarVence] = useState('')
+  const [renovarDias, setRenovarDias] = useState(30)
 
   const [confirmBlock, setConfirmBlock] = useState(false)
   const [confirmCancel, setConfirmCancel] = useState(false)
@@ -129,7 +129,7 @@ export function LojistaDetailClient() {
       setLojista(data.lojista)
       setLogs(data.logs ?? [])
       setRenovarPlano(data.lojista.plano)
-      setRenovarVence(addDaysIso(data.lojista.plano_vence_em, 30))
+      setRenovarDias(30)
     }
     setLoading(false)
   }, [id])
@@ -169,7 +169,7 @@ export function LojistaDetailClient() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ plano: renovarPlano, plano_vence_em: renovarVence }),
+        body: JSON.stringify({ plano: renovarPlano, dias: renovarDias }),
       })
       const j = (await res.json()) as { error?: string }
       if (!res.ok) {
@@ -433,12 +433,14 @@ export function LojistaDetailClient() {
             </select>
           </label>
           <label className="block text-sm font-medium text-[#374151]">
-            Nova data de vencimento
+            Estender (dias)
             <input
-              type="date"
+              type="number"
+              min={1}
+              max={730}
               className="mt-2 w-full rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm"
-              value={renovarVence}
-              onChange={(e) => setRenovarVence(e.target.value)}
+              value={renovarDias}
+              onChange={(e) => setRenovarDias(Math.max(1, Number(e.target.value) || 30))}
             />
           </label>
           <button

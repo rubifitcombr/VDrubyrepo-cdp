@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
 import {
   deleteEvolutionInstance,
   ensureEvolutionInstance,
@@ -12,22 +13,36 @@ import {
 
 export const dynamic = 'force-dynamic'
 
-async function getOwnedStoreId(storeId: string): Promise<string | null> {
+async function ensureMerchantStore(reqStoreId: string) {
   const supabase = await createClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()
 
-  if (!user) return null
+  if (!user) {
+    return {
+      ok: false as const,
+      response: NextResponse.json(
+        { error: 'Sessão necessária.' },
+        { status: 401 }
+      ),
+    }
+  }
 
-  const { data: store } = await supabase
-    .from('stores')
-    .select('id')
-    .eq('id', storeId)
-    .eq('owner_id', user.id)
-    .maybeSingle()
+  const gate = await requireLojistaAtivoApi(user.id)
+  if (!gate.ok) return { ok: false as const, response: gate.response }
 
-  return store?.id ? String(store.id) : null
+  if (reqStoreId !== gate.ctx.storeId) {
+    return {
+      ok: false as const,
+      response: NextResponse.json(
+        { error: 'Acesso negado à loja.' },
+        { status: 403 }
+      ),
+    }
+  }
+
+  return { ok: true as const, storeId: gate.ctx.storeId }
 }
 
 export async function GET(req: NextRequest) {
@@ -38,12 +53,10 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'storeId é obrigatório.' }, { status: 400 })
     }
 
-    const ownedStoreId = await getOwnedStoreId(storeId)
-    if (!ownedStoreId) {
-      return NextResponse.json({ error: 'Acesso negado à loja.' }, { status: 403 })
-    }
+    const owned = await ensureMerchantStore(storeId)
+    if (!owned.ok) return owned.response
 
-    const instanceName = getStoreEvolutionInstanceName(ownedStoreId)
+    const instanceName = getStoreEvolutionInstanceName(owned.storeId)
     await ensureEvolutionInstance(instanceName)
     const connectionState = await getEvolutionConnectionState(instanceName)
     const qrCode =
@@ -75,12 +88,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'storeId é obrigatório.' }, { status: 400 })
     }
 
-    const ownedStoreId = await getOwnedStoreId(storeId)
-    if (!ownedStoreId) {
-      return NextResponse.json({ error: 'Acesso negado à loja.' }, { status: 403 })
-    }
+    const owned = await ensureMerchantStore(storeId)
+    if (!owned.ok) return owned.response
 
-    const instanceName = getStoreEvolutionInstanceName(ownedStoreId)
+    const instanceName = getStoreEvolutionInstanceName(owned.storeId)
 
     if (action === 'logout') {
       await logoutEvolutionInstance(instanceName)

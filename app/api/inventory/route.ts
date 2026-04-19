@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
+import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
 import { getUser } from '@/services/auth.server'
-import { getStoreByUser } from '@/services/store.server'
 import { createClient } from '@/lib/supabase/server'
 
 type BodyItem = {
@@ -15,12 +15,10 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 })
   }
 
-  const store = await getStoreByUser(user.id)
-  if (!store || typeof store !== 'object' || !('id' in store)) {
-    return NextResponse.json({ error: 'Loja não encontrada.' }, { status: 404 })
-  }
+  const gate = await requireLojistaAtivoApi(user.id)
+  if (!gate.ok) return gate.response
 
-  const storeId = store.id as string
+  const storeId = gate.ctx.storeId
   let body: { items?: BodyItem[] }
   try {
     body = await request.json()

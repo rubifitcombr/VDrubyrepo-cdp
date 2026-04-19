@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { MenuManagerClient } from './_components/MenuManagerClient'
 import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
+import { readStorePlano } from '@/lib/store-columns'
 import { getUser } from '@/services/auth.server'
 import { getMenuProductsForStore } from '@/services/menu.server'
 import { getStoreByUser } from '@/services/store.server'
@@ -53,8 +54,8 @@ export default async function MenuManagerPage() {
   const initialProducts = await getMenuProductsForStore(storeId)
 
   const rawPlan =
-    store && typeof store === 'object' && 'plan' in store
-      ? (store as Record<string, unknown>).plan
+    store && typeof store === 'object'
+      ? readStorePlano(store as Record<string, unknown>)
       : undefined
   const plan = effectiveDashboardPlan(user.email ?? null, rawPlan)
 

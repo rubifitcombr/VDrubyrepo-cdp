@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
+import { readStorePlano } from '@/lib/store-columns'
 import { parseAutomationsFromStore } from '@/lib/store-automations'
 import { createClient } from '@/lib/supabase/server'
 import { getUser } from '@/services/auth.server'
@@ -23,7 +24,7 @@ export default async function AutomationsPage() {
 
   const row = store as Record<string, unknown>
   const initial = parseAutomationsFromStore(row)
-  const rawPlan = row.plan
+  const rawPlan = readStorePlano(row)
   const plan = effectiveDashboardPlan(user.email ?? null, rawPlan)
   const storeSlug = typeof row.slug === 'string' ? row.slug : ''
 

@@ -3,6 +3,8 @@ import { requireAdminApi } from '@/lib/admin-auth.server'
 import { fetchLojistaDetail } from '@/lib/admin-lojistas-query.server'
 import { insertAdminLog } from '@/services/admin-logs.server'
 import { parsePlan, type Plan } from '@/lib/plan'
+import { planToPlanoColumn } from '@/lib/plano-db'
+import { readStoreStatus } from '@/lib/store-columns'
 
 function fmtDateBr(iso: string) {
   const d = new Date(iso.includes('T') ? iso : `${iso}T12:00:00`)
@@ -35,7 +37,7 @@ export async function POST(
 
   const { data: existing } = await ctx.svc
     .from('stores')
-    .select('merchant_status')
+    .select('*')
     .eq('id', id)
     .maybeSingle()
 
@@ -44,7 +46,7 @@ export async function POST(
   }
 
   const st = String(
-    (existing as { merchant_status?: string }).merchant_status || ''
+    readStoreStatus(existing as Record<string, unknown>) || ''
   )
   if (st !== 'pendente' && st !== 'bloqueado') {
     return NextResponse.json(
@@ -55,8 +57,8 @@ export async function POST(
 
   const now = new Date().toISOString()
   const patch: Record<string, unknown> = {
-    plan: plano as Plan,
-    merchant_status: 'ativo',
+    plano: planToPlanoColumn(plano),
+    status: 'ativo',
     plano_vence_em: vence,
     plano_ativado_em: now,
     plano_atualizado_em: now,

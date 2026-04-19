@@ -1,4 +1,7 @@
+import { isVyriaAdminPanelUser } from '@/lib/admin-panel-user'
 import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
+import { getDashboardAccessRedirectPath } from '@/lib/merchant-access-redirect.server'
+import { readStorePlano } from '@/lib/store-columns'
 import {
   getDashboardBillingBanner,
   getDashboardBillingBlock,
@@ -6,6 +9,7 @@ import {
 import { getDashboardNotificationCount } from '@/services/dashboard.server'
 import { getUser } from '@/services/auth.server'
 import { getStoreByUser } from '@/services/store.server'
+import { redirect } from 'next/navigation'
 import { DashboardShell } from './_components/DashboardShell'
 
 export default async function DashboardLayout({
@@ -15,6 +19,15 @@ export default async function DashboardLayout({
 }) {
   const user = await getUser()
   const store = user ? await getStoreByUser(user.id) : null
+
+  if (user && !isVyriaAdminPanelUser(user.id)) {
+    const path = getDashboardAccessRedirectPath(
+      store && typeof store === 'object'
+        ? (store as Record<string, unknown>)
+        : null
+    )
+    if (path) redirect(path)
+  }
 
   const storeName =
     store && typeof store === 'object' && 'name' in store
@@ -34,8 +47,8 @@ export default async function DashboardLayout({
       : null
 
   const rawPlan =
-    store && typeof store === 'object' && 'plan' in store
-      ? (store as Record<string, unknown>).plan
+    store && typeof store === 'object'
+      ? readStorePlano(store as Record<string, unknown>)
       : undefined
   const plan = effectiveDashboardPlan(user?.email ?? null, rawPlan)
 

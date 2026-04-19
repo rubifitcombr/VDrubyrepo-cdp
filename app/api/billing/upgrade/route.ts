@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server'
 import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
 import { planTier, type Plan } from '@/lib/plan'
+import { planToPlanoColumn } from '@/lib/plano-db'
+import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
+import { readStorePlano } from '@/lib/store-columns'
 import { getUser } from '@/services/auth.server'
 import { createClient } from '@/lib/supabase/server'
-import { getStoreByUser } from '@/services/store.server'
 
 function jsonError(message: string, status: number) {
   return NextResponse.json({ error: message }, { status })
@@ -16,6 +18,9 @@ function jsonError(message: string, status: number) {
 export async function POST(req: Request) {
   const user = await getUser()
   if (!user) return jsonError('Não autenticado', 401)
+
+  const gate = await requireLojistaAtivoApi(user.id)
+  if (!gate.ok) return gate.response
 
   let body: { targetPlan?: string }
   try {
@@ -35,13 +40,8 @@ export async function POST(req: Request) {
   }
   const targetPlan = raw as Plan
 
-  const store = await getStoreByUser(user.id)
-  if (!store || typeof store !== 'object' || !('id' in store)) {
-    return jsonError('Loja não encontrada', 404)
-  }
-
-  const row = store as Record<string, unknown>
-  const rawPlan = row.plan
+  const row = gate.ctx.store
+  const rawPlan = readStorePlano(row)
   const plan = effectiveDashboardPlan(user.email ?? null, rawPlan)
 
   if (planTier(targetPlan) <= planTier(plan)) {
@@ -51,8 +51,8 @@ export async function POST(req: Request) {
   const supabase = await createClient()
   const { error } = await supabase
     .from('stores')
-    .update({ plan: targetPlan })
-    .eq('id', String(row.id))
+    .update({ plano: planToPlanoColumn(targetPlan) })
+    .eq('id', gate.ctx.storeId)
 
   if (error) {
     return jsonError(error.message || 'Erro ao guardar plano', 500)

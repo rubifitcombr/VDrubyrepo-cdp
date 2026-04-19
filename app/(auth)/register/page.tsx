@@ -13,6 +13,7 @@ export default function Register() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [storeName, setStoreName] = useState('')
+  const [phone, setPhone] = useState('')
   const router = useRouter()
 
   async function handleRegister() {
@@ -27,7 +28,16 @@ export default function Register() {
       const userId = data.user?.id
 
       if (userId) {
-        await createStore(userId, storeName)
+        const { error: storeErr } = await createStore(userId, storeName, phone.trim() || undefined)
+        if (storeErr) {
+          alert(storeErr.message || 'Erro ao criar loja.')
+          return
+        }
+        try {
+          await fetch('/api/auth/notificar-cadastro', { method: 'POST', credentials: 'include' })
+        } catch {
+          /* email opcional */
+        }
         router.push('/dashboard')
       }
     } catch (err) {
@@ -61,6 +71,18 @@ export default function Register() {
             placeholder="Ex.: Padaria Central"
             value={storeName}
             onChange={(e) => setStoreName(e.target.value)}
+          />
+        </label>
+
+        <label className="block text-sm font-medium text-vyria-navy">
+          Telefone (WhatsApp)
+          <input
+            className={inputClass}
+            placeholder="Ex.: 62999999999"
+            inputMode="tel"
+            autoComplete="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
           />
         </label>
 

@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { isVyriaAdminPanelUser } from '@/lib/admin-panel-user'
+import { verificarAcessoLojista } from '@/middleware/verificarAcesso'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
@@ -52,6 +53,22 @@ export async function middleware(request: NextRequest) {
     if (!isVyriaAdminPanelUser(user.id)) {
       return NextResponse.redirect(new URL('/dashboard', request.url))
     }
+  }
+
+  if (p.startsWith('/dashboard') && user) {
+    if (!isVyriaAdminPanelUser(user.id)) {
+      const access = await verificarAcessoLojista(user.id)
+      if (!access.ok) {
+        return NextResponse.redirect(new URL(access.redirectPath, request.url))
+      }
+    }
+  }
+
+  if (p.startsWith('/dashboard') && !user) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/login'
+    url.searchParams.set('next', p)
+    return NextResponse.redirect(url)
   }
 
   return supabaseResponse

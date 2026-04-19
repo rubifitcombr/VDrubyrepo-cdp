@@ -1,3 +1,5 @@
+import { dashboardFetch } from '@/lib/dashboard-fetch.client'
+
 type InstanceResponse = {
   instanceName: string
   connectionState: string
@@ -16,7 +18,7 @@ export async function getWhatsAppInstanceStatus(
     storeId,
     ...(includeQr ? { includeQr: '1' } : {}),
   })
-  const res = await fetch(`/api/whatsapp/instance?${params.toString()}`, {
+  const res = await dashboardFetch(`/api/whatsapp/instance?${params.toString()}`, {
     method: 'GET',
     cache: 'no-store',
     headers: { 'Content-Type': 'application/json' },
@@ -29,7 +31,7 @@ export async function getWhatsAppInstanceStatus(
 export async function connectWhatsAppInstance(
   storeId: string
 ): Promise<InstanceResponse> {
-  const res = await fetch('/api/whatsapp/instance', {
+  const res = await dashboardFetch('/api/whatsapp/instance', {
     method: 'POST',
     cache: 'no-store',
     headers: { 'Content-Type': 'application/json' },
@@ -41,7 +43,7 @@ export async function connectWhatsAppInstance(
 }
 
 export async function logoutWhatsAppInstance(storeId: string): Promise<InstanceResponse> {
-  const res = await fetch('/api/whatsapp/instance', {
+  const res = await dashboardFetch('/api/whatsapp/instance', {
     method: 'POST',
     cache: 'no-store',
     headers: { 'Content-Type': 'application/json' },
@@ -53,7 +55,7 @@ export async function logoutWhatsAppInstance(storeId: string): Promise<InstanceR
 }
 
 export async function deleteWhatsAppInstance(storeId: string): Promise<InstanceResponse> {
-  const res = await fetch('/api/whatsapp/instance', {
+  const res = await dashboardFetch('/api/whatsapp/instance', {
     method: 'POST',
     cache: 'no-store',
     headers: { 'Content-Type': 'application/json' },

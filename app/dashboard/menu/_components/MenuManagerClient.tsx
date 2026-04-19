@@ -1,5 +1,6 @@
 'use client'
 
+import { dashboardFetch } from '@/lib/dashboard-fetch.client'
 import Link from 'next/link'
 import Image from 'next/image'
 import type { ReactNode } from 'react'
@@ -391,7 +392,7 @@ export function MenuManagerClient({
 
         setAiDescBusy(true)
         try {
-          const res = await fetch('/api/ai/product-description', {
+          const res = await dashboardFetch('/api/ai/product-description', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -442,7 +443,7 @@ export function MenuManagerClient({
     }
     setAiDescBusy(true)
     try {
-      const res = await fetch('/api/ai/product-description', {
+      const res = await dashboardFetch('/api/ai/product-description', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -477,7 +478,7 @@ export function MenuManagerClient({
     }
     setAiImgBusy(true)
     try {
-      const res = await fetch('/api/ai/product-image', {
+      const res = await dashboardFetch('/api/ai/product-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -795,7 +796,10 @@ export function MenuManagerClient({
     try {
       const fd = new FormData()
       fd.append('file', file)
-      const res = await fetch('/api/menu/import', { method: 'POST', body: fd })
+      const res = await dashboardFetch('/api/menu/import', {
+        method: 'POST',
+        body: fd,
+      })
       const data = (await res.json().catch(() => ({}))) as {
         error?: string
         data?: { items?: unknown[] }

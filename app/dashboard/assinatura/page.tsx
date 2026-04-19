@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { AssinaturaClient } from '@/app/dashboard/assinatura/assinatura-client'
 import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
+import { readStorePlano } from '@/lib/store-columns'
 import { getAssinaturaPageModel } from '@/services/billing.server'
 import { getUser } from '@/services/auth.server'
 import { getStoreByUser } from '@/services/store.server'
@@ -38,7 +39,7 @@ export default async function AssinaturaPage() {
   }
 
   const row = store as Record<string, unknown>
-  const rawPlan = row.plan
+  const rawPlan = readStorePlano(row)
   const plan = effectiveDashboardPlan(user.email ?? null, rawPlan)
   const model = getAssinaturaPageModel(row, plan)
 

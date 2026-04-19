@@ -1,6 +1,6 @@
 /**
  * Planos comerciais (alinhado à matriz Start / Growth / Pro / Master).
- * Valores em `stores.plan`: START | GROWTH | PRO | MASTER
+ * Valores em `stores.plano` (ou legado `plan`): start|growth|pro|master ou START|…
  */
 export type Plan = 'START' | 'GROWTH' | 'PRO' | 'MASTER'
 

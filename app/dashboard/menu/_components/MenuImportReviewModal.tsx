@@ -1,5 +1,6 @@
 'use client'
 
+import { dashboardFetch } from '@/lib/dashboard-fetch.client'
 import { useCallback, useEffect, useState } from 'react'
 import type { Plan } from '@/lib/plan'
 import { hasProMarketingAi } from '@/lib/plan'
@@ -161,7 +162,7 @@ export function MenuImportReviewModal({
             continue
           }
 
-          const res = await fetch('/api/ai/product-description', {
+          const res = await dashboardFetch('/api/ai/product-description', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -241,7 +242,7 @@ export function MenuImportReviewModal({
         }
       })
 
-      const res = await fetch('/api/menu/import/save', {
+      const res = await dashboardFetch('/api/menu/import/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ storeId, categories }),

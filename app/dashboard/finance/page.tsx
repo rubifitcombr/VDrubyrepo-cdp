@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { IconChartBars, IconCurrency } from '@/app/dashboard/_components/NavIcons'
 import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
 import { hasFeature } from '@/lib/plan'
+import { readStorePlano } from '@/lib/store-columns'
 import { getUser } from '@/services/auth.server'
 import { FinanceChartsClient } from '@/app/dashboard/finance/_components/FinanceChartsClient'
 import { getFinanceCompareData, getFinancePageData } from '@/services/finance.server'
@@ -108,8 +109,8 @@ export default async function FinancePage() {
 
   const storeId = store.id as string
   const rawPlan =
-    store && typeof store === 'object' && 'plan' in store
-      ? (store as Record<string, unknown>).plan
+    store && typeof store === 'object'
+      ? readStorePlano(store as Record<string, unknown>)
       : undefined
   const plan = effectiveDashboardPlan(user.email ?? null, rawPlan)
   const financeComplete = hasFeature(plan, 'finance_complete')

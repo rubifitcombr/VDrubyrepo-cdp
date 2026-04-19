@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { readStorePlano } from '@/lib/store-columns'
 import { getStoreOpenState, getTodayClosingDisplayHM } from '@/lib/business-hours'
 import { effectiveProductPrice, hasActivePromotion } from '@/lib/product-pricing'
 import { resolveStoreTheme } from '@/lib/store-theme'
@@ -112,7 +113,7 @@ export default async function StorefrontPage({ params }: Props) {
     <StorefrontMenuClient
       storeName={s.name}
       storeSlug={s.slug}
-      storePlan={s.plan}
+      storePlan={String(readStorePlano(s as Record<string, unknown>) ?? '')}
       phone={s.phone}
       subtitle={s.subtitle}
       logoUrl={logoUrl}

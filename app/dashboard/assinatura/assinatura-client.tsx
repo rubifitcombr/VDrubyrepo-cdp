@@ -10,6 +10,7 @@ import {
   recommendedUpgradePlan,
   type Plan,
 } from '@/lib/plan'
+import { dashboardFetch } from '@/lib/dashboard-fetch.client'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
@@ -194,11 +195,12 @@ export function AssinaturaClient({ model }: { model: AssinaturaPageModel }) {
   async function confirmUpgrade(target: Plan) {
     setConfirming(true)
     try {
-      const res = await fetch('/api/billing/upgrade', {
+      const res = await dashboardFetch('/api/billing/upgrade', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ targetPlan: target }),
       })
+      if (res.status === 403) return
       const data = (await res.json().catch(() => ({}))) as { error?: string }
       if (!res.ok) {
         window.alert(data.error || 'Não foi possível atualizar o plano.')

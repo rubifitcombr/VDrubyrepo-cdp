@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
 import { NextRequest, NextResponse } from 'next/server'
 
 type IncomingProduct = {
@@ -27,6 +28,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Sessão necessária.' }, { status: 401 })
     }
 
+    const gate = await requireLojistaAtivoApi(user.id)
+    if (!gate.ok) return gate.response
+
     let body: unknown
     try {
       body = await req.json()
@@ -43,6 +47,10 @@ export async function POST(req: NextRequest) {
 
     if (!storeId) {
       return NextResponse.json({ error: 'storeId em falta.' }, { status: 400 })
+    }
+
+    if (storeId !== gate.ctx.storeId) {
+      return NextResponse.json({ error: 'Loja não encontrada.' }, { status: 403 })
     }
 
     if (!Array.isArray(categoriesRaw) || categoriesRaw.length === 0) {

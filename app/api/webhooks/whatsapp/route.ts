@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/service-role.server'
-import { hasAutomationAccess } from '@/lib/plan'
+import { hasAutomationAccess, parsePlan } from '@/lib/plan'
+import { readStorePlano } from '@/lib/store-columns'
 import {
   sendWhatsAppMessage,
   shouldSkipAutoReply,
@@ -170,7 +171,7 @@ export async function POST(req: NextRequest) {
     const supabase = createServiceRoleClient()
     const { data: store, error: storeError } = await supabase
       .from('stores')
-      .select('id, slug, plan')
+      .select('id, slug, plano, plan')
       .eq('id', storeId)
       .single()
 
@@ -178,7 +179,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Loja não encontrada.' }, { status: 404 })
     }
 
-    if (!hasAutomationAccess(String(store.plan || 'START'))) {
+    if (
+      !hasAutomationAccess(
+        parsePlan(readStorePlano(store as Record<string, unknown>))
+      )
+    ) {
       return NextResponse.json({
         ok: true,
         skipped: true,

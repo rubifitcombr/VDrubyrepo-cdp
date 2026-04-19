@@ -4,7 +4,11 @@ App Next.js (painel + cardápio público). Variáveis de ambiente: ver `.env.exa
 
 ## Planos e cobrança
 
-O plano da loja (`stores.plan`) é atualizado no painel (ex.: upgrade em **Assinatura**) ou diretamente na base de dados. **Cobrança e liberação de acessos são tratadas manualmente** pela equipa — não há integração automática com gateway de pagamento no código.
+O plano da loja (`stores.plano`: `start` \| `growth` \| `pro` \| `master`) e o estado (`stores.status`: pendente, ativo, bloqueado, cancelado) são atualizados no painel admin, na página **Assinatura** (pedido de upgrade) ou diretamente na base de dados. **Cobrança e liberação de acessos são tratadas manualmente** pela equipa — não há integração automática com gateway de pagamento no código.
+
+- Lojistas **pendentes**, **bloqueados**, **cancelados** ou com **plano vencido** são redirecionados para `/acesso-suspenso` (middleware + APIs do painel devolvem 403 com `error` no JSON).
+- Variáveis: `ADMIN_EMAIL`, `RESEND_API_KEY`, `NEXT_PUBLIC_ADMIN_WHATSAPP`, `CRON_SECRET` — ver `.env.example`.
+- Job diário: `GET /api/cron/verificar-vencimentos` com `Authorization: Bearer CRON_SECRET` (agendado em `vercel.json` ou processo com `ENABLE_SERVER_CRON=true` e `next start`).
 
 Campos opcionais de faturação (`billing_*`) podem ser usados para estado de subscrição, URLs de pagamento e histórico de faturas, preenchidos à mão ou por processos internos.
 
@@ -12,12 +16,13 @@ Para remover colunas legadas de identificadores de gateway na tabela `stores`, v
 
 ## Painel admin (`/admin`)
 
-Área para administradores gerirem **lojistas** (linhas em `stores`), **planos** e **estados** (`merchant_status`: pendente, ativo, bloqueado, cancelado). Rotas API: `/api/admin/lojistas`.
+Área para administradores gerirem **lojistas** (linhas em `stores`), **planos** e **estados** (`status`: pendente, ativo, bloqueado, cancelado). Rotas API: `/api/admin/lojistas`.
 
 ### Base de dados
 
 1. Aplica a migration em `supabase/migrations/20260419120000_admin_usuarios_lojistas.sql` (tabelas `usuarios`, `admin_logs`, colunas em `stores`, trigger em `auth.users`).
-2. Opcional: `scripts/admin-backfill-usuarios.sql` para sincronizar utilizadores antigos com `usuarios`.
+2. Aplica `supabase/migrations/20260420120000_stores_status_plano_manual.sql` (`status`, `plano`, remoção de colunas legadas, índices).
+3. Opcional: `scripts/admin-backfill-usuarios.sql` para sincronizar utilizadores antigos com `usuarios`.
 
 **Requisito:** `SUPABASE_SERVICE_ROLE_KEY` no servidor (rotas admin usam service role para listar lojas e gravar logs).
 

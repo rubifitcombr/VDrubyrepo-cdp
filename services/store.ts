@@ -11,7 +11,11 @@ export async function getStoreByUser(userId: string) {
   return data
 }
 
-export async function createStore(userId: string, name: string) {
+export async function createStore(
+  userId: string,
+  name: string,
+  phone?: string
+) {
   const slug = name.toLowerCase().replace(/\s+/g, '-')
 
   const supabase = createClient()
@@ -21,6 +25,7 @@ export async function createStore(userId: string, name: string) {
       name,
       slug,
       owner_id: userId,
+      ...(phone ? { phone } : {}),
     })
     .select()
     .single()

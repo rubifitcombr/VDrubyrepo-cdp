@@ -5,6 +5,7 @@ import {
   type StoreDeliveryConfig,
 } from '@/lib/delivery-zone.server'
 import { parsePlan } from '@/lib/plan'
+import { readStorePlano } from '@/lib/store-columns'
 
 type CheckoutLine = {
   productId: string
@@ -201,7 +202,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const plan = parsePlan(store.plan)
+    const plan = parsePlan(readStorePlano(store as Record<string, unknown>))
     const orderStatus = plan === 'START' ? 'delivered' : 'pending'
     const orderSource = plan === 'START' ? 'site_start' : 'site_live'
     const total = Math.round((subtotal + deliveryCharge) * 100) / 100

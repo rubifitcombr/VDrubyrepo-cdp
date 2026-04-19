@@ -5,6 +5,7 @@ import { parseMerchantStatus } from '@/lib/merchant-status'
 import type { Plan } from '@/lib/plan'
 import { parsePlan } from '@/lib/plan'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { readStorePlano, readStoreStatus } from '@/lib/store-columns'
 
 export type LojistaListRow = {
   id: string
@@ -30,8 +31,8 @@ function rowToLojista(
       typeof store.phone === 'string' && store.phone.trim()
         ? store.phone.trim()
         : null,
-    plano: parsePlan(store.plan),
-    status: parseMerchantStatus(store.merchant_status),
+    plano: parsePlan(readStorePlano(store)),
+    status: parseMerchantStatus(readStoreStatus(store)),
     plano_vence_em:
       typeof store.plano_vence_em === 'string'
         ? store.plano_vence_em
