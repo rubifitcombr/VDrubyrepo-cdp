@@ -2,6 +2,15 @@ import type { NextConfig } from 'next'
 import path from 'path'
 
 const nextConfig: NextConfig = {
+  async redirects() {
+    return [
+      {
+        source: '/dashboard/subscription',
+        destination: '/dashboard/assinatura',
+        permanent: true,
+      },
+    ]
+  },
   turbopack: {
     root: path.join(__dirname),
   },

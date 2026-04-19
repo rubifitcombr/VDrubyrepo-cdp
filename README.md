@@ -12,7 +12,7 @@ O plano da loja (`stores.plano`: `start` \| `growth` \| `pro` \| `master`) e o e
 
 Campos opcionais de faturação (`billing_*`) podem ser usados para estado de subscrição, URLs de pagamento e histórico de faturas, preenchidos à mão ou por processos internos.
 
-Para remover colunas legadas de identificadores de gateway na tabela `stores`, vê `scripts/supabase-stores-drop-legacy-gateway-ids.sql` (executar no Supabase se aplicável).
+Colunas legadas de gateway/trial na tabela `stores` são removidas pela migration `20260420120000_stores_status_plano_manual.sql`.
 
 ## Painel admin (`/admin`)
 
@@ -21,7 +21,7 @@ Para remover colunas legadas de identificadores de gateway na tabela `stores`, v
 ### Base de dados
 
 1. Aplica a migration em `supabase/migrations/20260419120000_admin_usuarios_lojistas.sql` (tabelas `usuarios`, `admin_logs`, colunas em `stores`, trigger em `auth.users`).
-2. Aplica `supabase/migrations/20260420120000_stores_status_plano_manual.sql` (`status`, `plano`, remoção de colunas legadas, índices).
+2. Aplica `supabase/migrations/20260420120000_stores_status_plano_manual.sql` (`status`, `plano` como texto, remoção de colunas legadas, índices). Se `plano` for enum `plan_type`, o bloco `DO` cria coluna temporária, faz `UPDATE`, remove o enum e renomeia — não depende de `ALTER TYPE ... USING`.
 3. Opcional: `scripts/admin-backfill-usuarios.sql` para sincronizar utilizadores antigos com `usuarios`.
 
 **Requisito:** `SUPABASE_SERVICE_ROLE_KEY` no servidor (rotas admin usam service role para listar lojas e gravar logs).
