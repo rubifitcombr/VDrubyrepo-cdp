@@ -91,7 +91,9 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  if (p.startsWith('/dashboard') && user) {
+  const merchantShell = p.startsWith('/dashboard') || p.startsWith('/planos')
+
+  if (merchantShell && user) {
     const skipLojistaCheck =
       isVyriaAdminPanelUser(user.id) && vyriaPanelMode === 'admin'
     if (!skipLojistaCheck) {
@@ -102,7 +104,7 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  if (p.startsWith('/dashboard') && !user) {
+  if (merchantShell && !user) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     url.searchParams.set('next', p)

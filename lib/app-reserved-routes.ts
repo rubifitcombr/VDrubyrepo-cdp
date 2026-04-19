@@ -8,4 +8,5 @@ export const APP_RESERVED_FIRST_SEGMENTS = new Set([
   'login',
   'register',
   'acesso-suspenso',
+  'planos',
 ])

@@ -465,13 +465,13 @@ export function AutomationsClient({
               Resposta automática no WhatsApp
             </h2>
             <p className="mt-1 text-sm text-vyria-navy-muted">
-              Responde automaticamente com o link do cardápio quando receber nova
-              mensagem.
+              Responde automaticamente com o link do cardápio quando receber nova mensagem no
+              WhatsApp do cliente. Disponível a partir do plano Growth.
             </p>
           </div>
           {!hasAccess ? (
             <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">
-              Disponível no plano Growth
+              Incluído no Growth ou superior
             </span>
           ) : null}
         </div>

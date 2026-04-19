@@ -11,6 +11,9 @@ const nextConfig: NextConfig = {
       },
     ]
   },
+  async rewrites() {
+    return [{ source: '/planos', destination: '/dashboard/planos' }]
+  },
   turbopack: {
     root: path.join(__dirname),
   },
