@@ -2,9 +2,14 @@ import 'server-only'
 
 import { isVyriaAdminPanelUser } from '@/lib/admin-panel-user'
 import { createClient } from '@/lib/supabase/server'
+import {
+  parseVyriaPanelMode,
+  VYRIA_PANEL_MODE_COOKIE,
+} from '@/lib/vyria-panel-mode'
 import { createServiceRoleClient } from '@/lib/supabase/service-role.server'
 import type { User } from '@supabase/supabase-js'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 
 export async function requireAdminApi(): Promise<
@@ -26,6 +31,17 @@ export async function requireAdminApi(): Promise<
     return {
       ok: false,
       response: Response.json({ error: 'Acesso negado' }, { status: 403 }),
+    }
+  }
+
+  const cookieStore = await cookies()
+  if (parseVyriaPanelMode(cookieStore.get(VYRIA_PANEL_MODE_COOKIE)?.value) !== 'admin') {
+    return {
+      ok: false,
+      response: Response.json(
+        { error: 'Ativa o modo admin para usar esta API.' },
+        { status: 403 }
+      ),
     }
   }
 
@@ -56,6 +72,11 @@ export async function requireAdminPage(): Promise<
   if (!user) return { redirect: '/login' }
 
   if (!isVyriaAdminPanelUser(user.id)) {
+    return { redirect: '/dashboard' }
+  }
+
+  const cookieStore = await cookies()
+  if (parseVyriaPanelMode(cookieStore.get(VYRIA_PANEL_MODE_COOKIE)?.value) !== 'admin') {
     return { redirect: '/dashboard' }
   }
 

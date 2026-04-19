@@ -1,9 +1,10 @@
+import { APP_RESERVED_FIRST_SEGMENTS } from '@/lib/app-reserved-routes'
 import { createClient } from '@/lib/supabase/server'
 import { readStorePlano } from '@/lib/store-columns'
 import { getStoreOpenState, getTodayClosingDisplayHM } from '@/lib/business-hours'
 import { effectiveProductPrice, hasActivePromotion } from '@/lib/product-pricing'
 import { resolveStoreTheme } from '@/lib/store-theme'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import { StorefrontMenuClient } from './StorefrontMenuClient'
 import type { StorefrontMenuProduct } from './storefront-menu-types'
 
@@ -42,6 +43,13 @@ type ProductRow = {
 
 export default async function StorefrontPage({ params }: Props) {
   const { slug } = await params
+  const slugLower = slug.toLowerCase()
+  if (
+    APP_RESERVED_FIRST_SEGMENTS.has(slugLower) &&
+    slug !== slugLower
+  ) {
+    redirect('/' + slugLower)
+  }
   const supabase = await createClient()
 
   const { data: store, error: storeError } = await supabase

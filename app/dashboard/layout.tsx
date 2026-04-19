@@ -1,5 +1,10 @@
 import { isVyriaAdminPanelUser } from '@/lib/admin-panel-user'
 import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
+import {
+  parseVyriaPanelMode,
+  shouldApplyLojistaRulesForVyriaUser,
+  VYRIA_PANEL_MODE_COOKIE,
+} from '@/lib/vyria-panel-mode'
 import { getDashboardAccessRedirectPath } from '@/lib/merchant-access-redirect.server'
 import { readStorePlano } from '@/lib/store-columns'
 import {
@@ -9,6 +14,7 @@ import {
 import { getDashboardNotificationCount } from '@/services/dashboard.server'
 import { getUser } from '@/services/auth.server'
 import { getStoreByUser } from '@/services/store.server'
+import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { DashboardShell } from './_components/DashboardShell'
 
@@ -20,7 +26,15 @@ export default async function DashboardLayout({
   const user = await getUser()
   const store = user ? await getStoreByUser(user.id) : null
 
-  if (user && !isVyriaAdminPanelUser(user.id)) {
+  const cookieStore = await cookies()
+  const vyriaPanelMode = parseVyriaPanelMode(
+    cookieStore.get(VYRIA_PANEL_MODE_COOKIE)?.value
+  )
+
+  if (
+    user &&
+    shouldApplyLojistaRulesForVyriaUser(user.id, vyriaPanelMode)
+  ) {
     const path = getDashboardAccessRedirectPath(
       store && typeof store === 'object'
         ? (store as Record<string, unknown>)
@@ -72,6 +86,11 @@ export default async function DashboardLayout({
       ? null
       : getDashboardBillingBanner(storeRecord)
 
+  const vyriaDualAccount =
+    user && isVyriaAdminPanelUser(user.id)
+      ? { mode: vyriaPanelMode }
+      : undefined
+
   return (
     <DashboardShell
       storeName={storeName}
@@ -82,6 +101,7 @@ export default async function DashboardLayout({
       notificationCount={notificationCount}
       billingBanner={billingBanner}
       billingBlock={billingBlock}
+      vyriaDualAccount={vyriaDualAccount}
     >
       {children}
     </DashboardShell>

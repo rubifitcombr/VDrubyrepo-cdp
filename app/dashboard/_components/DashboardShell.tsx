@@ -3,6 +3,8 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { BrandLogo } from '@/app/_components/BrandLogo'
+import { VyriaPanelModeSwitcher } from '@/app/_components/VyriaPanelModeSwitcher'
+import type { VyriaPanelMode } from '@/lib/vyria-panel-mode'
 import type { Feature, Plan } from '@/lib/plan'
 import { hasFeature, minPlanForFeature, planBadgeLabel } from '@/lib/plan'
 import { DashboardLogoutButton } from './DashboardLogoutButton'
@@ -228,6 +230,7 @@ export function DashboardShell({
   notificationCount = 0,
   billingBanner = null,
   billingBlock = null,
+  vyriaDualAccount,
 }: {
   children: React.ReactNode
   storeName: string | null
@@ -241,6 +244,7 @@ export function DashboardShell({
     payUrl: string
   } | null
   billingBlock?: { payUrl: string | null } | null
+  vyriaDualAccount?: { mode: VyriaPanelMode }
 }) {
   const pathname = usePathname()
 
@@ -271,6 +275,12 @@ export function DashboardShell({
         </div>
 
         <div className="mt-auto hidden space-y-2 border-t border-white/10 p-3 md:block">
+          {vyriaDualAccount ? (
+            <VyriaPanelModeSwitcher
+              variant="dashboard"
+              currentMode={vyriaDualAccount.mode}
+            />
+          ) : null}
           {storeSlug ? (
             <a
               href={`/${storeSlug}`}
@@ -367,6 +377,14 @@ export function DashboardShell({
         role="navigation"
         aria-label="Navegação inferior"
       >
+        {vyriaDualAccount ? (
+          <div className="border-b border-white/10 px-3 py-2">
+            <VyriaPanelModeSwitcher
+              variant="dashboard"
+              currentMode={vyriaDualAccount.mode}
+            />
+          </div>
+        ) : null}
         <DashboardNavLinks pathname={pathname} plan={plan} layout="bottom" />
         <div className="flex items-center justify-between gap-2 border-t border-white/10 px-3 py-2">
           {storeSlug ? (

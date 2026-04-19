@@ -1,15 +1,19 @@
 'use client'
 
+import { VyriaPanelModeSwitcher } from '@/app/_components/VyriaPanelModeSwitcher'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
+import type { VyriaPanelMode } from '@/lib/vyria-panel-mode'
 import { signOut } from '@/services/auth'
 
 export function AdminShell({
   children,
   adminEmail,
+  vyriaPanelMode = 'admin',
 }: {
   children: React.ReactNode
   adminEmail: string | null
+  vyriaPanelMode?: VyriaPanelMode
 }) {
   const pathname = usePathname()
   const router = useRouter()
@@ -49,6 +53,7 @@ export function AdminShell({
             )
           })}
         </nav>
+        <VyriaPanelModeSwitcher variant="admin" currentMode={vyriaPanelMode} />
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">

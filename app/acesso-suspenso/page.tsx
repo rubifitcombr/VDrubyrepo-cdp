@@ -1,7 +1,12 @@
 import { isVyriaAdminPanelUser } from '@/lib/admin-panel-user'
 import { getDashboardAccessRedirectPath } from '@/lib/merchant-access-redirect.server'
+import {
+  parseVyriaPanelMode,
+  VYRIA_PANEL_MODE_COOKIE,
+} from '@/lib/vyria-panel-mode'
 import { getUser } from '@/services/auth.server'
 import { getStoreByUser } from '@/services/store.server'
+import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { AcessoSuspensoClient } from './acesso-suspenso-client'
 
@@ -11,7 +16,11 @@ export default async function AcessoSuspensoPage() {
     redirect('/login?next=/acesso-suspenso')
   }
 
-  if (isVyriaAdminPanelUser(user.id)) {
+  const cookieStore = await cookies()
+  const vyriaPanelMode = parseVyriaPanelMode(
+    cookieStore.get(VYRIA_PANEL_MODE_COOKIE)?.value
+  )
+  if (isVyriaAdminPanelUser(user.id) && vyriaPanelMode === 'admin') {
     redirect('/admin')
   }
 

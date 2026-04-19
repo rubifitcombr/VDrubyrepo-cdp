@@ -1,9 +1,29 @@
+import { APP_RESERVED_FIRST_SEGMENTS } from '@/lib/app-reserved-routes'
 import { createServerClient } from '@supabase/ssr'
 import { isVyriaAdminPanelUser } from '@/lib/admin-panel-user'
+import {
+  parseVyriaPanelMode,
+  VYRIA_PANEL_MODE_COOKIE,
+} from '@/lib/vyria-panel-mode'
 import { verificarAcessoLojista } from '@/middleware/verificarAcesso'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
+  const rawPath = request.nextUrl.pathname
+  const segments = rawPath.split('/').filter(Boolean)
+  if (segments.length >= 1) {
+    const first = segments[0]
+    const firstLower = first.toLowerCase()
+    if (
+      APP_RESERVED_FIRST_SEGMENTS.has(firstLower) &&
+      first !== firstLower
+    ) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/' + [firstLower, ...segments.slice(1)].join('/')
+      return NextResponse.redirect(url)
+    }
+  }
+
   let supabaseResponse = NextResponse.next({ request })
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim()
@@ -31,7 +51,14 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const p = request.nextUrl.pathname
+  const p = rawPath
+  const vyriaPanelMode = parseVyriaPanelMode(
+    request.cookies.get(VYRIA_PANEL_MODE_COOKIE)?.value
+  )
+  const vyriaInAdminMode =
+    !!user &&
+    isVyriaAdminPanelUser(user.id) &&
+    vyriaPanelMode === 'admin'
 
   if (p.startsWith('/api/admin')) {
     if (!user) {
@@ -39,6 +66,12 @@ export async function middleware(request: NextRequest) {
     }
     if (!isVyriaAdminPanelUser(user.id)) {
       return NextResponse.json({ error: 'Proibido' }, { status: 403 })
+    }
+    if (!vyriaInAdminMode) {
+      return NextResponse.json(
+        { error: 'Ativa o modo admin para usar esta API.' },
+        { status: 403 }
+      )
     }
     return supabaseResponse
   }
@@ -53,10 +86,15 @@ export async function middleware(request: NextRequest) {
     if (!isVyriaAdminPanelUser(user.id)) {
       return NextResponse.redirect(new URL('/dashboard', request.url))
     }
+    if (!vyriaInAdminMode) {
+      return NextResponse.redirect(new URL('/dashboard', request.url))
+    }
   }
 
   if (p.startsWith('/dashboard') && user) {
-    if (!isVyriaAdminPanelUser(user.id)) {
+    const skipLojistaCheck =
+      isVyriaAdminPanelUser(user.id) && vyriaPanelMode === 'admin'
+    if (!skipLojistaCheck) {
       const access = await verificarAcessoLojista(user.id)
       if (!access.ok) {
         return NextResponse.redirect(new URL(access.redirectPath, request.url))
