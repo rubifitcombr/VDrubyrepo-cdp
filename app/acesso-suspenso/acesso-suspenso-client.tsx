@@ -24,11 +24,10 @@ function messageForError(raw: string | null): string {
   }
 }
 
-function Inner() {
+function Inner({ whatsappHref }: { whatsappHref: string | null }) {
   const params = useSearchParams()
   const router = useRouter()
   const error = params.get('error')
-  const wa = process.env.NEXT_PUBLIC_ADMIN_WHATSAPP?.trim() || ''
 
   useEffect(() => {
     const supabase = createClient()
@@ -36,11 +35,6 @@ function Inner() {
       if (!data.session) router.replace('/login?next=/acesso-suspenso')
     })
   }, [router])
-
-  const href =
-    wa && /^\d+$/.test(wa.replace(/\D/g, ''))
-      ? `https://wa.me/${wa.replace(/\D/g, '')}`
-      : undefined
 
   return (
     <div className="flex min-h-[100dvh] flex-col items-center justify-center bg-[#faf8f6] px-4 py-12">
@@ -54,21 +48,16 @@ function Inner() {
         <p className="mt-4 text-center text-sm leading-relaxed text-vyria-navy-muted">
           {messageForError(error)}
         </p>
-        {href ? (
+        {whatsappHref ? (
           <a
-            href={href}
+            href={whatsappHref}
             target="_blank"
             rel="noopener noreferrer"
             className="btn-vyria-gradient mt-8 flex w-full items-center justify-center rounded-xl py-3 text-sm font-semibold"
           >
             Falar no WhatsApp
           </a>
-        ) : (
-          <p className="mt-6 text-center text-xs text-vyria-navy-muted">
-            Configura <code className="rounded bg-black/[0.04] px-1">NEXT_PUBLIC_ADMIN_WHATSAPP</code>{' '}
-            no projeto para mostrar o botão do WhatsApp.
-          </p>
-        )}
+        ) : null}
         <p className="mt-6 text-center text-sm text-vyria-navy-muted">
           <Link href="/login" className="font-semibold text-vyria-plum hover:text-vyria-orange">
             Voltar ao login
@@ -79,7 +68,11 @@ function Inner() {
   )
 }
 
-export function AcessoSuspensoClient() {
+export function AcessoSuspensoClient({
+  whatsappHref,
+}: {
+  whatsappHref: string | null
+}) {
   return (
     <Suspense
       fallback={
@@ -88,7 +81,7 @@ export function AcessoSuspensoClient() {
         </div>
       }
     >
-      <Inner />
+      <Inner whatsappHref={whatsappHref} />
     </Suspense>
   )
 }
