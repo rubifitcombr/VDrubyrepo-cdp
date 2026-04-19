@@ -7,6 +7,8 @@ export type Plan = 'START' | 'GROWTH' | 'PRO' | 'MASTER'
 export type Feature =
   | 'dashboard'
   | 'products'
+  /** Plano e faturação (painel) — disponível em todos os planos */
+  | 'subscription'
   | 'orders'
   | 'pdv'
   | 'finance'
@@ -27,6 +29,7 @@ const PLAN_FEATURES: Record<Plan, Record<Feature, boolean>> = {
   START: {
     dashboard: true,
     products: true,
+    subscription: true,
     orders: false,
     pdv: false,
     finance: true,
@@ -44,6 +47,7 @@ const PLAN_FEATURES: Record<Plan, Record<Feature, boolean>> = {
   GROWTH: {
     dashboard: true,
     products: true,
+    subscription: true,
     orders: true,
     pdv: true,
     finance: true,
@@ -61,6 +65,7 @@ const PLAN_FEATURES: Record<Plan, Record<Feature, boolean>> = {
   PRO: {
     dashboard: true,
     products: true,
+    subscription: true,
     orders: true,
     pdv: true,
     finance: true,
@@ -78,6 +83,7 @@ const PLAN_FEATURES: Record<Plan, Record<Feature, boolean>> = {
   MASTER: {
     dashboard: true,
     products: true,
+    subscription: true,
     orders: true,
     pdv: true,
     finance: true,
@@ -105,6 +111,52 @@ export function parsePlan(value: unknown): Plan {
     return v
   }
   return 'START'
+}
+
+/** Nome curto do plano (badge / UI). */
+export function planShortLabel(plan: Plan): string {
+  switch (plan) {
+    case 'START':
+      return 'Start'
+    case 'GROWTH':
+      return 'Growth'
+    case 'PRO':
+      return 'Pro'
+    case 'MASTER':
+      return 'Master'
+    default:
+      return 'Start'
+  }
+}
+
+/** Planos com tier superior ao atual (para upgrade). */
+export function plansAbove(plan: Plan): Plan[] {
+  const t = planTier(plan)
+  return (['START', 'GROWTH', 'PRO', 'MASTER'] as const).filter(
+    (p) => planTier(p) > t
+  )
+}
+
+/** Plano recomendado no upgrade: um nível acima. */
+export function recommendedUpgradePlan(plan: Plan): Plan | null {
+  const above = plansAbove(plan)
+  return above.length ? above[0]! : null
+}
+
+/** Badge colorido (fundo claro) alinhado aos locks do sidebar: Start/Growth âmbar, Pro neutro, Master violeta. */
+export function planContentBadgeClass(plan: Plan): string {
+  switch (plan) {
+    case 'START':
+      return 'bg-amber-400/15 text-amber-950 ring-1 ring-amber-300/35'
+    case 'GROWTH':
+      return 'bg-amber-400/15 text-amber-950 ring-1 ring-amber-300/35'
+    case 'PRO':
+      return 'bg-[#f3f4f6] text-[#1a1614] ring-1 ring-black/10'
+    case 'MASTER':
+      return 'bg-violet-400/15 text-violet-950 ring-1 ring-violet-300/35'
+    default:
+      return 'bg-amber-400/15 text-amber-950 ring-1 ring-amber-300/35'
+  }
 }
 
 /** Ordem comercial (0 = mais baixo). Útil para comparar plano da loja vs. atalhos de dev. */
@@ -175,6 +227,27 @@ export function planTitle(plan: Plan): string {
     default:
       return 'Plano Start'
   }
+}
+
+const PLAN_MONTHLY_BRL: Record<Plan, number> = {
+  START: 49.9,
+  GROWTH: 129.9,
+  PRO: 249.9,
+  MASTER: 499.9,
+}
+
+/** Valor mensal em BRL (mesma tabela que `planMonthlyPriceLabel`). */
+export function planMonthlyAmountBrl(plan: Plan): number {
+  return PLAN_MONTHLY_BRL[plan] ?? PLAN_MONTHLY_BRL.START
+}
+
+/** Preço mensal indicativo (BRL) para o painel de assinatura — alinhar com tabela comercial real. */
+export function planMonthlyPriceLabel(plan: Plan): string {
+  const money = new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  })
+  return `${money.format(planMonthlyAmountBrl(plan))}/mês`
 }
 
 /** Importação de cardápio por foto — Growth em diante (matriz comercial). */

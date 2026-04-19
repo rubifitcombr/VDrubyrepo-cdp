@@ -1,4 +1,8 @@
 import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
+import {
+  getDashboardBillingBanner,
+  getDashboardBillingBlock,
+} from '@/services/billing.server'
 import { getDashboardNotificationCount } from '@/services/dashboard.server'
 import { getUser } from '@/services/auth.server'
 import { getStoreByUser } from '@/services/store.server'
@@ -43,6 +47,18 @@ export default async function DashboardLayout({
     ? await getDashboardNotificationCount(storeId)
     : 0
 
+  const storeRecord =
+    store && typeof store === 'object'
+      ? (store as Record<string, unknown>)
+      : null
+  const billingBlock = storeRecord
+    ? getDashboardBillingBlock(storeRecord)
+    : null
+  const billingBanner =
+    !storeRecord || billingBlock
+      ? null
+      : getDashboardBillingBanner(storeRecord)
+
   return (
     <DashboardShell
       storeName={storeName}
@@ -51,6 +67,8 @@ export default async function DashboardLayout({
       isAuthenticated={!!user}
       plan={plan}
       notificationCount={notificationCount}
+      billingBanner={billingBanner}
+      billingBlock={billingBlock}
     >
       {children}
     </DashboardShell>

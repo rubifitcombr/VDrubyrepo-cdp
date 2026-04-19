@@ -73,6 +73,18 @@ export function IconBag({ className }: { className?: string }) {
   )
 }
 
+export function IconCreditCard({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M2.25 8.25h19.5M2.25 9h19.5m-19.5 7.5h19.5M4.5 3.75h15A2.25 2.25 0 0121.75 6v12A2.25 2.25 0 0119.5 20.25h-15a2.25 2.25 0 01-2.25-2.25V6a2.25 2.25 0 012.25-2.25z"
+      />
+    </svg>
+  )
+}
+
 export function IconCurrency({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">

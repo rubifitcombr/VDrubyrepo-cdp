@@ -12,6 +12,7 @@ import {
   IconBolt,
   IconCart,
   IconChartBars,
+  IconClipboard,
   IconCog,
   IconCube,
   IconCurrency,
@@ -31,6 +32,8 @@ const nav: Array<{
   icon: (p: { className?: string }) => React.ReactNode
   feature: Feature
   lock?: boolean
+  /** Item secundário (menos destaque visual no sidebar). */
+  quiet?: boolean
 }> = [
   { href: '/dashboard', label: 'Dashboard', icon: IconHome, feature: 'dashboard' },
   {
@@ -114,6 +117,13 @@ const nav: Array<{
     feature: 'printing',
     lock: true,
   },
+  {
+    href: '/dashboard/assinatura',
+    label: 'Assinatura',
+    icon: IconClipboard,
+    feature: 'subscription',
+    quiet: true,
+  },
 ]
 
 function DashboardNavLinks({
@@ -132,7 +142,7 @@ function DashboardNavLinks({
 
   return (
     <nav className={navClass} aria-label="Navegação do painel">
-      {nav.map(({ href, label, icon: Icon, feature, lock }) => {
+      {nav.map(({ href, label, icon: Icon, feature, lock, quiet }) => {
         const active =
           href === '/dashboard'
             ? pathname === '/dashboard'
@@ -146,13 +156,17 @@ function DashboardNavLinks({
           ? `/dashboard/upgrade?feature=${encodeURIComponent(feature)}`
           : href
 
+        const quietInactive = !!quiet && !active && !locked
+
         const linkSidebar =
           `flex shrink-0 items-center gap-3 px-3 py-2.5 text-sm font-medium transition-colors md:w-full md:rounded-full ${
             active
               ? 'rounded-full bg-[var(--dash-primary)] text-white shadow-md shadow-[var(--dash-primary)]/25'
               : locked
                 ? 'rounded-full text-white/35 hover:bg-white/[0.06]'
-                : 'rounded-full text-white/65 hover:bg-white/10 hover:text-white'
+                : quietInactive
+                  ? 'rounded-full text-white/40 hover:bg-white/[0.05] hover:text-white/55'
+                  : 'rounded-full text-white/65 hover:bg-white/10 hover:text-white'
           }`
 
         const linkBottom =
@@ -161,7 +175,9 @@ function DashboardNavLinks({
               ? 'bg-[var(--dash-primary)] text-white shadow-md shadow-[var(--dash-primary)]/25'
               : locked
                 ? 'text-white/35 hover:bg-white/[0.06]'
-                : 'text-white/70 hover:bg-white/10 hover:text-white'
+                : quietInactive
+                  ? 'text-white/40 hover:bg-white/[0.05] hover:text-white/55'
+                  : 'text-white/70 hover:bg-white/10 hover:text-white'
           }`
 
         return (
@@ -172,7 +188,13 @@ function DashboardNavLinks({
             className={layout === 'sidebar' ? linkSidebar : linkBottom}
           >
             <Icon
-              className={`shrink-0 opacity-95 ${layout === 'bottom' ? 'h-4 w-4' : 'h-5 w-5'}`}
+              className={`shrink-0 ${
+                quietInactive
+                  ? 'h-4 w-4 opacity-55'
+                  : layout === 'bottom'
+                    ? 'h-4 w-4 opacity-95'
+                    : 'h-5 w-5 opacity-95'
+              }`}
             />
             <span className="whitespace-nowrap">{label}</span>
             {locked && badgeText ? (
@@ -204,6 +226,8 @@ export function DashboardShell({
   isAuthenticated,
   plan,
   notificationCount = 0,
+  billingBanner = null,
+  billingBlock = null,
 }: {
   children: React.ReactNode
   storeName: string | null
@@ -212,6 +236,11 @@ export function DashboardShell({
   isAuthenticated: boolean
   plan: Plan
   notificationCount?: number
+  billingBanner?: {
+    openInvoiceDateLabel: string
+    payUrl: string
+  } | null
+  billingBlock?: { payUrl: string | null } | null
 }) {
   const pathname = usePathname()
 
@@ -262,6 +291,25 @@ export function DashboardShell({
       </aside>
 
       <div className="flex min-h-dvh min-w-0 flex-1 flex-col md:min-h-dvh md:pl-60 lg:pl-64">
+        {billingBanner && isAuthenticated ? (
+          <div className="shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-3 sm:px-5 md:px-6 lg:px-8 xl:px-10">
+            <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-3 sm:flex-row sm:items-center sm:justify-between xl:max-w-[1400px]">
+              <p className="text-sm text-amber-950">
+                Sua fatura de{' '}
+                <span className="font-semibold">{billingBanner.openInvoiceDateLabel}</span> está em
+                aberto. Regularize para manter o acesso.
+              </p>
+              <a
+                href={billingBanner.payUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex shrink-0 items-center justify-center rounded-xl bg-[var(--dash-primary)] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-[filter] hover:brightness-105"
+              >
+                Pagar agora
+              </a>
+            </div>
+          </div>
+        ) : null}
         <header className="sticky top-0 z-20 shrink-0 border-b border-[var(--card-border)] bg-white/95 shadow-sm shadow-black/[0.03] backdrop-blur-md">
           <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-3 px-4 py-3 sm:px-5 md:flex-row md:items-center md:gap-4 md:px-6 md:py-3.5 lg:px-8 xl:max-w-[1400px] xl:px-10">
             {isAuthenticated ? (
@@ -289,7 +337,27 @@ export function DashboardShell({
 
         <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
           <main className="mx-auto w-full max-w-[1280px] px-4 pb-[calc(7.25rem+env(safe-area-inset-bottom,0px))] pt-4 sm:px-5 sm:pt-5 md:px-6 md:pb-10 md:pt-6 lg:px-8 lg:pt-8 xl:max-w-[1400px] xl:px-10 xl:pb-12">
-            {children}
+            {billingBlock && isAuthenticated ? (
+              <div className="flex min-h-[min(28rem,70vh)] flex-col items-center justify-center gap-4 rounded-2xl border border-[var(--card-border)] bg-white p-8 text-center shadow-sm shadow-black/[0.04]">
+                <p className="text-lg font-bold text-[#1a1614]">Acesso suspenso</p>
+                <p className="max-w-md text-sm text-[#6b7280]">
+                  A conta está bloqueada por inadimplência prolongada. Regulariza o pagamento para
+                  voltar a usar o painel.
+                </p>
+                {billingBlock.payUrl ? (
+                  <a
+                    href={billingBlock.payUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center rounded-xl bg-[var(--dash-primary)] px-6 py-3 text-sm font-semibold text-white shadow-md shadow-[var(--dash-primary)]/25 transition-[filter] hover:brightness-105"
+                  >
+                    Pagar agora
+                  </a>
+                ) : null}
+              </div>
+            ) : (
+              children
+            )}
           </main>
         </div>
       </div>
