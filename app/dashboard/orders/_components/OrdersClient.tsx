@@ -351,7 +351,7 @@ export function OrdersClient({
 
   return (
     <div className="mx-auto w-full max-w-4xl">
-      <nav className="text-xs text-[#6b7280]">
+      <nav className="-ml-4 text-xs text-[#6b7280] sm:ml-0">
         <Link href="/dashboard" className="hover:text-[#1a1614]">
           Início
         </Link>
