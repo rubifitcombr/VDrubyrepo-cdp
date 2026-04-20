@@ -1,6 +1,9 @@
 import { APP_RESERVED_FIRST_SEGMENTS } from '@/lib/app-reserved-routes'
-import { createClient } from '@/lib/supabase/server'
-import { fetchStoreByPublicSlug } from '@/lib/store-public-slug.server'
+import { createAnonPublicSupabaseClient } from '@/lib/supabase/anon-public.server'
+import {
+  fetchStoreByPublicSlug,
+  normalizePublicSlugSegment,
+} from '@/lib/store-public-slug.server'
 import { readStorePlano } from '@/lib/store-columns'
 import { getStoreOpenState, getTodayClosingDisplayHM } from '@/lib/business-hours'
 import { effectiveProductPrice, hasActivePromotion } from '@/lib/product-pricing'
@@ -42,9 +45,13 @@ type ProductRow = {
   promotion_active?: boolean | null
 }
 
+/** Evita 404 em cache (CDN/PWA) para rotas dinâmicas por loja. */
+export const dynamic = 'force-dynamic'
+
 export default async function StorefrontPage({ params }: Props) {
   const { slug: rawSlug } = await params
-  const slugSegment = typeof rawSlug === 'string' ? rawSlug.trim() : ''
+  const slugSegment =
+    typeof rawSlug === 'string' ? normalizePublicSlugSegment(rawSlug) : ''
   if (!slugSegment) {
     notFound()
   }
@@ -57,7 +64,7 @@ export default async function StorefrontPage({ params }: Props) {
     redirect('/' + slugLower)
   }
 
-  const supabase = await createClient()
+  const supabase = createAnonPublicSupabaseClient()
   const { data: store, error: storeError } = await fetchStoreByPublicSlug(
     supabase,
     slugSegment,

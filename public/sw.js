@@ -1,5 +1,5 @@
 // Bump when fetch/caching rules change so clients drop old caches.
-const CACHE_NAME = 'vyria-v2';
+const CACHE_NAME = 'vyria-v3';
 const STATIC_ASSETS = ['/', '/dashboard', '/offline.html', '/manifest.json'];
 
 self.addEventListener('install', (event) => {
@@ -25,15 +25,20 @@ self.addEventListener('fetch', (event) => {
   const sameOrigin = url.origin === self.location.origin;
   const isApi = sameOrigin && url.pathname.startsWith('/api/');
 
-  /** HTML navigations must not be cache-first or lojas públicas ficam desatualizadas. */
+  /** Navegação de documento — em alguns browsers móveis mode/destination variam; usar também Sec-Fetch-*. */
+  const secFetchDest = event.request.headers.get('Sec-Fetch-Dest') || '';
+  const secFetchMode = event.request.headers.get('Sec-Fetch-Mode') || '';
   const isHtmlNavigation =
-    event.request.mode === 'navigate' &&
-    event.request.destination === 'document';
+    (event.request.mode === 'navigate' &&
+      event.request.destination === 'document') ||
+    secFetchDest === 'document' ||
+    secFetchMode === 'navigate';
 
   if (isApi) {
     event.respondWith(
       fetch(event.request)
         .then((response) => {
+          if (!response.ok) return response;
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
           return response;
@@ -64,6 +69,7 @@ self.addEventListener('fetch', (event) => {
       return fetch(event.request)
         .then((response) => {
           if (!sameOrigin) return response;
+          if (!response.ok) return response;
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
           return response;

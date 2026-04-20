@@ -13,12 +13,23 @@ function escapeIlikeExactPattern(segment: string): string {
 /**
  * Resolve loja pelo segmento de URL /[slug]: primeiro igualdade exata, depois ILIKE (mesmo texto, qualquer capitalização).
  */
+/** Normaliza o segmento de URL antes de procurar a loja (mobile / partilhas). */
+export function normalizePublicSlugSegment(raw: string): string {
+  let s = raw.trim()
+  try {
+    s = decodeURIComponent(s)
+  } catch {
+    /* ignora */
+  }
+  return s.normalize('NFC').trim()
+}
+
 export async function fetchStoreByPublicSlug(
   supabase: SupabaseClient,
   slugFromPath: string,
   columns: string
 ): Promise<{ data: unknown; error: unknown }> {
-  const seg = slugFromPath.trim()
+  const seg = normalizePublicSlugSegment(slugFromPath)
   if (!seg) {
     return { data: null, error: null }
   }
@@ -34,6 +45,21 @@ export async function fetchStoreByPublicSlug(
   }
   if (exact.data) {
     return { data: exact.data, error: null }
+  }
+
+  const lower = seg.toLowerCase()
+  if (lower !== seg) {
+    const byLower = await supabase
+      .from('stores')
+      .select(columns)
+      .eq('slug', lower)
+      .maybeSingle()
+    if (byLower.error) {
+      return { data: null, error: byLower.error }
+    }
+    if (byLower.data) {
+      return { data: byLower.data, error: null }
+    }
   }
 
   const insensitive = await supabase
