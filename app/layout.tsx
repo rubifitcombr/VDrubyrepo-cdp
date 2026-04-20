@@ -23,7 +23,12 @@ export const metadata: Metadata = {
   title: "Vyria Delivery",
   description: "Engenharia de vendas local — gestão de entregas e loja online",
   icons: {
-    icon: "/favicon.ico",
+    icon: [
+      { url: "/icon.png", type: "image/png", sizes: "32x32" },
+      { url: "/favicon-32x32.png", type: "image/png", sizes: "32x32" },
+      { url: "/favicon.ico", type: "image/x-icon" },
+    ],
+    shortcut: "/favicon.ico",
   },
 };
 
