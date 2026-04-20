@@ -21,13 +21,11 @@ export function DashboardTopBar({
   storeLogoUrl,
   plan,
   notificationCount,
-  onOpenMobileMenu,
 }: {
   storeName: string | null
   storeLogoUrl: string | null
   plan: Plan
   notificationCount: number
-  onOpenMobileMenu?: () => void
 }) {
   const router = useRouter()
   const [q, setQ] = useState('')
@@ -56,24 +54,6 @@ export function DashboardTopBar({
       </form>
 
       <div className="flex shrink-0 items-center justify-end gap-3 sm:ml-auto">
-        <button
-          type="button"
-          onClick={onOpenMobileMenu}
-          className="rounded-xl border border-[var(--card-border)] bg-white p-2.5 text-[#1a1614] shadow-sm transition-colors hover:bg-[#f8f9fa] md:hidden"
-          aria-label="Abrir menu"
-        >
-          <svg
-            className="h-5 w-5"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            aria-hidden="true"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M4 12h16M4 17h16" />
-          </svg>
-        </button>
-
         <Link
           href="/dashboard/orders"
           className="relative rounded-xl border border-[var(--card-border)] bg-white p-2.5 text-[#1a1614] shadow-sm transition-colors hover:bg-[#f8f9fa]"

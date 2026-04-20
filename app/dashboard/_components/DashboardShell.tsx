@@ -323,6 +323,23 @@ export function DashboardShell({
               </span>
             </span>
           </Link>
+          <button
+            type="button"
+            onClick={() => setMobileMenuOpen(true)}
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/15 bg-white/5 text-white/85 transition-colors hover:bg-white/10 md:hidden"
+            aria-label="Abrir menu"
+          >
+            <svg
+              className="h-5 w-5"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              aria-hidden="true"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M4 12h16M4 17h16" />
+            </svg>
+          </button>
         </div>
 
         <div className="hidden md:contents">
@@ -384,7 +401,6 @@ export function DashboardShell({
                 storeLogoUrl={storeLogoUrl}
                 plan={plan}
                 notificationCount={notificationCount}
-                onOpenMobileMenu={() => setMobileMenuOpen(true)}
               />
             ) : (
               <div className="flex w-full items-center justify-between">
