@@ -24,11 +24,9 @@ export const metadata: Metadata = {
   description: "Engenharia de vendas local — gestão de entregas e loja online",
   icons: {
     icon: [
-      { url: "/icon.png", type: "image/png", sizes: "32x32" },
+      { url: "/icon.png", type: "image/png" },
       { url: "/favicon-32x32.png", type: "image/png", sizes: "32x32" },
-      { url: "/favicon.ico", type: "image/x-icon" },
     ],
-    shortcut: "/favicon.ico",
   },
 };
 
