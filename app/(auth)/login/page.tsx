@@ -22,7 +22,7 @@ function LoginForm() {
 
   useEffect(() => {
     const raw = window.localStorage.getItem('vyria.rememberLogin')
-    if (raw === '0') setRememberLogin(false)
+    if (raw === '0') queueMicrotask(() => setRememberLogin(false))
   }, [])
 
   async function handleLogin() {
@@ -86,15 +86,29 @@ function LoginForm() {
           />
         </label>
 
-        <label className="flex items-center gap-2 text-sm font-medium text-vyria-navy">
-          <input
-            type="checkbox"
-            checked={rememberLogin}
-            onChange={(e) => setRememberLogin(e.target.checked)}
-            className="h-4 w-4 rounded border-[var(--card-border)] text-vyria-orange focus:ring-vyria-orange/30"
-          />
-          Lembrar login
-        </label>
+        <div className="rounded-xl border border-[var(--card-border)] bg-[#fafafa] px-4 py-3.5 shadow-inner shadow-black/[0.02]">
+          <label
+            htmlFor="vyria-remember-login"
+            className="flex cursor-pointer items-start gap-3 sm:items-center"
+          >
+            <input
+              id="vyria-remember-login"
+              type="checkbox"
+              checked={rememberLogin}
+              onChange={(e) => setRememberLogin(e.target.checked)}
+              className="mt-0.5 h-5 w-5 shrink-0 rounded border-[var(--card-border)] text-vyria-orange focus:ring-2 focus:ring-vyria-orange/35 sm:mt-0"
+            />
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-semibold text-vyria-navy">
+                Lembrar login
+              </span>
+              <span className="mt-0.5 block text-xs leading-relaxed text-vyria-navy-muted">
+                Mantém a sessão neste aparelho ao fechar o separador (até 30 dias).
+                Desliga se estiveres num computador partilhado.
+              </span>
+            </span>
+          </label>
+        </div>
 
         <button
           type="button"
