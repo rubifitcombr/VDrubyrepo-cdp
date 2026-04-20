@@ -306,10 +306,10 @@ export function DashboardShell({
   return (
     <div className="flex min-h-dvh flex-col bg-[var(--dash-surface)] md:flex-row">
       <aside className="sticky top-0 z-30 flex w-full flex-col border-b border-white/10 bg-[var(--dash-sidebar)] shadow-lg shadow-black/25 md:fixed md:inset-y-0 md:w-60 md:border-b-0 md:border-r md:border-white/10 md:shadow-xl lg:w-64">
-        <div className="flex h-14 shrink-0 items-center gap-3 border-b border-white/10 px-3 py-2 md:h-auto md:flex-col md:items-stretch md:gap-3 md:px-4 md:py-5">
+        <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-white/10 px-3 py-2 md:h-auto md:flex-col md:items-stretch md:gap-3 md:px-4 md:py-5">
           <Link
             href="/dashboard"
-            className="flex min-w-0 flex-1 items-center gap-3 md:flex-initial"
+            className="flex min-w-0 items-center gap-3 md:flex-initial"
           >
             <span className="flex h-10 max-w-[9.5rem] shrink-0 items-center overflow-hidden rounded-xl bg-white/95 px-2 py-1 shadow-md shadow-black/15 ring-1 ring-black/10">
               <BrandLogo width={132} priority className="max-h-8 object-contain object-left" />
