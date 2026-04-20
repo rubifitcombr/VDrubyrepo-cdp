@@ -397,6 +397,7 @@ export function StorefrontMenuClient({
   }, [cartOpen])
 
   const banner = bannerUrl?.trim() || null
+  const hasBanner = Boolean(banner)
 
   function categoryHasPromo(cat: string) {
     if (cat === 'Todos') return false
@@ -416,7 +417,13 @@ export function StorefrontMenuClient({
       <div className="mx-auto max-w-3xl overflow-visible bg-neutral-100">
         {/* Só o bloco da imagem usa overflow-hidden + cantos — a logo fica fora para não ser cortada */}
         <div className="relative z-0 overflow-hidden rounded-t-3xl">
-          <div className="relative aspect-[5/3] min-h-[188px] w-full sm:min-h-[210px]">
+          <div
+            className={
+              hasBanner
+                ? 'relative aspect-[5/3] min-h-[188px] w-full sm:min-h-[210px]'
+                : 'relative h-12 w-full sm:h-14'
+            }
+          >
             {banner ? (
               <Image
                 src={banner}
@@ -434,13 +441,19 @@ export function StorefrontMenuClient({
                 }}
               />
             )}
-            <div
-              className="absolute inset-0 bg-gradient-to-t from-black/40 via-black/10 to-black/15"
-              aria-hidden
-            />
+            {hasBanner ? (
+              <div
+                className="absolute inset-0 bg-gradient-to-t from-black/40 via-black/10 to-black/15"
+                aria-hidden
+              />
+            ) : null}
             {hasPromoDay ? (
               <span
-                className="absolute left-4 top-4 inline-flex w-fit items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-white shadow-md"
+                className={`absolute inline-flex w-fit items-center gap-1.5 rounded-full font-bold uppercase tracking-wide text-white shadow-md ${
+                  hasBanner
+                    ? 'left-4 top-4 px-3 py-1 text-[11px]'
+                    : 'left-2 top-1.5 px-2 py-0.5 text-[9px] sm:left-3 sm:top-2 sm:text-[10px]'
+                }`}
                 style={{ backgroundColor: theme.primary }}
               >
                 <IconFlame className="h-3.5 w-3.5 opacity-95" />
@@ -451,7 +464,11 @@ export function StorefrontMenuClient({
         </div>
 
         {/* Logo centrada na junção banner/cartão: margem negativa = metade da altura (fluxo, sem clip) */}
-        <div className="relative z-30 -mt-[48px] flex justify-center sm:-mt-[50px]">
+        <div
+          className={`relative z-30 flex justify-center ${
+            hasBanner ? '-mt-[48px] sm:-mt-[50px]' : '-mt-[40px] sm:-mt-[44px]'
+          }`}
+        >
           <div className="relative h-[96px] w-[96px] shrink-0 overflow-hidden rounded-full border-[5px] border-white bg-white shadow-[0_8px_30px_rgba(0,0,0,0.14)] ring-1 ring-black/[0.06] sm:h-[100px] sm:w-[100px]">
             {logoUrl?.trim() ? (
               <Image
@@ -474,7 +491,13 @@ export function StorefrontMenuClient({
           </div>
         </div>
 
-        <div className="relative z-20 -mt-[68px] rounded-t-3xl bg-white px-4 pb-5 pt-16 shadow-[0_-8px_32px_rgba(0,0,0,0.08)] sm:-mt-[72px] sm:px-6 sm:pt-[3.5rem]">
+        <div
+          className={`relative z-20 rounded-t-3xl bg-white px-4 pb-5 shadow-[0_-8px_32px_rgba(0,0,0,0.08)] sm:px-6 ${
+            hasBanner
+              ? '-mt-[68px] pt-16 sm:-mt-[72px] sm:pt-[3.5rem]'
+              : '-mt-[56px] pt-14 sm:-mt-[60px] sm:pt-[3.25rem]'
+          }`}
+        >
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
               <h2 className="text-[15px] font-extrabold uppercase leading-snug tracking-wide text-neutral-900 sm:text-base">
