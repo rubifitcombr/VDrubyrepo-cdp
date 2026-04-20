@@ -122,6 +122,19 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
+  /** Cardápio público /[slug]: evita CDN/browser servir 404 ou HTML antigo em mobile. */
+  const slugSegments = rawPath.split('/').filter(Boolean)
+  if (
+    slugSegments.length === 1 &&
+    !slugSegments[0].includes('.') &&
+    !APP_RESERVED_FIRST_SEGMENTS.has(slugSegments[0].toLowerCase())
+  ) {
+    supabaseResponse.headers.set(
+      'Cache-Control',
+      'private, no-store, max-age=0, must-revalidate'
+    )
+  }
+
   return supabaseResponse
 }
 

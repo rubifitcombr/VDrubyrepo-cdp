@@ -47,6 +47,7 @@ type ProductRow = {
 
 /** Evita 404 em cache (CDN/PWA) para rotas dinâmicas por loja. */
 export const dynamic = 'force-dynamic'
+export const fetchCache = 'force-no-store'
 
 export default async function StorefrontPage({ params }: Props) {
   const { slug: rawSlug } = await params
