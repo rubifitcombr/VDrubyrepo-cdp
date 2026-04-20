@@ -1,5 +1,5 @@
 import { APP_RESERVED_FIRST_SEGMENTS } from '@/lib/app-reserved-routes'
-import { createAnonPublicSupabaseClient } from '@/lib/supabase/anon-public.server'
+import { createClient } from '@/lib/supabase/server'
 import {
   fetchStoreByPublicSlug,
   normalizePublicSlugSegment,
@@ -64,7 +64,7 @@ export default async function StorefrontPage({ params }: Props) {
     redirect('/' + slugLower)
   }
 
-  const supabase = createAnonPublicSupabaseClient()
+  const supabase = await createClient()
   const { data: store, error: storeError } = await fetchStoreByPublicSlug(
     supabase,
     slugSegment,
