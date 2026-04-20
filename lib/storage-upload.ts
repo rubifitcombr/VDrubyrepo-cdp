@@ -2,6 +2,16 @@ import { createClient } from '@/lib/supabase/client'
 
 const BUCKET = 'product-images'
 
+function contentTypeForUpload(file: File, ext: string) {
+  const t = file.type?.trim()
+  if (t && t !== 'application/octet-stream') return t
+  if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg'
+  if (ext === 'png') return 'image/png'
+  if (ext === 'webp') return 'image/webp'
+  if (ext === 'gif') return 'image/gif'
+  return 'application/octet-stream'
+}
+
 export async function uploadProductImage(
   storeId: string,
   file: File
@@ -18,6 +28,7 @@ export async function uploadProductImage(
   const { error: upErr } = await supabase.storage
     .from(BUCKET)
     .upload(path, file, {
+      contentType: contentTypeForUpload(file, safeExt),
       cacheControl: '3600',
       upsert: false,
     })
@@ -50,6 +61,7 @@ export async function uploadStorefrontBanner(
   const { error: upErr } = await supabase.storage
     .from(BUCKET)
     .upload(path, file, {
+      contentType: contentTypeForUpload(file, safeExt),
       cacheControl: '3600',
       upsert: false,
     })
@@ -82,6 +94,7 @@ export async function uploadStoreLogo(
   const { error: upErr } = await supabase.storage
     .from(BUCKET)
     .upload(path, file, {
+      contentType: contentTypeForUpload(file, safeExt),
       cacheControl: '3600',
       upsert: false,
     })

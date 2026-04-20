@@ -1,4 +1,5 @@
-const CACHE_NAME = 'vyria-v1';
+// Bump when fetch/caching rules change so clients drop old caches.
+const CACHE_NAME = 'vyria-v2';
 const STATIC_ASSETS = ['/', '/dashboard', '/offline.html', '/manifest.json'];
 
 self.addEventListener('install', (event) => {
@@ -20,7 +21,14 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
 
-  const isApi = event.request.url.includes('/api/');
+  const url = new URL(event.request.url);
+  const sameOrigin = url.origin === self.location.origin;
+  const isApi = sameOrigin && url.pathname.startsWith('/api/');
+
+  /** HTML navigations must not be cache-first or lojas públicas ficam desatualizadas. */
+  const isHtmlNavigation =
+    event.request.mode === 'navigate' &&
+    event.request.destination === 'document';
 
   if (isApi) {
     event.respondWith(
@@ -41,11 +49,21 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  if (isHtmlNavigation) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => response)
+        .catch(() => caches.match('/offline.html'))
+    );
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request).then((cached) => {
       if (cached) return cached;
       return fetch(event.request)
         .then((response) => {
+          if (!sameOrigin) return response;
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
           return response;

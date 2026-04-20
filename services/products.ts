@@ -31,7 +31,7 @@ export async function getMenuProducts(
       .order('name', { ascending: true })
     if (e2) {
       console.error('[menu] products fallback *:', e2.message)
-      return []
+      throw new Error(e2.message)
     }
     return sortMenuProductRows(
       ((all as Record<string, unknown>[]) ?? []).map(normalizeMenuProductRow)
@@ -93,7 +93,13 @@ export async function getNextProductSortOrder(
   storeId: string,
   categoryLabel: string | null
 ): Promise<number> {
-  const rows = await getMenuProducts(storeId)
+  let rows: MenuProductRow[] = []
+  try {
+    rows = await getMenuProducts(storeId)
+  } catch (e) {
+    console.warn('[menu] getNextProductSortOrder:', e)
+    return 1
+  }
   const target = normalizeCategoryLabel(categoryLabel)
   const inCat = (rows || []).filter((r: { category?: string | null }) => {
     const c = normalizeCategoryLabel(r.category)
@@ -166,7 +172,13 @@ export async function reorderProduct(
   categoryDisplay: string
 ) {
   const supabase = createClient()
-  const all = await getMenuProducts(storeId)
+  let all: MenuProductRow[] = []
+  try {
+    all = await getMenuProducts(storeId)
+  } catch (e) {
+    console.warn('[menu] reorderProduct load:', e)
+    return { error: new Error('Não foi possível carregar o cardápio.') }
+  }
   const displayToNorm = (d: string) =>
     d === 'Sem categoria' ? null : d.trim() || null
   const targetCat = displayToNorm(categoryDisplay)

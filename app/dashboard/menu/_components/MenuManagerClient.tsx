@@ -365,8 +365,16 @@ export function MenuManagerClient({
   }, [initialProducts])
 
   const refresh = useCallback(async () => {
-    const data = await getMenuProducts(storeId)
-    setProducts(data)
+    try {
+      const data = await getMenuProducts(storeId)
+      setProducts(data)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Erro ao atualizar lista.'
+      console.error('[menu] refresh:', e)
+      alert(
+        `${msg}\n\nA lista não foi atualizada. Verifica a ligação ou as permissões do Supabase.`
+      )
+    }
   }, [storeId])
 
   useEffect(() => {

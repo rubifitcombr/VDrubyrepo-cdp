@@ -71,13 +71,18 @@ function MenuItemWizardContent() {
     const store = await getStoreByUser(user.id)
     if (!store || typeof store !== 'object' || !('id' in store)) return
     setStoreId(store.id as string)
-    const rows = await getMenuProducts(store.id as string)
-    const cats = new Set<string>()
-    for (const r of rows || []) {
-      const c = (r as { category?: string | null }).category?.trim()
-      if (c) cats.add(c)
+    try {
+      const rows = await getMenuProducts(store.id as string)
+      const cats = new Set<string>()
+      for (const r of rows || []) {
+        const c = (r as { category?: string | null }).category?.trim()
+        if (c) cats.add(c)
+      }
+      setExistingCategories([...cats].sort((a, b) => a.localeCompare(b, 'pt')))
+    } catch (e) {
+      console.warn('[menu] categories load:', e)
+      setExistingCategories([])
     }
-    setExistingCategories([...cats].sort((a, b) => a.localeCompare(b, 'pt')))
   }, [])
 
   useEffect(() => {
