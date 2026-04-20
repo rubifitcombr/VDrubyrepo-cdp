@@ -236,6 +236,7 @@ export async function POST(req: NextRequest) {
       order_id: String(order.id),
       product_id: l.productId,
       quantity: l.quantity,
+      price: l.unitPrice,
       unit_price: l.unitPrice,
       name: l.name,
     }))

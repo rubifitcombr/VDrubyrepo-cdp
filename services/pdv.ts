@@ -104,6 +104,7 @@ export async function submitPdvSale(params: {
     order_id: orderId,
     product_id: l.productId,
     quantity: l.quantity,
+    price: l.unitPrice,
     unit_price: l.unitPrice,
     name: l.name,
   }))

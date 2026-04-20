@@ -108,7 +108,7 @@ async function fetchOrderLines(
     const slice = orderIds.slice(i, i + CHUNK)
     const { data, error } = await supabase
       .from('order_items')
-      .select('order_id, product_id, quantity, unit_price')
+      .select('order_id, product_id, quantity, unit_price, price')
       .in('order_id', slice)
     if (error) {
       if (
@@ -124,7 +124,11 @@ async function fetchOrderLines(
       const oid = String(row.order_id ?? '')
       const pid = String(row.product_id ?? '')
       const q = Number(row.quantity) || 0
-      const up = Number(row.unit_price) || 0
+      const up =
+        Number(
+          (row as { unit_price?: unknown; price?: unknown }).unit_price ??
+            (row as { price?: unknown }).price
+        ) || 0
       if (!oid || !pid || q < 1) continue
       out.push({ order_id: oid, product_id: pid, quantity: q, unit_price: up })
     }

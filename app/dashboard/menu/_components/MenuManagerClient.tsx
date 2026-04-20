@@ -354,7 +354,6 @@ export function MenuManagerClient({
   const [formAiImageUrl, setFormAiImageUrl] = useState<string | null>(null)
   const [aiDescBusy, setAiDescBusy] = useState(false)
   const [aiImgBusy, setAiImgBusy] = useState(false)
-  const proAutoDescSentRef = useRef(false)
   const [addonGroups, setAddonGroups] = useState<AddonGroupDraft[]>([])
   const [formSaving, setFormSaving] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -376,66 +375,6 @@ export function MenuManagerClient({
       )
     }
   }, [storeId])
-
-  useEffect(() => {
-    if (!productModalOpen) {
-      proAutoDescSentRef.current = false
-    }
-  }, [productModalOpen])
-
-  useEffect(() => {
-    if (!productModalOpen || !hasProMarketingAi(plan) || editingId) return
-    if (proAutoDescSentRef.current) return
-    if (formDescription.trim()) return
-    const name = formName.trim()
-    const price = formPrice.trim()
-    if (!name || !price) return
-
-    const t = window.setTimeout(() => {
-      void (async () => {
-        if (!productModalOpen || editingId || formDescription.trim()) return
-        const n = formName.trim()
-        const p = formPrice.trim()
-        if (!n || !p || proAutoDescSentRef.current) return
-
-        setAiDescBusy(true)
-        try {
-          const res = await dashboardFetch('/api/ai/product-description', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              storeId,
-              name: n,
-              category: formCategory.trim() || '—',
-              price: p.replace(',', '.'),
-            }),
-          })
-          const data = (await res.json()) as {
-            description?: string
-            error?: string
-          }
-          if (!res.ok) return
-          if (typeof data.description === 'string' && data.description.trim()) {
-            proAutoDescSentRef.current = true
-            setFormDescription(data.description.trim())
-          }
-        } finally {
-          setAiDescBusy(false)
-        }
-      })()
-    }, 900)
-
-    return () => window.clearTimeout(t)
-  }, [
-    productModalOpen,
-    plan,
-    editingId,
-    formName,
-    formPrice,
-    formCategory,
-    formDescription,
-    storeId,
-  ])
 
   async function runAiDescription(withExisting: boolean) {
     const name = formName.trim()
@@ -471,7 +410,6 @@ export function MenuManagerClient({
       }
       if (typeof data.description === 'string' && data.description.trim()) {
         setFormDescription(data.description.trim())
-        proAutoDescSentRef.current = true
       }
     } finally {
       setAiDescBusy(false)
@@ -612,7 +550,6 @@ export function MenuManagerClient({
     setFormSaving(false)
     setAddonGroups([])
     setFormAiImageUrl(null)
-    proAutoDescSentRef.current = false
   }
 
   async function submitProductForm() {
