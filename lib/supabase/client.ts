@@ -15,8 +15,8 @@ export function createClient() {
     anonKey,
     {
       cookieOptions: {
-        // 30 dias para manter sessão entre fechamentos do navegador.
-        lifetime: 60 * 60 * 24 * 30,
+        // 30 dias (segundos) — alinhado com SerializeOptions do pacote `cookie` / @supabase/ssr
+        maxAge: 60 * 60 * 24 * 30,
       },
     }
   )

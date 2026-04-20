@@ -34,8 +34,7 @@ export async function middleware(request: NextRequest) {
 
   const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
     cookieOptions: {
-      // 30 dias para manter sessão entre fechamentos do navegador.
-      lifetime: 60 * 60 * 24 * 30,
+      maxAge: 60 * 60 * 24 * 30,
     },
     cookies: {
       getAll() {
