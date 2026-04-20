@@ -7,20 +7,10 @@ type DeferredInstallPrompt = Event & {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>
 }
 
-const STORAGE_KEY = 'vyria_install_banner_dismissed_until'
-const DISMISS_DAYS = 7
-
 export function InstallAppBanner() {
   const [deferredPrompt, setDeferredPrompt] = useState<DeferredInstallPrompt | null>(null)
   const [isInstalled, setIsInstalled] = useState(false)
-  const [hiddenByPreference, setHiddenByPreference] = useState(true)
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    const untilRaw = window.localStorage.getItem(STORAGE_KEY)
-    const until = untilRaw ? Number(untilRaw) : 0
-    setHiddenByPreference(Number.isFinite(until) && until > Date.now())
-  }, [])
+  const [dismissedThisSession, setDismissedThisSession] = useState(false)
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -51,8 +41,8 @@ export function InstallAppBanner() {
   }, [])
 
   const shouldShow = useMemo(
-    () => !isInstalled && !hiddenByPreference && !!deferredPrompt,
-    [isInstalled, hiddenByPreference, deferredPrompt]
+    () => !isInstalled && !!deferredPrompt && !dismissedThisSession,
+    [isInstalled, deferredPrompt, dismissedThisSession]
   )
 
   async function onInstall() {
@@ -60,15 +50,13 @@ export function InstallAppBanner() {
     await deferredPrompt.prompt()
     const choice = await deferredPrompt.userChoice
     if (choice.outcome !== 'accepted') {
-      dismissForDays()
+      dismissForSession()
     }
     setDeferredPrompt(null)
   }
 
-  function dismissForDays() {
-    const until = Date.now() + DISMISS_DAYS * 24 * 60 * 60 * 1000
-    window.localStorage.setItem(STORAGE_KEY, String(until))
-    setHiddenByPreference(true)
+  function dismissForSession() {
+    setDismissedThisSession(true)
   }
 
   if (!shouldShow) return null
@@ -89,7 +77,7 @@ export function InstallAppBanner() {
           </button>
           <button
             type="button"
-            onClick={dismissForDays}
+            onClick={dismissForSession}
             className="rounded-lg border border-orange-200 bg-white px-3 py-1.5 text-sm font-medium text-[#7c2d12] hover:bg-orange-100"
           >
             Agora nao
