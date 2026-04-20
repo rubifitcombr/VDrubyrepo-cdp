@@ -6,8 +6,8 @@ export const ADMIN_PLAN_OPTIONS: Array<{
   label: string
   priceLabel: string
 }> = [
-  { code: 'START', label: 'Start', priceLabel: 'R$ 49' },
-  { code: 'GROWTH', label: 'Growth', priceLabel: 'R$ 99' },
-  { code: 'PRO', label: 'Pro', priceLabel: 'R$ 149' },
-  { code: 'MASTER', label: 'Master', priceLabel: 'R$ 249' },
+  { code: 'START', label: 'Start', priceLabel: 'R$ 49,90' },
+  { code: 'GROWTH', label: 'Growth', priceLabel: 'R$ 99,90' },
+  { code: 'PRO', label: 'Pro', priceLabel: 'R$ 149,90' },
+  { code: 'MASTER', label: 'Master', priceLabel: 'R$ 249,90' },
 ]

@@ -1,5 +1,6 @@
-import { LojistaDetailClient } from '@/app/admin/lojistas/[id]/lojista-detail-client'
+import { redirect } from 'next/navigation'
 
-export default function AdminLojistaDetailPage() {
-  return <LojistaDetailClient />
+/** Detalhe do lojista abre no drawer em /admin/lojistas */
+export default function AdminLojistaDetailRedirect() {
+  redirect('/admin/lojistas')
 }

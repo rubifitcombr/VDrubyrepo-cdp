@@ -231,9 +231,9 @@ export function planTitle(plan: Plan): string {
 
 const PLAN_MONTHLY_BRL: Record<Plan, number> = {
   START: 49.9,
-  GROWTH: 129.9,
-  PRO: 249.9,
-  MASTER: 499.9,
+  GROWTH: 99.9,
+  PRO: 149.9,
+  MASTER: 249.9,
 }
 
 /** Valor mensal em BRL (mesma tabela que `planMonthlyPriceLabel`). */

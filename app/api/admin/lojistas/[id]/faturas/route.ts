@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { requireAdminApi } from '@/lib/admin-auth.server'
-import { createServiceRoleClient } from '@/lib/supabase/service-role.server'
+import { insertAdminLog } from '@/services/admin-logs.server'
 
 export async function POST(
   req: Request,
@@ -37,17 +37,7 @@ export async function POST(
     return NextResponse.json({ error: 'Estado inválido' }, { status: 400 })
   }
 
-  let svc
-  try {
-    svc = createServiceRoleClient()
-  } catch {
-    return NextResponse.json(
-      { error: 'SUPABASE_SERVICE_ROLE_KEY não configurado' },
-      { status: 503 }
-    )
-  }
-
-  const { error } = await svc.from('faturas').insert({
+  const { error } = await ctx.svc.from('faturas').insert({
     store_id: storeId,
     descricao,
     valor,
@@ -66,6 +56,17 @@ export async function POST(
       { status: 500 }
     )
   }
+
+  const money = new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  })
+  await insertAdminLog(ctx.svc, {
+    adminId: ctx.user.id,
+    lojistaId: storeId,
+    acao: 'fatura_registrada',
+    detalhes: `${descricao} · ${money.format(valor)} · ${st}`,
+  })
 
   return NextResponse.json({ ok: true })
 }

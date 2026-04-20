@@ -1,11 +1,20 @@
 import 'server-only'
 
+import { VALOR_MENSAL_PLANO } from '@/lib/admin-mrr'
 import type { MerchantStatus } from '@/lib/merchant-status'
 import { parseMerchantStatus } from '@/lib/merchant-status'
 import type { Plan } from '@/lib/plan'
 import { parsePlan } from '@/lib/plan'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { readStorePlano, readStoreStatus } from '@/lib/store-columns'
+
+export type FaturaAdminRow = {
+  id: string
+  criado_em: string
+  descricao: string
+  valor: number
+  status: 'pago' | 'pendente' | 'falhou'
+}
 
 export type LojistaListRow = {
   id: string
@@ -16,6 +25,15 @@ export type LojistaListRow = {
   status: MerchantStatus
   plano_vence_em: string | null
   cadastrado_em: string | null
+  cancelamento_solicitado: boolean
+}
+
+export type AdminLogRow = {
+  id: number
+  criado_em: string
+  acao: string
+  detalhes: string | null
+  admin_email: string | null
 }
 
 function rowToLojista(
@@ -23,6 +41,7 @@ function rowToLojista(
   emailMap: Record<string, string | null>
 ): LojistaListRow {
   const ownerId = String(store.owner_id ?? '')
+  const cancelRaw = store.cancelamento_solicitado
   return {
     id: String(store.id),
     nome: String(store.name ?? ''),
@@ -39,6 +58,8 @@ function rowToLojista(
         : null,
     cadastrado_em:
       typeof store.created_at === 'string' ? store.created_at : null,
+    cancelamento_solicitado:
+      cancelRaw === true || cancelRaw === 'true' || cancelRaw === 1,
   }
 }
 
@@ -84,15 +105,27 @@ function matchesSearch(row: LojistaListRow, q: string): boolean {
   )
 }
 
-function inExpiringWindow(row: LojistaListRow): boolean {
-  if (row.status !== 'ativo' || !row.plano_vence_em) return false
-  const d = new Date(row.plano_vence_em)
-  const t0 = new Date()
-  t0.setHours(0, 0, 0, 0)
-  const t1 = new Date(t0)
-  t1.setDate(t1.getDate() + 3)
-  d.setHours(0, 0, 0, 0)
-  return d >= t0 && d <= t1
+/** Dias até plano_vence_em (YYYY-MM-DD); negativo = vencido. */
+function daysUntilVencimento(planoVenceEm: string | null): number | null {
+  if (!planoVenceEm || !/^\d{4}-\d{2}-\d{2}$/.test(planoVenceEm.trim())) {
+    return null
+  }
+  const iso = planoVenceEm.trim()
+  const [y, m, d] = iso.split('-').map(Number)
+  const target = new Date(y!, m! - 1, d)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  target.setHours(0, 0, 0, 0)
+  return Math.round((target.getTime() - today.getTime()) / 86_400_000)
+}
+
+/** Urgentes: cancelamento solicitado, vencido, ou vence em até 3 dias (ativos com data). */
+export function isUrgente(row: LojistaListRow): boolean {
+  if (row.cancelamento_solicitado) return true
+  if (row.status !== 'ativo') return false
+  const days = daysUntilVencimento(row.plano_vence_em)
+  if (days === null) return false
+  return days <= 3
 }
 
 export async function fetchLojistasForAdmin(
@@ -104,6 +137,8 @@ export async function fetchLojistasForAdmin(
     ativos: number
     pendentes: number
     bloqueadosCancelados: number
+    mrr: number
+    urgentesCount: number
   }
   lojistas: LojistaListRow[]
 }> {
@@ -138,12 +173,17 @@ export async function fetchLojistasForAdmin(
     ativos: 0,
     pendentes: 0,
     bloqueadosCancelados: 0,
+    mrr: 0,
+    urgentesCount: 0,
   }
   for (const r of allRows) {
-    if (r.status === 'ativo') metrics.ativos++
-    else if (r.status === 'pendente') metrics.pendentes++
+    if (r.status === 'ativo') {
+      metrics.ativos++
+      metrics.mrr += VALOR_MENSAL_PLANO[r.plano] ?? 0
+    } else if (r.status === 'pendente') metrics.pendentes++
     else if (r.status === 'bloqueado' || r.status === 'cancelado')
       metrics.bloqueadosCancelados++
+    if (isUrgente(r)) metrics.urgentesCount++
   }
 
   const filtro = params.filtro.toLowerCase()
@@ -164,14 +204,58 @@ export async function fetchLojistasForAdmin(
     case 'cancelado':
       filtered = filtered.filter((r) => r.status === 'cancelado')
       break
+    case 'urgentes':
     case 'vencendo':
-      filtered = filtered.filter((r) => inExpiringWindow(r))
+      filtered = filtered.filter((r) => isUrgente(r))
       break
     default:
       break
   }
 
   return { metrics, lojistas: filtered }
+}
+
+async function fetchFaturasForStore(
+  svc: SupabaseClient,
+  storeId: string
+): Promise<FaturaAdminRow[]> {
+  const { data, error } = await svc
+    .from('faturas')
+    .select('id, criado_em, descricao, valor, status')
+    .eq('store_id', storeId)
+    .order('criado_em', { ascending: false })
+    .limit(100)
+
+  if (error) {
+    if (!String(error.message || '').includes('relation')) {
+      console.warn('[faturas]', error.message)
+    }
+    return []
+  }
+  if (!data?.length) return []
+
+  const out: FaturaAdminRow[] = []
+  for (const raw of data) {
+    const o = raw as Record<string, unknown>
+    const st = String(o.status || '').toLowerCase()
+    if (st !== 'pago' && st !== 'pendente' && st !== 'falhou') continue
+    const valor =
+      typeof o.valor === 'number'
+        ? o.valor
+        : Number(String(o.valor ?? '').replace(',', '.'))
+    if (!Number.isFinite(valor)) continue
+    const criado =
+      typeof o.criado_em === 'string' ? o.criado_em : ''
+    if (!criado) continue
+    out.push({
+      id: String(o.id ?? ''),
+      criado_em: criado,
+      descricao: String(o.descricao ?? '').slice(0, 200),
+      valor,
+      status: st as FaturaAdminRow['status'],
+    })
+  }
+  return out
 }
 
 export async function fetchLojistaDetail(
@@ -182,12 +266,8 @@ export async function fetchLojistaDetail(
     plano_ativado_em: string | null
     plano_atualizado_em: string | null
   }
-  logs: Array<{
-    id: number
-    criado_em: string
-    acao: string
-    detalhes: string | null
-  }>
+  logs: AdminLogRow[]
+  faturas: FaturaAdminRow[]
 } | null> {
   const { data: store, error } = await svc
     .from('stores')
@@ -220,19 +300,50 @@ export async function fetchLojistaDetail(
         : null,
   }
 
-  const { data: logs } = await svc
+  const { data: logsRaw } = await svc
     .from('admin_logs')
-    .select('id, criado_em, acao, detalhes')
+    .select('id, criado_em, acao, detalhes, admin_id')
     .eq('lojista_id', id)
     .order('criado_em', { ascending: false })
 
+  const logRows = (logsRaw ?? []) as Array<{
+    id: number
+    criado_em: string
+    acao: string
+    detalhes: string | null
+    admin_id: string | null
+  }>
+
+  const adminIds = [
+    ...new Set(
+      logRows.map((l) => String(l.admin_id ?? '')).filter(Boolean)
+    ),
+  ]
+  const adminEmails: Record<string, string | null> = {}
+  if (adminIds.length > 0) {
+    const { data: admins } = await svc
+      .from('usuarios')
+      .select('id, email')
+      .in('id', adminIds)
+    for (const a of admins ?? []) {
+      const r = a as { id: string; email: string | null }
+      adminEmails[r.id] = r.email ?? null
+    }
+  }
+
+  const logs: AdminLogRow[] = logRows.map((l) => ({
+    id: l.id,
+    criado_em: l.criado_em,
+    acao: l.acao,
+    detalhes: l.detalhes,
+    admin_email: l.admin_id ? adminEmails[String(l.admin_id)] ?? null : null,
+  }))
+
+  const faturas = await fetchFaturasForStore(svc, id)
+
   return {
     lojista,
-    logs: (logs ?? []) as Array<{
-      id: number
-      criado_em: string
-      acao: string
-      detalhes: string | null
-    }>,
+    logs,
+    faturas,
   }
 }

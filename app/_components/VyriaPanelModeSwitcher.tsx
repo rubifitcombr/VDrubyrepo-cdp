@@ -39,21 +39,42 @@ export function VyriaPanelModeSwitcher(props: Props) {
   }
 
   if (props.variant === 'admin') {
+    const isAdmin = props.currentMode === 'admin'
     return (
-      <div className="flex flex-col gap-2 border-t border-white/10 px-2 py-3">
-        <p className="px-2 text-[10px] font-semibold uppercase tracking-wide text-white/45">
-          Conta Vyria
+      <div className="rounded-xl border border-white/15 bg-white/[0.07] p-3">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-white/45">
+          Painel
         </p>
-        <span className="rounded-lg bg-white/10 px-2 py-1.5 text-center text-[11px] font-medium text-white/90">
-          Modo admin ativo
-        </span>
         <button
           type="button"
+          role="switch"
+          aria-checked={isAdmin}
+          aria-busy={pending}
           disabled={pending}
-          onClick={() => void setMode('lojista')}
-          className="rounded-lg border border-white/20 bg-white/5 px-3 py-2 text-xs font-semibold text-white/90 transition-colors hover:bg-white/10 disabled:opacity-50"
+          onClick={() => void setMode(isAdmin ? 'lojista' : 'admin')}
+          className="mt-2 flex w-full items-center gap-3 rounded-lg border border-white/15 bg-white/[0.06] px-3 py-2.5 text-left transition-colors hover:bg-white/[0.1] disabled:opacity-60"
         >
-          {pending ? 'A alterar…' : 'Usar como lojista'}
+          <span className="min-w-0 flex-1">
+            <span className="block text-[11px] font-semibold text-white/90">
+              {isAdmin ? 'Modo admin ativo' : 'Modo lojista'}
+            </span>
+            <span className="mt-0.5 block text-[10px] leading-snug text-white/50">
+              {isAdmin
+                ? 'Alterna para usar o painel como lojista.'
+                : 'Alterna para voltar ao painel administrativo.'}
+            </span>
+          </span>
+          <span
+            className={`relative inline-flex h-7 w-12 shrink-0 rounded-full transition-colors ${
+              isAdmin ? 'bg-emerald-500/90' : 'bg-white/25'
+            }`}
+          >
+            <span
+              className={`pointer-events-none absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                isAdmin ? 'translate-x-5' : 'translate-x-0'
+              }`}
+            />
+          </span>
         </button>
       </div>
     )

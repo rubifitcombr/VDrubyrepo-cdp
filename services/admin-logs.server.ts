@@ -7,7 +7,7 @@ export async function insertAdminLog(
   params: {
     adminId: string
     lojistaId: string
-    acao: 'ativou' | 'renovou' | 'bloqueou' | 'cancelou'
+    acao: string
     detalhes: string
   }
 ) {

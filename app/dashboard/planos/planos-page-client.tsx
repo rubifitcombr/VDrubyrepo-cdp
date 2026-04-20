@@ -1,17 +1,17 @@
 'use client'
 
 import type { Plan } from '@/lib/plan'
-import { planTier } from '@/lib/plan'
+import { planMonthlyPriceLabel, planTier } from '@/lib/plan'
 import Link from 'next/link'
 import { useMemo } from 'react'
 
 const PLANS: Plan[] = ['START', 'GROWTH', 'PRO', 'MASTER']
 
 const PRICE_LABEL: Record<Plan, string> = {
-  START: 'R$ 49/mês',
-  GROWTH: 'R$ 99/mês',
-  PRO: 'R$ 149/mês',
-  MASTER: 'R$ 249/mês',
+  START: planMonthlyPriceLabel('START'),
+  GROWTH: planMonthlyPriceLabel('GROWTH'),
+  PRO: planMonthlyPriceLabel('PRO'),
+  MASTER: planMonthlyPriceLabel('MASTER'),
 }
 
 const TITLE: Record<Plan, string> = {

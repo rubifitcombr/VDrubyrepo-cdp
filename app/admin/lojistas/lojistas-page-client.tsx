@@ -1,10 +1,13 @@
 'use client'
 
-import Link from 'next/link'
 import { ADMIN_PLAN_OPTIONS } from '@/lib/admin-plans'
 import type { MerchantStatus } from '@/lib/merchant-status'
-import { statusBadgeClass, statusLabel } from '@/lib/merchant-status'
-import { planShortLabel, type Plan } from '@/lib/plan'
+import {
+  parseMerchantStatus,
+  statusBadgeClass,
+  statusLabel,
+} from '@/lib/merchant-status'
+import { parsePlan, planShortLabel, type Plan } from '@/lib/plan'
 import { useCallback, useEffect, useState } from 'react'
 
 type LojistaRow = {
@@ -16,6 +19,7 @@ type LojistaRow = {
   status: MerchantStatus
   plano_vence_em: string | null
   cadastrado_em: string | null
+  cancelamento_solicitado: boolean
 }
 
 type Metrics = {
@@ -23,6 +27,24 @@ type Metrics = {
   ativos: number
   pendentes: number
   bloqueadosCancelados: number
+  mrr: number
+  urgentesCount: number
+}
+
+type FaturaRow = {
+  id: string
+  criado_em: string
+  descricao: string
+  valor: number
+  status: 'pago' | 'pendente' | 'falhou'
+}
+
+type AdminLogRow = {
+  id: number
+  criado_em: string
+  acao: string
+  detalhes: string | null
+  admin_email: string | null
 }
 
 const filtros = [
@@ -31,13 +53,35 @@ const filtros = [
   { id: 'ativo', label: 'Ativos' },
   { id: 'bloqueado', label: 'Bloqueados' },
   { id: 'cancelado', label: 'Cancelados' },
-  { id: 'vencendo', label: 'Vencendo em 3 dias' },
+  { id: 'urgentes', label: 'Urgentes' },
 ] as const
+
+const moneyBr = new Intl.NumberFormat('pt-BR', {
+  style: 'currency',
+  currency: 'BRL',
+})
 
 function fmtDate(iso: string | null) {
   if (!iso) return '—'
   const d = new Date(iso.includes('T') ? iso : `${iso}T12:00:00`)
   return d.toLocaleDateString('pt-BR')
+}
+
+function fmtDateTime(iso: string) {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  return d.toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function todayIsoLocal(): string {
+  const t = new Date()
+  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`
 }
 
 function addDaysIso(iso: string | null, days: number): string {
@@ -46,6 +90,146 @@ function addDaysIso(iso: string | null, days: number): string {
     : new Date()
   d.setDate(d.getDate() + days)
   return d.toISOString().slice(0, 10)
+}
+
+function daysUntilVencimento(planoVenceEm: string | null): number | null {
+  if (!planoVenceEm || !/^\d{4}-\d{2}-\d{2}$/.test(planoVenceEm.trim())) {
+    return null
+  }
+  const iso = planoVenceEm.trim()
+  const [y, m, d] = iso.split('-').map(Number)
+  const target = new Date(y!, m! - 1, d!)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  target.setHours(0, 0, 0, 0)
+  return Math.round((target.getTime() - today.getTime()) / 86_400_000)
+}
+
+function defaultRenovarVenceEm(row: LojistaRow): string {
+  const today = todayIsoLocal()
+  const cur = row.plano_vence_em?.trim()
+  if (cur && /^\d{4}-\d{2}-\d{2}$/.test(cur)) {
+    const base = cur >= today ? cur : today
+    return addDaysIso(base, 30)
+  }
+  return addDaysIso(null, 30)
+}
+
+function isNovo(cadastradoEm: string | null): boolean {
+  if (!cadastradoEm) return false
+  const t = new Date(cadastradoEm).getTime()
+  if (Number.isNaN(t)) return false
+  return Date.now() - t < 24 * 3600 * 1000
+}
+
+function faturaStatusBadgeClass(s: FaturaRow['status']) {
+  switch (s) {
+    case 'pago':
+      return 'bg-emerald-50 text-emerald-900 ring-1 ring-emerald-200/80'
+    case 'pendente':
+      return 'bg-amber-50 text-amber-900 ring-1 ring-amber-200/80'
+    case 'falhou':
+      return 'bg-red-50 text-red-800 ring-1 ring-red-200/80'
+    default:
+      return 'bg-[#f3f4f6] text-[#374151]'
+  }
+}
+
+function faturaStatusLabel(s: FaturaRow['status']) {
+  switch (s) {
+    case 'pago':
+      return 'Pago'
+    case 'pendente':
+      return 'Pendente'
+    case 'falhou':
+      return 'Falhou'
+    default:
+      return s
+  }
+}
+
+function IconReceipt(props: { className?: string }) {
+  return (
+    <svg
+      className={props.className}
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.5}
+      stroke="currentColor"
+      aria-hidden
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375H5.25A2.25 2.25 0 003 12v9.75m16.5 0h-9m-9 0H3m3.75-9h9M8.25 6h7.5m-7.5 3h7.5"
+      />
+    </svg>
+  )
+}
+
+function IconLockClosed(props: { className?: string }) {
+  return (
+    <svg
+      className={props.className}
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.5}
+      stroke="currentColor"
+      aria-hidden
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"
+      />
+    </svg>
+  )
+}
+
+function IconXCircle(props: { className?: string }) {
+  return (
+    <svg
+      className={props.className}
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.5}
+      stroke="currentColor"
+      aria-hidden
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="m9.75 9.75 4.5 4.5m0-4.5-4.5 4.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
+      />
+    </svg>
+  )
+}
+
+function VenceUrgenciaBadge({ plano_vence_em }: { plano_vence_em: string | null }) {
+  const days = daysUntilVencimento(plano_vence_em)
+  if (days === null) return null
+  if (days <= 0) {
+    return (
+      <span className="ml-2 inline-flex rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-800 ring-1 ring-red-200/80">
+        Vencido
+      </span>
+    )
+  }
+  if (days >= 1 && days <= 3) {
+    return (
+      <span className="ml-2 inline-flex rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-800 ring-1 ring-red-200/80">
+        {days} {days === 1 ? 'dia' : 'dias'}
+      </span>
+    )
+  }
+  if (days >= 4 && days <= 7) {
+    return (
+      <span className="ml-2 inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-900 ring-1 ring-amber-200/80">
+        {days} dias
+      </span>
+    )
+  }
+  return null
 }
 
 function Modal({
@@ -62,7 +246,7 @@ function Modal({
   if (!open) return null
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/45 p-4"
       role="presentation"
       onClick={onClose}
     >
@@ -92,6 +276,21 @@ function Modal({
   )
 }
 
+function normalizeLojista(raw: Record<string, unknown>): LojistaRow {
+  const c = raw.cancelamento_solicitado
+  return {
+    id: String(raw.id ?? ''),
+    nome: String(raw.nome ?? ''),
+    email: typeof raw.email === 'string' ? raw.email : null,
+    telefone: typeof raw.telefone === 'string' ? raw.telefone : null,
+    plano: parsePlan(raw.plano),
+    status: parseMerchantStatus(raw.status),
+    plano_vence_em: typeof raw.plano_vence_em === 'string' ? raw.plano_vence_em : null,
+    cadastrado_em: typeof raw.cadastrado_em === 'string' ? raw.cadastrado_em : null,
+    cancelamento_solicitado: c === true || c === 'true' || c === 1,
+  }
+}
+
 export function LojistasPageClient() {
   const [filtro, setFiltro] = useState<string>('todos')
   const [q, setQ] = useState('')
@@ -99,102 +298,264 @@ export function LojistasPageClient() {
   const [metrics, setMetrics] = useState<Metrics | null>(null)
   const [rows, setRows] = useState<LojistaRow[]>([])
 
-  const [ativarOpen, setAtivarOpen] = useState(false)
-  const [ativarRow, setAtivarRow] = useState<LojistaRow | null>(null)
-  const [ativarPlano, setAtivarPlano] = useState<Plan>('START')
-  const [ativarVence, setAtivarVence] = useState(() => addDaysIso(null, 30))
+  const [toast, setToast] = useState<{ type: 'ok' | 'err'; msg: string } | null>(null)
 
-  const [renovarOpen, setRenovarOpen] = useState(false)
-  const [renovarRow, setRenovarRow] = useState<LojistaRow | null>(null)
-  const [renovarPlano, setRenovarPlano] = useState<Plan>('START')
-  const [renovarDias, setRenovarDias] = useState(30)
+  const [planoModal, setPlanoModal] = useState<{
+    mode: 'ativar' | 'renovar'
+    row: LojistaRow
+  } | null>(null)
+  const [planoPick, setPlanoPick] = useState<Plan>('GROWTH')
+  const [planoVenceEm, setPlanoVenceEm] = useState(() => addDaysIso(null, 30))
+
+  const [faturaModalRow, setFaturaModalRow] = useState<LojistaRow | null>(null)
+  const [faturaDesc, setFaturaDesc] = useState('')
+  const [faturaValor, setFaturaValor] = useState('')
+  const [faturaStatus, setFaturaStatus] = useState<FaturaRow['status']>('pendente')
 
   const [confirmBlock, setConfirmBlock] = useState<LojistaRow | null>(null)
   const [confirmCancel, setConfirmCancel] = useState<LojistaRow | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    const params = new URLSearchParams()
-    params.set('filtro', filtro)
-    if (q.trim()) params.set('q', q.trim())
-    const res = await fetch(`/api/admin/lojistas?${params.toString()}`, {
-      credentials: 'include',
-    })
-    const data = (await res.json()) as {
-      ok?: boolean
-      metrics?: Metrics
-      lojistas?: LojistaRow[]
-      error?: string
+  const [drawerId, setDrawerId] = useState<string | null>(null)
+  const [drawerLoading, setDrawerLoading] = useState(false)
+  const [drawerLojista, setDrawerLojista] = useState<LojistaRow | null>(null)
+  const [drawerFaturas, setDrawerFaturas] = useState<FaturaRow[]>([])
+  const [drawerLogs, setDrawerLogs] = useState<AdminLogRow[]>([])
+  const [editingDados, setEditingDados] = useState(false)
+  const [editNome, setEditNome] = useState('')
+  const [editPhone, setEditPhone] = useState('')
+  const [drawerFaturaDesc, setDrawerFaturaDesc] = useState('')
+  const [drawerFaturaValor, setDrawerFaturaValor] = useState('')
+  const [drawerFaturaStatus, setDrawerFaturaStatus] =
+    useState<FaturaRow['status']>('pendente')
+  const [busyDrawerPatch, setBusyDrawerPatch] = useState(false)
+  const [busyDrawerFatura, setBusyDrawerFatura] = useState(false)
+
+  useEffect(() => {
+    if (!toast) return
+    const t = window.setTimeout(() => setToast(null), 4200)
+    return () => window.clearTimeout(t)
+  }, [toast])
+
+  useEffect(() => {
+    if (!drawerId) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setDrawerId(null)
     }
-    if (data.ok && data.metrics && data.lojistas) {
-      setMetrics(data.metrics)
-      setRows(data.lojistas)
-    }
-    setLoading(false)
-  }, [filtro, q])
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [drawerId])
+
+  const load = useCallback(
+    async (silent?: boolean) => {
+      if (!silent) setLoading(true)
+      const params = new URLSearchParams()
+      params.set('filtro', filtro)
+      if (q.trim()) params.set('q', q.trim())
+      const res = await fetch(`/api/admin/lojistas?${params.toString()}`, {
+        credentials: 'include',
+      })
+      const data = (await res.json()) as {
+        ok?: boolean
+        metrics?: Metrics
+        lojistas?: Record<string, unknown>[]
+        error?: string
+      }
+      if (data.ok && data.metrics && data.lojistas) {
+        setMetrics(data.metrics)
+        setRows(data.lojistas.map((r) => normalizeLojista(r)))
+      }
+      if (!silent) setLoading(false)
+    },
+    [filtro, q]
+  )
 
   useEffect(() => {
     void load()
   }, [load])
 
-  function openAtivar(row: LojistaRow) {
-    setAtivarRow(row)
-    setAtivarPlano('GROWTH')
-    setAtivarVence(addDaysIso(null, 30))
-    setAtivarOpen(true)
-  }
-
-  function openRenovar(row: LojistaRow) {
-    setRenovarRow(row)
-    setRenovarPlano(row.plano)
-    setRenovarDias(30)
-    setRenovarOpen(true)
-  }
-
-  async function postAtivar() {
-    if (!ativarRow) return
-    setBusyId(ativarRow.id)
+  const refreshDrawerDetail = useCallback(async () => {
+    if (!drawerId) return
+    setDrawerLoading(true)
     try {
-      const res = await fetch(`/api/admin/lojistas/${ativarRow.id}/ativar`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch(`/api/admin/lojistas/${drawerId}`, {
         credentials: 'include',
-        body: JSON.stringify({ plano: ativarPlano, plano_vence_em: ativarVence }),
       })
-      const data = (await res.json()) as { error?: string }
-      if (!res.ok) {
-        alert(data.error || 'Erro')
-        return
+      const data = (await res.json()) as {
+        ok?: boolean
+        lojista?: Record<string, unknown>
+        faturas?: FaturaRow[]
+        logs?: AdminLogRow[]
+        error?: string
       }
-      setAtivarOpen(false)
-      setAtivarRow(null)
-      await load()
+      if (data.ok && data.lojista) {
+        const L = normalizeLojista(data.lojista)
+        setDrawerLojista(L)
+        setEditNome(L.nome)
+        setEditPhone(L.telefone ?? '')
+        setDrawerFaturas(data.faturas ?? [])
+        setDrawerLogs(data.logs ?? [])
+      }
+    } finally {
+      setDrawerLoading(false)
+    }
+  }, [drawerId])
+
+  useEffect(() => {
+    if (!drawerId) {
+      setDrawerLojista(null)
+      setDrawerFaturas([])
+      setDrawerLogs([])
+      setEditingDados(false)
+      return
+    }
+    void refreshDrawerDetail()
+  }, [drawerId, refreshDrawerDetail])
+
+  function mergeRowFromApi(raw: Record<string, unknown> | undefined) {
+    if (!raw) return
+    const next = normalizeLojista(raw)
+    setRows((prev) => prev.map((r) => (r.id === next.id ? next : r)))
+    if (drawerId === next.id) {
+      setDrawerLojista(next)
+      setEditNome(next.nome)
+      setEditPhone(next.telefone ?? '')
+    }
+  }
+
+  function openPlanoModal(mode: 'ativar' | 'renovar', row: LojistaRow) {
+    setPlanoModal({ mode, row })
+    if (mode === 'ativar') {
+      setPlanoPick('GROWTH')
+      setPlanoVenceEm(addDaysIso(null, 30))
+    } else {
+      setPlanoPick(row.plano)
+      setPlanoVenceEm(defaultRenovarVenceEm(row))
+    }
+  }
+
+  async function confirmPlanoModal() {
+    if (!planoModal) return
+    const { mode, row } = planoModal
+    setBusyId(row.id)
+    try {
+      if (mode === 'ativar') {
+        const res = await fetch(`/api/admin/lojistas/${row.id}/ativar`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ plano: planoPick, plano_vence_em: planoVenceEm }),
+        })
+        const data = (await res.json()) as { error?: string; lojista?: Record<string, unknown> }
+        if (!res.ok) {
+          setToast({ type: 'err', msg: data.error || 'Erro ao ativar.' })
+          return
+        }
+        mergeRowFromApi(data.lojista)
+        setToast({
+          type: 'ok',
+          msg: `Plano de ${row.nome} atualizado para ${planShortLabel(planoPick)}`,
+        })
+        void load(true)
+      } else {
+        const res = await fetch(`/api/admin/lojistas/${row.id}/renovar`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ plano: planoPick, plano_vence_em: planoVenceEm }),
+        })
+        const data = (await res.json()) as { error?: string; lojista?: Record<string, unknown> }
+        if (!res.ok) {
+          setToast({ type: 'err', msg: data.error || 'Erro ao renovar.' })
+          return
+        }
+        mergeRowFromApi(data.lojista)
+        setToast({
+          type: 'ok',
+          msg: `Plano de ${row.nome} atualizado para ${planShortLabel(planoPick)}`,
+        })
+        void load(true)
+      }
+      setPlanoModal(null)
+      void refreshDrawerDetail()
     } finally {
       setBusyId(null)
     }
   }
 
-  async function postRenovar() {
-    if (!renovarRow) return
-    setBusyId(renovarRow.id)
+  async function postRegistrarFatura(storeId: string, nome: string) {
+    const descricao = faturaDesc.trim()
+    const valor = Number(String(faturaValor).replace(',', '.'))
+    if (!descricao) {
+      setToast({ type: 'err', msg: 'Indica uma descrição.' })
+      return
+    }
+    if (!Number.isFinite(valor) || valor < 0) {
+      setToast({ type: 'err', msg: 'Valor inválido.' })
+      return
+    }
+    setBusyId(storeId)
     try {
-      const res = await fetch(`/api/admin/lojistas/${renovarRow.id}/renovar`, {
+      const res = await fetch(`/api/admin/lojistas/${storeId}/faturas`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ plano: renovarPlano, dias: renovarDias }),
+        body: JSON.stringify({ descricao, valor, status: faturaStatus }),
       })
       const data = (await res.json()) as { error?: string }
       if (!res.ok) {
-        alert(data.error || 'Erro')
+        setToast({ type: 'err', msg: data.error || 'Erro ao registar.' })
         return
       }
-      setRenovarOpen(false)
-      setRenovarRow(null)
-      await load()
+      setToast({ type: 'ok', msg: `Fatura registada para ${nome}.` })
+      setFaturaModalRow(null)
+      setFaturaDesc('')
+      setFaturaValor('')
+      setFaturaStatus('pendente')
+      void load(true)
+      void refreshDrawerDetail()
     } finally {
       setBusyId(null)
+    }
+  }
+
+  async function postDrawerFatura() {
+    if (!drawerId || !drawerLojista) return
+    const descricao = drawerFaturaDesc.trim()
+    const valor = Number(String(drawerFaturaValor).replace(',', '.'))
+    if (!descricao) {
+      setToast({ type: 'err', msg: 'Indica uma descrição.' })
+      return
+    }
+    if (!Number.isFinite(valor) || valor < 0) {
+      setToast({ type: 'err', msg: 'Valor inválido.' })
+      return
+    }
+    setBusyDrawerFatura(true)
+    try {
+      const res = await fetch(`/api/admin/lojistas/${drawerId}/faturas`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          descricao,
+          valor,
+          status: drawerFaturaStatus,
+        }),
+      })
+      const data = (await res.json()) as { error?: string }
+      if (!res.ok) {
+        setToast({ type: 'err', msg: data.error || 'Erro ao registar.' })
+        return
+      }
+      setToast({ type: 'ok', msg: 'Fatura registada.' })
+      setDrawerFaturaDesc('')
+      setDrawerFaturaValor('')
+      setDrawerFaturaStatus('pendente')
+      void load(true)
+      void refreshDrawerDetail()
+    } finally {
+      setBusyDrawerFatura(false)
     }
   }
 
@@ -205,13 +566,16 @@ export function LojistasPageClient() {
         method: 'POST',
         credentials: 'include',
       })
-      const data = (await res.json()) as { error?: string }
+      const data = (await res.json()) as { error?: string; lojista?: Record<string, unknown> }
       if (!res.ok) {
-        alert(data.error || 'Erro')
+        setToast({ type: 'err', msg: data.error || 'Erro' })
         return
       }
+      mergeRowFromApi(data.lojista)
       setConfirmBlock(null)
-      await load()
+      setToast({ type: 'ok', msg: `Acesso de ${row.nome} bloqueado.` })
+      void load(true)
+      void refreshDrawerDetail()
     } finally {
       setBusyId(null)
     }
@@ -224,31 +588,80 @@ export function LojistasPageClient() {
         method: 'POST',
         credentials: 'include',
       })
-      const data = (await res.json()) as { error?: string }
+      const data = (await res.json()) as { error?: string; lojista?: Record<string, unknown> }
       if (!res.ok) {
-        alert(data.error || 'Erro')
+        setToast({ type: 'err', msg: data.error || 'Erro' })
         return
       }
+      mergeRowFromApi(data.lojista)
       setConfirmCancel(null)
-      await load()
+      setToast({ type: 'ok', msg: `Assinatura de ${row.nome} cancelada.` })
+      void load(true)
+      void refreshDrawerDetail()
     } finally {
       setBusyId(null)
     }
   }
 
+  async function saveDrawerDados() {
+    if (!drawerId) return
+    setBusyDrawerPatch(true)
+    try {
+      const res = await fetch(`/api/admin/lojistas/${drawerId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ name: editNome, phone: editPhone }),
+      })
+      const data = (await res.json()) as { error?: string; lojista?: Record<string, unknown> }
+      if (!res.ok) {
+        setToast({ type: 'err', msg: data.error || 'Erro ao guardar.' })
+        return
+      }
+      mergeRowFromApi(data.lojista)
+      setEditingDados(false)
+      setToast({ type: 'ok', msg: 'Dados atualizados.' })
+      void load(true)
+      void refreshDrawerDetail()
+    } finally {
+      setBusyDrawerPatch(false)
+    }
+  }
+
+  const mrrFmt = metrics
+    ? moneyBr.format(metrics.mrr)
+    : '—'
+
   return (
-    <div className="mx-auto max-w-[1400px]">
+    <div className="relative mx-auto max-w-[1400px]">
+      {toast ? (
+        <div
+          className="fixed bottom-6 left-1/2 z-[70] w-[min(92vw,28rem)] -translate-x-1/2"
+          role="status"
+        >
+          <div
+            className={`rounded-2xl border px-4 py-3 text-center text-sm font-medium shadow-lg ${
+              toast.type === 'ok'
+                ? 'border-emerald-200/80 bg-emerald-50 text-emerald-950'
+                : 'border-red-200/80 bg-red-50 text-red-950'
+            }`}
+          >
+            {toast.msg}
+          </div>
+        </div>
+      ) : null}
+
       <h1 className="text-2xl font-bold tracking-tight text-[#1a1614]">Lojistas</h1>
       <p className="mt-1 text-sm text-[#6b7280]">
         Gerir planos, estados e acessos manualmente.
       </p>
 
-      <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {metrics ? (
           <>
             <div className="rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-sm">
               <p className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
-                Total
+                Total de lojistas
               </p>
               <p className="mt-2 text-2xl font-bold tabular-nums text-[#1a1614]">
                 {metrics.total}
@@ -263,43 +676,79 @@ export function LojistasPageClient() {
               </p>
             </div>
             <div className="rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-sm">
-              <p className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
-                Pendentes
-              </p>
-              <p className="mt-2 text-2xl font-bold tabular-nums text-amber-700">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
+                  Pendentes
+                </p>
+                {metrics.pendentes > 0 ? (
+                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900 ring-1 ring-amber-200/80">
+                    {metrics.pendentes}
+                  </span>
+                ) : null}
+              </div>
+              <p className="mt-2 text-2xl font-bold tabular-nums text-amber-800">
                 {metrics.pendentes}
               </p>
             </div>
             <div className="rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-sm">
-              <p className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
-                Bloqueados / Cancelados
-              </p>
-              <p className="mt-2 text-2xl font-bold tabular-nums text-[#6b7280]">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
+                  Bloqueados / Cancelados
+                </p>
+                {metrics.bloqueadosCancelados > 0 ? (
+                  <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-900 ring-1 ring-red-200/80">
+                    {metrics.bloqueadosCancelados}
+                  </span>
+                ) : null}
+              </div>
+              <p className="mt-2 text-2xl font-bold tabular-nums text-[#374151]">
                 {metrics.bloqueadosCancelados}
               </p>
             </div>
+            <div className="rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-sm sm:col-span-2 xl:col-span-1">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
+                MRR estimado
+              </p>
+              <p className="mt-2 text-2xl font-bold tabular-nums text-[#1a1614]">{mrrFmt}</p>
+              <p className="mt-1 text-[11px] text-[#9ca3af]">Soma dos planos ativos</p>
+            </div>
           </>
         ) : (
-          <p className="text-sm text-[#6b7280]">A carregar métricas…</p>
+          <p className="text-sm text-[#6b7280] sm:col-span-2">A carregar métricas…</p>
         )}
       </div>
 
       <div className="mt-6 flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between">
         <div className="flex flex-wrap gap-2">
-          {filtros.map((f) => (
-            <button
-              key={f.id}
-              type="button"
-              onClick={() => setFiltro(f.id)}
-              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
-                filtro === f.id
-                  ? 'bg-[var(--dash-primary)] text-white shadow-sm'
-                  : 'border border-[var(--card-border)] bg-white text-[#374151] hover:bg-[#f9fafb]'
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
+          {filtros.map((f) => {
+            const urgentBadge =
+              f.id === 'urgentes' && metrics && metrics.urgentesCount > 0
+                ? metrics.urgentesCount
+                : null
+            return (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => setFiltro(f.id)}
+                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  filtro === f.id
+                    ? 'bg-[var(--dash-primary)] text-white shadow-sm'
+                    : 'border border-[var(--card-border)] bg-white text-[#374151] hover:bg-[#f9fafb]'
+                }`}
+              >
+                {f.label}
+                {urgentBadge !== null ? (
+                  <span
+                    className={`min-w-[1.25rem] rounded-full px-1.5 py-0.5 text-center text-[10px] font-bold ${
+                      filtro === f.id ? 'bg-white/25 text-white' : 'bg-amber-100 text-amber-900'
+                    }`}
+                  >
+                    {urgentBadge}
+                  </span>
+                ) : null}
+              </button>
+            )
+          })}
         </div>
         <input
           type="search"
@@ -341,12 +790,13 @@ export function LojistasPageClient() {
               rows.map((row) => (
                 <tr key={row.id} className="bg-white">
                   <td className="px-4 py-3 font-medium text-[#1a1614]">
-                    <Link
-                      href={`/admin/lojistas/${row.id}`}
-                      className="text-[var(--dash-primary)] hover:underline"
+                    <button
+                      type="button"
+                      onClick={() => setDrawerId(row.id)}
+                      className="text-left font-medium text-[var(--dash-primary)] hover:underline"
                     >
                       {row.nome || '—'}
-                    </Link>
+                    </button>
                   </td>
                   <td className="max-w-[12rem] truncate px-4 py-3 text-[#374151]">
                     {row.email ?? '—'}
@@ -356,58 +806,93 @@ export function LojistasPageClient() {
                     {planShortLabel(row.plano)}
                   </td>
                   <td className="px-4 py-3">
-                    <span
-                      className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusBadgeClass(row.status)}`}
-                    >
-                      {statusLabel(row.status)}
-                    </span>
+                    <div className="flex flex-col gap-1.5">
+                      <span
+                        className={`inline-flex w-fit rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusBadgeClass(row.status)}`}
+                      >
+                        {statusLabel(row.status)}
+                      </span>
+                      <div className="flex flex-wrap gap-1">
+                        {row.cancelamento_solicitado ? (
+                          <span className="inline-flex rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-semibold text-orange-900 ring-1 ring-orange-200/80">
+                            Quer cancelar
+                          </span>
+                        ) : null}
+                        {isNovo(row.cadastrado_em) ? (
+                          <span className="inline-flex rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-900 ring-1 ring-sky-200/80">
+                            Novo
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
                   </td>
                   <td className="px-4 py-3 tabular-nums text-[#374151]">
-                    {fmtDate(row.plano_vence_em)}
+                    <span className="inline-flex flex-wrap items-center">
+                      {fmtDate(row.plano_vence_em)}
+                      <VenceUrgenciaBadge plano_vence_em={row.plano_vence_em} />
+                    </span>
                   </td>
                   <td className="px-4 py-3 tabular-nums text-[#6b7280]">
                     {fmtDate(row.cadastrado_em)}
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex flex-wrap gap-1.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
                       {(row.status === 'pendente' || row.status === 'bloqueado') && (
                         <button
                           type="button"
                           disabled={busyId === row.id}
-                          onClick={() => openAtivar(row)}
-                          className="rounded-lg bg-[var(--dash-primary)] px-2 py-1 text-[11px] font-semibold text-white disabled:opacity-50"
+                          onClick={() => openPlanoModal('ativar', row)}
+                          className="rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50"
                         >
                           Ativar
                         </button>
                       )}
                       {row.status === 'ativo' && (
-                        <>
-                          <button
-                            type="button"
-                            disabled={busyId === row.id}
-                            onClick={() => openRenovar(row)}
-                            className="rounded-lg border border-[var(--card-border)] bg-white px-2 py-1 text-[11px] font-semibold text-[#374151] hover:bg-[#f9fafb] disabled:opacity-50"
-                          >
-                            Renovar
-                          </button>
-                          <button
-                            type="button"
-                            disabled={busyId === row.id}
-                            onClick={() => setConfirmBlock(row)}
-                            className="rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-800 disabled:opacity-50"
-                          >
-                            Bloquear
-                          </button>
-                        </>
+                        <button
+                          type="button"
+                          disabled={busyId === row.id}
+                          onClick={() => openPlanoModal('renovar', row)}
+                          className="rounded-lg border border-[var(--card-border)] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#374151] hover:bg-[#f9fafb] disabled:opacity-50"
+                        >
+                          Renovar
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        disabled={busyId === row.id}
+                        onClick={() => {
+                          setFaturaModalRow(row)
+                          setFaturaDesc('')
+                          setFaturaValor('')
+                          setFaturaStatus('pendente')
+                        }}
+                        className="inline-flex items-center gap-1 rounded-lg border border-[var(--card-border)] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#374151] hover:bg-[#f9fafb] disabled:opacity-50"
+                      >
+                        <IconReceipt className="h-3.5 w-3.5 opacity-70" />
+                        Registrar fatura
+                      </button>
+                      {row.status === 'ativo' && (
+                        <button
+                          type="button"
+                          disabled={busyId === row.id}
+                          title="Bloquear acesso"
+                          aria-label="Bloquear acesso"
+                          onClick={() => setConfirmBlock(row)}
+                          className="rounded-lg p-1.5 text-[#6b7280] hover:bg-[#f3f4f6] disabled:opacity-50"
+                        >
+                          <IconLockClosed className="h-5 w-5" />
+                        </button>
                       )}
                       {(row.status === 'ativo' || row.status === 'bloqueado') && (
                         <button
                           type="button"
                           disabled={busyId === row.id}
+                          title="Cancelar assinatura"
+                          aria-label="Cancelar assinatura"
                           onClick={() => setConfirmCancel(row)}
-                          className="rounded-lg border border-[var(--card-border)] px-2 py-1 text-[11px] font-semibold text-[#6b7280] hover:bg-[#f9fafb] disabled:opacity-50"
+                          className="rounded-lg p-1.5 text-[#6b7280] hover:bg-[#f3f4f6] disabled:opacity-50"
                         >
-                          Cancelar
+                          <IconXCircle className="h-5 w-5" />
                         </button>
                       )}
                     </div>
@@ -420,18 +905,22 @@ export function LojistasPageClient() {
       </div>
 
       <Modal
-        open={ativarOpen}
-        title="Confirmar ativação"
-        onClose={() => !busyId && setAtivarOpen(false)}
+        open={!!planoModal}
+        title={
+          planoModal
+            ? `${planoModal.mode === 'ativar' ? 'Ativar' : 'Renovar'} · ${planoModal.row.nome}`
+            : ''
+        }
+        onClose={() => !busyId && setPlanoModal(null)}
       >
-        {ativarRow ? (
+        {planoModal ? (
           <div className="space-y-4">
             <label className="block text-sm font-medium text-[#374151]">
               Plano
               <select
                 className="mt-2 w-full rounded-xl border border-[var(--card-border)] bg-white px-3 py-2.5 text-sm"
-                value={ativarPlano}
-                onChange={(e) => setAtivarPlano(e.target.value as Plan)}
+                value={planoPick}
+                onChange={(e) => setPlanoPick(e.target.value as Plan)}
               >
                 {ADMIN_PLAN_OPTIONS.map((o) => (
                   <option key={o.code} value={o.code}>
@@ -445,61 +934,70 @@ export function LojistasPageClient() {
               <input
                 type="date"
                 className="mt-2 w-full rounded-xl border border-[var(--card-border)] bg-white px-3 py-2.5 text-sm"
-                value={ativarVence}
-                onChange={(e) => setAtivarVence(e.target.value)}
+                value={planoVenceEm}
+                onChange={(e) => setPlanoVenceEm(e.target.value)}
               />
             </label>
             <button
               type="button"
               disabled={!!busyId}
-              onClick={() => void postAtivar()}
+              onClick={() => void confirmPlanoModal()}
               className="w-full rounded-xl bg-[var(--dash-primary)] py-2.5 text-sm font-semibold text-white shadow-md disabled:opacity-50"
             >
-              Confirmar ativação
+              Confirmar
             </button>
           </div>
         ) : null}
       </Modal>
 
       <Modal
-        open={renovarOpen}
-        title="Confirmar renovação"
-        onClose={() => !busyId && setRenovarOpen(false)}
+        open={!!faturaModalRow}
+        title={faturaModalRow ? `Registrar fatura · ${faturaModalRow.nome}` : ''}
+        onClose={() => !busyId && setFaturaModalRow(null)}
       >
-        {renovarRow ? (
+        {faturaModalRow ? (
           <div className="space-y-4">
             <label className="block text-sm font-medium text-[#374151]">
-              Plano
-              <select
+              Descrição
+              <input
+                type="text"
+                placeholder="Ex: Vyria Growth — Maio 2026"
                 className="mt-2 w-full rounded-xl border border-[var(--card-border)] bg-white px-3 py-2.5 text-sm"
-                value={renovarPlano}
-                onChange={(e) => setRenovarPlano(e.target.value as Plan)}
-              >
-                {ADMIN_PLAN_OPTIONS.map((o) => (
-                  <option key={o.code} value={o.code}>
-                    {o.label} {o.priceLabel}/mês
-                  </option>
-                ))}
-              </select>
+                value={faturaDesc}
+                onChange={(e) => setFaturaDesc(e.target.value)}
+              />
             </label>
             <label className="block text-sm font-medium text-[#374151]">
-              Estender (dias) a partir do vencimento atual ou de hoje
+              Valor (R$)
               <input
-                type="number"
-                min={1}
-                max={730}
+                type="text"
+                inputMode="decimal"
                 className="mt-2 w-full rounded-xl border border-[var(--card-border)] bg-white px-3 py-2.5 text-sm"
-                value={renovarDias}
-                onChange={(e) => setRenovarDias(Math.max(1, Number(e.target.value) || 30))}
+                value={faturaValor}
+                onChange={(e) => setFaturaValor(e.target.value)}
               />
+            </label>
+            <label className="block text-sm font-medium text-[#374151]">
+              Estado
+              <select
+                className="mt-2 w-full rounded-xl border border-[var(--card-border)] bg-white px-3 py-2.5 text-sm"
+                value={faturaStatus}
+                onChange={(e) =>
+                  setFaturaStatus(e.target.value as FaturaRow['status'])
+                }
+              >
+                <option value="pago">Pago</option>
+                <option value="pendente">Pendente</option>
+                <option value="falhou">Falhou</option>
+              </select>
             </label>
             <button
               type="button"
               disabled={!!busyId}
-              onClick={() => void postRenovar()}
+              onClick={() => void postRegistrarFatura(faturaModalRow.id, faturaModalRow.nome)}
               className="w-full rounded-xl bg-[var(--dash-primary)] py-2.5 text-sm font-semibold text-white shadow-md disabled:opacity-50"
             >
-              Confirmar renovação
+              Registrar
             </button>
           </div>
         ) : null}
@@ -519,7 +1017,7 @@ export function LojistasPageClient() {
               type="button"
               disabled={!!busyId}
               onClick={() => void postBloquear(confirmBlock)}
-              className="w-full rounded-xl bg-red-600 py-2.5 text-sm font-semibold text-white shadow-sm disabled:opacity-50"
+              className="w-full rounded-xl border border-[var(--card-border)] bg-[#f3f4f6] py-2.5 text-sm font-semibold text-[#374151] disabled:opacity-50"
             >
               Bloquear
             </button>
@@ -548,6 +1046,291 @@ export function LojistasPageClient() {
           </div>
         ) : null}
       </Modal>
+
+      {drawerId ? (
+        <div className="fixed inset-0 z-50 flex justify-end" role="presentation">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/40"
+            aria-label="Fechar painel"
+            onClick={() => setDrawerId(null)}
+          />
+          <aside
+            className="relative z-10 flex h-full w-[min(420px,100vw)] flex-col border-l border-[var(--card-border)] bg-white shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Detalhe do lojista"
+          >
+            <div className="flex items-center justify-between border-b border-[var(--card-border)] px-4 py-3">
+              <h2 className="min-w-0 truncate text-base font-semibold text-[#1a1614]">
+                {drawerLojista?.nome ?? 'Lojista'}
+              </h2>
+              <button
+                type="button"
+                onClick={() => setDrawerId(null)}
+                className="rounded-lg px-2 py-1 text-xl leading-none text-[#6b7280] hover:bg-[#f5f5f5]"
+                aria-label="Fechar"
+              >
+                ×
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4">
+              {drawerLoading || !drawerLojista ? (
+                <p className="text-sm text-[#6b7280]">A carregar…</p>
+              ) : (
+                <div className="space-y-6">
+                  <section className="rounded-2xl border border-[var(--card-border)] bg-[#fafafa] p-4">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
+                      Dados
+                    </h3>
+                    {editingDados ? (
+                      <div className="mt-3 space-y-3">
+                        <label className="block text-sm text-[#374151]">
+                          Nome
+                          <input
+                            className="mt-1 w-full rounded-xl border border-[var(--card-border)] bg-white px-3 py-2 text-sm"
+                            value={editNome}
+                            onChange={(e) => setEditNome(e.target.value)}
+                          />
+                        </label>
+                        <label className="block text-sm text-[#374151]">
+                          Telefone
+                          <input
+                            className="mt-1 w-full rounded-xl border border-[var(--card-border)] bg-white px-3 py-2 text-sm"
+                            value={editPhone}
+                            onChange={(e) => setEditPhone(e.target.value)}
+                          />
+                        </label>
+                        <p className="text-sm text-[#6b7280]">
+                          Email: {drawerLojista.email ?? '—'}
+                        </p>
+                        <p className="text-sm text-[#6b7280]">
+                          Cadastro: {fmtDate(drawerLojista.cadastrado_em)}
+                        </p>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            disabled={busyDrawerPatch}
+                            onClick={() => void saveDrawerDados()}
+                            className="rounded-lg bg-[var(--dash-primary)] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                          >
+                            Guardar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingDados(false)
+                              setEditNome(drawerLojista.nome)
+                              setEditPhone(drawerLojista.telefone ?? '')
+                            }}
+                            className="rounded-lg border border-[var(--card-border)] px-3 py-2 text-xs font-semibold text-[#374151]"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mt-3 space-y-2 text-sm">
+                        <p>
+                          <span className="text-[#6b7280]">Nome:</span>{' '}
+                          <span className="font-medium text-[#1a1614]">{drawerLojista.nome}</span>
+                        </p>
+                        <p>
+                          <span className="text-[#6b7280]">Email:</span>{' '}
+                          {drawerLojista.email ?? '—'}
+                        </p>
+                        <p>
+                          <span className="text-[#6b7280]">Telefone:</span>{' '}
+                          {drawerLojista.telefone ?? '—'}
+                        </p>
+                        <p className="tabular-nums text-[#6b7280]">
+                          Cadastro: {fmtDate(drawerLojista.cadastrado_em)}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setEditingDados(true)}
+                          className="mt-2 rounded-lg border border-[var(--card-border)] bg-white px-3 py-2 text-xs font-semibold text-[#374151] hover:bg-[#f9fafb]"
+                        >
+                          Editar dados
+                        </button>
+                      </div>
+                    )}
+                  </section>
+
+                  <section className="rounded-2xl border border-[var(--card-border)] bg-[#fafafa] p-4">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
+                      Assinatura
+                    </h3>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <span className="inline-flex rounded-full bg-white px-2.5 py-0.5 text-xs font-semibold text-[#1a1614] ring-1 ring-black/10">
+                        {planShortLabel(drawerLojista.plano)}
+                      </span>
+                      <span
+                        className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusBadgeClass(drawerLojista.status)}`}
+                      >
+                        {statusLabel(drawerLojista.status)}
+                      </span>
+                    </div>
+                    <p className="mt-3 text-sm text-[#374151]">
+                      <span className="text-[#6b7280]">Vence em:</span>{' '}
+                      <span className="tabular-nums">{fmtDate(drawerLojista.plano_vence_em)}</span>
+                      <VenceUrgenciaBadge plano_vence_em={drawerLojista.plano_vence_em} />
+                    </p>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {(drawerLojista.status === 'pendente' ||
+                        drawerLojista.status === 'bloqueado') && (
+                        <button
+                          type="button"
+                          disabled={busyId === drawerLojista.id}
+                          onClick={() => openPlanoModal('ativar', drawerLojista)}
+                          className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50"
+                        >
+                          Ativar
+                        </button>
+                      )}
+                      {drawerLojista.status === 'ativo' && (
+                        <>
+                          <button
+                            type="button"
+                            disabled={busyId === drawerLojista.id}
+                            onClick={() => openPlanoModal('renovar', drawerLojista)}
+                            className="rounded-lg border border-[var(--card-border)] bg-white px-3 py-2 text-xs font-semibold text-[#374151] hover:bg-[#f9fafb] disabled:opacity-50"
+                          >
+                            Renovar
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busyId === drawerLojista.id}
+                            title="Bloquear acesso"
+                            aria-label="Bloquear acesso"
+                            onClick={() => setConfirmBlock(drawerLojista)}
+                            className="rounded-lg p-2 text-[#6b7280] hover:bg-[#f3f4f6] disabled:opacity-50"
+                          >
+                            <IconLockClosed className="h-5 w-5" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busyId === drawerLojista.id}
+                            title="Cancelar assinatura"
+                            aria-label="Cancelar assinatura"
+                            onClick={() => setConfirmCancel(drawerLojista)}
+                            className="rounded-lg p-2 text-[#6b7280] hover:bg-[#f3f4f6] disabled:opacity-50"
+                          >
+                            <IconXCircle className="h-5 w-5" />
+                          </button>
+                        </>
+                      )}
+                      {drawerLojista.status === 'bloqueado' && (
+                        <button
+                          type="button"
+                          disabled={busyId === drawerLojista.id}
+                          title="Cancelar assinatura"
+                          aria-label="Cancelar assinatura"
+                          onClick={() => setConfirmCancel(drawerLojista)}
+                          className="rounded-lg p-2 text-[#6b7280] hover:bg-[#f3f4f6] disabled:opacity-50"
+                        >
+                          <IconXCircle className="h-5 w-5" />
+                        </button>
+                      )}
+                    </div>
+                  </section>
+
+                  <section className="rounded-2xl border border-[var(--card-border)] bg-[#fafafa] p-4">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
+                      Registrar fatura
+                    </h3>
+                    <div className="mt-3 space-y-3">
+                      <input
+                        type="text"
+                        placeholder="Ex: Vyria Growth — Maio 2026"
+                        className="w-full rounded-xl border border-[var(--card-border)] bg-white px-3 py-2.5 text-sm"
+                        value={drawerFaturaDesc}
+                        onChange={(e) => setDrawerFaturaDesc(e.target.value)}
+                      />
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="Valor (R$)"
+                        className="w-full rounded-xl border border-[var(--card-border)] bg-white px-3 py-2.5 text-sm"
+                        value={drawerFaturaValor}
+                        onChange={(e) => setDrawerFaturaValor(e.target.value)}
+                      />
+                      <select
+                        className="w-full rounded-xl border border-[var(--card-border)] bg-white px-3 py-2.5 text-sm"
+                        value={drawerFaturaStatus}
+                        onChange={(e) =>
+                          setDrawerFaturaStatus(e.target.value as FaturaRow['status'])
+                        }
+                      >
+                        <option value="pago">Pago</option>
+                        <option value="pendente">Pendente</option>
+                        <option value="falhou">Falhou</option>
+                      </select>
+                      <button
+                        type="button"
+                        disabled={busyDrawerFatura}
+                        onClick={() => void postDrawerFatura()}
+                        className="w-full rounded-xl bg-[var(--dash-primary)] py-2.5 text-sm font-semibold text-white shadow-sm disabled:opacity-50"
+                      >
+                        Registrar fatura
+                      </button>
+                    </div>
+                  </section>
+
+                  <section className="rounded-2xl border border-[var(--card-border)] bg-[#fafafa] p-4">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
+                      Histórico de faturas
+                    </h3>
+                    {drawerFaturas.length === 0 ? (
+                      <p className="mt-3 text-sm text-[#6b7280]">Nenhuma fatura registada.</p>
+                    ) : (
+                      <ul className="mt-3 space-y-2">
+                        {drawerFaturas.map((f) => (
+                          <li
+                            key={f.id}
+                            className="rounded-xl border border-[var(--card-border)] bg-white px-3 py-2 text-sm"
+                          >
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <span className="tabular-nums text-[#6b7280]">
+                                {fmtDateTime(f.criado_em)}
+                              </span>
+                              <span
+                                className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${faturaStatusBadgeClass(f.status)}`}
+                              >
+                                {faturaStatusLabel(f.status)}
+                              </span>
+                            </div>
+                            <p className="mt-1 font-medium text-[#1a1614]">{f.descricao}</p>
+                            <p className="tabular-nums text-[#374151]">{moneyBr.format(f.valor)}</p>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </section>
+
+                  <section className="rounded-2xl border border-[var(--card-border)] bg-[#fafafa] p-4">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
+                      Histórico de ações
+                    </h3>
+                    {drawerLogs.length === 0 ? (
+                      <p className="mt-3 text-sm text-[#6b7280]">Sem registos.</p>
+                    ) : (
+                      <ul className="mt-3 max-h-56 space-y-2 overflow-y-auto text-xs leading-relaxed text-[#374151]">
+                        {drawerLogs.map((log) => (
+                          <li key={log.id} className="border-b border-[var(--card-border)] pb-2 last:border-0">
+                            {fmtDate(log.criado_em)} · {log.detalhes?.trim() || log.acao} ·{' '}
+                            <span className="text-[#6b7280]">{log.admin_email ?? '—'}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </section>
+                </div>
+              )}
+            </div>
+          </aside>
+        </div>
+      ) : null}
     </div>
   )
 }
