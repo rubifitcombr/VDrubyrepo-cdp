@@ -1,5 +1,6 @@
 import { APP_RESERVED_FIRST_SEGMENTS } from '@/lib/app-reserved-routes'
 import { createClient } from '@/lib/supabase/server'
+import { fetchStoreByPublicSlug } from '@/lib/store-public-slug.server'
 import { readStorePlano } from '@/lib/store-columns'
 import { getStoreOpenState, getTodayClosingDisplayHM } from '@/lib/business-hours'
 import { effectiveProductPrice, hasActivePromotion } from '@/lib/product-pricing'
@@ -42,27 +43,36 @@ type ProductRow = {
 }
 
 export default async function StorefrontPage({ params }: Props) {
-  const { slug } = await params
-  const slugLower = slug.toLowerCase()
+  const { slug: rawSlug } = await params
+  const slugSegment = typeof rawSlug === 'string' ? rawSlug.trim() : ''
+  if (!slugSegment) {
+    notFound()
+  }
+
+  const slugLower = slugSegment.toLowerCase()
   if (
     APP_RESERVED_FIRST_SEGMENTS.has(slugLower) &&
-    slug !== slugLower
+    slugSegment !== slugLower
   ) {
     redirect('/' + slugLower)
   }
-  const supabase = await createClient()
 
-  const { data: store, error: storeError } = await supabase
-    .from('stores')
-    .select('*')
-    .eq('slug', slug)
-    .single()
+  const supabase = await createClient()
+  const { data: store, error: storeError } = await fetchStoreByPublicSlug(
+    supabase,
+    slugSegment,
+    '*'
+  )
 
   if (storeError || !store) {
     notFound()
   }
 
   const s = store as StoreRow
+  const canonicalSlug = typeof s.slug === 'string' ? s.slug.trim() : ''
+  if (canonicalSlug && canonicalSlug !== slugSegment) {
+    redirect(`/${canonicalSlug}`)
+  }
   const theme = resolveStoreTheme(s.theme_preset)
   const { open: storeOpen, mode: hoursMode } = getStoreOpenState(
     s.business_hours,

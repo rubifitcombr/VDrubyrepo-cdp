@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { fetchStoreByPublicSlug } from '@/lib/store-public-slug.server'
 import {
   evaluateDeliveryForCustomer,
   type StoreDeliveryConfig,
@@ -31,13 +32,11 @@ export async function POST(req: NextRequest) {
     }
 
     const supabase = await createClient()
-    const { data: store, error } = await supabase
-      .from('stores')
-      .select(
-        'name, address, delivery_fee, delivery_free_above, delivery_max_km, store_geo_lat, store_geo_lng'
-      )
-      .eq('slug', slug)
-      .single()
+    const { data: store, error } = await fetchStoreByPublicSlug(
+      supabase,
+      slug,
+      'name, address, delivery_fee, delivery_free_above, delivery_max_km, store_geo_lat, store_geo_lng'
+    )
 
     if (error || !store) {
       return NextResponse.json(
@@ -46,11 +45,13 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    const storeRow = store as StoreDeliveryConfig
+
     const sub =
       Number.isFinite(subtotal) && subtotal >= 0 ? subtotal : 0
 
     const result = await evaluateDeliveryForCustomer(
-      store as StoreDeliveryConfig,
+      storeRow,
       addressLine,
       sub
     )
@@ -62,13 +63,13 @@ export async function POST(req: NextRequest) {
       deliveryCharge: result.deliveryCharge,
       reason: result.reason ?? null,
       freeAbove:
-        store.delivery_free_above != null
-          ? Number(store.delivery_free_above)
+        storeRow.delivery_free_above != null
+          ? Number(storeRow.delivery_free_above)
           : null,
       maxKm:
-        store.delivery_max_km != null ? Number(store.delivery_max_km) : null,
+        storeRow.delivery_max_km != null ? Number(storeRow.delivery_max_km) : null,
       baseFee:
-        store.delivery_fee != null ? Number(store.delivery_fee) : null,
+        storeRow.delivery_fee != null ? Number(storeRow.delivery_fee) : null,
     })
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Erro inesperado.'

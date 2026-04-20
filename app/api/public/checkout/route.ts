@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { fetchStoreByPublicSlug } from '@/lib/store-public-slug.server'
 import {
   evaluateDeliveryForCustomer,
   type StoreDeliveryConfig,
@@ -145,19 +146,22 @@ export async function POST(req: NextRequest) {
     const customerPhone = customerPhoneRaw || null
 
     const supabase = await createClient()
-    const { data: store, error: storeErr } = await supabase
-      .from('stores')
-      .select(
-        'id, name, plan, address, delivery_fee, delivery_free_above, delivery_max_km, store_geo_lat, store_geo_lng'
-      )
-      .eq('slug', slug)
-      .single()
+    const { data: store, error: storeErr } = await fetchStoreByPublicSlug(
+      supabase,
+      slug,
+      'id, name, plan, address, delivery_fee, delivery_free_above, delivery_max_km, store_geo_lat, store_geo_lng'
+    )
 
     if (storeErr || !store) {
       return NextResponse.json(
         { error: 'Loja não encontrada para este link.' },
         { status: 404 }
       )
+    }
+
+    const storeRow = store as StoreDeliveryConfig & {
+      id: string
+      name?: string | null
     }
 
     const subtotal = items.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0)
@@ -181,7 +185,7 @@ export async function POST(req: NextRequest) {
     let deliveryCharge = 0
     try {
       const zone = await evaluateDeliveryForCustomer(
-        store as StoreDeliveryConfig,
+        storeRow,
         geoQuery,
         subtotal
       )
@@ -202,7 +206,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const plan = parsePlan(readStorePlano(store as Record<string, unknown>))
+    const plan = parsePlan(readStorePlano(storeRow as Record<string, unknown>))
     const orderStatus = plan === 'START' ? 'delivered' : 'pending'
     const orderSource = plan === 'START' ? 'site_start' : 'site_live'
     const total = Math.round((subtotal + deliveryCharge) * 100) / 100
@@ -211,7 +215,7 @@ export async function POST(req: NextRequest) {
     const { data: order, error: orderErr } = await supabase
       .from('orders')
       .insert({
-        store_id: String(store.id),
+        store_id: String(storeRow.id),
         customer_name: customerName,
         customer_phone: customerPhone,
         delivery_address: deliveryAddress,
@@ -251,7 +255,7 @@ export async function POST(req: NextRequest) {
           ok: true,
           orderId: String(order.id),
           mode: plan === 'START' ? 'history' : 'realtime',
-          storeName: String(store.name || ''),
+          storeName: String(storeRow.name || ''),
           subtotal,
           deliveryCharge,
           orderTotal: total,
@@ -270,7 +274,7 @@ export async function POST(req: NextRequest) {
       ok: true,
       orderId: String(order.id),
       mode: plan === 'START' ? 'history' : 'realtime',
-      storeName: String(store.name || ''),
+      storeName: String(storeRow.name || ''),
       subtotal,
       deliveryCharge,
       orderTotal: total,
