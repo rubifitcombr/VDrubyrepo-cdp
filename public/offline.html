@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="pt">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vyria Delivery - Offline</title>
+    <style>
+      :root {
+        --vyria-navy: #1d2d44;
+        --vyria-orange: #f27121;
+        --vyria-plum: #801b4d;
+        --surface: #f9f9f9;
+        --card: #ffffff;
+        --border: #e8eaef;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        background: var(--surface);
+        color: var(--vyria-navy);
+        padding: 24px;
+      }
+
+      .card {
+        width: 100%;
+        max-width: 420px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        padding: 28px 24px;
+        text-align: center;
+        box-shadow: 0 10px 24px rgba(21, 32, 50, 0.08);
+      }
+
+      .logo {
+        max-width: min(210px, 100%);
+        height: auto;
+        object-fit: contain;
+      }
+
+      p {
+        margin: 18px 0 0;
+        line-height: 1.5;
+        color: #24374e;
+      }
+
+      button {
+        margin-top: 22px;
+        border: 0;
+        border-radius: 12px;
+        padding: 12px 18px;
+        font-weight: 700;
+        color: #fff;
+        cursor: pointer;
+        background: linear-gradient(135deg, var(--vyria-plum), var(--vyria-orange));
+        box-shadow: 0 8px 20px rgba(128, 27, 77, 0.28);
+      }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <img class="logo" src="/brand/vyria-logo.png" alt="Vyria Delivery" />
+      <p>Você está sem conexão. Verifique sua internet e tente novamente.</p>
+      <button type="button" onclick="window.location.reload()">Tentar novamente</button>
+    </main>
+  </body>
+</html>
