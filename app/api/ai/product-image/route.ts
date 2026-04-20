@@ -1,3 +1,4 @@
+import { gerarPromptImagem } from '@/lib/ai-product-image-prompt'
 import { requireProMarketingAiStore } from '@/lib/ai-plan-guard.server'
 import { currentYearMonthUtc } from '@/lib/menu-import-quota'
 import { getMarketingAiMonthlyLimit } from '@/lib/marketing-ai-quota'
@@ -41,6 +42,8 @@ export async function POST(req: NextRequest) {
     const name = typeof b.name === 'string' ? b.name.trim() : ''
     const description =
       typeof b.description === 'string' ? b.description.trim() : ''
+    const category =
+      typeof b.category === 'string' ? b.category.trim() : ''
 
     if (!storeId) {
       return NextResponse.json({ error: 'storeId em falta.' }, { status: 400 })
@@ -73,20 +76,15 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const descForPrompt =
-      description || 'appetizing dish, professional presentation'
-
-    const imagePrompt = `
-Food photography of ${name}, ${descForPrompt}.
-
-Professional food styling, realistic, high quality, natural lighting, restaurant style, 4k, detailed, appetizing.
-`.trim()
+    const imagePrompt = gerarPromptImagem(name, description, category)
 
     const image = await openai.images.generate({
-      model: 'gpt-image-1',
+      model: 'dall-e-3',
       prompt: imagePrompt,
       n: 1,
       size: '1024x1024',
+      quality: 'hd',
+      style: 'natural',
     })
 
     const item = image.data?.[0]
@@ -154,7 +152,7 @@ Professional food styling, realistic, high quality, natural lighting, restaurant
       return NextResponse.json(
         {
           error:
-            'Modelo de imagem indisponível. Verifica se a tua conta OpenAI suporta gpt-image-1 ou atualiza o modelo na rota.',
+            'Modelo de imagem indisponível. Verifica se a tua conta OpenAI suporta dall-e-3.',
         },
         { status: 502 }
       )

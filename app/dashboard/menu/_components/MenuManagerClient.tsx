@@ -480,10 +480,7 @@ export function MenuManagerClient({
 
   async function runAiImage() {
     const name = formName.trim()
-    if (!name) {
-      alert('Preenche o nome do produto.')
-      return
-    }
+    if (!name) return
     setAiImgBusy(true)
     try {
       const res = await dashboardFetch('/api/ai/product-image', {
@@ -493,6 +490,7 @@ export function MenuManagerClient({
           storeId,
           name,
           description: formDescription.trim(),
+          category: formCategory.trim(),
         }),
       })
       const data = (await res.json()) as { imageUrl?: string; error?: string }
@@ -1090,35 +1088,72 @@ export function MenuManagerClient({
               className="mt-1 block w-full text-sm text-vyria-navy-muted file:mr-3 file:rounded file:border-0 file:bg-[#f0f0f0] file:px-3 file:py-1.5 file:text-sm file:font-medium"
             />
           </label>
-          {formAiImageUrl ? (
-            <div className="rounded-lg border border-[var(--card-border)] bg-[#fafafa] p-2">
-              <div className="relative mx-auto h-40 w-full max-w-xs">
-                <Image
-                  src={formAiImageUrl}
-                  alt="Pré-visualização"
-                  fill
-                  className="object-contain"
-                  unoptimized
-                />
-              </div>
+          {hasProMarketingAi(plan) ? (
+            <div className="space-y-2 rounded-xl border border-[var(--card-border)] bg-[#fafafa]/80 p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-vyria-navy-muted">
+                Imagem com IA
+              </p>
+              {!formName.trim() ? (
+                <p className="text-xs text-vyria-navy-muted">
+                  Preencha o nome do produto primeiro para gerar imagem com IA.
+                </p>
+              ) : null}
               <button
                 type="button"
-                onClick={() => setFormAiImageUrl(null)}
-                className="mt-2 text-xs font-medium text-vyria-navy-muted hover:text-red-600"
+                title={
+                  !formName.trim()
+                    ? 'Preencha o nome do produto primeiro'
+                    : 'Gera uma imagem com base no nome, descrição e categoria'
+                }
+                disabled={!formName.trim() || aiImgBusy || formSaving}
+                onClick={() => void runAiImage()}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--card-border)] bg-white px-3 py-2.5 text-sm font-semibold text-[#374151] shadow-sm hover:bg-[#f9fafb] disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
               >
-                Remover imagem gerada
+                {aiImgBusy ? (
+                  <>
+                    <span
+                      className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-[var(--dash-primary)] border-t-transparent"
+                      aria-hidden
+                    />
+                    <span>Gerando imagem…</span>
+                  </>
+                ) : (
+                  'Gerar imagem com IA'
+                )}
               </button>
+              {aiImgBusy ? (
+                <p className="text-xs text-vyria-navy-muted">
+                  Isso pode levar alguns segundos
+                </p>
+              ) : null}
+              {formAiImageUrl ? (
+                <div className="mt-2 rounded-lg border border-[var(--card-border)] bg-white p-3">
+                  <p className="text-sm font-semibold text-vyria-navy">
+                    Pré-visualização
+                  </p>
+                  <p className="mt-0.5 text-xs text-vyria-navy-muted">
+                    Revê o resultado. A foto só fica associada ao produto no
+                    cardápio depois de clicares em Salvar.
+                  </p>
+                  <div className="relative mx-auto mt-3 h-52 w-full max-w-sm">
+                    <Image
+                      src={formAiImageUrl}
+                      alt="Pré-visualização da imagem gerada"
+                      fill
+                      className="object-contain"
+                      unoptimized
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setFormAiImageUrl(null)}
+                    className="mt-3 text-xs font-medium text-vyria-navy-muted hover:text-red-600"
+                  >
+                    Descartar imagem gerada
+                  </button>
+                </div>
+              ) : null}
             </div>
-          ) : null}
-          {hasProMarketingAi(plan) ? (
-            <button
-              type="button"
-              disabled={aiImgBusy || formSaving}
-              onClick={() => void runAiImage()}
-              className="w-full rounded-lg border border-[var(--card-border)] bg-white px-3 py-2.5 text-sm font-semibold text-[#374151] shadow-sm hover:bg-[#f9fafb] disabled:opacity-50 sm:w-auto"
-            >
-              {aiImgBusy ? 'A gerar imagem (pode demorar)…' : 'Gerar imagem com IA'}
-            </button>
           ) : null}
           <p className="text-xs text-vyria-navy-muted">
             {editingId
