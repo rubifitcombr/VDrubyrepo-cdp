@@ -127,7 +127,7 @@ function PlansNavCta({
   layout,
 }: {
   pathname: string
-  layout: 'sidebar' | 'bottom'
+  layout: 'sidebar' | 'bottom' | 'drawer'
 }) {
   const active = pathname === '/planos' || pathname.startsWith('/dashboard/planos')
   const linkSidebar =
@@ -143,10 +143,19 @@ function PlansNavCta({
         : 'text-orange-200/95 hover:bg-orange-500/15'
     }`
 
+  const linkDrawer =
+    `flex w-full items-center gap-3 rounded-full px-3 py-2.5 text-sm font-medium transition-colors ${
+      active
+        ? 'bg-orange-400/20 text-orange-100 shadow-sm ring-1 ring-orange-400/35'
+        : 'text-orange-200/95 hover:bg-orange-500/15 hover:text-orange-50'
+    }`
+
   return (
     <Link
       href="/planos"
-      className={layout === 'sidebar' ? linkSidebar : linkBottom}
+      className={
+        layout === 'sidebar' ? linkSidebar : layout === 'drawer' ? linkDrawer : linkBottom
+      }
     >
       <IconTrendUp
         className={`shrink-0 ${
@@ -165,7 +174,7 @@ function DashboardNavLinks({
 }: {
   pathname: string
   plan: Plan
-  layout: 'sidebar' | 'bottom'
+  layout: 'sidebar' | 'bottom' | 'drawer'
 }) {
   const allowed = menuKeysForPlan(plan)
   const items = nav.filter((item) => allowed.has(item.menuKey))
@@ -173,7 +182,9 @@ function DashboardNavLinks({
   const navClass =
     layout === 'sidebar'
       ? 'flex touch-pan-x gap-1 overflow-x-auto overscroll-x-contain p-2 [-ms-overflow-style:none] [scrollbar-width:none] md:flex-col md:overflow-visible md:gap-0.5 md:p-3 md:pt-2 [&::-webkit-scrollbar]:hidden'
-      : 'flex touch-pan-x gap-1 overflow-x-auto overscroll-x-contain p-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
+      : layout === 'drawer'
+        ? 'flex flex-col gap-1 p-3 pt-2'
+        : 'flex touch-pan-x gap-1 overflow-x-auto overscroll-x-contain p-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
 
   return (
     <nav className={navClass} aria-label="Navegação do painel">
@@ -202,11 +213,22 @@ function DashboardNavLinks({
                 : 'text-white/70 hover:bg-white/10 hover:text-white'
           }`
 
+        const linkDrawer =
+          `flex w-full items-center gap-3 rounded-full px-3 py-2.5 text-sm font-medium transition-colors ${
+            active
+              ? 'bg-[var(--dash-primary)] text-white shadow-md shadow-[var(--dash-primary)]/25'
+              : quietInactive
+                ? 'text-white/40 hover:bg-white/[0.05] hover:text-white/55'
+                : 'text-white/70 hover:bg-white/10 hover:text-white'
+          }`
+
         return (
           <Link
             key={href}
             href={href}
-            className={layout === 'sidebar' ? linkSidebar : linkBottom}
+            className={
+              layout === 'sidebar' ? linkSidebar : layout === 'drawer' ? linkDrawer : linkBottom
+            }
           >
             <Icon
               className={`shrink-0 ${
@@ -417,10 +439,10 @@ export function DashboardShell({
               </div>
             ) : null}
 
-            <DashboardNavLinks pathname={pathname} plan={plan} layout="sidebar" />
+            <DashboardNavLinks pathname={pathname} plan={plan} layout="drawer" />
 
             <div className="mt-auto flex flex-col gap-2 border-t border-white/10 p-3">
-              <PlansNavCta pathname={pathname} layout="sidebar" />
+              <PlansNavCta pathname={pathname} layout="drawer" />
               {storeSlug ? (
                 <a
                   href={`/${storeSlug}`}
