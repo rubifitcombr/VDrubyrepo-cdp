@@ -207,7 +207,7 @@ export async function POST(req: NextRequest) {
     }
 
     const plan = parsePlan(readStorePlano(storeRow as Record<string, unknown>))
-    const orderStatus = plan === 'START' ? 'delivered' : 'pending'
+    const orderStatus = 'pending'
     const orderSource = plan === 'START' ? 'site_start' : 'site_live'
     const total = Math.round((subtotal + deliveryCharge) * 100) / 100
     const itemsSummary = items.map((l) => `${l.quantity}x ${l.name}`).join(', ')

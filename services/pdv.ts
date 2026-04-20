@@ -81,7 +81,7 @@ export async function submitPdvSale(params: {
       store_id: storeId,
       customer_name: customerName?.trim() || null,
       total,
-      status: 'completed',
+      status: 'pending',
       source: 'pdv',
       payment_method: paymentMethod,
       items_summary: itemsSummary,
