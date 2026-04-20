@@ -16,6 +16,7 @@ import { getUser } from '@/services/auth.server'
 import { getStoreByUser } from '@/services/store.server'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
+import { ServiceWorkerRegister } from '@/app/_components/ServiceWorkerRegister'
 import { DashboardShell } from './_components/DashboardShell'
 
 export default async function DashboardLayout({
@@ -103,6 +104,7 @@ export default async function DashboardLayout({
       billingBlock={billingBlock}
       vyriaDualAccount={vyriaDualAccount}
     >
+      <ServiceWorkerRegister />
       {children}
     </DashboardShell>
   )

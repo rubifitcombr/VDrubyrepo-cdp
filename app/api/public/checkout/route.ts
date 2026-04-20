@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { tryCreateServiceRoleClient } from '@/lib/supabase/service-role.server'
 import { fetchStoreByPublicSlug } from '@/lib/store-public-slug.server'
 import {
   evaluateDeliveryForCustomer,
@@ -145,7 +146,8 @@ export async function POST(req: NextRequest) {
 
     const customerPhone = customerPhoneRaw || null
 
-    const supabase = await createClient()
+    const supabase =
+      tryCreateServiceRoleClient() ?? (await createClient())
     const { data: store, error: storeErr } = await fetchStoreByPublicSlug(
       supabase,
       slug,

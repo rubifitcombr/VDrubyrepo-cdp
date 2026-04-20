@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { tryCreateServiceRoleClient } from '@/lib/supabase/service-role.server'
 
 /**
  * Lista adicionais de um produto (cardápio público).
@@ -11,7 +12,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'productId em falta.' }, { status: 400 })
   }
 
-  const supabase = await createClient()
+  const supabase =
+    tryCreateServiceRoleClient() ?? (await createClient())
   const { data: groups, error: gErr } = await supabase
     .from('addon_groups')
     .select('id, name, required, sort_order')

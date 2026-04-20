@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist_Mono, Montserrat, Playfair_Display } from "next/font/google";
 import "./globals.css";
-import { ServiceWorkerRegister } from "./_components/ServiceWorkerRegister";
+import { ClearLegacyServiceWorker } from "./_components/ClearLegacyServiceWorker";
 
 const playfair = Playfair_Display({
   variable: "--font-playfair",
@@ -65,8 +65,8 @@ export default function RootLayout({
         <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
       </head>
       <body className="flex min-h-dvh flex-col font-sans">
+        <ClearLegacyServiceWorker />
         {children}
-        <ServiceWorkerRegister />
       </body>
     </html>
   );
