@@ -18,6 +18,11 @@ export async function signIn(email: string, password: string) {
   return supabase.auth.signInWithPassword({ email, password })
 }
 
+export function setRememberLoginPreference(remember: boolean) {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem('vyria.rememberLogin', remember ? '1' : '0')
+}
+
 export async function signOut() {
   const supabase = createClient()
   return supabase.auth.signOut()

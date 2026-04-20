@@ -33,6 +33,10 @@ export async function middleware(request: NextRequest) {
   }
 
   const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+    cookieOptions: {
+      // 30 dias para manter sessão entre fechamentos do navegador.
+      lifetime: 60 * 60 * 24 * 30,
+    },
     cookies: {
       getAll() {
         return request.cookies.getAll()
@@ -52,6 +56,7 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser()
 
   const p = rawPath
+  const isAuthPage = p === '/login' || p === '/register'
   const vyriaPanelMode = parseVyriaPanelMode(
     request.cookies.get(VYRIA_PANEL_MODE_COOKIE)?.value
   )
@@ -59,6 +64,13 @@ export async function middleware(request: NextRequest) {
     !!user &&
     isVyriaAdminPanelUser(user.id) &&
     vyriaPanelMode === 'admin'
+
+  if (isAuthPage && user) {
+    if (vyriaInAdminMode) {
+      return NextResponse.redirect(new URL('/admin', request.url))
+    }
+    return NextResponse.redirect(new URL('/dashboard', request.url))
+  }
 
   if (p.startsWith('/api/admin')) {
     if (!user) {

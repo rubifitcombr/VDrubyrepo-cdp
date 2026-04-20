@@ -12,6 +12,12 @@ export function createClient() {
 
   return createBrowserClient(
     url,
-    anonKey
+    anonKey,
+    {
+      cookieOptions: {
+        // 30 dias para manter sessão entre fechamentos do navegador.
+        lifetime: 60 * 60 * 24 * 30,
+      },
+    }
   )
 }

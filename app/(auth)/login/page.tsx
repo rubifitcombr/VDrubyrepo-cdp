@@ -1,8 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { Suspense, useState } from 'react'
-import { signIn } from '@/services/auth'
+import { Suspense, useEffect, useState } from 'react'
+import { setRememberLoginPreference, signIn } from '@/services/auth'
 import { useRouter, useSearchParams } from 'next/navigation'
 
 const inputClass =
@@ -16,8 +16,14 @@ function safeNextPath(raw: string | null): string {
 function LoginForm() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [rememberLogin, setRememberLogin] = useState(true)
   const router = useRouter()
   const searchParams = useSearchParams()
+
+  useEffect(() => {
+    const raw = window.localStorage.getItem('vyria.rememberLogin')
+    if (raw === '0') setRememberLogin(false)
+  }, [])
 
   async function handleLogin() {
     try {
@@ -27,6 +33,8 @@ function LoginForm() {
         alert(error.message)
         return
       }
+
+      setRememberLoginPreference(rememberLogin)
 
       const next = safeNextPath(searchParams.get('next'))
       router.push(next)
@@ -76,6 +84,16 @@ function LoginForm() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
+        </label>
+
+        <label className="flex items-center gap-2 text-sm font-medium text-vyria-navy">
+          <input
+            type="checkbox"
+            checked={rememberLogin}
+            onChange={(e) => setRememberLogin(e.target.checked)}
+            className="h-4 w-4 rounded border-[var(--card-border)] text-vyria-orange focus:ring-vyria-orange/30"
+          />
+          Lembrar login
         </label>
 
         <button
