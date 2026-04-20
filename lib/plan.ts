@@ -266,3 +266,11 @@ export function hasProMarketingAi(plan: Plan): boolean {
 export function hasAutomationAccess(plan: string): boolean {
   return ['GROWTH', 'PRO', 'MASTER'].includes(String(plan || '').toUpperCase())
 }
+
+/**
+ * Toggles de pedido/loja (confirmação WhatsApp, aceitar pedido, notificação, fechar fora de horas,
+ * mensagem de entrega) — Pro e Master. No Growth só a resposta automática com link do cardápio.
+ */
+export function hasOrderPipelineAutomations(plan: Plan): boolean {
+  return planTier(plan) >= planTier('PRO')
+}

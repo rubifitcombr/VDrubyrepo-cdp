@@ -2,8 +2,9 @@
 
 import { useEffect, useState, type ReactNode } from 'react'
 import Image from 'next/image'
+import Link from 'next/link'
 import type { Plan } from '@/lib/plan'
-import { hasAutomationAccess } from '@/lib/plan'
+import { hasAutomationAccess, hasOrderPipelineAutomations } from '@/lib/plan'
 import type {
   StoreAutomationKey,
   StoreAutomationsState,
@@ -156,6 +157,7 @@ export function AutomationsClient({
   const [instanceLoading, setInstanceLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const hasAccess = hasAutomationAccess(storePlan)
+  const canUseOrderAutomations = hasOrderPipelineAutomations(storePlan)
 
   function normalizeConnectionState(value: unknown): string {
     if (typeof value === 'string' && value.trim()) return value.trim().toLowerCase()
@@ -341,11 +343,35 @@ export function AutomationsClient({
           Automações
         </h1>
         <p className="mt-1 text-sm text-vyria-navy-muted">
-          As opções abaixo são aplicadas quando o backend processa o pedido (fila
-          assíncrona). Garante que o telefone da loja e as políticas do WhatsApp
-          Business estão corretos para evitar falhas de entrega.
+          {canUseOrderAutomations ? (
+            <>
+              As opções de pedidos e loja abaixo são aplicadas quando o backend processa o
+              pedido (fila assíncrona). Garante que o telefone da loja e as políticas do
+              WhatsApp Business estão corretos para evitar falhas de entrega.
+            </>
+          ) : (
+            <>
+              No plano Growth, configura aqui a instância WhatsApp e a resposta automática com o
+              link do cardápio. As automações de pedidos (confirmação, aceitar automaticamente,
+              notificações, horário…) estão disponíveis a partir do plano Pro.
+            </>
+          )}
         </p>
       </div>
+
+      {!canUseOrderAutomations ? (
+        <div className="mt-4 rounded-xl border border-amber-100 bg-amber-50/90 px-4 py-3 text-sm text-amber-950">
+          <span className="font-semibold">Queres mais automações?</span>{' '}
+          Faz upgrade para Pro ou Master para ativar confirmação de pedido, aceitar pedidos,
+          notificações e mais.{' '}
+          <Link
+            href="/dashboard/planos"
+            className="font-semibold text-[var(--dash-primary)] underline underline-offset-2 hover:no-underline"
+          >
+            Ver planos
+          </Link>
+        </div>
+      ) : null}
 
       {error ? (
         <p
@@ -356,35 +382,41 @@ export function AutomationsClient({
         </p>
       ) : null}
 
-      <ul className="mt-8 flex flex-col gap-4">
-        {ROWS.map(({ key, title, description, Icon }) => (
-          <li
-            key={key}
-            className="flex items-center gap-4 rounded-2xl border border-[var(--card-border)] bg-white p-4 shadow-sm shadow-vyria-navy-deep/[0.04] sm:gap-5 sm:p-5"
-          >
-            <div
-              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[var(--dash-primary)]/12 text-[var(--dash-primary)]"
-              aria-hidden
+      {canUseOrderAutomations ? (
+        <ul className="mt-8 flex flex-col gap-4">
+          {ROWS.map(({ key, title, description, Icon }) => (
+            <li
+              key={key}
+              className="flex items-center gap-4 rounded-2xl border border-[var(--card-border)] bg-white p-4 shadow-sm shadow-vyria-navy-deep/[0.04] sm:gap-5 sm:p-5"
             >
-              <Icon className="h-6 w-6" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <h2 className="font-semibold text-vyria-navy">{title}</h2>
-              <p className="mt-1 text-sm leading-relaxed text-vyria-navy-muted">
-                {description}
-              </p>
-            </div>
-            <AutomationSwitch
-              on={values[key]}
-              disabled={savingKey !== null}
-              onToggle={() => toggle(key)}
-              label={title}
-            />
-          </li>
-        ))}
-      </ul>
+              <div
+                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[var(--dash-primary)]/12 text-[var(--dash-primary)]"
+                aria-hidden
+              >
+                <Icon className="h-6 w-6" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h2 className="font-semibold text-vyria-navy">{title}</h2>
+                <p className="mt-1 text-sm leading-relaxed text-vyria-navy-muted">
+                  {description}
+                </p>
+              </div>
+              <AutomationSwitch
+                on={values[key]}
+                disabled={savingKey !== null}
+                onToggle={() => toggle(key)}
+                label={title}
+              />
+            </li>
+          ))}
+        </ul>
+      ) : null}
 
-      <section className="mt-8 rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-sm shadow-vyria-navy-deep/[0.04] sm:p-6">
+      <section
+        className={`rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-sm shadow-vyria-navy-deep/[0.04] sm:p-6 ${
+          canUseOrderAutomations ? 'mt-8' : 'mt-6'
+        }`}
+      >
         <div className="mb-6 rounded-xl border border-[var(--card-border)] bg-[#f9fafb] p-4">
           <h2 className="font-semibold text-vyria-navy">Conexão da instância WhatsApp</h2>
           <p className="mt-1 text-sm text-vyria-navy-muted">
@@ -466,7 +498,7 @@ export function AutomationsClient({
             </h2>
             <p className="mt-1 text-sm text-vyria-navy-muted">
               Responde automaticamente com o link do cardápio quando receber nova mensagem no
-              WhatsApp do cliente. Disponível a partir do plano Growth.
+              WhatsApp do cliente. Incluído no plano Growth.
             </p>
           </div>
           {!hasAccess ? (
