@@ -47,14 +47,6 @@ export function AppearanceThemeClient({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    setSelected(resolveStoreTheme(initialPreset).id)
-    setBannerCommitted(initialBannerUrl ?? null)
-    setSlug(initialSlug)
-    setPendingFile(null)
-    setBannerMarkedRemove(false)
-  }, [initialPreset, initialBannerUrl, initialSlug])
-
   const previewBlobUrl = useMemo(() => {
     if (!pendingFile) return null
     return URL.createObjectURL(pendingFile)

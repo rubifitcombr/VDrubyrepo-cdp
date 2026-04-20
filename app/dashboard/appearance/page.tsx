@@ -4,6 +4,9 @@ import { getStoreByUser } from '@/services/store.server'
 import { resolveStoreTheme } from '@/lib/store-theme'
 import { AppearanceThemeClient } from './_components/AppearanceThemeClient'
 
+/** Sempre dados frescos da loja após guardar (evita cache de RSC). */
+export const dynamic = 'force-dynamic'
+
 export default async function AppearancePage() {
   const user = await getUser()
   if (!user) redirect('/login')
@@ -20,9 +23,11 @@ export default async function AppearancePage() {
   }
 
   const row = store as Record<string, unknown>
-  const preset =
-    typeof row.theme_preset === 'string' ? row.theme_preset : undefined
-  const resolved = resolveStoreTheme(preset)
+  const rawPreset =
+    typeof row.theme_preset === 'string' && row.theme_preset.trim()
+      ? row.theme_preset.trim().toLowerCase()
+      : ''
+  const resolved = resolveStoreTheme(rawPreset || undefined)
   const initialBanner =
     typeof row.storefront_banner_url === 'string'
       ? row.storefront_banner_url.trim() || null
@@ -33,6 +38,7 @@ export default async function AppearancePage() {
 
   return (
     <AppearanceThemeClient
+      key={`appearance-${String(row.id)}-${rawPreset || 'none'}-${initialSlug}-${initialBanner ?? 'nobanner'}`}
       storeId={String(row.id)}
       storeName={typeof row.name === 'string' ? row.name : 'Meu estabelecimento'}
       initialPreset={resolved.id}

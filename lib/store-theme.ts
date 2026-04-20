@@ -76,8 +76,12 @@ const byId = new Map<StoreThemeId, StoreTheme>(
 export function resolveStoreTheme(
   preset: string | null | undefined
 ): StoreTheme {
-  if (preset && byId.has(preset as StoreThemeId)) {
-    return byId.get(preset as StoreThemeId)!
+  const key =
+    typeof preset === 'string' && preset.trim()
+      ? preset.trim().toLowerCase()
+      : ''
+  if (key && byId.has(key as StoreThemeId)) {
+    return byId.get(key as StoreThemeId)!
   }
   return byId.get('padrao')!
 }
