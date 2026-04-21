@@ -33,6 +33,7 @@ const FEATURE_LINES: Record<Plan, string[]> = {
     'Pedidos em tempo real',
     'Promoções e cupons',
     'Relatórios',
+    'Aparência personalizada',
     'Importar cardápio por foto (IA)',
     'Chatbot no WhatsApp com envio automático do link do cardápio',
   ],
@@ -41,7 +42,6 @@ const FEATURE_LINES: Record<Plan, string[]> = {
     'KDS monitor de cozinha',
     'PDV balcão',
     'Impressão automática',
-    'Aparência personalizada',
     'Descrição e imagem de produto com IA',
   ],
   MASTER: [

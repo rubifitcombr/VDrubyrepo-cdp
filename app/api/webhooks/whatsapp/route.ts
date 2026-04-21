@@ -137,7 +137,8 @@ export async function POST(req: NextRequest) {
     const body = (await req.json()) as WebhookPayload
 
     const ev = typeof body.event === 'string' ? body.event.trim().toLowerCase() : ''
-    if (ev && ev !== 'messages.upsert') {
+    const normalizedEvent = ev.replace(/_/g, '.')
+    if (normalizedEvent && normalizedEvent !== 'messages.upsert') {
       return NextResponse.json({
         ok: true,
         skipped: true,

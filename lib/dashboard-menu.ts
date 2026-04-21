@@ -37,6 +37,7 @@ export const MENU_POR_PLANO: Record<
     'relatorios',
     'automacoes',
     'configuracoes',
+    'aparencia',
     'assinatura',
   ],
   pro: [

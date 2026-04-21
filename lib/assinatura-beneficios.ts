@@ -20,6 +20,7 @@ export const BENEFICIOS_POR_PLANO: Record<PlanoSlug, string[]> = {
     'Promoções e cupons',
     'Relatórios de vendas',
     'Financeiro completo',
+    'Aparência personalizada (logo, cor, banner)',
     'Importar cardápio por foto (IA)',
   ],
   pro: [
@@ -27,7 +28,6 @@ export const BENEFICIOS_POR_PLANO: Record<PlanoSlug, string[]> = {
     'KDS — monitor de cozinha',
     'PDV / atendimento balcão',
     'Impressão automática de pedidos',
-    'Aparência personalizada (logo, cor, banner)',
     'Descrição e imagem de produto com IA',
   ],
   master: [

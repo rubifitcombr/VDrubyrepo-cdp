@@ -4,6 +4,7 @@ import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
 import {
   deleteEvolutionInstance,
   ensureEvolutionInstance,
+  syncEvolutionWebhook,
   getEvolutionConnectionState,
   getEvolutionQrCode,
   getStoreEvolutionInstanceName,
@@ -58,6 +59,7 @@ export async function GET(req: NextRequest) {
 
     const instanceName = getStoreEvolutionInstanceName(owned.storeId)
     await ensureEvolutionInstance(instanceName)
+    await syncEvolutionWebhook(instanceName)
     const connectionState = await getEvolutionConnectionState(instanceName)
     const qrCode =
       includeQr && connectionState !== 'open'
@@ -122,6 +124,7 @@ export async function POST(req: NextRequest) {
     }
 
     await ensureEvolutionInstance(instanceName)
+    await syncEvolutionWebhook(instanceName)
 
     const qrCode = await getEvolutionQrCode(instanceName)
     const connectionState = await getEvolutionConnectionState(instanceName)

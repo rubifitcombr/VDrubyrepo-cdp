@@ -30,6 +30,36 @@ export function getStoreEvolutionInstanceName(storeId: string): string {
   return normalizeInstanceName(`store_${storeId}`)
 }
 
+/** URL pública do site Vyria (ex.: https://acesso.vyriadelivery.com.br), sem barra final. Usada para registar o webhook na Evolution. */
+function readVyriaPublicUrl(): string | null {
+  const raw = process.env.VYRIA_PUBLIC_URL?.trim()
+  if (!raw) return null
+  return raw.replace(/\/+$/, '')
+}
+
+/**
+ * Garante que a instância envia `MESSAGES_UPSERT` para o webhook da Vyria.
+ * Com `webhookByEvents`, a Evolution faz POST em `{url}/messages-upsert` — ver `app/api/webhooks/whatsapp/messages-upsert`.
+ */
+export async function syncEvolutionWebhook(instanceName: string): Promise<void> {
+  const publicBase = readVyriaPublicUrl()
+  if (!publicBase) return
+
+  const attempt = await evolutionRequest('POST', `/webhook/set/${encodeURIComponent(instanceName)}`, {
+    enabled: true,
+    url: `${publicBase}/api/webhooks/whatsapp`,
+    webhookByEvents: true,
+    webhookBase64: false,
+    events: ['MESSAGES_UPSERT'],
+  })
+  if (!attempt.ok) {
+    const details = attempt.data ? JSON.stringify(attempt.data) : attempt.rawText
+    throw new Error(
+      `Falha ao registar webhook Evolution (${attempt.status}): ${details.slice(0, 400)}`
+    )
+  }
+}
+
 async function safeJson(response: Response): Promise<EvolutionJson | null> {
   try {
     const parsed = (await response.json()) as unknown

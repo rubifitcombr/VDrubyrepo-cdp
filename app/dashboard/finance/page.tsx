@@ -154,7 +154,7 @@ export default async function FinancePage() {
             Faz upgrade para Growth para desbloquear gráficos e comparações no mesmo ecrã.
           </p>
           <Link
-            href="/dashboard/upgrade?feature=finance_complete"
+            href="/dashboard/assinatura"
             className="mt-3 inline-flex rounded-xl bg-[var(--dash-primary)] px-4 py-2 text-sm font-semibold text-white shadow-sm"
           >
             Ver planos
