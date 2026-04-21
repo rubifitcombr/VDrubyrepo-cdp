@@ -14,6 +14,23 @@ import {
 
 export const dynamic = 'force-dynamic'
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function getQrWithRetry(
+  instanceName: string,
+  attempts: number = 5,
+  delayMs: number = 700
+): Promise<string | null> {
+  for (let i = 0; i < attempts; i += 1) {
+    const qr = await getEvolutionQrCode(instanceName)
+    if (qr) return qr
+    if (i < attempts - 1) await sleep(delayMs)
+  }
+  return null
+}
+
 async function ensureMerchantStore(reqStoreId: string) {
   const supabase = await createClient()
   const {
@@ -63,7 +80,7 @@ export async function GET(req: NextRequest) {
     const connectionState = await getEvolutionConnectionState(instanceName)
     const qrCode =
       includeQr && connectionState !== 'open'
-        ? await getEvolutionQrCode(instanceName)
+        ? await getQrWithRetry(instanceName)
         : null
 
     return NextResponse.json({
@@ -126,7 +143,7 @@ export async function POST(req: NextRequest) {
     await ensureEvolutionInstance(instanceName)
     await syncEvolutionWebhook(instanceName)
 
-    const qrCode = await getEvolutionQrCode(instanceName)
+    const qrCode = await getQrWithRetry(instanceName)
     const connectionState = await getEvolutionConnectionState(instanceName)
 
     return NextResponse.json({
