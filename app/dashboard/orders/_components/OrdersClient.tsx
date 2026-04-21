@@ -101,6 +101,41 @@ function statusBadgeClass(status: string | null): string {
   }
 }
 
+/** Fundo do cartão (lavagem leve) alinhada ao status para leitura rápida no mobile. */
+function statusCardSurfaceClass(status: string | null): string {
+  switch (status) {
+    case 'pending':
+      return 'border-amber-200/80 bg-amber-50/95'
+    case 'preparing':
+      return 'border-orange-200/70 bg-orange-50/95'
+    case 'ready':
+      return 'border-violet-200/70 bg-violet-50/95'
+    case 'confirmed':
+      return 'border-sky-200/70 bg-sky-50/95'
+    case 'delivered':
+      return 'border-emerald-200/70 bg-emerald-50/95'
+    case 'cancelled':
+      return 'border-[var(--card-border)] bg-[#f3f4f6]/90'
+    default:
+      return 'border-[var(--card-border)] bg-white'
+  }
+}
+
+function IconChevronExpand({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      aria-hidden
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+    </svg>
+  )
+}
+
 function paymentLabel(raw: string | null | undefined): string {
   const v = raw?.trim().toLowerCase()
   if (!v) return '—'
@@ -215,6 +250,8 @@ export function OrdersClient({
   const [tab, setTab] = useState<TabId>('all')
   const [busyId, setBusyId] = useState<string | null>(null)
   const [liveOk, setLiveOk] = useState(false)
+  /** No mobile, só um cartão expandido por vez; em sm+ ignorado (sempre aberto). */
+  const [expandedMobileId, setExpandedMobileId] = useState<string | null>(null)
   const seenIdsRef = useRef<Set<string>>(
     new Set(initialOrders.map((o) => o.id))
   )
@@ -436,7 +473,7 @@ export function OrdersClient({
           Nenhum pedido neste filtro.
         </div>
       ) : (
-        <ul className="mt-8 flex flex-col gap-4">
+        <ul className="mt-8 flex flex-col gap-2 sm:gap-4">
           {filtered.map((o) => {
             const busy = busyId === o.id
             const st = o.status
@@ -454,14 +491,49 @@ export function OrdersClient({
             const payKind = paymentKind(o.payment_method)
             const showPaymentHighlight = payKind === 'pix' || payKind === 'card'
 
+            const mobileExpanded = expandedMobileId === o.id
+            const customerName = o.customer_name?.trim() || 'Cliente'
+
             return (
               <li
                 key={o.id}
-                className={`overflow-hidden rounded-2xl border border-[var(--card-border)] bg-white shadow-sm shadow-black/[0.04] ${
+                className={`overflow-hidden rounded-2xl border shadow-sm shadow-black/[0.04] ${statusCardSurfaceClass(st)} ${
                   st === 'cancelled' ? 'opacity-75' : ''
                 }`}
               >
-                <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-stretch sm:gap-5 sm:p-5">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setExpandedMobileId((id) => (id === o.id ? null : o.id))
+                  }
+                  className="flex w-full items-center gap-2 border-b border-black/[0.06] px-3 py-2.5 text-left sm:hidden"
+                  aria-expanded={mobileExpanded}
+                  aria-controls={`order-details-${o.id}`}
+                >
+                  <span className="shrink-0 text-sm font-bold text-[var(--dash-primary)]">
+                    {ref}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-sm font-bold text-[#1a1614]">
+                    {customerName}
+                  </span>
+                  <span
+                    className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-wide ${statusBadgeClass(st)}`}
+                  >
+                    {statusLabel(st)}
+                  </span>
+                  <IconChevronExpand
+                    className={`h-5 w-5 shrink-0 text-[#9ca3af] transition-transform duration-200 ${
+                      mobileExpanded ? 'rotate-180' : ''
+                    }`}
+                  />
+                </button>
+
+                <div
+                  id={`order-details-${o.id}`}
+                  className={`gap-4 p-4 sm:gap-5 sm:p-5 ${
+                    mobileExpanded ? 'flex flex-col' : 'hidden'
+                  } sm:flex sm:flex-row sm:items-stretch`}
+                >
                   <div className="flex shrink-0 justify-center sm:block">
                     <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[#f3f4f6] text-base font-bold text-[#374151]">
                       {customerInitials(o.customer_name)}
@@ -471,7 +543,7 @@ export function OrdersClient({
                   <div className="min-w-0 flex-1 space-y-1.5">
                     <p className="text-base font-bold text-[#1a1614]">
                       <span className="text-[var(--dash-primary)]">{ref}</span>{' '}
-                      {o.customer_name?.trim() || 'Cliente'}
+                      {customerName}
                     </p>
                     <p className="text-sm leading-snug text-[#374151]">
                       {itemsLine}
@@ -604,7 +676,7 @@ export function OrdersClient({
                     </div>
                     <div className="flex flex-wrap items-center justify-center gap-2 sm:flex-col sm:items-stretch">
                       <span
-                        className={`inline-flex justify-center rounded-full px-3 py-1.5 text-center text-[10px] font-bold uppercase tracking-wide ${statusBadgeClass(st)}`}
+                        className={`hidden sm:inline-flex justify-center rounded-full px-3 py-1.5 text-center text-[10px] font-bold uppercase tracking-wide ${statusBadgeClass(st)}`}
                       >
                         {statusLabel(st)}
                       </span>
