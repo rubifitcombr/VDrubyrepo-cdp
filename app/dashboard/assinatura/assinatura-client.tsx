@@ -119,7 +119,7 @@ export function AssinaturaClient({ model }: { model: AssinaturaPageModel }) {
   }
 
   const wa = model.whatsappHref
-  const showAcoesUpgrade = model.plan !== 'MASTER' && !!wa
+  const showAcoesUpgrade = model.plan !== 'PRO' && !!wa
 
   return (
     <div className="mx-auto w-full max-w-3xl lg:max-w-4xl">

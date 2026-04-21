@@ -404,7 +404,7 @@ function Rolling30Block({
       </h2>
       <p className="mt-1 text-xs text-violet-900/80">
         Últimos 30 dias corridos face aos 30 dias anteriores (Brasília). Incluído no plano
-        Master.
+        Pro.
       </p>
       <div className="mt-5 grid gap-4 sm:grid-cols-2">
         <div className="rounded-xl border border-violet-100 bg-white/90 p-4">
@@ -480,7 +480,7 @@ export function ReportsDashboardClient({
             Análises e insights do teu negócio.
             {reportsAdvanced ? (
               <span className="ml-2 inline-flex items-center rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-violet-900">
-                Avançado (Master)
+                Avançado (Pro)
               </span>
             ) : null}
           </p>

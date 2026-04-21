@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
     if (limit !== null && used >= limit) {
       return NextResponse.json(
         {
-          error: `Limite mensal de importações por foto atingido (${used}/${limit}). Faz upgrade para Pro ou Master para mais análises.`,
+          error: `Limite mensal de importações por foto atingido (${used}/${limit}). Faz upgrade para Pro para mais análises.`,
           quota: { used, limit, yearMonth: ym },
         },
         { status: 429 }

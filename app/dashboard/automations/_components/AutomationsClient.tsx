@@ -362,7 +362,7 @@ export function AutomationsClient({
       {!canUseOrderAutomations ? (
         <div className="mt-4 rounded-xl border border-amber-100 bg-amber-50/90 px-4 py-3 text-sm text-amber-950">
           <span className="font-semibold">Queres mais automações?</span>{' '}
-          Faz upgrade para Pro ou Master para ativar confirmação de pedido, aceitar pedidos,
+          Faz upgrade para Pro para ativar confirmação de pedido, aceitar pedidos,
           notificações e mais.{' '}
           <Link
             href="/dashboard/planos"

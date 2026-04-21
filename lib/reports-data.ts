@@ -75,6 +75,6 @@ export type ReportsDashboardData = {
   payment: ReportPaymentMix
   promo: ReportPromoSnapshot | null
   conversionAvailable: false
-  /** Plano Master — comparativo extra e export PDF. */
+  /** Plano Pro — comparativo extra e export PDF quando `reports_advanced` está ativo. */
   advanced?: ReportsAdvancedSummary | null
 }

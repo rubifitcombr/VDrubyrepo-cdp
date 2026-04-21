@@ -1,8 +1,9 @@
 /**
- * Planos comerciais (alinhado à matriz Start / Growth / Pro / Master).
- * Valores em `stores.plano` (ou legado `plan`): start|growth|pro|master ou START|…
+ * Planos comerciais: Start / Growth / Pro.
+ * Valores em `stores.plano` (ou legado `plan`): start|growth|pro ou START|…
+ * O valor legado `master` é tratado como Pro em `parsePlan`.
  */
-export type Plan = 'START' | 'GROWTH' | 'PRO' | 'MASTER'
+export type Plan = 'START' | 'GROWTH' | 'PRO'
 
 export type Feature =
   | 'dashboard'
@@ -22,7 +23,7 @@ export type Feature =
   | 'automations'
   | 'printing'
   | 'kds'
-  /** Reservado: gestão de estoque, exclusivo Master na matriz comercial */
+  /** Reservado: gestão de estoque (ainda não comercializado por plano) */
   | 'inventory'
 
 const PLAN_FEATURES: Record<Plan, Record<Feature, boolean>> = {
@@ -72,7 +73,7 @@ const PLAN_FEATURES: Record<Plan, Record<Feature, boolean>> = {
     finance_complete: true,
     promotions: true,
     reports: true,
-    reports_advanced: false,
+    reports_advanced: true,
     settings: true,
     appearance: true,
     automations: true,
@@ -80,34 +81,12 @@ const PLAN_FEATURES: Record<Plan, Record<Feature, boolean>> = {
     kds: true,
     inventory: false,
   },
-  MASTER: {
-    dashboard: true,
-    products: true,
-    subscription: true,
-    orders: true,
-    pdv: true,
-    finance: true,
-    finance_complete: true,
-    promotions: true,
-    reports: true,
-    reports_advanced: true,
-    settings: true,
-    appearance: true,
-    automations: true,
-    printing: true,
-    kds: true,
-    inventory: true,
-  },
 }
 
 export function parsePlan(value: unknown): Plan {
-  const v = String(value || '').toUpperCase()
-  if (
-    v === 'GROWTH' ||
-    v === 'PRO' ||
-    v === 'START' ||
-    v === 'MASTER'
-  ) {
+  const v = String(value || '').trim().toUpperCase()
+  if (v === 'MASTER') return 'PRO'
+  if (v === 'GROWTH' || v === 'PRO' || v === 'START') {
     return v
   }
   return 'START'
@@ -122,8 +101,6 @@ export function planShortLabel(plan: Plan): string {
       return 'Growth'
     case 'PRO':
       return 'Pro'
-    case 'MASTER':
-      return 'Master'
     default:
       return 'Start'
   }
@@ -132,9 +109,7 @@ export function planShortLabel(plan: Plan): string {
 /** Planos com tier superior ao atual (para upgrade). */
 export function plansAbove(plan: Plan): Plan[] {
   const t = planTier(plan)
-  return (['START', 'GROWTH', 'PRO', 'MASTER'] as const).filter(
-    (p) => planTier(p) > t
-  )
+  return (['START', 'GROWTH', 'PRO'] as const).filter((p) => planTier(p) > t)
 }
 
 /** Plano recomendado no upgrade: um nível acima. */
@@ -143,7 +118,7 @@ export function recommendedUpgradePlan(plan: Plan): Plan | null {
   return above.length ? above[0]! : null
 }
 
-/** Badge colorido (fundo claro) alinhado aos locks do sidebar: Start/Growth âmbar, Pro neutro, Master violeta. */
+/** Badge colorido (fundo claro) alinhado aos locks do sidebar: Start/Growth âmbar, Pro neutro. */
 export function planContentBadgeClass(plan: Plan): string {
   switch (plan) {
     case 'START':
@@ -152,8 +127,6 @@ export function planContentBadgeClass(plan: Plan): string {
       return 'bg-amber-400/15 text-amber-950 ring-1 ring-amber-300/35'
     case 'PRO':
       return 'bg-[#f3f4f6] text-[#1a1614] ring-1 ring-black/10'
-    case 'MASTER':
-      return 'bg-violet-400/15 text-violet-950 ring-1 ring-violet-300/35'
     default:
       return 'bg-amber-400/15 text-amber-950 ring-1 ring-amber-300/35'
   }
@@ -168,8 +141,6 @@ export function planTier(plan: Plan): number {
       return 1
     case 'PRO':
       return 2
-    case 'MASTER':
-      return 3
     default:
       return 0
   }
@@ -180,7 +151,7 @@ export function hasFeature(plan: Plan, feature: Feature) {
 }
 
 /** Plano mínimo para badge / upgrade (itens com `lock` no menu). */
-export type MinPlanForFeature = 'GROWTH' | 'PRO' | 'MASTER'
+export type MinPlanForFeature = 'GROWTH' | 'PRO'
 
 const FEATURE_MIN_PLAN: Partial<Record<Feature, MinPlanForFeature>> = {
   orders: 'GROWTH',
@@ -192,8 +163,8 @@ const FEATURE_MIN_PLAN: Partial<Record<Feature, MinPlanForFeature>> = {
   appearance: 'GROWTH',
   printing: 'PRO',
   kds: 'PRO',
-  reports_advanced: 'MASTER',
-  inventory: 'MASTER',
+  reports_advanced: 'PRO',
+  inventory: 'PRO',
 }
 
 export function minPlanForFeature(feature: Feature): MinPlanForFeature | null {
@@ -206,8 +177,6 @@ export function planBadgeLabel(minPlan: MinPlanForFeature): string {
       return 'Growth'
     case 'PRO':
       return 'Pro'
-    case 'MASTER':
-      return 'Master'
     default:
       return 'Growth'
   }
@@ -222,8 +191,6 @@ export function planTitle(plan: Plan): string {
       return 'Plano Growth'
     case 'PRO':
       return 'Plano Pro'
-    case 'MASTER':
-      return 'Plano Master'
     default:
       return 'Plano Start'
   }
@@ -233,7 +200,6 @@ const PLAN_MONTHLY_BRL: Record<Plan, number> = {
   START: 49.9,
   GROWTH: 99.9,
   PRO: 149.9,
-  MASTER: 249.9,
 }
 
 /** Valor mensal em BRL (mesma tabela que `planMonthlyPriceLabel`). */
@@ -252,29 +218,27 @@ export function planMonthlyPriceLabel(plan: Plan): string {
 
 /** Importação de cardápio por foto — Growth em diante (matriz comercial). */
 export function hasAiMenuPhotoImport(plan: Plan): boolean {
-  return (
-    plan === 'GROWTH' || plan === 'PRO' || plan === 'MASTER'
-  )
+  return plan === 'GROWTH' || plan === 'PRO'
 }
 
 /** Geração de descrição com IA (API /api/ai/product-description) — Growth em diante. */
 export function hasMarketingAiDescription(plan: Plan): boolean {
-  return plan === 'GROWTH' || plan === 'PRO' || plan === 'MASTER'
+  return plan === 'GROWTH' || plan === 'PRO'
 }
 
-/** Geração de imagem de produto com IA (API /api/ai/product-image) — Pro e Master. */
+/** Geração de imagem de produto com IA (API /api/ai/product-image) — só Pro. */
 export function hasProMarketingAi(plan: Plan): boolean {
-  return plan === 'PRO' || plan === 'MASTER'
+  return plan === 'PRO'
 }
 
 /** Acesso à automação de WhatsApp (chatbot simples) — Growth em diante. */
 export function hasAutomationAccess(plan: string): boolean {
-  return ['GROWTH', 'PRO', 'MASTER'].includes(String(plan || '').toUpperCase())
+  return ['GROWTH', 'PRO'].includes(String(plan || '').toUpperCase())
 }
 
 /**
  * Toggles de pedido/loja (confirmação WhatsApp, aceitar pedido, notificação, fechar fora de horas,
- * mensagem de entrega) — Pro e Master. No Growth só a resposta automática com link do cardápio.
+ * mensagem de entrega) — Pro. No Growth só a resposta automática com link do cardápio.
  */
 export function hasOrderPipelineAutomations(plan: Plan): boolean {
   return planTier(plan) >= planTier('PRO')

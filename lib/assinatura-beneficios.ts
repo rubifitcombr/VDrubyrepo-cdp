@@ -1,6 +1,6 @@
 import type { Plan } from '@/lib/plan'
 
-type PlanoSlug = 'start' | 'growth' | 'pro' | 'master'
+type PlanoSlug = 'start' | 'growth' | 'pro'
 
 function slug(plan: Plan): PlanoSlug {
   return plan.toLowerCase() as PlanoSlug
@@ -29,24 +29,13 @@ export const BENEFICIOS_POR_PLANO: Record<PlanoSlug, string[]> = {
     'PDV / atendimento balcão',
     'Impressão automática de pedidos',
     'Descrição e imagem de produto com IA',
-  ],
-  master: [
-    'Tudo do Pro',
-    'Gestão de estoque',
-    'Automações avançadas',
-    'Recuperação de carrinho via WhatsApp',
-    'Chatbot vendedor com IA',
-    'Sugestão de preço baseada no mercado',
-    'Previsão de demanda',
-    'Campanhas automáticas WhatsApp',
-    'App garçom / mesas',
+    'Relatórios avançados (comparativos e insights extra)',
   ],
 }
 
 const PROXIMO_PLANO: Partial<Record<Plan, Plan>> = {
   START: 'GROWTH',
   GROWTH: 'PRO',
-  PRO: 'MASTER',
 }
 
 export function beneficiosDoPlano(plan: Plan): string[] {

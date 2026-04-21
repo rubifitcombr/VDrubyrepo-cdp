@@ -771,7 +771,7 @@ export function MenuManagerClient({
         if (lim != null && typeof u === 'number') {
           setImportQuotaHint(`Importações neste mês: ${u} / ${lim}`)
         } else if (lim == null && typeof u === 'number') {
-          setImportQuotaHint(`Importações neste mês: ${u} (ilimitado no Master)`)
+          setImportQuotaHint(`Importações neste mês: ${u}`)
         }
         if (data.quota.usageWarning) {
           console.warn(data.quota.usageWarning)

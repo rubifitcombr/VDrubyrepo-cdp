@@ -50,7 +50,7 @@ export async function requireMarketingAiDescriptionStore(
     return {
       ok: false,
       status: 403,
-      error: 'Descrição com IA disponível nos planos Growth, Pro e Master.',
+      error: 'Descrição com IA disponível nos planos Growth e Pro.',
     }
   }
   return base
@@ -61,11 +61,11 @@ export async function requireProMarketingAiStore(
 ): Promise<GuardOk | GuardFail> {
   const base = await requireOwnedActiveStorePlan(storeId)
   if (!base.ok) return base
-  if (base.plan !== 'PRO' && base.plan !== 'MASTER') {
+  if (base.plan !== 'PRO') {
     return {
       ok: false,
       status: 403,
-      error: 'Geração de imagem com IA disponível nos planos Pro e Master.',
+      error: 'Geração de imagem com IA disponível no plano Pro.',
     }
   }
   return base

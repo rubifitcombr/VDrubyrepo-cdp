@@ -113,7 +113,11 @@ export async function POST(req: NextRequest) {
       if (usedDesc >= descLimit) {
         return NextResponse.json(
           {
-            error: `Limite mensal de descrições com IA atingido (${descLimit}). No plano Master o limite é ilimitado.`,
+            error: `Limite mensal de descrições com IA atingido (${descLimit}). ${
+              guard.plan === 'GROWTH'
+                ? 'No plano Pro a quota é maior; o contador renova todo mês.'
+                : 'O contador renova no início do próximo mês.'
+            }`,
           },
           { status: 429 }
         )

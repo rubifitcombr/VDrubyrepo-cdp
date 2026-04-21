@@ -5,20 +5,18 @@ import { planMonthlyPriceLabel, planTier } from '@/lib/plan'
 import Link from 'next/link'
 import { useMemo } from 'react'
 
-const PLANS: Plan[] = ['START', 'GROWTH', 'PRO', 'MASTER']
+const PLANS: Plan[] = ['START', 'GROWTH', 'PRO']
 
 const PRICE_LABEL: Record<Plan, string> = {
   START: planMonthlyPriceLabel('START'),
   GROWTH: planMonthlyPriceLabel('GROWTH'),
   PRO: planMonthlyPriceLabel('PRO'),
-  MASTER: planMonthlyPriceLabel('MASTER'),
 }
 
 const TITLE: Record<Plan, string> = {
   START: 'Start',
   GROWTH: 'Growth',
   PRO: 'Pro',
-  MASTER: 'Master',
 }
 
 const FEATURE_LINES: Record<Plan, string[]> = {
@@ -43,16 +41,7 @@ const FEATURE_LINES: Record<Plan, string[]> = {
     'PDV balcão',
     'Impressão automática',
     'Descrição e imagem de produto com IA',
-  ],
-  MASTER: [
-    'Tudo do Pro',
-    'Estoque',
-    'Automações avançadas',
-    'Recuperação de carrinho IA',
-    'Sugestão de preço',
-    'Previsão de demanda',
-    'Campanhas WhatsApp',
-    'App garçom',
+    'Relatórios avançados',
   ],
 }
 
@@ -65,7 +54,7 @@ export function PlanosPageClient({
 }) {
   const currentTier = planTier(currentPlan)
   const recommendedPlan = useMemo((): Plan | null => {
-    if (currentPlan === 'MASTER') return null
+    if (currentPlan === 'PRO') return null
     const idx = PLANS.indexOf(currentPlan)
     return idx >= 0 && idx < PLANS.length - 1 ? PLANS[idx + 1]! : null
   }, [currentPlan])
@@ -85,7 +74,7 @@ export function PlanosPageClient({
         </p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {PLANS.map((plan) => {
           const tier = planTier(plan)
           const isCurrent = plan === currentPlan

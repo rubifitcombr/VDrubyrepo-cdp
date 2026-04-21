@@ -9,16 +9,16 @@ const FEATURE_LABEL: Record<string, { title: string; minPlan: string }> = {
   pdv: { title: 'PDV / balcão presencial', minPlan: 'Growth' },
   promotions: { title: 'Promoções (cupons e campanhas)', minPlan: 'Growth' },
   reports: { title: 'Relatórios de vendas', minPlan: 'Growth' },
-  reports_advanced: { title: 'Relatórios avançados', minPlan: 'Master' },
-  appearance: { title: 'Aparência (cor, logo, banner)', minPlan: 'Pro' },
+  reports_advanced: { title: 'Relatórios avançados', minPlan: 'Pro' },
+  appearance: { title: 'Aparência (cor, logo, banner)', minPlan: 'Growth' },
   automations: { title: 'Automações (mensagens e recuperação)', minPlan: 'Growth' },
   printing: { title: 'Impressão automática', minPlan: 'Pro' },
   kds: { title: 'KDS — monitor de cozinha', minPlan: 'Pro' },
   marketing_ai: {
-    title: 'Marketing com IA (descrições e imagens ilimitadas no Master)',
-    minPlan: 'Master',
+    title: 'Marketing com IA (descrições e imagens no plano Pro)',
+    minPlan: 'Pro',
   },
-  inventory: { title: 'Gestão de estoque', minPlan: 'Master' },
+  inventory: { title: 'Gestão de estoque', minPlan: 'Pro' },
 }
 
 export default async function UpgradePage({
@@ -52,7 +52,7 @@ export default async function UpgradePage({
           )}
         </p>
 
-        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-6 grid gap-3 sm:grid-cols-3">
           <div className="rounded-2xl border border-[var(--card-border)] bg-[#f9f9f9] p-5">
             <p className="text-xs font-semibold uppercase tracking-wider text-vyria-navy-muted">
               Start
@@ -85,24 +85,12 @@ export default async function UpgradePage({
               Pro
             </p>
             <p className="mt-2 text-sm font-semibold text-vyria-navy">
-              Balcão + cozinha
+              Balcão + cozinha + extras
             </p>
             <ul className="mt-3 space-y-1 text-sm text-vyria-navy-muted">
               <li>PDV, KDS, impressão</li>
-              <li>Aparência e automações</li>
-            </ul>
-          </div>
-
-          <div className="rounded-2xl border border-[var(--card-border)] bg-[#f9f9f9] p-5 sm:col-span-2 lg:col-span-1">
-            <p className="text-xs font-semibold uppercase tracking-wider text-vyria-navy-muted">
-              Master
-            </p>
-            <p className="mt-2 text-sm font-semibold text-vyria-navy">
-              Vip Air — máximo
-            </p>
-            <ul className="mt-3 space-y-1 text-sm text-vyria-navy-muted">
-              <li>Relatórios avançados e stock</li>
-              <li>Exclusivos comerciais Master</li>
+              <li>Aparência e automações avançadas</li>
+              <li>Relatórios avançados e IA de imagem</li>
             </ul>
           </div>
         </div>
@@ -127,4 +115,3 @@ export default async function UpgradePage({
     </div>
   )
 }
-

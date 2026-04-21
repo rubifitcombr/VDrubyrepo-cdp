@@ -18,7 +18,7 @@ export type DashboardMenuKey =
   | 'automacoes'
 
 export const MENU_POR_PLANO: Record<
-  'start' | 'growth' | 'pro' | 'master',
+  'start' | 'growth' | 'pro',
   DashboardMenuKey[]
 > = {
   start: [
@@ -55,22 +55,6 @@ export const MENU_POR_PLANO: Record<
     'pdv',
     'assinatura',
   ],
-  master: [
-    'dashboard',
-    'produtos',
-    'pedidos',
-    'estoque',
-    'financeiro',
-    'promocoes',
-    'relatorios',
-    'configuracoes',
-    'aparencia',
-    'impressao',
-    'automacoes',
-    'kds',
-    'pdv',
-    'assinatura',
-  ],
 }
 
 const MENU_KEY_TO_PATH_PREFIX: Record<DashboardMenuKey, string> = {
@@ -90,8 +74,8 @@ const MENU_KEY_TO_PATH_PREFIX: Record<DashboardMenuKey, string> = {
   automacoes: '/dashboard/automations',
 }
 
-function planSlug(plan: Plan): 'start' | 'growth' | 'pro' | 'master' {
-  return plan.toLowerCase() as 'start' | 'growth' | 'pro' | 'master'
+function planSlug(plan: Plan): 'start' | 'growth' | 'pro' {
+  return plan.toLowerCase() as 'start' | 'growth' | 'pro'
 }
 
 export function menuKeysForPlan(plan: Plan): ReadonlySet<DashboardMenuKey> {

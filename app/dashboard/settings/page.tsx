@@ -3,7 +3,7 @@
 import { DashboardBusinessHoursCard } from '@/app/dashboard/_components/DashboardBusinessHoursCard'
 import { StoreOpenSwitch } from '@/app/dashboard/_components/StoreOpenSwitch'
 import { PublicSlugPathPill } from '@/app/_components/PublicSlugPathPill'
-import { planTier, parsePlan } from '@/lib/plan'
+import { planTier, parsePlan, type Plan } from '@/lib/plan'
 import { readStorePlano } from '@/lib/store-columns'
 import { uploadStoreLogo } from '@/lib/storage-upload'
 import Image from 'next/image'
@@ -71,7 +71,7 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false)
   const [savedToast, setSavedToast] = useState(false)
   const [copied, setCopied] = useState(false)
-  const [storePlan, setStorePlan] = useState<'START' | 'GROWTH' | 'PRO' | 'MASTER'>('START')
+  const [storePlan, setStorePlan] = useState<Plan>('START')
   const [logoUrl, setLogoUrl] = useState<string | null>(null)
   const [supportsLogoUrl, setSupportsLogoUrl] = useState(true)
   const [supportsLocationFields, setSupportsLocationFields] = useState(true)

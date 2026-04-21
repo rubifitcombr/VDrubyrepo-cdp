@@ -3,12 +3,19 @@ import 'server-only'
 import type { Plan } from '@/lib/plan'
 import { parsePlan, planTier } from '@/lib/plan'
 
+function normalizeDevForcePlan(raw: string): Plan | null {
+  const u = raw.trim().toUpperCase()
+  if (u === 'MASTER') return 'PRO'
+  if (u === 'START' || u === 'GROWTH' || u === 'PRO') return u
+  return null
+}
+
 /**
  * Plano efetivo no painel (server-only).
  * Em desenvolvimento:
- * - `VYRIA_DEV_FORCE_PLAN` — força o plano (START|GROWTH|PRO|MASTER).
+ * - `VYRIA_DEV_FORCE_PLAN` — força o plano (START|GROWTH|PRO).
  * - `VYRIA_DEV_PRO_EMAILS` — garante pelo menos PRO para emails listados, mas **não
- *   reduz** um plano já superior vindo do Supabase (ex.: MASTER na loja continua Master).
+ *   reduz** um plano já superior vindo do Supabase.
  */
 export function effectiveDashboardPlan(
   userEmail: string | undefined | null,
@@ -17,15 +24,9 @@ export function effectiveDashboardPlan(
   const fromStore = parsePlan(rawStorePlan)
 
   if (process.env.NODE_ENV === 'development') {
-    const forced = process.env.VYRIA_DEV_FORCE_PLAN?.trim().toUpperCase()
-    if (
-      userEmail &&
-      (forced === 'PRO' ||
-        forced === 'GROWTH' ||
-        forced === 'START' ||
-        forced === 'MASTER')
-    ) {
-      return forced as Plan
+    const forced = normalizeDevForcePlan(process.env.VYRIA_DEV_FORCE_PLAN || '')
+    if (userEmail && forced) {
+      return forced
     }
 
     const allow = (process.env.VYRIA_DEV_PRO_EMAILS || '')

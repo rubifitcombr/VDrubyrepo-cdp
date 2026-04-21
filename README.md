@@ -4,7 +4,7 @@ App Next.js (painel + cardápio público). Variáveis de ambiente: ver `.env.exa
 
 ## Planos e cobrança
 
-O plano da loja (`stores.plano`: `start` \| `growth` \| `pro` \| `master`) e o estado (`stores.status`: pendente, ativo, bloqueado, cancelado) são atualizados no painel admin, na página **Assinatura** (pedido de upgrade) ou diretamente na base de dados. **Cobrança e liberação de acessos são tratadas manualmente** pela equipa — não há integração automática com gateway de pagamento no código.
+O plano da loja (`stores.plano`: `start` \| `growth` \| `pro`; o valor legado `master` é lido como Pro) e o estado (`stores.status`: pendente, ativo, bloqueado, cancelado) são atualizados no painel admin, na página **Assinatura** (pedido de upgrade) ou diretamente na base de dados. **Cobrança e liberação de acessos são tratadas manualmente** pela equipa — não há integração automática com gateway de pagamento no código.
 
 - Lojistas **pendentes**, **bloqueados**, **cancelados** ou com **plano vencido** são redirecionados para `/acesso-suspenso` (middleware + APIs do painel devolvem 403 com `error` no JSON).
 - Variáveis: `ADMIN_EMAIL`, `RESEND_API_KEY`, `NEXT_PUBLIC_ADMIN_WHATSAPP`, `CRON_SECRET` — ver `.env.example`.

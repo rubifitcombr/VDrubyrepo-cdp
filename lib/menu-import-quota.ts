@@ -7,8 +7,6 @@ export function getMenuImportMonthlyLimit(plan: Plan): number | null {
       return 5
     case 'PRO':
       return 15
-    case 'MASTER':
-      return null
     default:
       return 0
   }

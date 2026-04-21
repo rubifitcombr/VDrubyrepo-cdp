@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
       if (usedImg >= imgLimit) {
         return NextResponse.json(
           {
-            error: `Limite mensal de imagens com IA atingido (${imgLimit}). No plano Master o limite é ilimitado.`,
+            error: `Limite mensal de imagens com IA atingido (${imgLimit}). O contador renova no início do próximo mês.`,
           },
           { status: 429 }
         )

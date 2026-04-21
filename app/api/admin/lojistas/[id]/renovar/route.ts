@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { requireAdminApi } from '@/lib/admin-auth.server'
 import { fetchLojistaDetail } from '@/lib/admin-lojistas-query.server'
 import { parseMerchantStatus } from '@/lib/merchant-status'
-import { parsePlan } from '@/lib/plan'
+import { parsePlan, planShortLabel } from '@/lib/plan'
 import { readStorePlano } from '@/lib/store-columns'
 import { planToPlanoColumn } from '@/lib/plano-db'
 import { readStoreStatus } from '@/lib/store-columns'
@@ -103,18 +103,12 @@ export async function POST(
   }
 
   const pFinal = plano ?? parsePlan(readStorePlano(row))
-  const label = {
-    START: 'Start',
-    GROWTH: 'Growth',
-    PRO: 'Pro',
-    MASTER: 'Master',
-  }[pFinal]
 
   await insertAdminLog(ctx.svc, {
     adminId: ctx.user.id,
     lojistaId: id,
     acao: 'renovou',
-    detalhes: `Renovação · ${label} · vence ${fmtDateBr(novoVence)}`,
+    detalhes: `Renovação · ${planShortLabel(pFinal)} · vence ${fmtDateBr(novoVence)}`,
   })
 
   const detail = await fetchLojistaDetail(ctx.svc, id)

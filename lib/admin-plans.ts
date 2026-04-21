@@ -9,5 +9,4 @@ export const ADMIN_PLAN_OPTIONS: Array<{
   { code: 'START', label: 'Start', priceLabel: 'R$ 49,90' },
   { code: 'GROWTH', label: 'Growth', priceLabel: 'R$ 99,90' },
   { code: 'PRO', label: 'Pro', priceLabel: 'R$ 149,90' },
-  { code: 'MASTER', label: 'Master', priceLabel: 'R$ 249,90' },
 ]
