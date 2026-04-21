@@ -45,12 +45,15 @@ export async function syncEvolutionWebhook(instanceName: string): Promise<void> 
   const publicBase = readVyriaPublicUrl()
   if (!publicBase) return
 
+  // Evolution API (ex.: main) valida o corpo como EventDto: obrigatório `webhook: { url, events, ... }`.
   const attempt = await evolutionRequest('POST', `/webhook/set/${encodeURIComponent(instanceName)}`, {
-    enabled: true,
-    url: `${publicBase}/api/webhooks/whatsapp`,
-    webhookByEvents: true,
-    webhookBase64: false,
-    events: ['MESSAGES_UPSERT'],
+    webhook: {
+      enabled: true,
+      url: `${publicBase}/api/webhooks/whatsapp`,
+      byEvents: true,
+      base64: false,
+      events: ['MESSAGES_UPSERT'],
+    },
   })
   if (!attempt.ok) {
     const details = attempt.data ? JSON.stringify(attempt.data) : attempt.rawText
