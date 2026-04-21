@@ -6,6 +6,7 @@ import {
   normalizePublicSlugSegment,
 } from '@/lib/store-public-slug.server'
 import { readStorePlano } from '@/lib/store-columns'
+import { parsePlan, planTier } from '@/lib/plan'
 import { getStoreOpenState, getTodayClosingDisplayHM } from '@/lib/business-hours'
 import { effectiveProductPrice, hasActivePromotion } from '@/lib/product-pricing'
 import { resolveStoreTheme } from '@/lib/store-theme'
@@ -32,6 +33,11 @@ type StoreRow = {
   delivery_fee?: number | null
   delivery_free_above?: number | null
   delivery_max_km?: number | null
+  location_enabled?: boolean | null
+  location_lat?: number | null
+  location_lng?: number | null
+  location_address?: string | null
+  location_label?: string | null
 }
 
 type ProductRow = {
@@ -45,6 +51,29 @@ type ProductRow = {
   promotional_price?: number | string | null
   promotion_active?: boolean | null
 }
+
+const STORE_PUBLIC_SELECT = [
+  'id',
+  'name',
+  'slug',
+  'plan',
+  'plano',
+  'phone',
+  'subtitle',
+  'business_hours',
+  'manual_closed',
+  'theme_preset',
+  'storefront_banner_url',
+  'logo_url',
+  'delivery_fee',
+  'delivery_free_above',
+  'delivery_max_km',
+  'location_enabled',
+  'location_lat',
+  'location_lng',
+  'location_address',
+  'location_label',
+].join(',')
 
 /** Evita 404 em cache (CDN/PWA) para rotas dinâmicas por loja. */
 export const dynamic = 'force-dynamic'
@@ -72,7 +101,7 @@ export default async function StorefrontPage({ params }: Props) {
   const { data: store, error: storeError } = await fetchStoreByPublicSlug(
     supabase,
     slugSegment,
-    '*'
+    STORE_PUBLIC_SELECT
   )
 
   if (storeError || !store) {
@@ -137,12 +166,22 @@ export default async function StorefrontPage({ params }: Props) {
 
   const logoUrl =
     typeof s.logo_url === 'string' ? s.logo_url.trim() || null : null
+  const storePlan = parsePlan(readStorePlano(s as Record<string, unknown>))
+  const canShowLocation = planTier(storePlan) >= planTier('GROWTH')
+  const rawLat = s.location_lat != null ? Number(s.location_lat) : null
+  const rawLng = s.location_lng != null ? Number(s.location_lng) : null
+  const locationLat = rawLat != null && Number.isFinite(rawLat) ? rawLat : null
+  const locationLng = rawLng != null && Number.isFinite(rawLng) ? rawLng : null
+  const locationAddress =
+    typeof s.location_address === 'string' ? s.location_address.trim() || null : null
+  const locationLabel =
+    typeof s.location_label === 'string' ? s.location_label.trim() || null : null
 
   return (
     <StorefrontMenuClient
       storeName={s.name}
       storeSlug={s.slug}
-      storePlan={String(readStorePlano(s as Record<string, unknown>) ?? '')}
+      storePlan={storePlan}
       phone={s.phone}
       subtitle={s.subtitle}
       logoUrl={logoUrl}
@@ -162,6 +201,11 @@ export default async function StorefrontPage({ params }: Props) {
       deliveryMaxKm={
         s.delivery_max_km != null ? Number(s.delivery_max_km) : null
       }
+      locationEnabled={canShowLocation && Boolean(s.location_enabled)}
+      locationLat={locationLat}
+      locationLng={locationLng}
+      locationAddress={locationAddress}
+      locationLabel={locationLabel}
     />
   )
 }

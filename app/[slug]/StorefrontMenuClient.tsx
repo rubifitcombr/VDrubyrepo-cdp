@@ -102,6 +102,46 @@ function IconChevronRight({ className }: { className?: string }) {
   )
 }
 
+function IconMapPin({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12Z" />
+      <circle cx="12" cy="10" r="2.5" />
+    </svg>
+  )
+}
+
+function IconExternalArrow({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M7 17 17 7" />
+      <path d="M8 7h9v9" />
+    </svg>
+  )
+}
+
 function IconTruck({ className }: { className?: string }) {
   return (
     <svg
@@ -284,6 +324,11 @@ export function StorefrontMenuClient({
   deliveryFee,
   deliveryFreeAbove,
   deliveryMaxKm,
+  locationEnabled,
+  locationLat,
+  locationLng,
+  locationAddress,
+  locationLabel,
 }: {
   storeName: string
   storeSlug: string
@@ -300,6 +345,11 @@ export function StorefrontMenuClient({
   deliveryFee?: number | null
   deliveryFreeAbove?: number | null
   deliveryMaxKm?: number | null
+  locationEnabled?: boolean
+  locationLat?: number | null
+  locationLng?: number | null
+  locationAddress?: string | null
+  locationLabel?: string | null
 }) {
   const { items, itemCount, subtotal, removeItem, setQuantity } = useCart()
   const searchRef = useRef<HTMLInputElement>(null)
@@ -367,6 +417,29 @@ export function StorefrontMenuClient({
     deliveryFee !== undefined &&
     deliveryFee !== null &&
     Number.isFinite(Number(deliveryFee))
+  const hasCoords =
+    Number.isFinite(Number(locationLat)) && Number.isFinite(Number(locationLng))
+  const mapsHref = useMemo(() => {
+    if (!locationEnabled) return null
+    const text = locationAddress?.trim() || ''
+    if (text && /^https?:\/\//i.test(text)) return text
+    if (hasCoords) {
+      return `https://maps.google.com/?q=${locationLat},${locationLng}`
+    }
+    if (text) {
+      return `https://maps.google.com/?q=${encodeURIComponent(text)}`
+    }
+    return null
+  }, [hasCoords, locationAddress, locationEnabled, locationLat, locationLng])
+  const locationTitle = locationLabel?.trim() || 'Nossa localização'
+  const locationDescription =
+    locationAddress?.trim() && !/^https?:\/\//i.test(locationAddress.trim())
+      ? locationAddress.trim()
+      : 'Toque no botão para abrir o mapa.'
+  const mapEmbedSrc =
+    locationEnabled && hasCoords
+      ? `https://www.openstreetmap.org/export/embed.html?bbox=${Number(locationLng) - 0.01},${Number(locationLat) - 0.01},${Number(locationLng) + 0.01},${Number(locationLat) + 0.01}&layer=mapnik&marker=${Number(locationLat)},${Number(locationLng)}`
+      : null
 
   function scrollToCheckout() {
     document.getElementById('checkout')?.scrollIntoView({ behavior: 'smooth' })
@@ -736,6 +809,41 @@ export function StorefrontMenuClient({
             ))}
           </div>
         )}
+
+        {locationEnabled ? (
+          <section className="mt-10 rounded-2xl border border-neutral-200 bg-[#f8fafc] p-4 sm:p-5">
+            <div className="flex items-center gap-2">
+              <IconMapPin className="h-5 w-5 text-neutral-700" />
+              <h3 className="text-base font-bold text-neutral-900">{locationTitle}</h3>
+            </div>
+            <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-neutral-600">
+              {locationDescription}
+            </p>
+            {mapEmbedSrc ? (
+              <iframe
+                src={mapEmbedSrc}
+                width="100%"
+                height="200"
+                style={{ border: 'none', borderRadius: 12 }}
+                loading="lazy"
+                className="mt-3"
+                referrerPolicy="no-referrer-when-downgrade"
+                title="Mapa da loja"
+              />
+            ) : null}
+            {mapsHref ? (
+              <a
+                href={mapsHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-3 inline-flex items-center gap-2 rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-semibold text-neutral-700 hover:bg-neutral-50"
+              >
+                Ver no Google Maps
+                <IconExternalArrow className="h-4 w-4" />
+              </a>
+            ) : null}
+          </section>
+        ) : null}
 
         <div className="mt-12 flex justify-center pb-2">
           <PublicSlugPathPill

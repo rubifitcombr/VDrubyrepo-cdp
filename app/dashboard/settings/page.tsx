@@ -1,7 +1,10 @@
 'use client'
 
 import { DashboardBusinessHoursCard } from '@/app/dashboard/_components/DashboardBusinessHoursCard'
+import { StoreOpenSwitch } from '@/app/dashboard/_components/StoreOpenSwitch'
 import { PublicSlugPathPill } from '@/app/_components/PublicSlugPathPill'
+import { planTier, parsePlan } from '@/lib/plan'
+import { readStorePlano } from '@/lib/store-columns'
 import { uploadStoreLogo } from '@/lib/storage-upload'
 import Image from 'next/image'
 import Link from 'next/link'
@@ -45,6 +48,16 @@ function storeInitials(name: string): string {
   return name.trim().slice(0, 2).toUpperCase()
 }
 
+function extractCoordsFromGoogleMaps(url: string): { lat: number; lng: number } | null {
+  const qMatch = url.match(/[?&]q=(-?\d+\.\d+),(-?\d+\.\d+)/)
+  if (qMatch) return { lat: Number(qMatch[1]), lng: Number(qMatch[2]) }
+
+  const atMatch = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/)
+  if (atMatch) return { lat: Number(atMatch[1]), lng: Number(atMatch[2]) }
+
+  return null
+}
+
 export default function SettingsPage() {
   const router = useRouter()
   const [storeId, setStoreId] = useState<string | null>(null)
@@ -56,10 +69,19 @@ export default function SettingsPage() {
   const [address, setAddress] = useState('')
   const [businessHours, setBusinessHours] = useState<unknown>(null)
   const [saving, setSaving] = useState(false)
+  const [savedToast, setSavedToast] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [storePlan, setStorePlan] = useState<'START' | 'GROWTH' | 'PRO' | 'MASTER'>('START')
   const [logoUrl, setLogoUrl] = useState<string | null>(null)
   const [supportsLogoUrl, setSupportsLogoUrl] = useState(true)
+  const [supportsLocationFields, setSupportsLocationFields] = useState(true)
   const [logoUploading, setLogoUploading] = useState(false)
+  const [locationEnabled, setLocationEnabled] = useState(false)
+  const [locationAddress, setLocationAddress] = useState('')
+  const [locationLabel, setLocationLabel] = useState('')
+  const [locationMapsUrl, setLocationMapsUrl] = useState('')
+  const [locationLat, setLocationLat] = useState<number | null>(null)
+  const [locationLng, setLocationLng] = useState<number | null>(null)
 
   useEffect(() => {
     async function load() {
@@ -70,7 +92,9 @@ export default function SettingsPage() {
       if (!store || typeof store !== 'object') return
 
       const s = store as Record<string, unknown>
+      const parsedPlan = parsePlan(readStorePlano(s))
       setStoreId(s.id as string)
+      setStorePlan(parsedPlan)
       setSlug((s.slug as string) || '')
       setName((s.name as string) || '')
       setSupportsSubtitle('subtitle' in s)
@@ -84,6 +108,31 @@ export default function SettingsPage() {
       setPhone((s.phone as string) || '')
       setAddress(typeof s.address === 'string' ? s.address : '')
       setBusinessHours('business_hours' in s ? s.business_hours : null)
+      const hasLocationColumns =
+        'location_enabled' in s ||
+        'location_lat' in s ||
+        'location_lng' in s ||
+        'location_address' in s ||
+        'location_label' in s
+      setSupportsLocationFields(hasLocationColumns)
+      setLocationEnabled(Boolean(s.location_enabled))
+      setLocationAddress(typeof s.location_address === 'string' ? s.location_address : '')
+      setLocationLabel(typeof s.location_label === 'string' ? s.location_label : '')
+      const lat = typeof s.location_lat === 'number' ? s.location_lat : Number(s.location_lat)
+      const lng = typeof s.location_lng === 'number' ? s.location_lng : Number(s.location_lng)
+      const latOk = Number.isFinite(lat) ? lat : null
+      const lngOk = Number.isFinite(lng) ? lng : null
+      setLocationLat(latOk)
+      setLocationLng(lngOk)
+      const loadedAddress =
+        typeof s.location_address === 'string' ? s.location_address.trim() : ''
+      if (/^https?:\/\//i.test(loadedAddress)) {
+        setLocationMapsUrl(loadedAddress)
+      } else if (latOk != null && lngOk != null) {
+        setLocationMapsUrl(`https://maps.google.com/?q=${latOk},${lngOk}`)
+      } else {
+        setLocationMapsUrl('')
+      }
     }
 
     load()
@@ -93,6 +142,7 @@ export default function SettingsPage() {
     typeof window !== 'undefined' && slug
       ? `${window.location.origin}/${slug}`
       : ''
+  const hasGrowthLocation = planTier(storePlan) >= planTier('GROWTH')
 
   async function handleSave() {
     if (!storeId) return
@@ -114,6 +164,29 @@ export default function SettingsPage() {
     }
 
     patch.address = address.trim() || null
+    const canPersistLocation = supportsLocationFields && hasGrowthLocation
+    patch.location_enabled = canPersistLocation ? locationEnabled : false
+    patch.location_label = canPersistLocation
+      ? locationLabel.trim() || 'Nossa localização'
+      : null
+    patch.location_address = canPersistLocation ? locationAddress.trim() || null : null
+    patch.location_lat = canPersistLocation ? locationLat : null
+    patch.location_lng = canPersistLocation ? locationLng : null
+
+    if (canPersistLocation) {
+      const mapUrl = locationMapsUrl.trim()
+      if (mapUrl) {
+        const coords = extractCoordsFromGoogleMaps(mapUrl)
+        if (coords) {
+          patch.location_lat = coords.lat
+          patch.location_lng = coords.lng
+        } else {
+          patch.location_lat = null
+          patch.location_lng = null
+          patch.location_address = mapUrl
+        }
+      }
+    }
 
     const attemptedPatch: Record<string, unknown> = { ...patch }
     const droppedFields: string[] = []
@@ -138,6 +211,24 @@ export default function SettingsPage() {
       if (canDropAddress) {
         delete attemptedPatch.address
         droppedFields.push('address')
+        continue
+      }
+      const canDropLocation =
+        (Object.keys(attemptedPatch).some((k) => k.startsWith('location_')) &&
+          msg.includes('location_')) ||
+        msg.includes('location_enabled') ||
+        msg.includes('location_lat') ||
+        msg.includes('location_lng') ||
+        msg.includes('location_address') ||
+        msg.includes('location_label')
+      if (canDropLocation) {
+        delete attemptedPatch.location_enabled
+        delete attemptedPatch.location_lat
+        delete attemptedPatch.location_lng
+        delete attemptedPatch.location_address
+        delete attemptedPatch.location_label
+        droppedFields.push('location')
+        setSupportsLocationFields(false)
         continue
       }
       error = result.error
@@ -165,7 +256,8 @@ export default function SettingsPage() {
       )
       return
     }
-    alert('Alterações guardadas')
+    setSavedToast(true)
+    window.setTimeout(() => setSavedToast(false), 2400)
   }
 
   function copyLink() {
@@ -408,6 +500,77 @@ export default function SettingsPage() {
           </div>
         </section>
 
+        <section className="rounded-2xl border border-[var(--card-border)] bg-white p-6 shadow-sm shadow-black/[0.04] md:p-8">
+          <h2 className="text-base font-bold text-[#1a1614]">Localização da loja</h2>
+          <p className="mt-1 text-sm text-[#6b7280]">
+            Mostra localização no cardápio público para clientes encontrarem tua loja.
+          </p>
+          {!hasGrowthLocation ? (
+            <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              Disponível a partir do plano Growth.
+            </p>
+          ) : null}
+          {!supportsLocationFields ? (
+            <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              As colunas de localização ainda não existem no banco. Execute a migration de
+              localização da tabela <code>stores</code>.
+            </p>
+          ) : null}
+          <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-[var(--card-border)] bg-[#fafafa] px-4 py-3">
+            <div>
+              <p className="text-sm font-semibold text-[#1a1614]">Mostrar localização no cardápio</p>
+              <p className="text-xs text-[#6b7280]">Ative para exibir mapa/endereço no cardápio público.</p>
+            </div>
+            <StoreOpenSwitch
+              open={locationEnabled}
+              disabled={!hasGrowthLocation || !supportsLocationFields || saving}
+              onToggle={() => setLocationEnabled((v) => !v)}
+            />
+          </div>
+
+          <div
+            className={`mt-4 space-y-4 transition-opacity ${
+              locationEnabled && hasGrowthLocation && supportsLocationFields ? 'opacity-100' : 'opacity-60'
+            }`}
+          >
+            <label className="block text-sm font-medium text-[#374151]">
+              Endereço completo
+              <textarea
+                className={`${inputClass} min-h-[92px] resize-y`}
+                value={locationAddress}
+                onChange={(e) => setLocationAddress(e.target.value)}
+                placeholder="Ex: Rua das Flores, 123 — Setor Central, Goiânia - GO"
+                disabled={!locationEnabled || !hasGrowthLocation || !supportsLocationFields}
+              />
+            </label>
+
+            <label className="block text-sm font-medium text-[#374151]">
+              Label personalizado <span className="font-normal text-[#9ca3af]">(opcional)</span>
+              <input
+                className={inputClass}
+                value={locationLabel}
+                onChange={(e) => setLocationLabel(e.target.value)}
+                placeholder="Ex: Estamos aqui! Venha nos visitar"
+                disabled={!locationEnabled || !hasGrowthLocation || !supportsLocationFields}
+              />
+            </label>
+
+            <label className="block text-sm font-medium text-[#374151]">
+              Link do Google Maps
+              <input
+                className={inputClass}
+                value={locationMapsUrl}
+                onChange={(e) => setLocationMapsUrl(e.target.value)}
+                placeholder="Cole aqui o link do Google Maps da sua loja"
+                disabled={!locationEnabled || !hasGrowthLocation || !supportsLocationFields}
+              />
+              <p className="mt-2 text-xs text-[#6b7280]">
+                Abra o Google Maps, encontre sua loja, clique em Compartilhar e cole o link aqui.
+              </p>
+            </label>
+          </div>
+        </section>
+
         {storeId ? (
           <section className="rounded-2xl border border-[var(--card-border)] bg-white p-6 shadow-sm shadow-black/[0.04] md:p-8">
             <div className="flex items-center gap-2.5">
@@ -442,6 +605,11 @@ export default function SettingsPage() {
             {saving ? 'A guardar…' : 'Salvar alterações'}
           </button>
         </div>
+        {savedToast ? (
+          <div className="fixed bottom-6 right-6 z-50 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-800 shadow-md">
+            Configurações salvas com sucesso.
+          </div>
+        ) : null}
       </div>
     </div>
   )
