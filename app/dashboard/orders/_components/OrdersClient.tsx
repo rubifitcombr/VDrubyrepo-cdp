@@ -101,23 +101,26 @@ function statusBadgeClass(status: string | null): string {
   }
 }
 
-/** Fundo do cartão (lavagem leve) alinhada ao status para leitura rápida no mobile. */
+/**
+ * Fundo e borda do cartão alinhados ao status (mobile e desktop).
+ * No desktop (sm+) reforça-se a leitura com faixa lateral e sombra, sem alterar o layout expandido.
+ */
 function statusCardSurfaceClass(status: string | null): string {
   switch (status) {
     case 'pending':
-      return 'border-amber-200/80 bg-amber-50/95'
+      return 'border-amber-200/80 bg-amber-50/95 border-l-4 border-l-amber-500 sm:bg-amber-50 sm:shadow-md'
     case 'preparing':
-      return 'border-orange-200/70 bg-orange-50/95'
+      return 'border-orange-200/70 bg-orange-50/95 border-l-4 border-l-orange-500 sm:bg-orange-50/90 sm:shadow-md'
     case 'ready':
-      return 'border-violet-200/70 bg-violet-50/95'
+      return 'border-violet-200/70 bg-violet-50/95 border-l-4 border-l-violet-500 sm:bg-violet-50/90 sm:shadow-md'
     case 'confirmed':
-      return 'border-sky-200/70 bg-sky-50/95'
+      return 'border-sky-200/70 bg-sky-50/95 border-l-4 border-l-sky-500 sm:bg-sky-50/90 sm:shadow-md'
     case 'delivered':
-      return 'border-emerald-200/70 bg-emerald-50/95'
+      return 'border-emerald-200/70 bg-emerald-50/95 border-l-4 border-l-emerald-500 sm:bg-emerald-50/90 sm:shadow-md'
     case 'cancelled':
-      return 'border-[var(--card-border)] bg-[#f3f4f6]/90'
+      return 'border-[var(--card-border)] bg-[#f3f4f6]/90 border-l-4 border-l-[#9ca3af] sm:shadow-sm'
     default:
-      return 'border-[var(--card-border)] bg-white'
+      return 'border-[var(--card-border)] bg-white border-l-4 border-l-[var(--card-border)] sm:shadow-sm'
   }
 }
 
@@ -473,7 +476,7 @@ export function OrdersClient({
           Nenhum pedido neste filtro.
         </div>
       ) : (
-        <ul className="mt-8 flex flex-col gap-2 sm:gap-4">
+        <ul className="mt-8 flex flex-col gap-4 max-sm:gap-2">
           {filtered.map((o) => {
             const busy = busyId === o.id
             const st = o.status
@@ -530,7 +533,7 @@ export function OrdersClient({
 
                 <div
                   id={`order-details-${o.id}`}
-                  className={`gap-4 p-4 sm:gap-5 sm:p-5 ${
+                  className={`gap-4 p-4 sm:gap-5 sm:p-5 lg:gap-6 lg:p-6 ${
                     mobileExpanded ? 'flex flex-col' : 'hidden'
                   } sm:flex sm:flex-row sm:items-stretch`}
                 >
