@@ -439,15 +439,6 @@ export default function SettingsPage() {
                 onChange={(e) => setPhone(e.target.value)}
               />
             </label>
-            <label className="block text-sm font-medium text-[#374151]">
-              Endereço
-              <input
-                className={inputClass}
-                placeholder="Rua, número — bairro"
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-              />
-            </label>
           </div>
 
           <label className="mt-5 block text-sm font-medium text-[#374151]">
