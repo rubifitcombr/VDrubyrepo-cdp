@@ -463,9 +463,11 @@ function RecommendationsBlock({ items }: { items: string[] }) {
 export function ReportsDashboardClient({
   data,
   reportsAdvanced,
+  canExportPdf,
 }: {
   data: ReportsDashboardData
   reportsAdvanced: boolean
+  canExportPdf: boolean
 }) {
   return (
     <div className="mx-auto w-full max-w-7xl space-y-8">
@@ -483,7 +485,7 @@ export function ReportsDashboardClient({
             ) : null}
           </p>
         </div>
-        <ReportsExportButton data={data} allowExport={reportsAdvanced} />
+        <ReportsExportButton data={data} allowExport={canExportPdf} />
       </header>
 
       {!data.hasEnoughData ? (

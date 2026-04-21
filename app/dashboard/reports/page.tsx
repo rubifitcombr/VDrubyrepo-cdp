@@ -52,6 +52,7 @@ export default async function ReportsPage() {
       : undefined
   const plan = effectiveDashboardPlan(user.email ?? null, rawPlan)
   const reportsAdvanced = hasFeature(plan, 'reports_advanced')
+  const canExportPdf = hasFeature(plan, 'reports')
   const data = await getReportsDashboardData(storeId, {
     advanced: reportsAdvanced,
   })
@@ -69,6 +70,7 @@ export default async function ReportsPage() {
         <ReportsDashboardClient
           data={data}
           reportsAdvanced={reportsAdvanced}
+          canExportPdf={canExportPdf}
         />
       </div>
     </div>

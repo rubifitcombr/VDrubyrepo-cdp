@@ -306,11 +306,11 @@ export function ReportsExportButton({
   if (!allowExport) {
     return (
       <Link
-        href="/dashboard/upgrade?feature=reports_advanced"
+        href="/dashboard/upgrade?feature=reports"
         className="inline-flex items-center gap-2 rounded-xl border border-dashed border-violet-300/80 bg-violet-50/90 px-4 py-2.5 text-sm font-semibold text-violet-900 shadow-sm transition-colors hover:bg-violet-100/90"
       >
         <IconDownload className="h-4 w-4 text-violet-700" />
-        PDF (plano Master)
+        PDF (plano Growth+)
       </Link>
     )
   }
