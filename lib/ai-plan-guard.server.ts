@@ -9,7 +9,7 @@ import { getUser } from '@/services/auth.server'
 export type GuardOk = { ok: true; userId: string; plan: Plan }
 export type GuardFail = { ok: false; status: number; error: string }
 
-export async function requireProMarketingAiStore(
+async function requireOwnedActiveStorePlan(
   storeId: string
 ): Promise<GuardOk | GuardFail> {
   const user = await getUser()
@@ -38,13 +38,35 @@ export async function requireProMarketingAiStore(
     user.email,
     readStorePlano(gate.ctx.store)
   )
-  if (plan !== 'PRO' && plan !== 'MASTER') {
+  return { ok: true, userId: user.id, plan }
+}
+
+export async function requireMarketingAiDescriptionStore(
+  storeId: string
+): Promise<GuardOk | GuardFail> {
+  const base = await requireOwnedActiveStorePlan(storeId)
+  if (!base.ok) return base
+  if (base.plan === 'START') {
     return {
       ok: false,
       status: 403,
-      error: 'Marketing com IA disponível nos planos Pro e Master.',
+      error: 'Descrição com IA disponível nos planos Growth, Pro e Master.',
     }
   }
+  return base
+}
 
-  return { ok: true, userId: user.id, plan }
+export async function requireProMarketingAiStore(
+  storeId: string
+): Promise<GuardOk | GuardFail> {
+  const base = await requireOwnedActiveStorePlan(storeId)
+  if (!base.ok) return base
+  if (base.plan !== 'PRO' && base.plan !== 'MASTER') {
+    return {
+      ok: false,
+      status: 403,
+      error: 'Geração de imagem com IA disponível nos planos Pro e Master.',
+    }
+  }
+  return base
 }

@@ -257,7 +257,12 @@ export function hasAiMenuPhotoImport(plan: Plan): boolean {
   )
 }
 
-/** Descrição e imagem de produto com IA (APIs /api/ai/*) — Pro e Master. */
+/** Geração de descrição com IA (API /api/ai/product-description) — Growth em diante. */
+export function hasMarketingAiDescription(plan: Plan): boolean {
+  return plan === 'GROWTH' || plan === 'PRO' || plan === 'MASTER'
+}
+
+/** Geração de imagem de produto com IA (API /api/ai/product-image) — Pro e Master. */
 export function hasProMarketingAi(plan: Plan): boolean {
   return plan === 'PRO' || plan === 'MASTER'
 }

@@ -1,4 +1,4 @@
-import { requireProMarketingAiStore } from '@/lib/ai-plan-guard.server'
+import { requireMarketingAiDescriptionStore } from '@/lib/ai-plan-guard.server'
 import { currentYearMonthUtc } from '@/lib/menu-import-quota'
 import {
   getMarketingAiMonthlyLimit,
@@ -96,7 +96,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Nome do produto em falta.' }, { status: 400 })
     }
 
-    const guard = await requireProMarketingAiStore(storeId)
+    const guard = await requireMarketingAiDescriptionStore(storeId)
     if (!guard.ok) {
       return NextResponse.json({ error: guard.error }, { status: guard.status })
     }

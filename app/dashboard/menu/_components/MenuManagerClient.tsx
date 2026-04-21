@@ -13,7 +13,11 @@ import {
 } from '@/app/dashboard/_components/NavIcons'
 import type { MenuProductRow } from '@/lib/menu-product'
 import type { Plan } from '@/lib/plan'
-import { hasAiMenuPhotoImport, hasProMarketingAi } from '@/lib/plan'
+import {
+  hasAiMenuPhotoImport,
+  hasMarketingAiDescription,
+  hasProMarketingAi,
+} from '@/lib/plan'
 import { uploadProductImage } from '@/lib/storage-upload'
 import {
   fetchProductAddonTree,
@@ -989,7 +993,7 @@ export function MenuManagerClient({
               placeholder="Opcional — ingredientes, tamanho…"
             />
           </label>
-          {hasProMarketingAi(plan) ? (
+          {hasMarketingAiDescription(plan) ? (
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
@@ -1098,6 +1102,8 @@ export function MenuManagerClient({
               : 'Envia um ficheiro para mostrar foto no cardápio.'}
             {hasProMarketingAi(plan)
               ? ' Imagem por IA só quando pedires — custo controlado.'
+              : hasMarketingAiDescription(plan)
+                ? ' Geração de descrição por IA disponível no seu plano.'
               : ''}
           </p>
         </div>

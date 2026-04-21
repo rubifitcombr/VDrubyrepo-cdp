@@ -3,7 +3,7 @@
 import { dashboardFetch } from '@/lib/dashboard-fetch.client'
 import { useCallback, useEffect, useState } from 'react'
 import type { Plan } from '@/lib/plan'
-import { hasProMarketingAi } from '@/lib/plan'
+import { hasMarketingAiDescription } from '@/lib/plan'
 
 export type ImportProductDraft = {
   key: string
@@ -127,7 +127,7 @@ export function MenuImportReviewModal({
   }, [saving, batchDescBusy, onClose])
 
   const runBatchDescriptions = useCallback(async () => {
-    if (!hasProMarketingAi(plan)) return
+    if (!hasMarketingAiDescription(plan)) return
     let total = 0
     for (const g of groups) total += g.products.length
     if (total === 0) return
@@ -338,10 +338,10 @@ export function MenuImportReviewModal({
             </p>
           ) : (
             <div className="space-y-8">
-              {hasProMarketingAi(plan) && totalProducts > 0 ? (
+              {hasMarketingAiDescription(plan) && totalProducts > 0 ? (
                 <div className="rounded-xl border border-vyria-plum/25 bg-vyria-plum/[0.06] px-3 py-3 sm:px-4">
                   <p className="text-xs font-semibold text-vyria-plum sm:text-sm">
-                    IA de marketing (Pro ou Master)
+                    IA de marketing (Growth+)
                   </p>
                   <button
                     type="button"

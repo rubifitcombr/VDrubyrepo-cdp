@@ -8,6 +8,7 @@ export function getMarketingAiMonthlyLimit(
   kind: MarketingAiKind
 ): number | null {
   if (plan === 'MASTER') return null
+  if (plan === 'GROWTH') return kind === 'description' ? 20 : 0
   if (plan !== 'PRO') return 0
   return kind === 'description' ? 45 : 25
 }
