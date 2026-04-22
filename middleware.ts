@@ -1,3 +1,4 @@
+import { isAuthPortalHost } from '@/lib/auth-portal-host'
 import { APP_RESERVED_FIRST_SEGMENTS } from '@/lib/app-reserved-routes'
 import { createServerClient } from '@supabase/ssr'
 import { isVyriaAdminPanelUser } from '@/lib/admin-panel-user'
@@ -10,6 +11,18 @@ import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
   const rawPath = request.nextUrl.pathname
+  const host =
+    request.headers.get('host')?.split(':')[0]?.toLowerCase() ?? ''
+
+  if (isAuthPortalHost(host)) {
+    const path = rawPath === '' ? '/' : rawPath
+    if (path === '/') {
+      const url = request.nextUrl.clone()
+      url.pathname = '/login'
+      return NextResponse.redirect(url)
+    }
+  }
+
   const segments = rawPath.split('/').filter(Boolean)
   if (segments.length >= 1) {
     const first = segments[0]

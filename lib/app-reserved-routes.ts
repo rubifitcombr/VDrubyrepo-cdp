@@ -4,6 +4,7 @@
  */
 export const APP_RESERVED_FIRST_SEGMENTS = new Set([
   'admin',
+  'blog',
   'dashboard',
   'login',
   'register',

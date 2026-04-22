@@ -17,6 +17,7 @@ import {
   hasAiMenuPhotoImport,
   hasMarketingAiDescription,
   hasProMarketingAi,
+  parsePlan,
 } from '@/lib/plan'
 import { uploadProductImage } from '@/lib/storage-upload'
 import {
@@ -341,6 +342,7 @@ export function MenuManagerClient({
   storeSlug: string | null
   plan: Plan
 }) {
+  const effectivePlan = parsePlan(plan)
   const [products, setProducts] = useState<Product[]>(initialProducts)
   const [extraCategories, setExtraCategories] = useState<string[]>([])
   const [busyIds, setBusyIds] = useState<Set<string>>(new Set())
@@ -812,7 +814,7 @@ export function MenuManagerClient({
           <p className="mt-1 text-sm text-[#6b7280]">{productCountLabel}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-          {hasAiMenuPhotoImport(plan) ? (
+          {hasAiMenuPhotoImport(effectivePlan) ? (
             <>
               <input
                 ref={importPhotoInputRef}
@@ -993,7 +995,7 @@ export function MenuManagerClient({
               placeholder="Opcional — ingredientes, tamanho…"
             />
           </label>
-          {hasMarketingAiDescription(plan) ? (
+          {hasMarketingAiDescription(effectivePlan) ? (
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
@@ -1029,7 +1031,7 @@ export function MenuManagerClient({
               className="mt-1 block w-full text-sm text-vyria-navy-muted file:mr-3 file:rounded file:border-0 file:bg-[#f0f0f0] file:px-3 file:py-1.5 file:text-sm file:font-medium"
             />
           </label>
-          {hasProMarketingAi(plan) ? (
+          {hasProMarketingAi(effectivePlan) ? (
             <div className="space-y-2 rounded-xl border border-[var(--card-border)] bg-[#fafafa]/80 p-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-vyria-navy-muted">
                 Imagem com IA
@@ -1100,9 +1102,9 @@ export function MenuManagerClient({
             {editingId
               ? 'Só envia um ficheiro se quiseres substituir a imagem atual.'
               : 'Envia um ficheiro para mostrar foto no cardápio.'}
-            {hasProMarketingAi(plan)
+            {hasProMarketingAi(effectivePlan)
               ? ' Imagem por IA só quando pedires — custo controlado.'
-              : hasMarketingAiDescription(plan)
+              : hasMarketingAiDescription(effectivePlan)
                 ? ' Geração de descrição por IA disponível no seu plano.'
               : ''}
           </p>
@@ -1257,7 +1259,7 @@ export function MenuManagerClient({
         onClose={closeImportReview}
         storeId={storeId}
         parsed={importReviewParsed}
-        plan={plan}
+        plan={effectivePlan}
         onSaved={() => void refresh()}
       />
     </div>

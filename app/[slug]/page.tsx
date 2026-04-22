@@ -88,11 +88,23 @@ export default async function StorefrontPage({ params }: Props) {
   }
 
   const slugLower = slugSegment.toLowerCase()
-  if (
-    APP_RESERVED_FIRST_SEGMENTS.has(slugLower) &&
-    slugSegment !== slugLower
-  ) {
-    redirect('/' + slugLower)
+  if (APP_RESERVED_FIRST_SEGMENTS.has(slugLower)) {
+    if (slugSegment !== slugLower) {
+      redirect('/' + slugLower)
+    }
+    const firstPartyPath: Record<string, string> = {
+      blog: '/blog',
+      login: '/login',
+      register: '/register',
+      admin: '/admin',
+      dashboard: '/dashboard',
+      'acesso-suspenso': '/acesso-suspenso',
+      planos: '/planos',
+    }
+    const reservedDest = firstPartyPath[slugLower]
+    if (reservedDest) {
+      redirect(reservedDest)
+    }
   }
 
   /** Preferir service role: leitura pública fiável sem depender de cookies/RLS para `anon` (mobile). */

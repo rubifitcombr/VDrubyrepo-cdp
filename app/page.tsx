@@ -7,7 +7,13 @@ export default function Home() {
       <header className="shrink-0 border-b border-[var(--card-border)] bg-white/90 px-4 py-3 backdrop-blur-sm sm:px-6 sm:py-4">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 sm:gap-4">
           <BrandLogo width={150} priority className="max-h-9" />
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 sm:gap-4">
+            <Link
+              href="/blog"
+              className="text-sm font-semibold text-vyria-navy-muted hover:text-vyria-navy"
+            >
+              Blog
+            </Link>
             <Link
               href="/login"
               className="text-sm font-semibold text-vyria-navy-muted hover:text-vyria-navy"
@@ -61,6 +67,14 @@ export default function Home() {
           </div>
         </div>
       </main>
+      <footer className="shrink-0 border-t border-[var(--card-border)] bg-white/80 py-6 text-center text-sm text-vyria-navy-muted">
+        <Link
+          href="/blog"
+          className="font-semibold text-vyria-plum hover:text-vyria-orange"
+        >
+          Blog Vyria
+        </Link>
+      </footer>
     </div>
   )
 }
