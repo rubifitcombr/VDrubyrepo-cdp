@@ -17,8 +17,15 @@ export default function Register() {
   const router = useRouter()
 
   async function handleRegister() {
+    const name = storeName.trim()
+    const mail = email.trim()
+    if (!name || !mail || password.length < 6) {
+      alert('Preenche o nome da loja, email válido e senha com pelo menos 6 caracteres.')
+      return
+    }
+
     try {
-      const { data, error } = await signUp(email, password)
+      const { data, error } = await signUp(mail, password)
 
       if (error) {
         alert(error.message)
@@ -28,7 +35,7 @@ export default function Register() {
       const userId = data.user?.id
 
       if (userId) {
-        const { error: storeErr } = await createStore(userId, storeName, phone.trim() || undefined)
+        const { error: storeErr } = await createStore(userId, name, phone.trim() || undefined)
         if (storeErr) {
           alert(storeErr.message || 'Erro ao criar loja.')
           return

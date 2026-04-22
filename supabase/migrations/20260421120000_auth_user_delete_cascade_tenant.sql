@@ -91,6 +91,6 @@ DROP TRIGGER IF EXISTS on_auth_user_deleted ON auth.users;
 CREATE TRIGGER on_auth_user_deleted
   AFTER DELETE ON auth.users
   FOR EACH ROW
-  EXECUTE FUNCTION public.delete_user_tenant_data();
+  EXECUTE PROCEDURE public.delete_user_tenant_data();
 
 REVOKE ALL ON FUNCTION public.delete_user_tenant_data() FROM PUBLIC;
