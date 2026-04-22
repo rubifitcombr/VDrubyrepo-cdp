@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useState } from 'react'
 import { signUp } from '@/services/auth'
 import { createStore } from '@/services/store'
+import { upsertUsuarioMirror } from '@/services/usuarios'
 import { useRouter } from 'next/navigation'
 
 const inputClass =
@@ -28,23 +29,44 @@ export default function Register() {
       const { data, error } = await signUp(mail, password)
 
       if (error) {
-        alert(error.message)
+        const raw = error.message
+        alert(
+          raw.includes('Database error saving new user')
+            ? 'Erro ao criar conta na base de dados. Executa no Supabase (SQL Editor) o ficheiro supabase/migrations/20260425120000_signup_usuarios_sem_trigger_rls.sql do repositório, ou contacta o suporte.'
+            : raw
+        )
         return
       }
 
       const userId = data.user?.id
 
       if (userId) {
-        try {
-          const syncRes = await fetch('/api/auth/sync-usuario', {
-            method: 'POST',
-            credentials: 'include',
-          })
-          if (!syncRes.ok) {
-            console.warn('sync-usuario:', await syncRes.text())
+        const userEmail = data.user?.email ?? mail
+        const { error: mirrorErr } = await upsertUsuarioMirror(userId, userEmail)
+
+        if (mirrorErr) {
+          let recovered = false
+          try {
+            const syncRes = await fetch('/api/auth/sync-usuario', {
+              method: 'POST',
+              credentials: 'include',
+            })
+            if (syncRes.ok) {
+              const body = (await syncRes.json()) as {
+                ok?: boolean
+                skipped?: boolean
+              }
+              if (body.ok && !body.skipped) recovered = true
+            }
+          } catch {
+            /* ignore */
           }
-        } catch {
-          /* fallback opcional */
+          if (!recovered) {
+            alert(
+              'Não foi possível guardar o perfil na base de dados. Executa no Supabase o SQL `20260425120000_signup_usuarios_sem_trigger_rls.sql` e confirma que SUPABASE_SERVICE_ROLE_KEY está definida no deploy (ou confirma o email da conta se o projeto exigir).'
+            )
+            return
+          }
         }
 
         const { error: storeErr } = await createStore(userId, name, phone.trim() || undefined)
