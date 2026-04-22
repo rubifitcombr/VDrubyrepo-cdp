@@ -42,6 +42,8 @@ CREATE POLICY "usuarios_update_own"
   USING (auth.uid() = id)
   WITH CHECK (auth.uid() = id);
 
+-- authenticated precisa de USAGE no schema public (senão o upsert da app pode falhar)
+GRANT USAGE ON SCHEMA public TO authenticated;
 GRANT SELECT, INSERT, UPDATE ON TABLE public.usuarios TO authenticated;
 
 COMMENT ON TABLE public.usuarios IS
