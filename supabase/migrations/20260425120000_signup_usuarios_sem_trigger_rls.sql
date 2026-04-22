@@ -3,6 +3,25 @@
 --
 -- Executar no Supabase → SQL Editor (uma vez). Depois: git pull / copiar do repo.
 
+-- Se `usuarios` for VIEW (relíquia), REMOVE antes: RLS só aplica a tabela base.
+DO $drop_usuarios_view$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public' AND c.relname = 'usuarios' AND c.relkind = 'm'
+  ) THEN
+    EXECUTE 'DROP MATERIALIZED VIEW IF EXISTS public.usuarios CASCADE';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public' AND c.relname = 'usuarios' AND c.relkind = 'v'
+  ) THEN
+    EXECUTE 'DROP VIEW IF EXISTS public.usuarios CASCADE';
+  END IF;
+END $drop_usuarios_view$;
+
 -- Copia o bloco inteiro; em Postgres o "(" tem de vir logo após usuarios (senão erro "near id").
 CREATE TABLE IF NOT EXISTS public.usuarios (
   id uuid NOT NULL,
