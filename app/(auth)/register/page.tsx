@@ -35,6 +35,18 @@ export default function Register() {
       const userId = data.user?.id
 
       if (userId) {
+        try {
+          const syncRes = await fetch('/api/auth/sync-usuario', {
+            method: 'POST',
+            credentials: 'include',
+          })
+          if (!syncRes.ok) {
+            console.warn('sync-usuario:', await syncRes.text())
+          }
+        } catch {
+          /* fallback opcional */
+        }
+
         const { error: storeErr } = await createStore(userId, name, phone.trim() || undefined)
         if (storeErr) {
           alert(storeErr.message || 'Erro ao criar loja.')

@@ -1,11 +1,12 @@
--- Espelha novos utilizadores em public.usuarios (corrige "Database error saving new user").
+-- Reparação: "Database error saving new user" (trigger em auth.users).
+-- Idempotente. Correr no SQL Editor ou via `supabase db push` após migrações anteriores.
 --
--- Causas frequentes no Supabase:
--- 1) Trigger em auth.users sem GRANT para supabase_auth_admin em schema public / tabela / função.
--- 2) Sintaxe EXECUTE FUNCTION (PG14+) vs EXECUTE PROCEDURE (docs Supabase / compat).
--- 3) RLS em public.usuarios a bloquear o insert do trigger.
---
--- Executar no SQL Editor (como postgres) ou `supabase db push`.
+-- Inclui: remover função/trigger antigos, função com search_path vazio + INSERT qualificado,
+-- bloco EXCEPTION (o registo Auth não falha se o insert em usuarios falhar — ver API sync-usuario),
+-- grants para supabase_auth_admin.
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+DROP FUNCTION IF EXISTS public.handle_new_user() CASCADE;
 
 CREATE TABLE IF NOT EXISTS public.usuarios (
   id uuid PRIMARY KEY REFERENCES auth.users (id) ON DELETE CASCADE,
@@ -13,10 +14,6 @@ CREATE TABLE IF NOT EXISTS public.usuarios (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
-COMMENT ON TABLE public.usuarios IS
-  'Espelho de emails por utilizador (auth); preenchido por trigger em auth.users.';
-
--- Instalações antigas: garantir colunas mínimas sem apagar dados
 ALTER TABLE public.usuarios ADD COLUMN IF NOT EXISTS email text;
 ALTER TABLE public.usuarios ADD COLUMN IF NOT EXISTS created_at timestamptz;
 
@@ -40,7 +37,6 @@ BEGIN
   END IF;
 END $$;
 
--- O trigger corre no contexto Auth; RLS em usuarios costuma bloquear inserts.
 ALTER TABLE public.usuarios DISABLE ROW LEVEL SECURITY;
 
 CREATE OR REPLACE FUNCTION public.handle_new_user()
@@ -65,14 +61,11 @@ $$;
 COMMENT ON FUNCTION public.handle_new_user() IS
   'Após INSERT em auth.users: espelha em public.usuarios (erros não abortam o registo Auth).';
 
--- O papel supabase_auth_admin precisa de acesso explícito fora de auth (documentação Supabase).
 GRANT USAGE ON SCHEMA public TO supabase_auth_admin;
 GRANT INSERT, UPDATE, SELECT ON TABLE public.usuarios TO supabase_auth_admin;
 
 REVOKE ALL ON FUNCTION public.handle_new_user() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.handle_new_user() TO supabase_auth_admin;
-
-DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
