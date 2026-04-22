@@ -3,10 +3,13 @@
 --
 -- Executar no Supabase → SQL Editor (uma vez). Depois: git pull / copiar do repo.
 
+-- Copia o bloco inteiro; em Postgres o "(" tem de vir logo após usuarios (senão erro "near id").
 CREATE TABLE IF NOT EXISTS public.usuarios (
-  id uuid PRIMARY KEY REFERENCES auth.users (id) ON DELETE CASCADE,
+  id uuid NOT NULL,
   email text,
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT usuarios_pkey PRIMARY KEY (id),
+  CONSTRAINT usuarios_id_fkey FOREIGN KEY (id) REFERENCES auth.users (id) ON DELETE CASCADE
 );
 
 ALTER TABLE public.usuarios ADD COLUMN IF NOT EXISTS email text;
