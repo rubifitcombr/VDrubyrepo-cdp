@@ -52,7 +52,7 @@ BEGIN
     ON CONFLICT (id) DO UPDATE SET
       email = COALESCE(EXCLUDED.email, public.usuarios.email);
   EXCEPTION WHEN OTHERS THEN
-    RAISE WARNING 'handle_new_user usuarios: % (user=%)', SQLERRM, NEW.id::text;
+    RAISE WARNING 'handle_new_user usuarios: %', SQLERRM;
   END;
   RETURN NEW;
 END;
@@ -61,13 +61,18 @@ $$;
 COMMENT ON FUNCTION public.handle_new_user() IS
   'Após INSERT em auth.users: espelha em public.usuarios (erros não abortam o registo Auth).';
 
-GRANT USAGE ON SCHEMA public TO supabase_auth_admin;
-GRANT INSERT, UPDATE, SELECT ON TABLE public.usuarios TO supabase_auth_admin;
-
 REVOKE ALL ON FUNCTION public.handle_new_user() FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.handle_new_user() TO supabase_auth_admin;
+
+DO $vyria_grants$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'supabase_auth_admin') THEN
+    GRANT USAGE ON SCHEMA public TO supabase_auth_admin;
+    GRANT INSERT, UPDATE, SELECT ON TABLE public.usuarios TO supabase_auth_admin;
+    GRANT EXECUTE ON FUNCTION public.handle_new_user() TO supabase_auth_admin;
+  END IF;
+END $vyria_grants$;
 
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW
-  EXECUTE PROCEDURE public.handle_new_user();
+  EXECUTE FUNCTION public.handle_new_user();

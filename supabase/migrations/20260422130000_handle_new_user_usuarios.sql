@@ -2,7 +2,7 @@
 --
 -- Causas frequentes no Supabase:
 -- 1) Trigger em auth.users sem GRANT para supabase_auth_admin em schema public / tabela / função.
--- 2) Sintaxe EXECUTE FUNCTION (PG14+) vs EXECUTE PROCEDURE (docs Supabase / compat).
+-- 2) Trigger: usar EXECUTE FUNCTION (Postgres no Supabase; PROCEDURE pode dar erro em versões recentes).
 -- 3) RLS em public.usuarios a bloquear o insert do trigger.
 --
 -- Executar no SQL Editor (como postgres) ou `supabase db push`.
@@ -56,7 +56,7 @@ BEGIN
     ON CONFLICT (id) DO UPDATE SET
       email = COALESCE(EXCLUDED.email, public.usuarios.email);
   EXCEPTION WHEN OTHERS THEN
-    RAISE WARNING 'handle_new_user usuarios: % (user=%)', SQLERRM, NEW.id::text;
+    RAISE WARNING 'handle_new_user usuarios: %', SQLERRM;
   END;
   RETURN NEW;
 END;
@@ -65,16 +65,21 @@ $$;
 COMMENT ON FUNCTION public.handle_new_user() IS
   'Após INSERT em auth.users: espelha em public.usuarios (erros não abortam o registo Auth).';
 
--- O papel supabase_auth_admin precisa de acesso explícito fora de auth (documentação Supabase).
-GRANT USAGE ON SCHEMA public TO supabase_auth_admin;
-GRANT INSERT, UPDATE, SELECT ON TABLE public.usuarios TO supabase_auth_admin;
-
+-- Grants para o papel que o Auth usa (só se existir — evita erro fora do Supabase).
 REVOKE ALL ON FUNCTION public.handle_new_user() FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.handle_new_user() TO supabase_auth_admin;
+
+DO $vyria_grants$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'supabase_auth_admin') THEN
+    GRANT USAGE ON SCHEMA public TO supabase_auth_admin;
+    GRANT INSERT, UPDATE, SELECT ON TABLE public.usuarios TO supabase_auth_admin;
+    GRANT EXECUTE ON FUNCTION public.handle_new_user() TO supabase_auth_admin;
+  END IF;
+END $vyria_grants$;
 
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW
-  EXECUTE PROCEDURE public.handle_new_user();
+  EXECUTE FUNCTION public.handle_new_user();
