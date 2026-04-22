@@ -3,24 +3,27 @@
 --
 -- Executar no Supabase → SQL Editor (uma vez). Depois: git pull / copiar do repo.
 
--- Se `usuarios` for VIEW (relíquia), REMOVE antes: RLS só aplica a tabela base.
-DO $drop_usuarios_view$
+-- `CREATE TABLE IF NOT EXISTS` NÃO substitui uma VIEW com o mesmo nome (ignora silenciosamente).
+-- Por isso tens de libertar o nome "usuarios" antes (matview / view).
+
+DO $u_mv$
 BEGIN
   IF EXISTS (
-    SELECT 1 FROM pg_class c
-    JOIN pg_namespace n ON n.oid = c.relnamespace
-    WHERE n.nspname = 'public' AND c.relname = 'usuarios' AND c.relkind = 'm'
+    SELECT 1 FROM pg_matviews WHERE schemaname = 'public' AND matviewname = 'usuarios'
   ) THEN
-    EXECUTE 'DROP MATERIALIZED VIEW IF EXISTS public.usuarios CASCADE';
+    DROP MATERIALIZED VIEW public.usuarios CASCADE;
   END IF;
+END $u_mv$;
+
+DO $u_v$
+BEGIN
   IF EXISTS (
-    SELECT 1 FROM pg_class c
-    JOIN pg_namespace n ON n.oid = c.relnamespace
-    WHERE n.nspname = 'public' AND c.relname = 'usuarios' AND c.relkind = 'v'
+    SELECT 1 FROM information_schema.views
+    WHERE table_schema = 'public' AND table_name = 'usuarios'
   ) THEN
-    EXECUTE 'DROP VIEW IF EXISTS public.usuarios CASCADE';
+    DROP VIEW public.usuarios CASCADE;
   END IF;
-END $drop_usuarios_view$;
+END $u_v$;
 
 -- Copia o bloco inteiro; em Postgres o "(" tem de vir logo após usuarios (senão erro "near id").
 CREATE TABLE IF NOT EXISTS public.usuarios (
@@ -30,6 +33,24 @@ CREATE TABLE IF NOT EXISTS public.usuarios (
   CONSTRAINT usuarios_pkey PRIMARY KEY (id),
   CONSTRAINT usuarios_id_fkey FOREIGN KEY (id) REFERENCES auth.users (id) ON DELETE CASCADE
 );
+
+DO $u_guard$
+DECLARE
+  k "char";
+BEGIN
+  SELECT c.relkind INTO k
+  FROM pg_class c
+  JOIN pg_namespace n ON n.oid = c.relnamespace
+  WHERE n.nspname = 'public' AND c.relname = 'usuarios';
+
+  IF k IS NULL THEN
+    RAISE EXCEPTION 'public.usuarios não existe após CREATE TABLE.';
+  ELSIF k IN ('v', 'm') THEN
+    RAISE EXCEPTION 'public.usuarios ainda é VIEW/MATVIEW. Apaga manualmente em Database → Views ou corre DROP VIEW public.usuarios CASCADE; e volta a executar este ficheiro.';
+  ELSIF k NOT IN ('r', 'p') THEN
+    RAISE EXCEPTION 'public.usuarios tem tipo inesperado (relkind=%).', k;
+  END IF;
+END $u_guard$;
 
 ALTER TABLE public.usuarios ADD COLUMN IF NOT EXISTS email text;
 ALTER TABLE public.usuarios ADD COLUMN IF NOT EXISTS created_at timestamptz;
