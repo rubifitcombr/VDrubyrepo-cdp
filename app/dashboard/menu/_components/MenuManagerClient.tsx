@@ -4,7 +4,7 @@ import { dashboardFetch } from '@/lib/dashboard-fetch.client'
 import Link from 'next/link'
 import Image from 'next/image'
 import type { ReactNode } from 'react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import {
   IconCube,
   IconPencil,
@@ -363,6 +363,7 @@ export function MenuManagerClient({
   const [addonGroups, setAddonGroups] = useState<AddonGroupDraft[]>([])
   const [formSaving, setFormSaving] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const deferredSearch = useDeferredValue(searchQuery)
   const [selectedCategory, setSelectedCategory] = useState('Todos')
 
   useEffect(() => {
@@ -483,7 +484,7 @@ export function MenuManagerClient({
         (p) => (p.category?.trim() || 'Sem categoria') === selectedCategory
       )
     }
-    const q = searchQuery.trim().toLowerCase()
+    const q = deferredSearch.trim().toLowerCase()
     if (q) {
       list = list.filter((p) => {
         const name = p.name.toLowerCase()
@@ -497,7 +498,7 @@ export function MenuManagerClient({
       return a.name.localeCompare(b.name, 'pt')
     })
     return list
-  }, [products, selectedCategory, searchQuery])
+  }, [products, selectedCategory, deferredSearch])
 
   function openCreateModal(prefillCategory?: string) {
     setEditingId(null)
@@ -1187,11 +1188,14 @@ export function MenuManagerClient({
                 >
                   <div className="relative aspect-[4/3] w-full bg-[#f3f4f6]">
                     {imgUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
+                      <Image
                         src={imgUrl}
                         alt=""
-                        className="h-full w-full object-cover"
+                        fill
+                        className="object-cover"
+                        sizes="(max-width: 640px) 100vw, (max-width: 1280px) 50vw, 33vw"
+                        loading="lazy"
+                        decoding="async"
                       />
                     ) : (
                       <div className="flex h-full w-full items-center justify-center text-[#c4c4c4]">

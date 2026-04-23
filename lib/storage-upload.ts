@@ -1,6 +1,15 @@
+import { optimizeImageFileForUpload } from '@/lib/image-optimize.client'
 import { createClient } from '@/lib/supabase/client'
 
 const BUCKET = 'product-images'
+
+async function prepareImageFile(file: File): Promise<File> {
+  try {
+    return await optimizeImageFileForUpload(file)
+  } catch {
+    return file
+  }
+}
 
 function contentTypeForUpload(file: File, ext: string) {
   const t = file.type?.trim()
@@ -17,8 +26,9 @@ export async function uploadProductImage(
   file: File
 ): Promise<{ publicUrl: string | null; error: Error | null }> {
   const supabase = createClient()
+  const toUpload = await prepareImageFile(file)
   const ext =
-    file.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') ||
+    toUpload.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') ||
     'jpg'
   const safeExt = ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext)
     ? ext
@@ -27,8 +37,8 @@ export async function uploadProductImage(
 
   const { error: upErr } = await supabase.storage
     .from(BUCKET)
-    .upload(path, file, {
-      contentType: contentTypeForUpload(file, safeExt),
+    .upload(path, toUpload, {
+      contentType: contentTypeForUpload(toUpload, safeExt),
       cacheControl: '3600',
       upsert: false,
     })
@@ -50,8 +60,9 @@ export async function uploadStorefrontBanner(
   file: File
 ): Promise<{ publicUrl: string | null; error: Error | null }> {
   const supabase = createClient()
+  const toUpload = await prepareImageFile(file)
   const ext =
-    file.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') ||
+    toUpload.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') ||
     'jpg'
   const safeExt = ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext)
     ? ext
@@ -60,8 +71,8 @@ export async function uploadStorefrontBanner(
 
   const { error: upErr } = await supabase.storage
     .from(BUCKET)
-    .upload(path, file, {
-      contentType: contentTypeForUpload(file, safeExt),
+    .upload(path, toUpload, {
+      contentType: contentTypeForUpload(toUpload, safeExt),
       cacheControl: '3600',
       upsert: false,
     })
@@ -83,8 +94,9 @@ export async function uploadStoreLogo(
   file: File
 ): Promise<{ publicUrl: string | null; error: Error | null }> {
   const supabase = createClient()
+  const toUpload = await prepareImageFile(file)
   const ext =
-    file.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') ||
+    toUpload.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') ||
     'jpg'
   const safeExt = ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext)
     ? ext
@@ -93,8 +105,8 @@ export async function uploadStoreLogo(
 
   const { error: upErr } = await supabase.storage
     .from(BUCKET)
-    .upload(path, file, {
-      contentType: contentTypeForUpload(file, safeExt),
+    .upload(path, toUpload, {
+      contentType: contentTypeForUpload(toUpload, safeExt),
       cacheControl: '3600',
       upsert: false,
     })

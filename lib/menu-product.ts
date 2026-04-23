@@ -2,6 +2,13 @@
 export const MENU_PRODUCT_SELECT =
   'id, name, category, price, promotional_price, promotion_active, image_url, active, description, sort_order'
 
+/**
+ * PDV e listagens sem texto longo: omite `description` para menos payload JSON e
+ * menos trabalho de rede/parse com muitos produtos (descrições IA).
+ */
+export const MENU_PRODUCT_PDV_SELECT =
+  'id, name, category, price, promotional_price, promotion_active, image_url, active, sort_order'
+
 /** Cardápio no painel: `promotion_active` na BD corresponde a “is_promotion” na especificação. */
 export type MenuProductRow = {
   id: string

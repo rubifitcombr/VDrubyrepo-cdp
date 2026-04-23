@@ -4,7 +4,7 @@ import { PublicSlugPathPill } from '@/app/_components/PublicSlugPathPill'
 import { useCart } from '@/app/context/CartContext'
 import Image from 'next/image'
 import type { CSSProperties } from 'react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { ProductDetailModal } from './ProductDetailModal'
 import type { StorefrontMenuProduct } from './storefront-menu-types'
 import { WhatsAppCheckoutButton } from './WhatsAppCheckoutButton'
@@ -354,6 +354,7 @@ export function StorefrontMenuClient({
   const { items, itemCount, subtotal, removeItem, setQuantity } = useCart()
   const searchRef = useRef<HTMLInputElement>(null)
   const [query, setQuery] = useState('')
+  const deferredQuery = useDeferredValue(query)
   const [selectedCategory, setSelectedCategory] = useState('Todos')
   const [cartOpen, setCartOpen] = useState(false)
   const [detailProduct, setDetailProduct] =
@@ -371,7 +372,7 @@ export function StorefrontMenuClient({
     if (selectedCategory !== 'Todos') {
       out = out.filter((p) => p.category === selectedCategory)
     }
-    const q = query.trim().toLowerCase()
+    const q = deferredQuery.trim().toLowerCase()
     if (q) {
       out = out.filter(
         (p) =>
@@ -380,7 +381,7 @@ export function StorefrontMenuClient({
       )
     }
     return out
-  }, [products, selectedCategory, query])
+  }, [products, selectedCategory, deferredQuery])
 
   const sectionBlocks = useMemo(() => {
     if (selectedCategory !== 'Todos') {
@@ -785,6 +786,8 @@ export function StorefrontMenuClient({
                                   fill
                                   className="object-cover"
                                   sizes="88px"
+                                  loading="lazy"
+                                  decoding="async"
                                 />
                               ) : (
                                 <ProductThumbPlaceholder name={p.name} />

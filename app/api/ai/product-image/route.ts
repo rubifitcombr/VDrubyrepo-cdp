@@ -1,4 +1,5 @@
 import { gerarPromptImagem } from '@/lib/ai-product-image-prompt'
+import { optimizeImageBufferForStorage } from '@/lib/image-optimize.server'
 import { requireProMarketingAiStore } from '@/lib/ai-plan-guard.server'
 import { currentYearMonthUtc } from '@/lib/menu-import-quota'
 import { getMarketingAiMonthlyLimit } from '@/lib/marketing-ai-quota'
@@ -83,7 +84,7 @@ export async function POST(req: NextRequest) {
       prompt: imagePrompt,
       n: 1,
       size: '1024x1024',
-      quality: 'hd',
+      quality: 'standard',
       style: 'natural',
     })
 
@@ -111,11 +112,23 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const path = `${storeId}/${randomUUID()}.png`
+    let uploadBody: Buffer = buffer
+    let uploadContentType = 'image/png'
+    let ext = 'png'
+    try {
+      const o = await optimizeImageBufferForStorage(buffer)
+      uploadBody = o.buffer
+      uploadContentType = o.contentType
+      ext = 'webp'
+    } catch (err) {
+      console.warn('[ai/product-image] optimize skipped:', err)
+    }
+
+    const path = `${storeId}/${randomUUID()}.${ext}`
     const { error: upErr } = await supabase.storage
       .from(BUCKET)
-      .upload(path, buffer, {
-        contentType: 'image/png',
+      .upload(path, uploadBody, {
+        contentType: uploadContentType,
         cacheControl: '3600',
         upsert: false,
       })

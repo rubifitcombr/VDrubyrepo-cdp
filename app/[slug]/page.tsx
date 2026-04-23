@@ -9,6 +9,7 @@ import { readStorePlano } from '@/lib/store-columns'
 import { parsePlan, planTier } from '@/lib/plan'
 import { getStoreOpenState, getTodayClosingDisplayHM } from '@/lib/business-hours'
 import { effectiveProductPrice, hasActivePromotion } from '@/lib/product-pricing'
+import { MENU_PRODUCT_SELECT } from '@/lib/menu-product'
 import { resolveStoreTheme } from '@/lib/store-theme'
 import { notFound, redirect } from 'next/navigation'
 import { StorefrontMenuClient } from './StorefrontMenuClient'
@@ -134,7 +135,7 @@ export default async function StorefrontPage({ params }: Props) {
 
   const productsQuery = supabase
     .from('products')
-    .select('*')
+    .select(MENU_PRODUCT_SELECT)
     .eq('store_id', s.id)
     .eq('active', true)
 
@@ -146,7 +147,7 @@ export default async function StorefrontPage({ params }: Props) {
   if (ordered.error) {
     const fallback = await supabase
       .from('products')
-      .select('*')
+      .select(MENU_PRODUCT_SELECT)
       .eq('store_id', s.id)
       .eq('active', true)
       .order('name', { ascending: true })

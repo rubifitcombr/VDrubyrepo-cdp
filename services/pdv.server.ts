@@ -1,7 +1,7 @@
 import 'server-only'
 
 import {
-  MENU_PRODUCT_SELECT,
+  MENU_PRODUCT_PDV_SELECT,
   normalizeMenuProductRow,
   sortMenuProductRows,
   type MenuProductRow,
@@ -15,7 +15,7 @@ export async function getPdvProductsForStore(
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('products')
-    .select(MENU_PRODUCT_SELECT)
+    .select(MENU_PRODUCT_PDV_SELECT)
     .eq('store_id', storeId)
     .eq('active', true)
     .order('sort_order', { ascending: true, nullsFirst: false })
