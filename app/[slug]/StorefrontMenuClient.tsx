@@ -1016,18 +1016,27 @@ export function StorefrontMenuClient({
                   <p className="text-sm font-semibold text-neutral-800">
                     Subtotal: {money.format(subtotal)}
                   </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCartOpen(false)
-                      scrollToCheckout()
-                    }}
-                    disabled={items.length === 0}
-                    className="w-full rounded-xl px-4 py-3 text-sm font-semibold text-white shadow-sm transition-[filter] disabled:opacity-50 enabled:active:brightness-[0.88] sm:w-auto"
-                    style={{ backgroundColor: theme.primary }}
-                  >
-                    Ir para finalizar
-                  </button>
+                  <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto">
+                    <button
+                      type="button"
+                      onClick={() => setCartOpen(false)}
+                      className="rounded-xl border border-neutral-300 bg-white px-4 py-3 text-sm font-semibold text-neutral-700 transition-colors hover:bg-neutral-50 active:bg-neutral-100"
+                    >
+                      Continuar comprando
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCartOpen(false)
+                        scrollToCheckout()
+                      }}
+                      disabled={items.length === 0}
+                      className="rounded-xl px-4 py-3 text-sm font-semibold text-white shadow-sm transition-[filter] disabled:opacity-50 enabled:active:brightness-[0.88]"
+                      style={{ backgroundColor: theme.primary }}
+                    >
+                      Ir para finalizar
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

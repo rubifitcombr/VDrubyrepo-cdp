@@ -118,15 +118,6 @@ export function ProductDetailModal({
     return sum
   }, [selectedQty, groups])
 
-  const selectedAddonsCount = useMemo(
-    () =>
-      Object.values(selectedQty).reduce(
-        (sum, n) => sum + (Number.isFinite(n) && n > 0 ? n : 0),
-        0
-      ),
-    [selectedQty]
-  )
-
   const unitTotal = product.price + addonTotal
 
   const requiredOk = useMemo(() => {
@@ -247,7 +238,7 @@ export function ProductDetailModal({
               className="text-lg font-bold tabular-nums"
               style={{ color: theme.primary }}
             >
-              {money.format(unitTotal)}
+              {money.format(product.price)}
             </span>
             {pct > 0 ? (
               <span
@@ -387,23 +378,6 @@ export function ProductDetailModal({
               onChange={(e) => setNotes(e.target.value)}
             />
           </label>
-
-          <div className="mt-4 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2">
-            <div className="flex items-center justify-between text-sm">
-              <span className="font-medium text-neutral-700">
-                Adicionais selecionados
-              </span>
-              <span className="font-semibold tabular-nums text-neutral-900">
-                {selectedAddonsCount}
-              </span>
-            </div>
-            <div className="mt-1 flex items-center justify-between text-sm">
-              <span className="text-neutral-600">Valor dos adicionais</span>
-              <span className="font-semibold tabular-nums text-neutral-900">
-                {money.format(addonTotal)}
-              </span>
-            </div>
-          </div>
 
           <div className="mt-4 flex items-center justify-between rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2">
             <span className="text-sm font-medium text-neutral-700">Quantidade</span>
