@@ -13,7 +13,11 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100
 }
 
-/** Mensagem legível quando o trigger de estoque (phase3b) bloqueia o insert. */
+/**
+ * Mensagem legível quando um trigger em `order_items` devolve erro de estoque.
+ * Se o stock estiver desligado, executa no Supabase:
+ * `supabase/migrations/20260429120000_disable_order_items_stock_triggers.sql`
+ */
 function friendlyStockError(raw: string | undefined): string {
   const m = raw?.trim() || ''
   if (/estoque insuficiente/i.test(m)) {

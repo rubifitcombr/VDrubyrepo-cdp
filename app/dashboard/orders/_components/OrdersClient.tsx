@@ -103,7 +103,7 @@ function statusBadgeClass(status: string | null): string {
 
 /**
  * Fundo e borda do cartão alinhados ao status (mobile e desktop).
- * No desktop (sm+) reforça-se a leitura com faixa lateral e sombra, sem alterar o layout expandido.
+ * No desktop largo (lg+) os cartões entram em grelha 3×n com proporção próxima do quadrado.
  */
 function statusCardSurfaceClass(status: string | null): string {
   switch (status) {
@@ -476,7 +476,7 @@ export function OrdersClient({
           Nenhum pedido neste filtro.
         </div>
       ) : (
-        <ul className="mt-8 flex flex-col gap-4 max-sm:gap-2">
+        <ul className="mt-8 flex flex-col gap-4 max-sm:gap-2 lg:grid lg:grid-cols-3 lg:items-stretch lg:gap-4">
           {filtered.map((o) => {
             const busy = busyId === o.id
             const st = o.status
@@ -500,7 +500,7 @@ export function OrdersClient({
             return (
               <li
                 key={o.id}
-                className={`overflow-hidden rounded-2xl border shadow-sm shadow-black/[0.04] ${statusCardSurfaceClass(st)} ${
+                className={`overflow-hidden rounded-2xl border shadow-sm shadow-black/[0.04] lg:flex lg:min-h-0 lg:flex-col lg:aspect-square ${statusCardSurfaceClass(st)} ${
                   st === 'cancelled' ? 'opacity-75' : ''
                 }`}
               >
@@ -533,17 +533,17 @@ export function OrdersClient({
 
                 <div
                   id={`order-details-${o.id}`}
-                  className={`gap-4 p-4 sm:gap-5 sm:p-5 lg:gap-6 lg:p-6 ${
+                  className={`gap-4 p-4 sm:gap-5 sm:p-5 lg:min-h-0 lg:flex-1 lg:gap-3 lg:p-4 lg:overflow-hidden ${
                     mobileExpanded ? 'flex flex-col' : 'hidden'
-                  } sm:flex sm:flex-row sm:items-stretch`}
+                  } sm:flex sm:flex-row sm:items-stretch lg:flex-col`}
                 >
-                  <div className="flex shrink-0 justify-center sm:block">
+                  <div className="flex shrink-0 justify-center sm:block lg:flex lg:justify-center">
                     <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[#f3f4f6] text-base font-bold text-[#374151]">
                       {customerInitials(o.customer_name)}
                     </span>
                   </div>
 
-                  <div className="min-w-0 flex-1 space-y-1.5">
+                  <div className="min-w-0 flex-1 space-y-1.5 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overflow-x-hidden lg:pr-0.5">
                     <p className="text-base font-bold text-[#1a1614]">
                       <span className="text-[var(--dash-primary)]">{ref}</span>{' '}
                       {customerName}
@@ -668,7 +668,7 @@ export function OrdersClient({
                     ) : null}
                   </div>
 
-                  <div className="flex shrink-0 flex-col items-stretch gap-3 border-t border-[var(--card-border)] pt-4 sm:w-52 sm:border-l sm:border-t-0 sm:pl-5 sm:pt-0">
+                  <div className="flex shrink-0 flex-col items-stretch gap-3 border-t border-[var(--card-border)] pt-4 sm:w-52 sm:border-l sm:border-t-0 sm:pl-5 sm:pt-0 lg:w-full lg:border-l-0 lg:pl-0 lg:pt-3">
                     <div className="text-center sm:text-right">
                       <p className="text-xl font-bold tabular-nums text-[#1a1614]">
                         {money.format(Number(o.total) || 0)}

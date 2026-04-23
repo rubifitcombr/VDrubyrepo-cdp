@@ -297,21 +297,6 @@ export function PdvClient({
               <h1 className="mt-1 font-brand text-lg font-bold text-vyria-navy md:text-xl">
                 Balcão
               </h1>
-              <p className="text-xs text-vyria-navy-muted md:text-sm">
-                Toque para adicionar ·{' '}
-                <kbd className="rounded bg-zinc-100 px-1 font-mono text-[10px]">
-                  /
-                </kbd>{' '}
-                pesquisa ·{' '}
-                <kbd className="rounded bg-zinc-100 px-1 font-mono text-[10px]">
-                  Ctrl+Enter
-                </kbd>{' '}
-                finalizar ·{' '}
-                <kbd className="rounded bg-zinc-100 px-1 font-mono text-[10px]">
-                  Alt+1…9
-                </kbd>{' '}
-                quantidade (linha)
-              </p>
             </div>
             <div className="text-right text-xs text-vyria-navy-muted">
               <span className="tabular-nums">{products.length}</span> produtos
