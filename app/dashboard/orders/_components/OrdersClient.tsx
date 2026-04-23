@@ -12,9 +12,16 @@ import { updateOrderStatus } from '@/services/orders'
 
 function playNewOrderBeep() {
   try {
+    const w = window as Window & { __vyriaLastOrderBeepAt?: number }
+    const now = Date.now()
+    if (typeof w.__vyriaLastOrderBeepAt === 'number' && now - w.__vyriaLastOrderBeepAt < 900) {
+      return
+    }
+    w.__vyriaLastOrderBeepAt = now
     const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
     if (!Ctx) return
     const ctx = new Ctx()
+    void ctx.resume?.()
     const osc = ctx.createOscillator()
     const gain = ctx.createGain()
     osc.connect(gain)
@@ -273,7 +280,7 @@ export function OrdersClient({
   useEffect(() => {
     const supabase = createClient()
 
-    async function pullOrders() {
+    async function pullOrders(options?: { beepOnNew?: boolean }) {
       const { data, error } = await supabase
         .from('orders')
         .select(ORDER_SELECT)
@@ -281,6 +288,12 @@ export function OrdersClient({
         .order('created_at', { ascending: false })
       if (error || !data) return
       const rows = (data as Record<string, unknown>[]).map(mapStoreOrderRow)
+      const nextIds = new Set(rows.map((r) => r.id))
+      if (options?.beepOnNew) {
+        const hasNew = rows.some((r) => !seenIdsRef.current.has(r.id))
+        if (hasNew) playNewOrderBeep()
+      }
+      seenIdsRef.current = nextIds
       setOrders(rows)
     }
 
@@ -296,36 +309,10 @@ export function OrdersClient({
         },
         (payload) => {
           if (payload.eventType === 'INSERT' && payload.new) {
-            const row = mapStoreOrderRow(payload.new as Record<string, unknown>)
-            setOrders((prev) => {
-              if (prev.some((p) => p.id === row.id)) return prev
-              if (!seenIdsRef.current.has(row.id)) {
-                seenIdsRef.current.add(row.id)
-                const hasGlobalNotifier = Boolean(
-                  (
-                    window as Window & {
-                      __vyriaGlobalOrderNotifierActive?: boolean
-                    }
-                  ).__vyriaGlobalOrderNotifierActive
-                )
-                if (!hasGlobalNotifier) {
-                  playNewOrderBeep()
-                }
-              }
-              return [row, ...prev]
-            })
-          } else if (payload.eventType === 'UPDATE' && payload.new) {
-            const row = mapStoreOrderRow(payload.new as Record<string, unknown>)
-            setOrders((prev) =>
-              prev.map((p) => (p.id === row.id ? row : p))
-            )
-          } else if (payload.eventType === 'DELETE' && payload.old) {
-            const id = String((payload.old as { id?: string }).id ?? '')
-            if (id) {
-              seenIdsRef.current.delete(id)
-              setOrders((prev) => prev.filter((p) => p.id !== id))
-            }
+            void pullOrders({ beepOnNew: true })
+            return
           }
+          void pullOrders()
         }
       )
       .subscribe((status) => {

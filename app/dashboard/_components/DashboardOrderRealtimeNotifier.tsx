@@ -5,11 +5,18 @@ import { createClient } from '@/lib/supabase/client'
 
 function playNewOrderBeep() {
   try {
+    const w = window as Window & { __vyriaLastOrderBeepAt?: number }
+    const now = Date.now()
+    if (typeof w.__vyriaLastOrderBeepAt === 'number' && now - w.__vyriaLastOrderBeepAt < 900) {
+      return
+    }
+    w.__vyriaLastOrderBeepAt = now
     const Ctx =
       window.AudioContext ||
       (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
     if (!Ctx) return
     const ctx = new Ctx()
+    void ctx.resume?.()
     const osc = ctx.createOscillator()
     const gain = ctx.createGain()
     osc.connect(gain)
@@ -96,7 +103,6 @@ async function showOrderNotification(title: string, body: string, url: string) {
 
 export function DashboardOrderRealtimeNotifier({ storeId }: { storeId: string | null }) {
   const seenIdsRef = useRef<Set<string>>(new Set())
-  const hydratedSeenRef = useRef(false)
 
   useEffect(() => {
     if (!storeId) return
@@ -167,19 +173,6 @@ export function DashboardOrderRealtimeNotifier({ storeId }: { storeId: string | 
     document.addEventListener('visibilitychange', onManualEnable)
     window.addEventListener('vyria-enable-notifications', onManualEnable as EventListener)
 
-    async function hydrateSeenIds() {
-      const { data, error } = await supabase
-        .from('orders')
-        .select('id')
-        .eq('store_id', storeId)
-      if (closed || error) return
-      const ids = (data ?? []).map((r) => String((r as { id?: string }).id ?? '')).filter(Boolean)
-      seenIdsRef.current = new Set(ids)
-      hydratedSeenRef.current = true
-    }
-
-    void hydrateSeenIds()
-
     const channel = supabase
       .channel(`dashboard-order-notify-${storeId}`)
       .on(
@@ -193,7 +186,7 @@ export function DashboardOrderRealtimeNotifier({ storeId }: { storeId: string | 
         (payload) => {
           const row = payload.new as { id?: string; customer_name?: string | null }
           const id = String(row.id ?? '')
-          if (!id || !hydratedSeenRef.current) return
+          if (!id) return
           if (seenIdsRef.current.has(id)) return
           seenIdsRef.current.add(id)
 
