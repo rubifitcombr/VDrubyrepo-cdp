@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/client'
+import { slugifyStoreSlug } from '@/lib/store-slug'
 
 const STORE_ALLOWED_FIELDS = new Set([
   'name',
@@ -48,39 +49,82 @@ export async function createStore(
   name: string,
   phone?: string
 ) {
-  const slug = name.toLowerCase().replace(/\s+/g, '-')
-
-  const supabase = createClient()
-  const { data, error } = await supabase
-    .from('stores')
-    .insert({
-      name,
-      slug,
-      owner_id: userId,
-      status: 'pendente',
-      plano: 'start',
-      ...(phone ? { phone } : {}),
+  void userId
+  try {
+    const res = await fetch('/api/stores/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: name.trim(),
+        ...(phone?.trim() ? { phone: phone.trim() } : {}),
+      }),
     })
-    .select()
-    .single()
-
-  return { data, error }
+    const body = (await res.json()) as {
+      ok?: boolean
+      data?: unknown
+      error?: string
+    }
+    if (!res.ok || !body.ok) {
+      return {
+        data: null,
+        error: { message: body.error || 'Erro ao criar loja.' },
+      }
+    }
+    return { data: body.data ?? null, error: null }
+  } catch (e) {
+    return {
+      data: null,
+      error: {
+        message: e instanceof Error ? e.message : 'Erro de rede ao criar loja.',
+      },
+    }
+  }
 }
 
 export async function updateStore(
   storeId: string,
   patch: Record<string, unknown>
 ) {
-  const sanitizedPatch = Object.fromEntries(
+  const sanitizedPatchRaw = Object.fromEntries(
     Object.entries(patch).filter(([key]) => STORE_ALLOWED_FIELDS.has(key))
   )
-  if (Object.keys(sanitizedPatch).length === 0) {
+  if (Object.keys(sanitizedPatchRaw).length === 0) {
     return {
       error: {
         message: 'Nenhum campo permitido para atualização.',
         code: 'NO_ALLOWED_FIELDS',
       },
     }
+  }
+
+  const sanitizedPatch: Record<string, unknown> = { ...sanitizedPatchRaw }
+  let appliedSlug: string | null = null
+  if (typeof sanitizedPatch.slug === 'string') {
+    const desiredSlug = slugifyStoreSlug(sanitizedPatch.slug)
+    delete sanitizedPatch.slug
+
+    const slugRes = await fetch('/api/stores/slug', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ storeId, slug: desiredSlug }),
+    })
+    const slugBody = (await slugRes.json()) as { error?: string; slug?: string }
+    if (!slugRes.ok) {
+      return {
+        error: {
+          message: slugBody.error || 'Não foi possível atualizar o slug.',
+          code: 'SLUG_UPDATE_FAILED',
+        },
+      }
+    }
+    appliedSlug =
+      typeof slugBody.slug === 'string' && slugBody.slug.trim()
+        ? slugBody.slug.trim()
+        : desiredSlug
+  }
+
+  if (Object.keys(sanitizedPatch).length === 0) {
+    return { error: null, slug: appliedSlug }
   }
 
   const supabase = createClient()
@@ -101,5 +145,5 @@ export async function updateStore(
       },
     }
   }
-  return { error: null }
+  return { error: null, slug: appliedSlug }
 }

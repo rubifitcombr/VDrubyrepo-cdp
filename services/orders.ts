@@ -20,12 +20,29 @@ export async function getStoreOrders(storeId: string): Promise<StoreOrderRow[]> 
 export async function updateOrderStatus(
   orderId: string,
   status: string
-): Promise<{ error: Error | null }> {
-  const supabase = createClient()
-  const { error } = await supabase
-    .from('orders')
-    .update({ status })
-    .eq('id', orderId)
-
-  return { error: error ? new Error(error.message) : null }
+): Promise<{ error: Error | null; deliveryNotified?: boolean }> {
+  try {
+    const res = await fetch('/api/orders/status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderId, status }),
+    })
+    const data = (await res.json()) as {
+      error?: string
+      deliveryNotified?: boolean
+    }
+    if (!res.ok) {
+      return {
+        error: new Error(data?.error || res.statusText || 'Erro ao atualizar.'),
+      }
+    }
+    return {
+      error: null,
+      deliveryNotified: data.deliveryNotified === true,
+    }
+  } catch (e) {
+    return {
+      error: new Error(e instanceof Error ? e.message : 'Erro de rede.'),
+    }
+  }
 }

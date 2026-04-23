@@ -1,6 +1,7 @@
 import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { slugifyStoreSlug } from '@/lib/store-slug'
 
 /** Garante que `%`, `_` e `\` em slugs são literais num `ILIKE`. */
 function escapeIlikeExactPattern(segment: string): string {
@@ -21,7 +22,7 @@ export function normalizePublicSlugSegment(raw: string): string {
   } catch {
     /* ignora */
   }
-  return s.normalize('NFC').trim()
+  return slugifyStoreSlug(s.normalize('NFC').trim())
 }
 
 export async function fetchStoreByPublicSlug(

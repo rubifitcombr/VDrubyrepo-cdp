@@ -631,7 +631,7 @@ export function StorefrontMenuClient({
             <button
               type="button"
               onClick={() => searchRef.current?.focus()}
-              className="flex h-10 w-10 items-center justify-center rounded-full text-neutral-700 transition-colors hover:bg-neutral-100"
+              className="flex h-10 w-10 items-center justify-center rounded-full text-neutral-700 transition-colors hover:bg-neutral-100 active:bg-neutral-200"
               aria-label="Buscar no cardápio"
             >
               <IconSearch className="h-5 w-5" />
@@ -639,7 +639,7 @@ export function StorefrontMenuClient({
             <button
               type="button"
               onClick={handleShareClick}
-              className="flex h-10 w-10 items-center justify-center rounded-full text-neutral-700 transition-colors hover:bg-neutral-100"
+              className="flex h-10 w-10 items-center justify-center rounded-full text-neutral-700 transition-colors hover:bg-neutral-100 active:bg-neutral-200"
               aria-label="Partilhar link do cardápio desta loja"
             >
               <IconShare className="h-5 w-5" />
@@ -674,7 +674,7 @@ export function StorefrontMenuClient({
                   key={cat}
                   type="button"
                   onClick={() => setSelectedCategory(cat)}
-                  className={`relative inline-flex shrink-0 items-center gap-1 px-3 pb-2.5 pt-1 text-[13px] font-semibold transition-colors ${
+                  className={`relative inline-flex shrink-0 items-center gap-1 rounded-lg px-3 pb-2.5 pt-1 text-[13px] font-semibold transition-colors active:bg-neutral-200/90 ${
                     active
                       ? ''
                       : 'text-neutral-500 hover:text-neutral-800'
@@ -739,7 +739,7 @@ export function StorefrontMenuClient({
                         <button
                           type="button"
                           onClick={() => setDetailProduct(p)}
-                          className="flex w-full gap-3 py-4 text-left first:pt-3 transition-opacity active:opacity-90"
+                          className="flex w-full gap-3 py-4 text-left first:pt-3 transition-colors active:bg-neutral-100"
                         >
                           <div className="min-w-0 flex-1">
                             <h3 className="text-[15px] font-bold leading-snug text-neutral-900">
@@ -896,7 +896,7 @@ export function StorefrontMenuClient({
                   <button
                     type="button"
                     onClick={() => setCartOpen(false)}
-                    className="rounded-xl border border-neutral-200 px-3 py-1.5 text-xs font-semibold text-neutral-600 hover:bg-neutral-50"
+                    className="rounded-xl border border-neutral-200 px-3 py-1.5 text-xs font-semibold text-neutral-600 transition-colors hover:bg-neutral-50 active:bg-neutral-200"
                   >
                     Fechar
                   </button>
@@ -927,7 +927,7 @@ export function StorefrontMenuClient({
                           <button
                             type="button"
                             onClick={() => removeItem(line.id)}
-                            className="shrink-0 rounded-lg px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-50"
+                            className="shrink-0 rounded-lg px-2 py-1 text-xs font-semibold text-red-600 transition-colors hover:bg-red-50 active:bg-red-100"
                           >
                             Remover
                           </button>
@@ -939,7 +939,7 @@ export function StorefrontMenuClient({
                               onClick={() =>
                                 setQuantity(line.id, line.quantity - 1)
                               }
-                              className="px-3 py-1.5 text-sm font-bold text-neutral-700"
+                              className="rounded-l-full px-3 py-1.5 text-sm font-bold text-neutral-700 transition-colors active:bg-neutral-200"
                             >
                               -
                             </button>
@@ -951,7 +951,7 @@ export function StorefrontMenuClient({
                               onClick={() =>
                                 setQuantity(line.id, line.quantity + 1)
                               }
-                              className="px-3 py-1.5 text-sm font-bold text-neutral-700"
+                              className="rounded-r-full px-3 py-1.5 text-sm font-bold text-neutral-700 transition-colors active:bg-neutral-200"
                             >
                               +
                             </button>
@@ -978,7 +978,7 @@ export function StorefrontMenuClient({
                       scrollToCheckout()
                     }}
                     disabled={items.length === 0}
-                    className="w-full rounded-xl px-4 py-3 text-sm font-semibold text-white shadow-sm disabled:opacity-50 sm:w-auto"
+                    className="w-full rounded-xl px-4 py-3 text-sm font-semibold text-white shadow-sm transition-[filter] disabled:opacity-50 enabled:active:brightness-[0.88] sm:w-auto"
                     style={{ backgroundColor: theme.primary }}
                   >
                     Ir para finalizar
@@ -1012,7 +1012,7 @@ export function StorefrontMenuClient({
           <button
             type="button"
             onClick={scrollToTop}
-            className="flex flex-col items-center gap-0.5 py-2 text-[11px] font-semibold transition-colors"
+            className="flex min-h-[48px] flex-col items-center justify-center gap-0.5 rounded-xl py-2 text-[11px] font-semibold transition-colors active:bg-neutral-200/90"
             style={{ color: theme.primary }}
           >
             <IconHome className="h-6 w-6" style={{ color: theme.primary }} />
@@ -1023,7 +1023,7 @@ export function StorefrontMenuClient({
             onClick={() => {
               scrollToCheckout()
             }}
-            className="flex flex-col items-center gap-0.5 py-2 text-[11px] font-semibold text-neutral-400 transition-colors hover:text-neutral-600"
+            className="flex min-h-[48px] flex-col items-center justify-center gap-0.5 rounded-xl py-2 text-[11px] font-semibold text-neutral-400 transition-colors hover:text-neutral-600 active:bg-neutral-200/90 active:text-neutral-600"
           >
             <IconOrders className="h-6 w-6" />
             Pedidos
@@ -1031,7 +1031,7 @@ export function StorefrontMenuClient({
           <button
             type="button"
             onClick={() => setCartOpen(true)}
-            className="relative flex flex-col items-center gap-0.5 py-2 text-[11px] font-semibold text-neutral-400 transition-colors hover:text-neutral-600"
+            className="relative flex min-h-[48px] flex-col items-center justify-center gap-0.5 rounded-xl py-2 text-[11px] font-semibold text-neutral-400 transition-colors hover:text-neutral-600 active:bg-neutral-200/90 active:text-neutral-600"
           >
             <span className="relative inline-flex">
               <IconCartNav className="h-6 w-6" />

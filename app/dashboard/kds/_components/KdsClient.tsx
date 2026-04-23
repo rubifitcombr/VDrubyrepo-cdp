@@ -45,7 +45,9 @@ export function KdsClient({
   const [orders, setOrders] = useState<StoreOrderRow[]>(initialOrders)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [liveOk, setLiveOk] = useState(false)
+  const [waNotice, setWaNotice] = useState<string | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
+  const waNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const displayNumberById = useMemo(() => {
     const sorted = [...orders].sort(
@@ -139,9 +141,30 @@ export function KdsClient({
     }
   }, [storeId, pullOrders])
 
+  useEffect(() => {
+    return () => {
+      if (waNoticeTimerRef.current) {
+        clearTimeout(waNoticeTimerRef.current)
+        waNoticeTimerRef.current = null
+      }
+    }
+  }, [])
+
+  function flashWaNotice(message: string) {
+    if (waNoticeTimerRef.current) {
+      clearTimeout(waNoticeTimerRef.current)
+      waNoticeTimerRef.current = null
+    }
+    setWaNotice(message)
+    waNoticeTimerRef.current = setTimeout(() => {
+      setWaNotice(null)
+      waNoticeTimerRef.current = null
+    }, 5000)
+  }
+
   async function patch(orderId: string, status: string) {
     setBusyId(orderId)
-    const { error } = await updateOrderStatus(orderId, status)
+    const { error, deliveryNotified } = await updateOrderStatus(orderId, status)
     setBusyId(null)
     if (error) {
       alert(error.message)
@@ -150,6 +173,9 @@ export function KdsClient({
     setOrders((prev) =>
       prev.map((o) => (o.id === orderId ? { ...o, status } : o))
     )
+    if (deliveryNotified) {
+      flashWaNotice('Aviso de entrega enviado ao cliente por WhatsApp.')
+    }
   }
 
   function enterFullscreen() {
@@ -203,6 +229,28 @@ export function KdsClient({
           </button>
         </div>
       </header>
+
+      {waNotice ? (
+        <div
+          className="mx-3 mt-2 flex items-start justify-between gap-3 rounded-xl border border-emerald-400/40 bg-emerald-500/15 px-4 py-3 text-sm text-emerald-50 md:mx-4"
+          role="status"
+        >
+          <p className="min-w-0 flex-1 leading-snug">{waNotice}</p>
+          <button
+            type="button"
+            onClick={() => {
+              if (waNoticeTimerRef.current) {
+                clearTimeout(waNoticeTimerRef.current)
+                waNoticeTimerRef.current = null
+              }
+              setWaNotice(null)
+            }}
+            className="shrink-0 rounded-lg px-2 py-1 text-xs font-semibold text-emerald-100 hover:bg-white/10"
+          >
+            Fechar
+          </button>
+        </div>
+      ) : null}
 
       <div className="grid flex-1 grid-cols-1 gap-3 p-3 md:grid-cols-3 md:gap-4 md:p-4">
         {COLS.map((col) => (

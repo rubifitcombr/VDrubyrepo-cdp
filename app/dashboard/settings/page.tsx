@@ -5,6 +5,7 @@ import { StoreOpenSwitch } from '@/app/dashboard/_components/StoreOpenSwitch'
 import { PublicSlugPathPill } from '@/app/_components/PublicSlugPathPill'
 import { planTier, parsePlan, type Plan } from '@/lib/plan'
 import { readStorePlano } from '@/lib/store-columns'
+import { slugifyStoreSlug } from '@/lib/store-slug'
 import { uploadStoreLogo } from '@/lib/storage-upload'
 import Image from 'next/image'
 import Link from 'next/link'
@@ -30,14 +31,6 @@ function IconClock({ className }: { className?: string }) {
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
     </svg>
   )
-}
-
-function slugify(s: string) {
-  return s
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, '-')
-    .replace(/[^a-z0-9-]/g, '')
 }
 
 function storeInitials(name: string): string {
@@ -147,7 +140,7 @@ export default function SettingsPage() {
   async function handleSave() {
     if (!storeId) return
     setSaving(true)
-    const nextSlug = slugify(slug)
+    const nextSlug = slugifyStoreSlug(slug)
     if (!nextSlug) {
       setSaving(false)
       alert('Indica um slug válido para o URL público (letras, números e hífens).')
@@ -192,9 +185,13 @@ export default function SettingsPage() {
     const droppedFields: string[] = []
     let error: { message: string } | null = null
 
+    let effectiveSlug = nextSlug
     while (true) {
       const result = await updateStore(storeId, attemptedPatch)
       if (!result.error) {
+        if (typeof result.slug === 'string' && result.slug.trim()) {
+          effectiveSlug = result.slug.trim()
+        }
         error = null
         break
       }
@@ -249,7 +246,7 @@ export default function SettingsPage() {
       }
       return
     }
-    setSlug(nextSlug)
+    setSlug(effectiveSlug)
     if (droppedFields.length > 0) {
       alert(
         `Alterações principais guardadas (incluindo WhatsApp e slug).\n\nCampos não salvos por falta de colunas no Supabase: ${droppedFields.join(', ')}.`
@@ -427,7 +424,7 @@ export default function SettingsPage() {
               />
               <p className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[#9ca3af]">
                 <span>Caminho público</span>
-                <PublicSlugPathPill slug={slugify(slug) || 'slug'} />
+                <PublicSlugPathPill slug={slugifyStoreSlug(slug) || 'slug'} />
               </p>
             </label>
             <label className="block text-sm font-medium text-[#374151]">
@@ -466,7 +463,7 @@ export default function SettingsPage() {
               <div className="min-w-0 flex-1" title={publicUrl || undefined}>
                 <div className="flex justify-start">
                   {slug ? (
-                    <PublicSlugPathPill slug={slugify(slug)} />
+                    <PublicSlugPathPill slug={slugifyStoreSlug(slug)} />
                   ) : (
                     <span className="inline-flex rounded-full bg-[#141414]/40 px-4 py-2 text-[12px] text-white/80">
                       /…

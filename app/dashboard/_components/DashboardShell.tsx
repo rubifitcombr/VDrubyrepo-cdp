@@ -133,21 +133,21 @@ function PlansNavCta({
   const linkSidebar =
     `flex shrink-0 items-center gap-3 px-3 py-2.5 text-sm font-medium transition-colors md:w-full md:rounded-full ${
       active
-        ? 'rounded-full bg-orange-400/20 text-orange-100 shadow-sm ring-1 ring-orange-400/35'
-        : 'rounded-full text-orange-200/95 hover:bg-orange-500/15 hover:text-orange-50'
+        ? 'rounded-full bg-orange-400/20 text-orange-100 shadow-sm ring-1 ring-orange-400/35 active:bg-orange-500/30'
+        : 'rounded-full text-orange-200/95 hover:bg-orange-500/15 hover:text-orange-50 active:bg-orange-600/25'
     }`
   const linkBottom =
     `flex shrink-0 items-center gap-2 rounded-full px-2.5 py-2 text-xs font-semibold transition-colors ${
       active
-        ? 'bg-orange-400/25 text-orange-100 ring-1 ring-orange-400/35'
-        : 'text-orange-200/95 hover:bg-orange-500/15'
+        ? 'bg-orange-400/25 text-orange-100 ring-1 ring-orange-400/35 active:bg-orange-500/35'
+        : 'text-orange-200/95 hover:bg-orange-500/15 active:bg-orange-600/25'
     }`
 
   const linkDrawer =
     `flex w-full items-center gap-3 rounded-full px-3 py-2.5 text-sm font-medium transition-colors ${
       active
-        ? 'bg-orange-400/20 text-orange-100 shadow-sm ring-1 ring-orange-400/35'
-        : 'text-orange-200/95 hover:bg-orange-500/15 hover:text-orange-50'
+        ? 'bg-orange-400/20 text-orange-100 shadow-sm ring-1 ring-orange-400/35 active:bg-orange-500/30'
+        : 'text-orange-200/95 hover:bg-orange-500/15 hover:text-orange-50 active:bg-orange-600/25'
     }`
 
   return (
@@ -198,28 +198,28 @@ function DashboardNavLinks({
         const linkSidebar =
           `flex shrink-0 items-center gap-3 px-3 py-2.5 text-sm font-medium transition-colors md:w-full md:rounded-full ${
             active
-              ? 'rounded-full bg-[var(--dash-primary)] text-white shadow-md shadow-[var(--dash-primary)]/25'
+              ? 'rounded-full bg-[var(--dash-primary)] text-white shadow-md shadow-[var(--dash-primary)]/25 active:brightness-[0.88]'
               : quietInactive
-                ? 'rounded-full text-white/40 hover:bg-white/[0.05] hover:text-white/55'
-                : 'rounded-full text-white/65 hover:bg-white/10 hover:text-white'
+                ? 'rounded-full text-white/40 hover:bg-white/[0.05] hover:text-white/55 active:bg-black/35'
+                : 'rounded-full text-white/65 hover:bg-white/10 hover:text-white active:bg-white/[0.16]'
           }`
 
         const linkBottom =
           `flex shrink-0 items-center gap-2 rounded-full px-2.5 py-2 text-xs font-medium transition-colors ${
             active
-              ? 'bg-[var(--dash-primary)] text-white shadow-md shadow-[var(--dash-primary)]/25'
+              ? 'bg-[var(--dash-primary)] text-white shadow-md shadow-[var(--dash-primary)]/25 active:brightness-[0.88]'
               : quietInactive
-                ? 'text-white/40 hover:bg-white/[0.05] hover:text-white/55'
-                : 'text-white/70 hover:bg-white/10 hover:text-white'
+                ? 'text-white/40 hover:bg-white/[0.05] hover:text-white/55 active:bg-black/35'
+                : 'text-white/70 hover:bg-white/10 hover:text-white active:bg-white/[0.16]'
           }`
 
         const linkDrawer =
           `flex w-full items-center gap-3 rounded-full px-3 py-2.5 text-sm font-medium transition-colors ${
             active
-              ? 'bg-[var(--dash-primary)] text-white shadow-md shadow-[var(--dash-primary)]/25'
+              ? 'bg-[var(--dash-primary)] text-white shadow-md shadow-[var(--dash-primary)]/25 active:brightness-[0.88]'
               : quietInactive
-                ? 'text-white/40 hover:bg-white/[0.05] hover:text-white/55'
-                : 'text-white/70 hover:bg-white/10 hover:text-white'
+                ? 'text-white/40 hover:bg-white/[0.05] hover:text-white/55 active:bg-black/35'
+                : 'text-white/70 hover:bg-white/10 hover:text-white active:bg-white/[0.16]'
           }`
 
         return (
@@ -327,7 +327,7 @@ export function DashboardShell({
         <button
           type="button"
           onClick={() => setMobileMenuOpen(true)}
-          className="absolute right-3 top-2.5 z-10 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/15 bg-white/5 text-white/85 transition-colors hover:bg-white/10 md:hidden"
+          className="absolute right-3 top-2.5 z-10 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/15 bg-white/5 text-white/85 transition-colors hover:bg-white/10 active:bg-white/25 md:hidden"
           aria-label="Abrir menu"
         >
           <svg
@@ -430,7 +430,7 @@ export function DashboardShell({
         <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true">
           <button
             type="button"
-            className="absolute inset-0 bg-black/45"
+            className="absolute inset-0 bg-black/45 transition-colors active:bg-black/55"
             aria-label="Fechar menu"
             onClick={() => setMobileMenuOpen(false)}
           />
@@ -440,7 +440,7 @@ export function DashboardShell({
               <button
                 type="button"
                 onClick={() => setMobileMenuOpen(false)}
-                className="rounded-lg border border-white/20 px-2 py-1 text-xs font-semibold text-white/85"
+                className="rounded-lg border border-white/20 px-2 py-1 text-xs font-semibold text-white/85 transition-colors active:bg-white/15"
               >
                 Fechar
               </button>
@@ -464,7 +464,7 @@ export function DashboardShell({
                   href={`/${storeSlug}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex min-w-0 items-center justify-center gap-2 truncate rounded-lg bg-white/10 px-3 py-2 text-sm font-semibold text-white/90"
+                  className="inline-flex min-w-0 items-center justify-center gap-2 truncate rounded-lg bg-white/10 px-3 py-2 text-sm font-semibold text-white/90 transition-colors active:bg-white/25"
                 >
                   <IconExternal className="h-4 w-4 shrink-0" />
                   Ver minha loja

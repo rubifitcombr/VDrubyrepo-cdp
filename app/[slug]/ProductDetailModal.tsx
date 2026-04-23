@@ -202,7 +202,7 @@ export function ProductDetailModal({
           <button
             type="button"
             onClick={onClose}
-            className="absolute left-3 top-3 flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-neutral-800 shadow-md backdrop-blur-sm"
+            className="absolute left-3 top-3 flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-neutral-800 shadow-md backdrop-blur-sm transition-colors active:bg-neutral-200"
             aria-label="Fechar"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -304,8 +304,8 @@ export function ProductDetailModal({
                                 onClick={() => toggle(gi, ii)}
                                 className={`flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2.5 text-left text-sm transition-colors ${
                                   active
-                                    ? 'border-2 bg-white'
-                                    : 'border border-transparent hover:bg-white/80'
+                                    ? 'border-2 bg-white active:brightness-[0.96]'
+                                    : 'border border-transparent hover:bg-white/80 active:bg-neutral-200/80'
                                 }`}
                                 style={
                                   active
@@ -357,7 +357,7 @@ export function ProductDetailModal({
             <div className="inline-flex items-center rounded-full border border-neutral-200 bg-white">
               <button
                 type="button"
-                className="px-3 py-1.5 text-lg font-bold text-neutral-700 disabled:opacity-40"
+                className="rounded-l-full px-3 py-1.5 text-lg font-bold text-neutral-700 transition-colors active:bg-neutral-200 disabled:opacity-40"
                 disabled={qty <= 1}
                 onClick={() => setQty((q) => Math.max(1, q - 1))}
               >
@@ -368,7 +368,7 @@ export function ProductDetailModal({
               </span>
               <button
                 type="button"
-                className="px-3 py-1.5 text-lg font-bold text-neutral-700"
+                className="rounded-r-full px-3 py-1.5 text-lg font-bold text-neutral-700 transition-colors active:bg-neutral-200"
                 onClick={() => setQty((q) => q + 1)}
               >
                 +
@@ -382,7 +382,7 @@ export function ProductDetailModal({
             type="button"
             disabled={!canAdd}
             onClick={handleAdd}
-            className="w-full rounded-xl py-3.5 text-sm font-bold text-white shadow-md transition-[filter,transform] enabled:hover:brightness-105 enabled:active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-45"
+            className="w-full rounded-xl py-3.5 text-sm font-bold text-white shadow-md transition-[filter,transform] enabled:hover:brightness-105 enabled:active:scale-[0.99] enabled:active:brightness-[0.88] disabled:cursor-not-allowed disabled:opacity-45"
             style={{
               background: `linear-gradient(135deg, ${theme.primary}, ${theme.secondary})`,
             }}

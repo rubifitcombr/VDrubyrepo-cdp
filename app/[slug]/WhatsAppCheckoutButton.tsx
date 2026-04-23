@@ -276,7 +276,7 @@ export function WhatsAppCheckoutButton({
         type="button"
         onClick={() => setOpen(true)}
         disabled={items.length === 0}
-        className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#25D366] px-5 py-3.5 text-sm font-semibold text-white shadow-lg shadow-green-600/25 ring-2 ring-offset-2 ring-offset-white ring-[#F27121]/40 transition-colors hover:bg-[#20BD5A] disabled:cursor-not-allowed disabled:opacity-60"
+        className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#25D366] px-5 py-3.5 text-sm font-semibold text-white shadow-lg shadow-green-600/25 ring-2 ring-offset-2 ring-offset-white ring-[#F27121]/40 transition-colors hover:bg-[#20BD5A] active:bg-[#18994a] disabled:cursor-not-allowed disabled:opacity-60"
       >
         <svg
           className="h-5 w-5 shrink-0"
@@ -319,7 +319,7 @@ export function WhatsAppCheckoutButton({
                       <button
                         type="button"
                         onClick={() => setOpen(false)}
-                        className="rounded-xl border border-[var(--card-border)] bg-white px-3 py-1.5 text-xs font-semibold text-vyria-navy-muted hover:bg-[#f8fafc]"
+                        className="rounded-xl border border-[var(--card-border)] bg-white px-3 py-1.5 text-xs font-semibold text-vyria-navy-muted transition-colors hover:bg-[#f8fafc] active:bg-neutral-200"
                       >
                         Fechar
                       </button>
@@ -551,7 +551,7 @@ export function WhatsAppCheckoutButton({
                         type="button"
                         onClick={() => void submitOrder()}
                         disabled={submitting || items.length === 0}
-                        className="w-full rounded-xl bg-[#25D366] px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-[#20bd5a] disabled:opacity-60 sm:w-auto"
+                        className="w-full rounded-xl bg-[#25D366] px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#20bd5a] active:bg-[#18994a] disabled:opacity-60 sm:w-auto"
                       >
                         {submitting
                           ? 'A finalizar…'

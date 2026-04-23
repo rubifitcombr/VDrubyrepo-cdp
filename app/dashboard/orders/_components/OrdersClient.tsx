@@ -258,6 +258,17 @@ export function OrdersClient({
   const seenIdsRef = useRef<Set<string>>(
     new Set(initialOrders.map((o) => o.id))
   )
+  const [waNotice, setWaNotice] = useState<string | null>(null)
+  const waNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (waNoticeTimerRef.current) {
+        clearTimeout(waNoticeTimerRef.current)
+        waNoticeTimerRef.current = null
+      }
+    }
+  }, [])
 
   useEffect(() => {
     const supabase = createClient()
@@ -352,9 +363,21 @@ export function OrdersClient({
     return orders.filter((o) => match(o.status))
   }, [orders, tab])
 
+  function flashWaNotice(message: string) {
+    if (waNoticeTimerRef.current) {
+      clearTimeout(waNoticeTimerRef.current)
+      waNoticeTimerRef.current = null
+    }
+    setWaNotice(message)
+    waNoticeTimerRef.current = setTimeout(() => {
+      setWaNotice(null)
+      waNoticeTimerRef.current = null
+    }, 5000)
+  }
+
   async function patchStatus(orderId: string, status: string) {
     setBusyId(orderId)
-    const { error } = await updateOrderStatus(orderId, status)
+    const { error, deliveryNotified } = await updateOrderStatus(orderId, status)
     setBusyId(null)
     if (error) {
       alert(error.message)
@@ -363,6 +386,9 @@ export function OrdersClient({
     setOrders((prev) =>
       prev.map((o) => (o.id === orderId ? { ...o, status } : o))
     )
+    if (deliveryNotified) {
+      flashWaNotice('Aviso de entrega enviado ao cliente por WhatsApp.')
+    }
   }
 
   function confirmReject(orderId: string) {
@@ -422,6 +448,28 @@ export function OrdersClient({
           Novos pedidos aparecem automaticamente; também sincronizamos em segundo plano.
         </p>
       </header>
+
+      {waNotice ? (
+        <div
+          className="mt-4 flex items-start justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950 shadow-sm"
+          role="status"
+        >
+          <p className="min-w-0 flex-1 leading-snug">{waNotice}</p>
+          <button
+            type="button"
+            onClick={() => {
+              if (waNoticeTimerRef.current) {
+                clearTimeout(waNoticeTimerRef.current)
+                waNoticeTimerRef.current = null
+              }
+              setWaNotice(null)
+            }}
+            className="shrink-0 rounded-lg px-2 py-1 text-xs font-semibold text-emerald-800 hover:bg-emerald-100"
+          >
+            Fechar
+          </button>
+        </div>
+      ) : null}
 
       <div
         className="mt-6 flex flex-nowrap gap-2 overflow-x-auto overscroll-x-contain pb-1 [-ms-overflow-style:none] [scrollbar-width:none] sm:flex-wrap sm:overflow-visible [&::-webkit-scrollbar]:hidden"

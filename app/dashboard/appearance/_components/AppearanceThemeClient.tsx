@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { PublicSlugPathPill } from '@/app/_components/PublicSlugPathPill'
+import { slugifyStoreSlug } from '@/lib/store-slug'
 import { updateStore } from '@/services/store'
 import { uploadStorefrontBanner } from '@/lib/storage-upload'
 import {
@@ -11,14 +12,6 @@ import {
   type StoreThemeId,
   resolveStoreTheme,
 } from '@/lib/store-theme'
-
-function slugify(s: string) {
-  return s
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, '-')
-    .replace(/[^a-z0-9-]/g, '')
-}
 
 export function AppearanceThemeClient({
   storeId,
@@ -66,12 +59,12 @@ export function AppearanceThemeClient({
     STORE_THEMES.find((t) => t.id === selected) ?? STORE_THEMES[7]
 
   const publicUrl =
-    typeof window !== 'undefined' && slugify(slug)
-      ? `${window.location.origin}/${slugify(slug)}`
+    typeof window !== 'undefined' && slugifyStoreSlug(slug)
+      ? `${window.location.origin}/${slugifyStoreSlug(slug)}`
       : ''
 
   async function handleSave() {
-    const nextSlug = slugify(slug)
+    const nextSlug = slugifyStoreSlug(slug)
     if (!nextSlug) {
       setError('Indica um slug válido para o URL público (letras, números e hífens).')
       return
@@ -105,7 +98,7 @@ export function AppearanceThemeClient({
       storefront_banner_url: nextBanner,
     }
 
-    const { error: dbErr } = await updateStore(storeId, patch)
+    const { error: dbErr, slug: appliedSlug } = await updateStore(storeId, patch)
     setSaving(false)
 
     if (dbErr) {
@@ -139,7 +132,11 @@ export function AppearanceThemeClient({
     setBannerCommitted(nextBanner)
     setPendingFile(null)
     setBannerMarkedRemove(false)
-    setSlug(nextSlug)
+    setSlug(
+      typeof appliedSlug === 'string' && appliedSlug.trim()
+        ? appliedSlug.trim()
+        : nextSlug
+    )
     router.refresh()
   }
 
@@ -196,9 +193,9 @@ export function AppearanceThemeClient({
             autoComplete="off"
           />
         </label>
-        {slugify(slug) ? (
+        {slugifyStoreSlug(slug) ? (
           <div className="mt-3 flex flex-wrap items-center gap-3">
-            <PublicSlugPathPill slug={slugify(slug)} />
+            <PublicSlugPathPill slug={slugifyStoreSlug(slug)} />
             {publicUrl ? (
               <span className="text-xs text-vyria-navy-muted">{publicUrl}</span>
             ) : null}
