@@ -923,6 +923,51 @@ export function StorefrontMenuClient({
                             <p className="mt-1 text-sm font-medium text-neutral-500">
                               {money.format(line.price)} cada
                             </p>
+                            {line.addons && line.addons.length > 0 ? (
+                              <ul className="mt-2 space-y-1">
+                                {(() => {
+                                  const grouped = new Map<
+                                    string,
+                                    { itemName: string; price: number; quantity: number }
+                                  >()
+                                  for (const addon of line.addons) {
+                                    const unitQty =
+                                      Number.isFinite(addon.quantity) &&
+                                      addon.quantity > 0
+                                        ? addon.quantity
+                                        : 1
+                                    const key = `${addon.groupName}__${addon.itemName}__${addon.price}`
+                                    const cur = grouped.get(key)
+                                    if (cur) {
+                                      cur.quantity += unitQty
+                                    } else {
+                                      grouped.set(key, {
+                                        itemName: addon.itemName,
+                                        price: addon.price,
+                                        quantity: unitQty,
+                                      })
+                                    }
+                                  }
+                                  return [...grouped.values()].map((addon, idx) => {
+                                    const addonTotal = addon.price * addon.quantity
+                                    return (
+                                      <li
+                                        key={`${line.id}-addon-${idx}`}
+                                        className="flex items-center justify-between gap-2 text-xs text-neutral-600"
+                                      >
+                                        <span className="min-w-0 truncate">
+                                          + {addon.itemName}
+                                          {addon.quantity > 1 ? ` x${addon.quantity}` : ''}
+                                        </span>
+                                        <span className="shrink-0 tabular-nums">
+                                          {money.format(addonTotal)}
+                                        </span>
+                                      </li>
+                                    )
+                                  })
+                                })()}
+                              </ul>
+                            ) : null}
                           </div>
                           <button
                             type="button"

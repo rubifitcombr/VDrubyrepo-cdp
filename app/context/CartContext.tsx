@@ -12,6 +12,7 @@ export type CartAddonPick = {
   groupName: string
   itemName: string
   price: number
+  quantity: number
 }
 
 export type CartLine = {
