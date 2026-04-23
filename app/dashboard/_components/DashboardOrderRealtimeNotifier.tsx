@@ -71,10 +71,7 @@ async function showOrderNotification(title: string, body: string, url: string) {
       icon: '/icons/icon-192x192.png',
       badge: '/icons/icon-192x192.png',
       tag: 'vyria-new-order',
-      renotify: true,
       data: { url },
-      vibrate: [120, 40, 120],
-      requireInteraction: true,
     }
 
     const swContainer = navigator.serviceWorker
