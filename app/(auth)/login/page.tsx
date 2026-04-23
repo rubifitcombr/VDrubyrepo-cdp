@@ -19,6 +19,7 @@ function LoginForm() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [rememberLogin, setRememberLogin] = useState(true)
+  const [showPassword, setShowPassword] = useState(false)
   const [isLoggingIn, setIsLoggingIn] = useState(false)
   const beginNavigation = useBeginNavigation()
   const router = useRouter()
@@ -83,17 +84,34 @@ function LoginForm() {
             />
           </label>
 
-          <label className="block text-sm font-medium text-vyria-navy">
-            Senha
-            <input
-              className={inputClass}
-              placeholder="••••••••"
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </label>
+          <div>
+            <label className="block text-sm font-medium text-vyria-navy">
+              Senha
+              <input
+                className={inputClass}
+                placeholder="••••••••"
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </label>
+            <div className="mt-2 flex items-center gap-2">
+              <input
+                id="vyria-show-password-login"
+                type="checkbox"
+                checked={showPassword}
+                onChange={(e) => setShowPassword(e.target.checked)}
+                className="h-4 w-4 shrink-0 rounded border-[var(--card-border)] text-vyria-orange focus:ring-2 focus:ring-vyria-orange/35"
+              />
+              <label
+                htmlFor="vyria-show-password-login"
+                className="cursor-pointer text-sm text-vyria-navy-muted select-none"
+              >
+                Ver senha
+              </label>
+            </div>
+          </div>
 
           <div className="rounded-xl border border-[var(--card-border)] bg-[#fafafa] px-4 py-3.5 shadow-inner shadow-black/[0.02]">
             <label

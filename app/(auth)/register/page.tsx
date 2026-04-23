@@ -16,6 +16,7 @@ export default function Register() {
   const [password, setPassword] = useState('')
   const [storeName, setStoreName] = useState('')
   const [phone, setPhone] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [isRegistering, setIsRegistering] = useState(false)
   const beginNavigation = useBeginNavigation()
   const router = useRouter()
@@ -93,8 +94,8 @@ export default function Register() {
       } catch {
         /* email opcional */
       }
-        beginNavigation()
-        router.push('/acesso-suspenso?error=pendente')
+      beginNavigation()
+      router.push('/acesso-suspenso?error=pendente')
     } catch (err) {
       const message =
         err instanceof Error
@@ -155,17 +156,34 @@ export default function Register() {
             />
           </label>
 
-          <label className="block text-sm font-medium text-vyria-navy">
-            Senha
-            <input
-              className={inputClass}
-              placeholder="Mínimo 6 caracteres"
-              type="password"
-              autoComplete="new-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </label>
+          <div>
+            <label className="block text-sm font-medium text-vyria-navy">
+              Senha
+              <input
+                className={inputClass}
+                placeholder="Mínimo 6 caracteres"
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="new-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </label>
+            <div className="mt-2 flex items-center gap-2">
+              <input
+                id="vyria-show-password-register"
+                type="checkbox"
+                checked={showPassword}
+                onChange={(e) => setShowPassword(e.target.checked)}
+                className="h-4 w-4 shrink-0 rounded border-[var(--card-border)] text-vyria-orange focus:ring-2 focus:ring-vyria-orange/35"
+              />
+              <label
+                htmlFor="vyria-show-password-register"
+                className="cursor-pointer text-sm text-vyria-navy-muted select-none"
+              >
+                Ver senha
+              </label>
+            </div>
+          </div>
 
           <button
             type="button"
