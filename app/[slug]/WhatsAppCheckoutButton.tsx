@@ -54,6 +54,8 @@ function formatAddressBlock(parts: {
   ].join('\n')
 }
 
+type FulfillmentType = 'delivery' | 'pickup'
+
 export function WhatsAppCheckoutButton({
   storeName,
   storeSlug,
@@ -62,6 +64,12 @@ export function WhatsAppCheckoutButton({
   deliveryFee,
   deliveryFreeAbove,
   deliveryMaxKm: _deliveryMaxKm,
+  locationEnabled,
+  locationLat,
+  locationLng,
+  locationAddress,
+  locationLabel,
+  openSignal,
 }: {
   storeName: string
   storeSlug: string
@@ -71,6 +79,12 @@ export function WhatsAppCheckoutButton({
   deliveryFreeAbove?: number | null
   /** Reservado: raio validado no servidor no checkout. */
   deliveryMaxKm?: number | null
+  locationEnabled?: boolean
+  locationLat?: number | null
+  locationLng?: number | null
+  locationAddress?: string | null
+  locationLabel?: string | null
+  openSignal?: number
 }) {
   void _deliveryMaxKm
   const { items, subtotal, clearCart } = useCart()
@@ -90,6 +104,7 @@ export function WhatsAppCheckoutButton({
   )
   const [trocoPara, setTrocoPara] = useState('')
   const [notes, setNotes] = useState('')
+  const [fulfillment, setFulfillment] = useState<FulfillmentType | null>(null)
   void storePlan
   const [mounted, setMounted] = useState(false)
 
@@ -106,6 +121,14 @@ export function WhatsAppCheckoutButton({
     }
   }, [open])
 
+  useEffect(() => {
+    if (!mounted || !items.length) return
+    if (openSignal == null) return
+    setError(null)
+    setFulfillment(null)
+    setOpen(true)
+  }, [openSignal, mounted, items.length])
+
   const estimatedDelivery = useMemo(
     () =>
       computeDeliveryCharge(
@@ -117,6 +140,9 @@ export function WhatsAppCheckoutButton({
   )
 
   const estimatedTotal = subtotal + estimatedDelivery
+  const pickupLocationLabel = locationLabel?.trim() || 'Retirada na loja'
+  const pickupLocationAddress = locationAddress?.trim() || ''
+  const pickupMapsHref = locationMapsHref()
 
   const waUrl = useMemo(() => {
     const raw = phone?.trim()
@@ -135,7 +161,7 @@ export function WhatsAppCheckoutButton({
     )
   }
 
-  function validateCheckout(): string | null {
+  function validateDeliveryCheckout(): string | null {
     const phoneDigits = digitsOnly(customerPhone)
     if (phoneDigits.length < 10) {
       return 'Telefone é obrigatório (mínimo 10 dígitos).'
@@ -146,6 +172,17 @@ export function WhatsAppCheckoutButton({
     if (!addressCasa.trim()) return 'Preenche o número da casa.'
     if (!addressReferencia.trim()) return 'Preenche o ponto de referência.'
     if (!addressBairro.trim()) return 'Preenche o bairro.'
+    if (paymentMethod === 'cash' && !trocoPara.trim()) {
+      return 'Preenche o campo «troco para quanto?».'
+    }
+    return null
+  }
+
+  function validatePickupCheckout(): string | null {
+    const phoneDigits = digitsOnly(customerPhone)
+    if (phoneDigits.length < 10) {
+      return 'Telefone é obrigatório (mínimo 10 dígitos).'
+    }
     if (paymentMethod === 'cash' && !trocoPara.trim()) {
       return 'Preenche o campo «troco para quanto?».'
     }
@@ -167,10 +204,25 @@ export function WhatsAppCheckoutButton({
     return [base, trocoLine].filter(Boolean).join('\n')
   }
 
-  async function submitOrder() {
+  function locationMapsHref(): string | null {
+    if (!locationEnabled) return null
+    const rawText = locationAddress?.trim() || ''
+    if (rawText && /^https?:\/\//i.test(rawText)) return rawText
+    const hasCoords =
+      Number.isFinite(Number(locationLat)) && Number.isFinite(Number(locationLng))
+    if (hasCoords) {
+      return `https://maps.google.com/?q=${locationLat},${locationLng}`
+    }
+    if (rawText) {
+      return `https://maps.google.com/?q=${encodeURIComponent(rawText)}`
+    }
+    return null
+  }
+
+  async function submitDeliveryOrder() {
     if (!items.length || submitting) return
     setError(null)
-    const validationError = validateCheckout()
+    const validationError = validateDeliveryCheckout()
     if (validationError) {
       setError(validationError)
       return
@@ -264,6 +316,51 @@ export function WhatsAppCheckoutButton({
       clearCart()
       setSubmitting(false)
       setOpen(false)
+      setFulfillment(null)
+    } catch (e) {
+      setSubmitting(false)
+      setError(e instanceof Error ? e.message : 'Erro ao finalizar pedido.')
+    }
+  }
+
+  async function submitPickupOrder() {
+    if (!items.length || submitting) return
+    setError(null)
+    const validationError = validatePickupCheckout()
+    if (validationError) {
+      setError(validationError)
+      return
+    }
+    setSubmitting(true)
+    try {
+      const baseText = buildMessage(storeName, items, subtotal)
+      const finalText = [
+        baseText,
+        '',
+        '*Tipo:* Retirar na loja',
+        customerName.trim() ? `*Nome:* ${customerName.trim()}` : '',
+        `*Telefone:* ${customerPhone.trim()}`,
+        `*Pagamento:* ${paymentLabel(paymentMethod)}`,
+        paymentMethod === 'cash' && trocoPara.trim()
+          ? `*Troco para quanto:* ${trocoPara.trim()}`
+          : '',
+        notes.trim() ? `*Observações:* ${notes.trim()}` : '',
+        '',
+        `*Total:* ${money.format(subtotal)}`,
+        '',
+        `*Local de retirada:* ${pickupLocationLabel}`,
+        pickupLocationAddress ? pickupLocationAddress : '',
+        pickupMapsHref ? `Mapa: ${pickupMapsHref}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n')
+      const n = digitsOnly(phone || '')
+      const link = `https://wa.me/${n}?text=${encodeURIComponent(finalText)}`
+      window.open(link, '_blank', 'noopener,noreferrer')
+      clearCart()
+      setSubmitting(false)
+      setOpen(false)
+      setFulfillment(null)
     } catch (e) {
       setSubmitting(false)
       setError(e instanceof Error ? e.message : 'Erro ao finalizar pedido.')
@@ -274,7 +371,11 @@ export function WhatsAppCheckoutButton({
     <>
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          setError(null)
+          setFulfillment(null)
+          setOpen(true)
+        }}
         disabled={items.length === 0}
         className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#25D366] px-5 py-3.5 text-sm font-semibold text-white shadow-lg shadow-green-600/25 ring-2 ring-offset-2 ring-offset-white ring-[#F27121]/40 transition-colors hover:bg-[#20BD5A] active:bg-[#18994a] disabled:cursor-not-allowed disabled:opacity-60"
       >
@@ -295,7 +396,10 @@ export function WhatsAppCheckoutButton({
               className="fixed inset-0 z-[100] bg-black/55"
               role="presentation"
               onClick={(e) => {
-                if (e.target === e.currentTarget) setOpen(false)
+                if (e.target === e.currentTarget) {
+                  setOpen(false)
+                  setFulfillment(null)
+                }
               }}
             >
               <div className="flex min-h-dvh items-end justify-center p-0 sm:items-center sm:p-6">
@@ -318,7 +422,10 @@ export function WhatsAppCheckoutButton({
                       </div>
                       <button
                         type="button"
-                        onClick={() => setOpen(false)}
+                        onClick={() => {
+                          setOpen(false)
+                          setFulfillment(null)
+                        }}
                         className="rounded-xl border border-[var(--card-border)] bg-white px-3 py-1.5 text-xs font-semibold text-vyria-navy-muted transition-colors hover:bg-[#f8fafc] active:bg-neutral-200"
                       >
                         Fechar
@@ -334,206 +441,266 @@ export function WhatsAppCheckoutButton({
                           {money.format(subtotal)}
                         </span>
                       </p>
-                      <p className="mt-1 flex justify-between gap-2">
-                        <span>Entrega (estim.)</span>
-                        <span className="font-semibold tabular-nums">
-                          {estimatedDelivery <= 0
-                            ? 'Grátis'
-                            : money.format(estimatedDelivery)}
-                        </span>
-                      </p>
-                      <p className="mt-1 flex justify-between border-t border-[var(--card-border)] pt-1 font-semibold">
-                        <span>Total estimado</span>
-                        <span className="tabular-nums">
-                          {money.format(estimatedTotal)}
-                        </span>
-                      </p>
-                      {deliveryFreeAbove != null &&
-                      deliveryFreeAbove > 0 &&
-                      subtotal < deliveryFreeAbove ? (
-                        <p className="mt-2 text-[11px] leading-snug text-vyria-navy-muted">
-                          Frete grátis a partir de {money.format(deliveryFreeAbove)} em
-                          produtos.
+                      {fulfillment === 'delivery' ? (
+                        <>
+                          <p className="mt-1 flex justify-between gap-2">
+                            <span>Entrega (estim.)</span>
+                            <span className="font-semibold tabular-nums">
+                              {estimatedDelivery <= 0
+                                ? 'Grátis'
+                                : money.format(estimatedDelivery)}
+                            </span>
+                          </p>
+                          <p className="mt-1 flex justify-between border-t border-[var(--card-border)] pt-1 font-semibold">
+                            <span>Total estimado</span>
+                            <span className="tabular-nums">
+                              {money.format(estimatedTotal)}
+                            </span>
+                          </p>
+                          {deliveryFreeAbove != null &&
+                          deliveryFreeAbove > 0 &&
+                          subtotal < deliveryFreeAbove ? (
+                            <p className="mt-2 text-[11px] leading-snug text-vyria-navy-muted">
+                              Frete grátis a partir de {money.format(deliveryFreeAbove)} em
+                              produtos.
+                            </p>
+                          ) : null}
+                        </>
+                      ) : fulfillment === 'pickup' ? (
+                        <p className="mt-1 flex justify-between border-t border-[var(--card-border)] pt-1 font-semibold">
+                        <span>Total (retirada)</span>
+                          <span className="tabular-nums">{money.format(subtotal)}</span>
                         </p>
                       ) : null}
                     </div>
                   </div>
 
                   <div className="max-h-[62dvh] overflow-y-auto px-4 py-4 sm:max-h-[60dvh] sm:px-6 sm:py-5">
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <label className="sm:col-span-1">
-                        <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-vyria-navy-muted">
-                          Nome{' '}
-                          <span className="font-normal normal-case text-vyria-navy-muted/80">
-                            (opcional)
-                          </span>
-                        </span>
-                        <input
-                          value={customerName}
-                          onChange={(e) => setCustomerName(e.target.value)}
-                          placeholder="Teu nome"
-                          autoComplete="name"
-                          className="w-full rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm outline-none focus:border-[#25D366]"
-                        />
-                      </label>
-                      <label className="sm:col-span-1">
-                        <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-vyria-navy-muted">
-                          Telefone{' '}
-                          <span className="text-red-600">*</span>
-                        </span>
-                        <input
-                          type="tel"
-                          inputMode="tel"
-                          required
-                          value={customerPhone}
-                          onChange={(e) => setCustomerPhone(e.target.value)}
-                          placeholder="Ex.: 62999999999"
-                          autoComplete="tel"
-                          className="w-full rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm outline-none focus:border-[#25D366]"
-                        />
-                      </label>
-
-                      <div className="sm:col-span-2">
-                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-vyria-navy-muted">
-                          Endereço para entrega{' '}
-                          <span className="text-red-600">*</span>
+                    {fulfillment == null ? (
+                      <div className="space-y-3">
+                        <p className="text-sm font-medium text-vyria-navy">
+                          Como você quer receber o pedido?
                         </p>
                         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                          <label className="sm:col-span-2">
-                            <span className="mb-1 block text-[11px] font-medium text-vyria-navy-muted">
-                              Rua <span className="text-red-600">*</span>
-                            </span>
-                            <input
-                              required
-                              value={addressRua}
-                              onChange={(e) => setAddressRua(e.target.value)}
-                              placeholder="Nome da rua / avenida"
-                              autoComplete="street-address"
-                              className="w-full rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm outline-none focus:border-[#25D366]"
-                            />
-                          </label>
-                          <label>
-                            <span className="mb-1 block text-[11px] font-medium text-vyria-navy-muted">
-                              Quadra <span className="text-red-600">*</span>
-                            </span>
-                            <input
-                              required
-                              value={addressQuadra}
-                              onChange={(e) => setAddressQuadra(e.target.value)}
-                              placeholder="Ex.: Qd. 12"
-                              className="w-full rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm outline-none focus:border-[#25D366]"
-                            />
-                          </label>
-                          <label>
-                            <span className="mb-1 block text-[11px] font-medium text-vyria-navy-muted">
-                              Lote <span className="text-red-600">*</span>
-                            </span>
-                            <input
-                              required
-                              value={addressLote}
-                              onChange={(e) => setAddressLote(e.target.value)}
-                              placeholder="Ex.: Lt. 5"
-                              className="w-full rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm outline-none focus:border-[#25D366]"
-                            />
-                          </label>
-                          <label>
-                            <span className="mb-1 block text-[11px] font-medium text-vyria-navy-muted">
-                              Casa <span className="text-red-600">*</span>
-                            </span>
-                            <input
-                              required
-                              value={addressCasa}
-                              onChange={(e) => setAddressCasa(e.target.value)}
-                              placeholder="Nº da casa / apto"
-                              className="w-full rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm outline-none focus:border-[#25D366]"
-                            />
-                          </label>
-                          <label className="sm:col-span-2">
-                            <span className="mb-1 block text-[11px] font-medium text-vyria-navy-muted">
-                              Ponto de referência{' '}
-                              <span className="text-red-600">*</span>
-                            </span>
-                            <input
-                              required
-                              value={addressReferencia}
-                              onChange={(e) =>
-                                setAddressReferencia(e.target.value)
-                              }
-                              placeholder="Ex.: perto da padaria, portão azul"
-                              className="w-full rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm outline-none focus:border-[#25D366]"
-                            />
-                          </label>
-                          <label className="sm:col-span-2">
-                            <span className="mb-1 block text-[11px] font-medium text-vyria-navy-muted">
-                              Bairro <span className="text-red-600">*</span>
-                            </span>
-                            <input
-                              required
-                              value={addressBairro}
-                              onChange={(e) => setAddressBairro(e.target.value)}
-                              placeholder="Nome do bairro"
-                              autoComplete="address-level2"
-                              className="w-full rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm outline-none focus:border-[#25D366]"
-                            />
-                          </label>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setError(null)
+                              setFulfillment('delivery')
+                            }}
+                            className="rounded-xl border border-[var(--card-border)] bg-white px-4 py-4 text-left transition-colors hover:bg-[#f8fafc] active:bg-neutral-100"
+                          >
+                            <p className="text-sm font-semibold text-vyria-navy">Entregar</p>
+                            <p className="mt-1 text-xs text-vyria-navy-muted">
+                              Informar endereço e calcular taxa de entrega.
+                            </p>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setError(null)
+                              setFulfillment('pickup')
+                            }}
+                            className="rounded-xl border border-[var(--card-border)] bg-white px-4 py-4 text-left transition-colors hover:bg-[#f8fafc] active:bg-neutral-100"
+                          >
+                            <p className="text-sm font-semibold text-vyria-navy">Retirar</p>
+                            <p className="mt-1 text-xs text-vyria-navy-muted">
+                              Retirada na loja, sem taxa de entrega.
+                            </p>
+                          </button>
                         </div>
                       </div>
-
-                      <div className="flex flex-col gap-3 sm:col-span-1">
-                        <label className="block">
+                    ) : (
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <label className="sm:col-span-1">
                           <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-vyria-navy-muted">
-                            Pagamento
+                            Nome{' '}
+                            <span className="font-normal normal-case text-vyria-navy-muted/80">
+                              (opcional)
+                            </span>
                           </span>
-                          <select
-                            value={paymentMethod}
-                            onChange={(e) => {
-                              const v = e.target.value as
-                                | 'pix'
-                                | 'card'
-                                | 'cash'
-                              setPaymentMethod(v)
-                              if (v !== 'cash') setTrocoPara('')
-                            }}
+                          <input
+                            value={customerName}
+                            onChange={(e) => setCustomerName(e.target.value)}
+                            placeholder="Seu nome"
+                            autoComplete="name"
                             className="w-full rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm outline-none focus:border-[#25D366]"
-                          >
-                            <option value="pix">PIX</option>
-                            <option value="card">Cartão</option>
-                            <option value="cash">Dinheiro</option>
-                          </select>
+                          />
                         </label>
-                        {paymentMethod === 'cash' ? (
+                        <label className="sm:col-span-1">
+                          <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-vyria-navy-muted">
+                            Telefone <span className="text-red-600">*</span>
+                          </span>
+                          <input
+                            type="tel"
+                            inputMode="tel"
+                            required
+                            value={customerPhone}
+                            onChange={(e) => setCustomerPhone(e.target.value)}
+                            placeholder="Ex.: 62999999999"
+                            autoComplete="tel"
+                            className="w-full rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm outline-none focus:border-[#25D366]"
+                          />
+                        </label>
+
+                        {fulfillment === 'delivery' ? (
+                          <div className="sm:col-span-2">
+                            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-vyria-navy-muted">
+                              Endereço para entrega <span className="text-red-600">*</span>
+                            </p>
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                              <label className="sm:col-span-2">
+                                <span className="mb-1 block text-[11px] font-medium text-vyria-navy-muted">
+                                  Rua <span className="text-red-600">*</span>
+                                </span>
+                                <input
+                                  required
+                                  value={addressRua}
+                                  onChange={(e) => setAddressRua(e.target.value)}
+                                  placeholder="Nome da rua / avenida"
+                                  autoComplete="street-address"
+                                  className="w-full rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm outline-none focus:border-[#25D366]"
+                                />
+                              </label>
+                              <label>
+                                <span className="mb-1 block text-[11px] font-medium text-vyria-navy-muted">
+                                  Quadra <span className="text-red-600">*</span>
+                                </span>
+                                <input
+                                  required
+                                  value={addressQuadra}
+                                  onChange={(e) => setAddressQuadra(e.target.value)}
+                                  placeholder="Ex.: Qd. 12"
+                                  className="w-full rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm outline-none focus:border-[#25D366]"
+                                />
+                              </label>
+                              <label>
+                                <span className="mb-1 block text-[11px] font-medium text-vyria-navy-muted">
+                                  Lote <span className="text-red-600">*</span>
+                                </span>
+                                <input
+                                  required
+                                  value={addressLote}
+                                  onChange={(e) => setAddressLote(e.target.value)}
+                                  placeholder="Ex.: Lt. 5"
+                                  className="w-full rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm outline-none focus:border-[#25D366]"
+                                />
+                              </label>
+                              <label>
+                                <span className="mb-1 block text-[11px] font-medium text-vyria-navy-muted">
+                                  Casa <span className="text-red-600">*</span>
+                                </span>
+                                <input
+                                  required
+                                  value={addressCasa}
+                                  onChange={(e) => setAddressCasa(e.target.value)}
+                                  placeholder="Nº da casa / apto"
+                                  className="w-full rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm outline-none focus:border-[#25D366]"
+                                />
+                              </label>
+                              <label className="sm:col-span-2">
+                                <span className="mb-1 block text-[11px] font-medium text-vyria-navy-muted">
+                                  Ponto de referência <span className="text-red-600">*</span>
+                                </span>
+                                <input
+                                  required
+                                  value={addressReferencia}
+                                  onChange={(e) => setAddressReferencia(e.target.value)}
+                                  placeholder="Ex.: perto da padaria, portão azul"
+                                  className="w-full rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm outline-none focus:border-[#25D366]"
+                                />
+                              </label>
+                              <label className="sm:col-span-2">
+                                <span className="mb-1 block text-[11px] font-medium text-vyria-navy-muted">
+                                  Bairro <span className="text-red-600">*</span>
+                                </span>
+                                <input
+                                  required
+                                  value={addressBairro}
+                                  onChange={(e) => setAddressBairro(e.target.value)}
+                                  placeholder="Nome do bairro"
+                                  autoComplete="address-level2"
+                                  className="w-full rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm outline-none focus:border-[#25D366]"
+                                />
+                              </label>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="sm:col-span-2 rounded-xl border border-[var(--card-border)] bg-[#f8fafc] px-3 py-3 text-sm text-vyria-navy">
+                            <p className="font-semibold">Local de retirada</p>
+                            <p className="mt-1 text-vyria-navy-muted">
+                              {pickupLocationLabel}
+                            </p>
+                            {pickupLocationAddress ? (
+                              <p className="mt-1 whitespace-pre-line text-vyria-navy-muted">
+                                {pickupLocationAddress}
+                              </p>
+                            ) : null}
+                            {pickupMapsHref ? (
+                              <a
+                                href={pickupMapsHref}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="mt-2 inline-block text-sm font-semibold text-vyria-plum underline"
+                              >
+                                Abrir no mapa
+                              </a>
+                            ) : null}
+                          </div>
+                        )}
+
+                        <div className="flex flex-col gap-3 sm:col-span-1">
                           <label className="block">
                             <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-vyria-navy-muted">
-                              Troco para quanto?{' '}
-                              <span className="text-red-600">*</span>
+                              Pagamento
                             </span>
-                            <input
-                              value={trocoPara}
-                              onChange={(e) => setTrocoPara(e.target.value)}
-                              placeholder="Ex.: 50,00 ou exato"
-                              inputMode="text"
-                              autoComplete="off"
+                            <select
+                              value={paymentMethod}
+                              onChange={(e) => {
+                                const v = e.target.value as 'pix' | 'card' | 'cash'
+                                setPaymentMethod(v)
+                                if (v !== 'cash') setTrocoPara('')
+                              }}
                               className="w-full rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm outline-none focus:border-[#25D366]"
-                            />
+                            >
+                              <option value="pix">PIX</option>
+                              <option value="card">Cartão</option>
+                              <option value="cash">Dinheiro</option>
+                            </select>
                           </label>
-                        ) : null}
-                      </div>
-                      <label className="sm:col-span-1">
-                        <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-vyria-navy-muted">
-                          Observações{' '}
-                          <span className="font-normal normal-case text-vyria-navy-muted/80">
-                            (opcional)
+                          {paymentMethod === 'cash' ? (
+                            <label className="block">
+                              <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-vyria-navy-muted">
+                                Troco para quanto? <span className="text-red-600">*</span>
+                              </span>
+                              <input
+                                value={trocoPara}
+                                onChange={(e) => setTrocoPara(e.target.value)}
+                                placeholder="Ex.: 50,00 ou exato"
+                                inputMode="text"
+                                autoComplete="off"
+                                className="w-full rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm outline-none focus:border-[#25D366]"
+                              />
+                            </label>
+                          ) : null}
+                        </div>
+                        <label className="sm:col-span-1">
+                          <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-vyria-navy-muted">
+                            Observações{' '}
+                            <span className="font-normal normal-case text-vyria-navy-muted/80">
+                              (opcional)
+                            </span>
                           </span>
-                        </span>
-                        <textarea
-                          value={notes}
-                          onChange={(e) => setNotes(e.target.value)}
-                          placeholder="Ex.: sem cebola"
-                          rows={3}
-                          className="w-full rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm outline-none focus:border-[#25D366]"
-                        />
-                      </label>
-                    </div>
+                          <textarea
+                            value={notes}
+                            onChange={(e) => setNotes(e.target.value)}
+                            placeholder="Ex.: sem cebola"
+                            rows={3}
+                            className="w-full rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm outline-none focus:border-[#25D366]"
+                          />
+                        </label>
+                      </div>
+                    )}
 
                     {error ? (
                       <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
@@ -545,18 +712,37 @@ export function WhatsAppCheckoutButton({
                   <div className="border-t border-[var(--card-border)] bg-white px-4 py-3 sm:px-6 sm:py-4">
                     <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <p className="text-sm font-semibold text-vyria-navy">
-                        Total: {money.format(subtotal)}
+                        Total:{' '}
+                        {money.format(
+                          fulfillment === 'delivery' ? estimatedTotal : subtotal
+                        )}
                       </p>
-                      <button
-                        type="button"
-                        onClick={() => void submitOrder()}
-                        disabled={submitting || items.length === 0}
-                        className="w-full rounded-xl bg-[#25D366] px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#20bd5a] active:bg-[#18994a] disabled:opacity-60 sm:w-auto"
-                      >
-                        {submitting
-                          ? 'A finalizar…'
-                          : 'Confirmar e abrir WhatsApp'}
-                      </button>
+                      {fulfillment == null ? null : (
+                        <div className="flex w-full gap-2 sm:w-auto">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setError(null)
+                              setFulfillment(null)
+                            }}
+                            className="w-full rounded-xl border border-[var(--card-border)] bg-white px-4 py-3 text-sm font-semibold text-vyria-navy-muted transition-colors hover:bg-[#f8fafc] sm:w-auto"
+                          >
+                            Voltar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void (fulfillment === 'delivery'
+                                ? submitDeliveryOrder()
+                                : submitPickupOrder())
+                            }
+                            disabled={submitting || items.length === 0}
+                            className="w-full rounded-xl bg-[#25D366] px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#20bd5a] active:bg-[#18994a] disabled:opacity-60 sm:w-auto"
+                          >
+                            {submitting ? 'A finalizar…' : 'Enviar pedido'}
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

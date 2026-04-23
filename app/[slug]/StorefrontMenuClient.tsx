@@ -357,6 +357,7 @@ export function StorefrontMenuClient({
   const deferredQuery = useDeferredValue(query)
   const [selectedCategory, setSelectedCategory] = useState('Todos')
   const [cartOpen, setCartOpen] = useState(false)
+  const [checkoutOpenSignal, setCheckoutOpenSignal] = useState(0)
   const [detailProduct, setDetailProduct] =
     useState<StorefrontMenuProduct | null>(null)
 
@@ -1029,6 +1030,7 @@ export function StorefrontMenuClient({
                       onClick={() => {
                         setCartOpen(false)
                         scrollToCheckout()
+                        setCheckoutOpenSignal((v) => v + 1)
                       }}
                       disabled={items.length === 0}
                       className="rounded-xl px-4 py-3 text-sm font-semibold text-white shadow-sm transition-[filter] disabled:opacity-50 enabled:active:brightness-[0.88]"
@@ -1057,10 +1059,16 @@ export function StorefrontMenuClient({
             deliveryFee={deliveryFee ?? null}
             deliveryFreeAbove={deliveryFreeAbove ?? null}
             deliveryMaxKm={deliveryMaxKm ?? null}
+            locationEnabled={locationEnabled}
+            locationLat={locationLat ?? null}
+            locationLng={locationLng ?? null}
+            locationAddress={locationAddress ?? null}
+            locationLabel={locationLabel ?? null}
+            openSignal={checkoutOpenSignal}
           />
         </div>
         <nav
-          className="mx-auto grid max-w-lg grid-cols-3 border-t border-neutral-100 px-2 pb-1 pt-0.5"
+          className="mx-auto grid max-w-lg grid-cols-2 border-t border-neutral-100 px-2 pb-1 pt-0.5"
           aria-label="Navegação principal"
         >
           <button
@@ -1071,16 +1079,6 @@ export function StorefrontMenuClient({
           >
             <IconHome className="h-6 w-6" style={{ color: theme.primary }} />
             Início
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              scrollToCheckout()
-            }}
-            className="flex min-h-[48px] flex-col items-center justify-center gap-0.5 rounded-xl py-2 text-[11px] font-semibold text-neutral-400 transition-colors hover:text-neutral-600 active:bg-neutral-200/90 active:text-neutral-600"
-          >
-            <IconOrders className="h-6 w-6" />
-            Pedidos
           </button>
           <button
             type="button"
