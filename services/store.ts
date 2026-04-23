@@ -57,6 +57,8 @@ export async function createStore(
       name,
       slug,
       owner_id: userId,
+      status: 'pendente',
+      plano: 'start',
       ...(phone ? { phone } : {}),
     })
     .select()

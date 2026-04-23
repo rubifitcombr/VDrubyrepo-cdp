@@ -1,93 +1,77 @@
--- Corrige "Database error saving new user": remove o trigger em auth.users que falha
--- e passa o espelho public.usuarios para a app (registo + políticas RLS).
---
--- Executar no Supabase → SQL Editor (uma vez). Depois: git pull / copiar do repo.
+-- Vyria Delivery: corrige signUp ("Database error saving new user")
+-- Remove triggers em auth.users definidos em public (inserções em usuarios no
+-- contexto errado). Garante public.usuarios + RLS para o cliente fazer upsert
+-- (services/usuarios.ts) e fallback com service role (api/auth/sync-usuario).
 
--- `CREATE TABLE IF NOT EXISTS` NÃO substitui uma VIEW com o mesmo nome (ignora silenciosamente).
--- Por isso tens de libertar o nome "usuarios" antes (matview / view).
-
-DO $u_mv$
+-- 1) Remover triggers em auth.users cuja função está em public (típico: sync para usuarios)
+DO $$
+DECLARE
+  r RECORD;
 BEGIN
-  IF EXISTS (
-    SELECT 1 FROM pg_matviews WHERE schemaname = 'public' AND matviewname = 'usuarios'
-  ) THEN
-    DROP MATERIALIZED VIEW public.usuarios CASCADE;
-  END IF;
-END $u_mv$;
+  FOR r IN
+    SELECT t.tgname AS name
+    FROM pg_trigger t
+    JOIN pg_proc p ON t.tgfoid = p.oid
+    JOIN pg_namespace n ON p.pronamespace = n.oid
+    WHERE t.tgrelid = 'auth.users'::regclass
+      AND NOT t.tgisinternal
+      AND n.nspname = 'public'
+  LOOP
+    EXECUTE format('DROP TRIGGER IF EXISTS %I ON auth.users', r.name);
+  END LOOP;
+END $$;
 
-DO $u_v$
-BEGIN
-  IF EXISTS (
-    SELECT 1 FROM information_schema.views
-    WHERE table_schema = 'public' AND table_name = 'usuarios'
-  ) THEN
-    DROP VIEW public.usuarios CASCADE;
-  END IF;
-END $u_v$;
-
--- Copia o bloco inteiro; em Postgres o "(" tem de vir logo após usuarios (senão erro "near id").
+-- 2) Tabela espelho (id = auth.users.id, email — alinhado ao código)
 CREATE TABLE IF NOT EXISTS public.usuarios (
-  id uuid NOT NULL,
+  id uuid PRIMARY KEY REFERENCES auth.users (id) ON DELETE CASCADE,
   email text,
   created_at timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT usuarios_pkey PRIMARY KEY (id),
-  CONSTRAINT usuarios_id_fkey FOREIGN KEY (id) REFERENCES auth.users (id) ON DELETE CASCADE
+  updated_at timestamptz NOT NULL DEFAULT now()
 );
 
-DO $u_guard$
-DECLARE
-  k "char";
-BEGIN
-  SELECT c.relkind INTO k
-  FROM pg_class c
-  JOIN pg_namespace n ON n.oid = c.relnamespace
-  WHERE n.nspname = 'public' AND c.relname = 'usuarios';
-
-  IF k IS NULL THEN
-    RAISE EXCEPTION 'public.usuarios não existe após CREATE TABLE.';
-  ELSIF k IN ('v', 'm') THEN
-    RAISE EXCEPTION 'public.usuarios ainda é VIEW/MATVIEW. Apaga manualmente em Database → Views ou corre DROP VIEW public.usuarios CASCADE; e volta a executar este ficheiro.';
-  ELSIF k NOT IN ('r', 'p') THEN
-    RAISE EXCEPTION 'public.usuarios tem tipo inesperado (relkind=%).', k;
-  END IF;
-END $u_guard$;
-
 ALTER TABLE public.usuarios ADD COLUMN IF NOT EXISTS email text;
-ALTER TABLE public.usuarios ADD COLUMN IF NOT EXISTS created_at timestamptz;
+ALTER TABLE public.usuarios ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE public.usuarios ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
 
-UPDATE public.usuarios
-SET created_at = coalesce(created_at, now())
-WHERE created_at IS NULL;
+COMMENT ON TABLE public.usuarios IS 'Espelho de utilizadores (email para admin); preenchido pelo app após signUp.';
 
-ALTER TABLE public.usuarios ALTER COLUMN created_at SET DEFAULT now();
-
--- Remove trigger/função que rebenta o INSERT em auth.users
-DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
-DROP FUNCTION IF EXISTS public.handle_new_user() CASCADE;
-
--- Só o próprio utilizador autenticado gere a sua linha (a app faz upsert após signUp)
+-- 3) RLS: cada utilizador só gere a própria linha
 ALTER TABLE public.usuarios ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "usuarios_select_own" ON public.usuarios;
-DROP POLICY IF EXISTS "usuarios_insert_own" ON public.usuarios;
-DROP POLICY IF EXISTS "usuarios_update_own" ON public.usuarios;
+-- Remove políticas antigas com qualquer nome (re-execução segura)
+DO $$
+DECLARE
+  r RECORD;
+BEGIN
+  FOR r IN
+    SELECT pol.polname AS name
+    FROM pg_policy pol
+    JOIN pg_class cls ON pol.polrelid = cls.oid
+    JOIN pg_namespace nsp ON cls.relnamespace = nsp.oid
+    WHERE nsp.nspname = 'public'
+      AND cls.relname = 'usuarios'
+  LOOP
+    EXECUTE format('DROP POLICY IF EXISTS %I ON public.usuarios', r.name);
+  END LOOP;
+END $$;
 
-CREATE POLICY "usuarios_select_own"
-  ON public.usuarios FOR SELECT TO authenticated
+CREATE POLICY usuarios_select_own ON public.usuarios
+  FOR SELECT TO authenticated
   USING (auth.uid() = id);
 
-CREATE POLICY "usuarios_insert_own"
-  ON public.usuarios FOR INSERT TO authenticated
+CREATE POLICY usuarios_insert_own ON public.usuarios
+  FOR INSERT TO authenticated
   WITH CHECK (auth.uid() = id);
 
-CREATE POLICY "usuarios_update_own"
-  ON public.usuarios FOR UPDATE TO authenticated
+CREATE POLICY usuarios_update_own ON public.usuarios
+  FOR UPDATE TO authenticated
   USING (auth.uid() = id)
   WITH CHECK (auth.uid() = id);
 
--- authenticated precisa de USAGE no schema public (senão o upsert da app pode falhar)
-GRANT USAGE ON SCHEMA public TO authenticated;
-GRANT SELECT, INSERT, UPDATE ON TABLE public.usuarios TO authenticated;
+CREATE POLICY usuarios_delete_own ON public.usuarios
+  FOR DELETE TO authenticated
+  USING (auth.uid() = id);
 
-COMMENT ON TABLE public.usuarios IS
-  'Espelho id/email por utilizador; preenchido pela app após registo (sem trigger em auth.users).';
+-- 4) Permissões para o cliente Supabase (JWT authenticated)
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.usuarios TO authenticated;
+GRANT ALL ON public.usuarios TO service_role;

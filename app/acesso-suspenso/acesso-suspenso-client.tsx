@@ -1,9 +1,8 @@
 'use client'
 
 import { createClient } from '@/lib/supabase/client'
-import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Suspense, useEffect } from 'react'
+import { Suspense, useCallback, useEffect, useState } from 'react'
 
 const cardClass =
   'w-full max-w-md rounded-2xl border border-[var(--card-border)] bg-white p-8 shadow-xl shadow-vyria-navy-deep/10 sm:p-10'
@@ -28,6 +27,18 @@ function Inner({ whatsappHref }: { whatsappHref: string | null }) {
   const params = useSearchParams()
   const router = useRouter()
   const error = params.get('error')
+  const [leaving, setLeaving] = useState(false)
+
+  const voltarAoLogin = useCallback(async () => {
+    setLeaving(true)
+    try {
+      const supabase = createClient()
+      await supabase.auth.signOut()
+    } catch {
+      /* continua para /login mesmo se signOut falhar */
+    }
+    router.replace('/login')
+  }, [router])
 
   useEffect(() => {
     const supabase = createClient()
@@ -59,9 +70,14 @@ function Inner({ whatsappHref }: { whatsappHref: string | null }) {
           </a>
         ) : null}
         <p className="mt-6 text-center text-sm text-vyria-navy-muted">
-          <Link href="/login" className="font-semibold text-vyria-plum hover:text-vyria-orange">
-            Voltar ao login
-          </Link>
+          <button
+            type="button"
+            disabled={leaving}
+            onClick={() => void voltarAoLogin()}
+            className="font-semibold text-vyria-plum underline-offset-2 hover:text-vyria-orange hover:underline disabled:opacity-60"
+          >
+            {leaving ? 'A sair…' : 'Voltar ao login'}
+          </button>
         </p>
       </div>
     </div>

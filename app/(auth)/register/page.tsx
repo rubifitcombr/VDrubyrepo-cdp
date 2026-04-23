@@ -79,7 +79,7 @@ export default function Register() {
         } catch {
           /* email opcional */
         }
-        router.push('/dashboard')
+        router.push('/acesso-suspenso?error=pendente')
       }
     } catch (err) {
       const message =

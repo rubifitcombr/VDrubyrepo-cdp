@@ -1,18 +1,20 @@
 import 'server-only'
 
-import { parseMerchantStatus, type MerchantStatus } from '@/lib/merchant-status'
+import { parseMerchantStatus } from '@/lib/merchant-status'
 import { isPlanoVencido } from '@/lib/merchant-access-dates'
 import { readStoreStatus } from '@/lib/store-columns'
 
 /**
  * Se o lojista não deve ver o dashboard, devolve o path para /acesso-suspenso.
+ * Em `pendente` (ex.: recém-cadastrado) devolve URL com `error=pendente` para a
+ * página de aguardar ativação não ser confundida com acesso liberado (`null`).
  */
 export function getDashboardAccessRedirectPath(
   store: Record<string, unknown> | null | undefined
 ): string | null {
   if (!store) return '/acesso-suspenso?error=pendente'
 
-  const status = parseMerchantStatus(readStoreStatus(store)) as MerchantStatus
+  const status = parseMerchantStatus(readStoreStatus(store))
   if (status !== 'ativo') {
     return `/acesso-suspenso?error=${encodeURIComponent(status)}`
   }

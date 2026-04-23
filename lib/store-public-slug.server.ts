@@ -38,6 +38,7 @@ export async function fetchStoreByPublicSlug(
     .from('stores')
     .select(columns)
     .eq('slug', seg)
+    .limit(1)
     .maybeSingle()
 
   if (exact.error) {
@@ -53,6 +54,7 @@ export async function fetchStoreByPublicSlug(
       .from('stores')
       .select(columns)
       .eq('slug', lower)
+      .limit(1)
       .maybeSingle()
     if (byLower.error) {
       return { data: null, error: byLower.error }
@@ -66,6 +68,7 @@ export async function fetchStoreByPublicSlug(
     .from('stores')
     .select(columns)
     .ilike('slug', escapeIlikeExactPattern(seg))
+    .limit(1)
     .maybeSingle()
 
   if (insensitive.error) {
