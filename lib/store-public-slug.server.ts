@@ -22,7 +22,7 @@ export function normalizePublicSlugSegment(raw: string): string {
   } catch {
     /* ignora */
   }
-  return slugifyStoreSlug(s.normalize('NFC').trim())
+  return s.normalize('NFC').trim()
 }
 
 export async function fetchStoreByPublicSlug(
@@ -35,45 +35,68 @@ export async function fetchStoreByPublicSlug(
     return { data: null, error: null }
   }
 
-  const exact = await supabase
-    .from('stores')
-    .select(columns)
-    .eq('slug', seg)
-    .limit(1)
-    .maybeSingle()
+  const candidates = Array.from(
+    new Set([seg, seg.toLowerCase(), slugifyStoreSlug(seg)])
+  ).filter(Boolean)
 
-  if (exact.error) {
-    return { data: null, error: exact.error }
-  }
-  if (exact.data) {
-    return { data: exact.data, error: null }
-  }
-
-  const lower = seg.toLowerCase()
-  if (lower !== seg) {
-    const byLower = await supabase
+  for (const candidate of candidates) {
+    const exact = await supabase
       .from('stores')
       .select(columns)
-      .eq('slug', lower)
+      .eq('slug', candidate)
       .limit(1)
       .maybeSingle()
-    if (byLower.error) {
-      return { data: null, error: byLower.error }
+    if (exact.error) {
+      return { data: null, error: exact.error }
     }
-    if (byLower.data) {
-      return { data: byLower.data, error: null }
+    if (exact.data) {
+      return { data: exact.data, error: null }
     }
   }
 
-  const insensitive = await supabase
+  for (const candidate of candidates) {
+    const insensitive = await supabase
+      .from('stores')
+      .select(columns)
+      .ilike('slug', escapeIlikeExactPattern(candidate))
+      .limit(1)
+      .maybeSingle()
+
+    if (insensitive.error) {
+      return { data: null, error: insensitive.error }
+    }
+    if (insensitive.data) {
+      return { data: insensitive.data, error: null }
+    }
+  }
+
+  /**
+   * Fallback legado: slugs antigas com acentos/caracteres especiais.
+   * Compara versões slugificadas em memória para evitar 404 em links antigos.
+   */
+  const legacyPool = await supabase
+    .from('stores')
+    .select('id, slug')
+    .limit(5000)
+  if (legacyPool.error) {
+    return { data: null, error: legacyPool.error }
+  }
+
+  const wanted = slugifyStoreSlug(seg)
+  const rows = (legacyPool.data as Array<{ id: string; slug: string | null }> | null) ?? []
+  const matched = rows.find((row) => slugifyStoreSlug(row.slug?.trim() || '') === wanted)
+  if (!matched?.id) {
+    return { data: null, error: null }
+  }
+
+  const byId = await supabase
     .from('stores')
     .select(columns)
-    .ilike('slug', escapeIlikeExactPattern(seg))
+    .eq('id', matched.id)
     .limit(1)
     .maybeSingle()
-
-  if (insensitive.error) {
-    return { data: null, error: insensitive.error }
+  if (byId.error) {
+    return { data: null, error: byId.error }
   }
-  return { data: insensitive.data ?? null, error: null }
+  return { data: byId.data ?? null, error: null }
 }
