@@ -92,6 +92,11 @@ export async function POST(req: NextRequest) {
     const paymentMethod = toText(raw.paymentMethod) || null
     const notes = toText(raw.notes) || null
     const fulfillment = toText(raw.fulfillment).toLowerCase() === 'pickup' ? 'pickup' : 'delivery'
+    const normalizedDeliveryAddress =
+      fulfillment === 'delivery'
+        ? deliveryAddress
+        : 'Retirada na loja'
+
     const itemsRaw = Array.isArray(raw.items) ? raw.items : []
 
     if (!slug) {
@@ -224,7 +229,7 @@ export async function POST(req: NextRequest) {
         store_id: String(storeRow.id),
         customer_name: customerName,
         customer_phone: customerPhone,
-        delivery_address: fulfillment === 'delivery' ? deliveryAddress : null,
+        delivery_address: normalizedDeliveryAddress,
         payment_method: paymentMethod,
         notes,
         total,

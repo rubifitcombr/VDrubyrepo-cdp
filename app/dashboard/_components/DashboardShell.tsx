@@ -13,6 +13,7 @@ import { DashboardLogoutButton } from './DashboardLogoutButton'
 import { DashboardPlanGuard } from './DashboardPlanGuard'
 import { DashboardTopBar } from './DashboardTopBar'
 import { InstallAppBanner } from './InstallAppBanner'
+import { DashboardNotificationPrompt } from './DashboardNotificationPrompt'
 import { DashboardOrderRealtimeNotifier } from './DashboardOrderRealtimeNotifier'
 import {
   IconBag,
@@ -425,6 +426,7 @@ export function DashboardShell({
         <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
           <main className="mx-auto w-full max-w-[1280px] px-4 pb-[calc(7.25rem+env(safe-area-inset-bottom,0px))] pt-4 sm:px-5 sm:pt-5 md:px-6 md:pb-10 md:pt-6 lg:px-8 lg:pt-8 xl:max-w-[1400px] xl:px-10 xl:pb-12">
             <InstallAppBanner />
+            {isAuthenticated ? <DashboardNotificationPrompt /> : null}
             {mainInner}
           </main>
         </div>

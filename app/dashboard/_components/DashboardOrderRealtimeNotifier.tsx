@@ -24,6 +24,29 @@ function playNewOrderBeep() {
   }
 }
 
+function unlockAudioForMobile() {
+  try {
+    const w = window as Window & { __vyriaAudioUnlocked?: boolean }
+    if (w.__vyriaAudioUnlocked) return
+    const Ctx =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+    if (!Ctx) return
+    const ctx = new Ctx()
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    gain.gain.value = 0.0001
+    osc.start()
+    osc.stop(ctx.currentTime + 0.01)
+    void ctx.resume?.()
+    w.__vyriaAudioUnlocked = true
+  } catch {
+    /* ignore */
+  }
+}
+
 type ServiceWorkerRegistrationLike = {
   showNotification?: (title: string, options?: NotificationOptions) => Promise<void>
   pushManager?: PushManager
@@ -126,6 +149,27 @@ export function DashboardOrderRealtimeNotifier({ storeId }: { storeId: string | 
 
     void ensurePushSubscription()
 
+    const onManualEnable = () => {
+      unlockAudioForMobile()
+      if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+        void Notification.requestPermission()
+          .then(() => ensurePushSubscription())
+          .catch(() => {})
+      } else {
+        void ensurePushSubscription()
+      }
+    }
+
+    const onInteraction = () => {
+      unlockAudioForMobile()
+    }
+    window.addEventListener('pointerdown', onInteraction, { passive: true })
+    window.addEventListener('touchstart', onInteraction, { passive: true })
+    window.addEventListener('keydown', onInteraction, { passive: true })
+    window.addEventListener('focus', onManualEnable)
+    document.addEventListener('visibilitychange', onManualEnable)
+    window.addEventListener('vyria-enable-notifications', onManualEnable as EventListener)
+
     async function hydrateSeenIds() {
       const { data, error } = await supabase
         .from('orders')
@@ -167,6 +211,12 @@ export function DashboardOrderRealtimeNotifier({ storeId }: { storeId: string | 
     return () => {
       closed = true
       void supabase.removeChannel(channel)
+      window.removeEventListener('pointerdown', onInteraction as EventListener)
+      window.removeEventListener('touchstart', onInteraction as EventListener)
+      window.removeEventListener('keydown', onInteraction as EventListener)
+      window.removeEventListener('focus', onManualEnable)
+      document.removeEventListener('visibilitychange', onManualEnable)
+      window.removeEventListener('vyria-enable-notifications', onManualEnable as EventListener)
       w.__vyriaGlobalOrderNotifierActive = false
     }
   }, [storeId])
