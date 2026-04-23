@@ -1,5 +1,7 @@
 'use client'
 
+import { useBeginNavigation } from '@/app/_components/NavigationProgressProvider'
+import { RouteLoadingFallback } from '@/app/_components/RouteLoadingFallback'
 import Link from 'next/link'
 import { Suspense, useEffect, useState } from 'react'
 import { setRememberLoginPreference, signIn } from '@/services/auth'
@@ -17,6 +19,8 @@ function LoginForm() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [rememberLogin, setRememberLogin] = useState(true)
+  const [isLoggingIn, setIsLoggingIn] = useState(false)
+  const beginNavigation = useBeginNavigation()
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -26,17 +30,20 @@ function LoginForm() {
   }, [])
 
   async function handleLogin() {
+    setIsLoggingIn(true)
     try {
       const { error } = await signIn(email, password)
 
       if (error) {
         alert(error.message)
+        setIsLoggingIn(false)
         return
       }
 
       setRememberLoginPreference(rememberLogin)
 
       const next = safeNextPath(searchParams.get('next'))
+      beginNavigation()
       router.push(next)
     } catch (err) {
       const message =
@@ -44,11 +51,12 @@ function LoginForm() {
           ? err.message
           : 'Erro ao iniciar sessão. Verifica as variáveis de ambiente do Supabase no deploy.'
       alert(message)
+      setIsLoggingIn(false)
     }
   }
 
   return (
-    <div className="rounded-2xl border border-[var(--card-border)] bg-white p-6 shadow-xl shadow-vyria-navy-deep/10 sm:p-8">
+    <div className="relative rounded-2xl border border-[var(--card-border)] bg-white p-6 shadow-xl shadow-vyria-navy-deep/10 sm:p-8">
       <div className="mb-6 text-center sm:mb-8">
         <p className="text-xs font-semibold uppercase tracking-widest text-vyria-plum">
           Engenharia de vendas local
@@ -62,62 +70,83 @@ function LoginForm() {
       </div>
 
       <div className="space-y-4">
-        <label className="block text-sm font-medium text-vyria-navy">
-          Email
-          <input
-            className={inputClass}
-            placeholder="tu@email.com"
-            type="email"
-            autoComplete="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-        </label>
-
-        <label className="block text-sm font-medium text-vyria-navy">
-          Senha
-          <input
-            className={inputClass}
-            placeholder="••••••••"
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </label>
-
-        <div className="rounded-xl border border-[var(--card-border)] bg-[#fafafa] px-4 py-3.5 shadow-inner shadow-black/[0.02]">
-          <label
-            htmlFor="vyria-remember-login"
-            className="flex cursor-pointer items-start gap-3 sm:items-center"
-          >
+        <fieldset disabled={isLoggingIn} className="min-w-0 space-y-4 border-0 p-0">
+          <label className="block text-sm font-medium text-vyria-navy">
+            Email
             <input
-              id="vyria-remember-login"
-              type="checkbox"
-              checked={rememberLogin}
-              onChange={(e) => setRememberLogin(e.target.checked)}
-              className="mt-0.5 h-5 w-5 shrink-0 rounded border-[var(--card-border)] text-vyria-orange focus:ring-2 focus:ring-vyria-orange/35 sm:mt-0"
+              className={inputClass}
+              placeholder="tu@email.com"
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
             />
-            <span className="min-w-0 flex-1">
-              <span className="block text-sm font-semibold text-vyria-navy">
-                Lembrar login
-              </span>
-              <span className="mt-0.5 block text-xs leading-relaxed text-vyria-navy-muted">
-                Mantém a sessão neste aparelho ao fechar o separador (até 30 dias).
-                Desliga se estiveres num computador partilhado.
-              </span>
-            </span>
           </label>
-        </div>
 
-        <button
-          type="button"
-          onClick={handleLogin}
-          className="btn-vyria-gradient mt-2 w-full rounded-xl py-3 text-sm font-semibold"
-        >
-          Entrar
-        </button>
+          <label className="block text-sm font-medium text-vyria-navy">
+            Senha
+            <input
+              className={inputClass}
+              placeholder="••••••••"
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </label>
+
+          <div className="rounded-xl border border-[var(--card-border)] bg-[#fafafa] px-4 py-3.5 shadow-inner shadow-black/[0.02]">
+            <label
+              htmlFor="vyria-remember-login"
+              className="flex cursor-pointer items-start gap-3 sm:items-center"
+            >
+              <input
+                id="vyria-remember-login"
+                type="checkbox"
+                checked={rememberLogin}
+                onChange={(e) => setRememberLogin(e.target.checked)}
+                className="mt-0.5 h-5 w-5 shrink-0 rounded border-[var(--card-border)] text-vyria-orange focus:ring-2 focus:ring-vyria-orange/35 sm:mt-0"
+              />
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold text-vyria-navy">
+                  Lembrar login
+                </span>
+                <span className="mt-0.5 block text-xs leading-relaxed text-vyria-navy-muted">
+                  Mantém a sessão neste aparelho ao fechar o separador (até 30 dias).
+                  Desliga se estiveres num computador partilhado.
+                </span>
+              </span>
+            </label>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleLogin}
+            disabled={isLoggingIn}
+            className="btn-vyria-gradient mt-2 w-full rounded-xl py-3 text-sm font-semibold disabled:pointer-events-none disabled:opacity-75"
+          >
+            Entrar
+          </button>
+        </fieldset>
       </div>
+
+      {isLoggingIn ? (
+        <div
+          className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 rounded-2xl bg-white/75 px-6 text-center backdrop-blur-[2px]"
+          role="status"
+          aria-live="polite"
+          aria-busy="true"
+        >
+          <span
+            className="h-10 w-10 shrink-0 animate-spin rounded-full border-[3px] border-vyria-plum/25 border-t-vyria-plum"
+            aria-hidden
+          />
+          <p className="text-sm font-medium text-vyria-navy">A carregar…</p>
+          <p className="max-w-[16rem] text-xs text-vyria-navy-muted">
+            A iniciar sessão e a abrir o painel.
+          </p>
+        </div>
+      ) : null}
 
       <p className="mt-8 text-center text-sm text-vyria-navy-muted">
         Ainda sem conta?{' '}
@@ -136,9 +165,10 @@ export default function LoginPage() {
   return (
     <Suspense
       fallback={
-        <div className="rounded-2xl border border-[var(--card-border)] bg-white p-8 text-center text-sm text-vyria-navy-muted shadow-xl">
-          A carregar…
-        </div>
+        <RouteLoadingFallback
+          height="compact"
+          className="rounded-2xl border border-[var(--card-border)] bg-white shadow-xl shadow-vyria-navy-deep/10"
+        />
       }
     >
       <LoginForm />

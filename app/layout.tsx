@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist_Mono, Montserrat, Playfair_Display } from "next/font/google";
 import "./globals.css";
 import { ClearLegacyServiceWorker } from "./_components/ClearLegacyServiceWorker";
+import { NavigationProgressProvider } from "./_components/NavigationProgressProvider";
 
 const playfair = Playfair_Display({
   variable: "--font-playfair",
@@ -66,7 +67,7 @@ export default function RootLayout({
       </head>
       <body className="flex min-h-dvh flex-col font-sans">
         <ClearLegacyServiceWorker />
-        {children}
+        <NavigationProgressProvider>{children}</NavigationProgressProvider>
       </body>
     </html>
   );
