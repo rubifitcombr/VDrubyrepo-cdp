@@ -97,6 +97,7 @@ export default async function DashboardLayout({
       storeName={storeName}
       storeSlug={storeSlug}
       storeLogoUrl={storeLogoUrl}
+      storeId={storeId}
       isAuthenticated={!!user}
       plan={plan}
       notificationCount={notificationCount}

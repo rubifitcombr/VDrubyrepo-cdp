@@ -106,12 +106,7 @@ export function WhatsAppCheckoutButton({
   const [notes, setNotes] = useState('')
   const [fulfillment, setFulfillment] = useState<FulfillmentType | null>(null)
   void storePlan
-  const [mounted, setMounted] = useState(false)
   const lastOpenSignalRef = useRef<number | null>(null)
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
 
   useEffect(() => {
     if (!open) return
@@ -123,7 +118,7 @@ export function WhatsAppCheckoutButton({
   }, [open])
 
   useEffect(() => {
-    if (!mounted || openSignal == null) return
+    if (openSignal == null) return
     if (lastOpenSignalRef.current == null) {
       lastOpenSignalRef.current = openSignal
       return
@@ -131,10 +126,13 @@ export function WhatsAppCheckoutButton({
     if (openSignal === lastOpenSignalRef.current) return
     lastOpenSignalRef.current = openSignal
     if (!items.length) return
-    setError(null)
-    setFulfillment(null)
-    setOpen(true)
-  }, [openSignal, mounted, items.length])
+    const tid = window.setTimeout(() => {
+      setError(null)
+      setFulfillment(null)
+      setOpen(true)
+    }, 0)
+    return () => window.clearTimeout(tid)
+  }, [openSignal, items.length])
 
   const estimatedDelivery = useMemo(
     () =>
@@ -241,6 +239,7 @@ export function WhatsAppCheckoutButton({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           slug: storeSlug,
+          fulfillment: 'delivery',
           customerName,
           customerPhone,
           addressRua: addressRua.trim(),
@@ -340,6 +339,39 @@ export function WhatsAppCheckoutButton({
     }
     setSubmitting(true)
     try {
+      const resp = await fetch('/api/public/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          slug: storeSlug,
+          fulfillment: 'pickup',
+          customerName,
+          customerPhone,
+          paymentMethod,
+          notes: buildNotesPayload(),
+          items: items.map((i) => ({
+            productId: i.productId,
+            name: i.name,
+            quantity: i.quantity,
+            unitPrice: i.price,
+          })),
+        }),
+      })
+      const payload = (await resp.json()) as {
+        ok?: boolean
+        error?: string
+        orderId?: string
+        orderTotal?: number
+      }
+      if (!resp.ok || !payload.ok || !payload.orderId) {
+        setSubmitting(false)
+        setError(payload.error || 'Não foi possível finalizar o pedido.')
+        return
+      }
+
+      const ref = `#${payload.orderId.slice(0, 8).toUpperCase()}`
+      const finalTotal =
+        typeof payload.orderTotal === 'number' ? payload.orderTotal : subtotal
       const baseText = buildMessage(storeName, items, subtotal)
       const finalText = [
         baseText,
@@ -353,11 +385,13 @@ export function WhatsAppCheckoutButton({
           : '',
         notes.trim() ? `*Observações:* ${notes.trim()}` : '',
         '',
-        `*Total:* ${money.format(subtotal)}`,
+        `*Total:* ${money.format(finalTotal)}`,
         '',
         `*Local de retirada:* ${pickupLocationLabel}`,
         pickupLocationAddress ? pickupLocationAddress : '',
         pickupMapsHref ? `Mapa: ${pickupMapsHref}` : '',
+        '',
+        `*Pedido:* ${ref}`,
       ]
         .filter(Boolean)
         .join('\n')
@@ -397,7 +431,7 @@ export function WhatsAppCheckoutButton({
         Finalizar pedido
       </button>
 
-      {open && mounted
+      {open && typeof window !== 'undefined'
         ? createPortal(
             <div
               className="fixed inset-0 z-[100] bg-black/55"

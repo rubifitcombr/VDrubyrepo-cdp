@@ -8,6 +8,7 @@ import {
 } from '@/lib/delivery-zone.server'
 import { parsePlan } from '@/lib/plan'
 import { readStorePlano } from '@/lib/store-columns'
+import { sendWebPushNewOrder } from '@/services/web-push.server'
 
 type CheckoutLine = {
   productId: string
@@ -90,6 +91,7 @@ export async function POST(req: NextRequest) {
 
     const paymentMethod = toText(raw.paymentMethod) || null
     const notes = toText(raw.notes) || null
+    const fulfillment = toText(raw.fulfillment).toLowerCase() === 'pickup' ? 'pickup' : 'delivery'
     const itemsRaw = Array.isArray(raw.items) ? raw.items : []
 
     if (!slug) {
@@ -134,7 +136,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    if (!deliveryAddress) {
+    if (fulfillment === 'delivery' && !deliveryAddress) {
       return NextResponse.json(
         {
           error:
@@ -168,44 +170,46 @@ export async function POST(req: NextRequest) {
 
     const subtotal = items.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0)
 
-    const deliveryLine = [
-      rua,
-      quadra && `Qd. ${quadra}`,
-      lote && `Lt. ${lote}`,
-      casa && `Casa ${casa}`,
-      bairro,
-      referencia,
-    ]
-      .filter(Boolean)
-      .join(', ')
-
-    const geoQuery =
-      deliveryLine.trim().length >= 8
-        ? deliveryLine
-        : (deliveryAddress || '').trim()
-
     let deliveryCharge = 0
-    try {
-      const zone = await evaluateDeliveryForCustomer(
-        storeRow,
-        geoQuery,
-        subtotal
-      )
-      if (!zone.allowed) {
+    if (fulfillment === 'delivery') {
+      const deliveryLine = [
+        rua,
+        quadra && `Qd. ${quadra}`,
+        lote && `Lt. ${lote}`,
+        casa && `Casa ${casa}`,
+        bairro,
+        referencia,
+      ]
+        .filter(Boolean)
+        .join(', ')
+
+      const geoQuery =
+        deliveryLine.trim().length >= 8
+          ? deliveryLine
+          : (deliveryAddress || '').trim()
+
+      try {
+        const zone = await evaluateDeliveryForCustomer(
+          storeRow,
+          geoQuery,
+          subtotal
+        )
+        if (!zone.allowed) {
+          return NextResponse.json(
+            { error: zone.reason || 'Entrega não disponível para este endereço.' },
+            { status: 400 }
+          )
+        }
+        deliveryCharge = zone.deliveryCharge
+      } catch {
         return NextResponse.json(
-          { error: zone.reason || 'Entrega não disponível para este endereço.' },
-          { status: 400 }
+          {
+            error:
+              'Não foi possível validar a entrega. Tenta de novo ou contacta a loja.',
+          },
+          { status: 503 }
         )
       }
-      deliveryCharge = zone.deliveryCharge
-    } catch {
-      return NextResponse.json(
-        {
-          error:
-            'Não foi possível validar a entrega. Tenta de novo ou contacta a loja.',
-        },
-        { status: 503 }
-      )
     }
 
     const plan = parsePlan(readStorePlano(storeRow as Record<string, unknown>))
@@ -220,13 +224,13 @@ export async function POST(req: NextRequest) {
         store_id: String(storeRow.id),
         customer_name: customerName,
         customer_phone: customerPhone,
-        delivery_address: deliveryAddress,
+        delivery_address: fulfillment === 'delivery' ? deliveryAddress : null,
         payment_method: paymentMethod,
         notes,
         total,
         items_summary: itemsSummary,
         status: orderStatus,
-        source: orderSource,
+        source: fulfillment === 'pickup' ? 'site_pickup' : orderSource,
       })
       .select('id')
       .single()
@@ -271,6 +275,13 @@ export async function POST(req: NextRequest) {
         { status: isStock ? 409 : 500 }
       )
     }
+
+    void sendWebPushNewOrder({
+      storeId: String(storeRow.id),
+      storeName: String(storeRow.name || ''),
+      orderId: String(order.id),
+      customerName,
+    })
 
     return NextResponse.json({
       ok: true,

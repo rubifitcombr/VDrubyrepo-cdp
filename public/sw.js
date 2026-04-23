@@ -146,3 +146,45 @@ self.addEventListener('fetch', (event) => {
 
   event.respondWith(fetch(event.request));
 });
+
+self.addEventListener('push', (event) => {
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch {
+    payload = {};
+  }
+  const title = payload.title || 'Novo pedido recebido';
+  const body = payload.body || 'Abre o painel para ver os detalhes.';
+  const url = payload.url || '/dashboard/orders';
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body,
+      icon: '/icons/icon-192x192.png',
+      badge: '/icons/icon-192x192.png',
+      tag: 'vyria-new-order',
+      renotify: true,
+      data: { url },
+      vibrate: [120, 40, 120],
+      requireInteraction: true,
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const targetUrl = event.notification?.data?.url || '/dashboard/orders';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      for (const client of clients) {
+        if ('focus' in client) {
+          if (client.url && client.url.includes('/dashboard')) {
+            client.navigate?.(targetUrl);
+          }
+          return client.focus();
+        }
+      }
+      return self.clients.openWindow(targetUrl);
+    })
+  );
+});

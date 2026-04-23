@@ -301,7 +301,16 @@ export function OrdersClient({
               if (prev.some((p) => p.id === row.id)) return prev
               if (!seenIdsRef.current.has(row.id)) {
                 seenIdsRef.current.add(row.id)
-                playNewOrderBeep()
+                const hasGlobalNotifier = Boolean(
+                  (
+                    window as Window & {
+                      __vyriaGlobalOrderNotifierActive?: boolean
+                    }
+                  ).__vyriaGlobalOrderNotifierActive
+                )
+                if (!hasGlobalNotifier) {
+                  playNewOrderBeep()
+                }
               }
               return [row, ...prev]
             })
