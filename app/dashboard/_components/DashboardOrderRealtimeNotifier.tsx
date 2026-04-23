@@ -17,15 +17,28 @@ function playNewOrderBeep() {
     if (!Ctx) return
     const ctx = new Ctx()
     void ctx.resume?.()
-    const osc = ctx.createOscillator()
     const gain = ctx.createGain()
-    osc.connect(gain)
     gain.connect(ctx.destination)
-    osc.type = 'sine'
-    osc.frequency.value = 880
-    gain.gain.value = 0.065
-    osc.start()
-    osc.stop(ctx.currentTime + 0.11)
+    const t = ctx.currentTime
+
+    const osc1 = ctx.createOscillator()
+    osc1.type = 'square'
+    osc1.frequency.value = 980
+    osc1.connect(gain)
+
+    const osc2 = ctx.createOscillator()
+    osc2.type = 'triangle'
+    osc2.frequency.value = 1470
+    osc2.connect(gain)
+
+    gain.gain.setValueAtTime(0.0001, t)
+    gain.gain.exponentialRampToValueAtTime(0.22, t + 0.015)
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.22)
+
+    osc1.start(t)
+    osc2.start(t)
+    osc1.stop(t + 0.22)
+    osc2.stop(t + 0.2)
   } catch {
     /* ignore */
   }
