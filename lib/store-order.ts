@@ -4,6 +4,7 @@ export type StoreOrderRow = {
   total: number | string | null
   status: string | null
   created_at: string
+  source?: string | null
   delivery_address?: string | null
   payment_method?: string | null
   notes?: string | null
@@ -12,7 +13,7 @@ export type StoreOrderRow = {
 }
 
 export const ORDER_SELECT =
-  'id, customer_name, total, status, created_at, delivery_address, payment_method, notes, customer_phone, items_summary'
+  'id, customer_name, total, status, created_at, source, delivery_address, payment_method, notes, customer_phone, items_summary'
 
 /** Mapeia linha Supabase / payload Realtime para o tipo do painel. */
 export function mapStoreOrderRow(row: Record<string, unknown>): StoreOrderRow {
@@ -31,6 +32,7 @@ export function mapStoreOrderRow(row: Record<string, unknown>): StoreOrderRow {
       typeof row.created_at === 'string'
         ? row.created_at
         : new Date().toISOString(),
+    source: typeof row.source === 'string' ? row.source : null,
     delivery_address:
       typeof row.delivery_address === 'string'
         ? row.delivery_address

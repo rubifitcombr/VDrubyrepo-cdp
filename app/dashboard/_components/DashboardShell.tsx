@@ -404,6 +404,7 @@ export function DashboardShell({
               <DashboardTopBar
                 storeName={storeName}
                 storeLogoUrl={storeLogoUrl}
+                storeId={storeId}
                 plan={plan}
                 notificationCount={notificationCount}
               />

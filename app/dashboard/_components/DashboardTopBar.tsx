@@ -3,9 +3,10 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { Plan } from '@/lib/plan'
 import { planTitle } from '@/lib/plan'
+import { createClient } from '@/lib/supabase/client'
 import { IconBell, IconSearch } from './NavIcons'
 
 function storeInitials(name: string | null): string {
@@ -19,16 +20,70 @@ function storeInitials(name: string | null): string {
 export function DashboardTopBar({
   storeName,
   storeLogoUrl,
+  storeId,
   plan,
   notificationCount,
 }: {
   storeName: string | null
   storeLogoUrl: string | null
+  storeId: string | null
   plan: Plan
   notificationCount: number
 }) {
   const router = useRouter()
   const [q, setQ] = useState('')
+  const [pendingCount, setPendingCount] = useState(notificationCount)
+
+  useEffect(() => {
+    setPendingCount(notificationCount)
+  }, [notificationCount])
+
+  useEffect(() => {
+    if (!storeId) return
+    const supabase = createClient()
+    let disposed = false
+
+    async function refreshPendingCount() {
+      const { count, error } = await supabase
+        .from('orders')
+        .select('id', { count: 'exact', head: true })
+        .eq('store_id', storeId)
+        .eq('status', 'pending')
+      if (!disposed && !error) {
+        setPendingCount(count ?? 0)
+      }
+    }
+
+    const channel = supabase
+      .channel(`dashboard-topbar-pending-${storeId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'orders',
+          filter: `store_id=eq.${storeId}`,
+        },
+        () => {
+          void refreshPendingCount()
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          void refreshPendingCount()
+        }
+      })
+
+    const poll = window.setInterval(() => {
+      void refreshPendingCount()
+    }, 15000)
+
+    return () => {
+      disposed = true
+      window.clearInterval(poll)
+      void supabase.removeChannel(channel)
+    }
+  }, [storeId])
 
   function onSearch(e: React.FormEvent) {
     e.preventDefault()
@@ -56,13 +111,16 @@ export function DashboardTopBar({
       <div className="flex shrink-0 items-center justify-end gap-3 sm:ml-auto">
         <Link
           href="/dashboard/orders"
-          className="relative rounded-xl border border-[var(--card-border)] bg-white p-2.5 text-[#1a1614] shadow-sm transition-colors hover:bg-[#f8f9fa]"
-          aria-label="Ver pedidos com alertas"
+          className="relative inline-flex items-center gap-2 rounded-xl border border-[var(--card-border)] bg-white px-2.5 py-2 text-[#1a1614] shadow-sm transition-colors hover:bg-[#f8f9fa]"
+          aria-label={`Ver pedidos pendentes: ${pendingCount}`}
         >
           <IconBell className="h-5 w-5" />
-          {notificationCount > 0 ? (
+          <span className="text-xs font-semibold text-[#4b5563]">
+            Pendentes: {pendingCount}
+          </span>
+          {pendingCount > 0 ? (
             <span className="absolute -right-1 -top-1 flex h-[1.125rem] min-w-[1.125rem] items-center justify-center rounded-full bg-[var(--dash-primary)] px-1 text-[10px] font-bold text-white">
-              {notificationCount > 99 ? '99+' : notificationCount}
+              {pendingCount > 99 ? '99+' : pendingCount}
             </span>
           ) : null}
         </Link>
