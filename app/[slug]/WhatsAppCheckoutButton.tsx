@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useCart } from '@/app/context/CartContext'
 import { computeDeliveryCharge } from '@/lib/delivery-pricing'
@@ -107,6 +107,7 @@ export function WhatsAppCheckoutButton({
   const [fulfillment, setFulfillment] = useState<FulfillmentType | null>(null)
   void storePlan
   const [mounted, setMounted] = useState(false)
+  const lastOpenSignalRef = useRef<number | null>(null)
 
   useEffect(() => {
     setMounted(true)
@@ -122,8 +123,14 @@ export function WhatsAppCheckoutButton({
   }, [open])
 
   useEffect(() => {
-    if (!mounted || !items.length) return
-    if (openSignal == null) return
+    if (!mounted || openSignal == null) return
+    if (lastOpenSignalRef.current == null) {
+      lastOpenSignalRef.current = openSignal
+      return
+    }
+    if (openSignal === lastOpenSignalRef.current) return
+    lastOpenSignalRef.current = openSignal
+    if (!items.length) return
     setError(null)
     setFulfillment(null)
     setOpen(true)
