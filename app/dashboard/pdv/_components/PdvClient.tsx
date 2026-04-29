@@ -59,6 +59,8 @@ export function PdvClient({
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
   const [internalNotes, setInternalNotes] = useState('')
   const [discountInput, setDiscountInput] = useState('')
+  const [canFullscreen, setCanFullscreen] = useState(false)
+  const [isFullscreen, setIsFullscreen] = useState(false)
 
   const searchInputRef = useRef<HTMLInputElement>(null)
   const formRef = useRef<HTMLFormElement>(null)
@@ -129,6 +131,16 @@ export function PdvClient({
     const t = window.setTimeout(() => setSuccess(false), 4500)
     return () => window.clearTimeout(t)
   }, [success])
+
+  useEffect(() => {
+    const hasApi = typeof document !== 'undefined' && !!document.documentElement.requestFullscreen
+    setCanFullscreen(hasApi)
+    if (!hasApi) return
+    const sync = () => setIsFullscreen(!!document.fullscreenElement)
+    sync()
+    document.addEventListener('fullscreenchange', sync)
+    return () => document.removeEventListener('fullscreenchange', sync)
+  }, [])
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -269,6 +281,19 @@ export function PdvClient({
     }
   }
 
+  async function toggleFullscreen() {
+    if (!canFullscreen) return
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen()
+      } else {
+        await document.documentElement.requestFullscreen()
+      }
+    } catch {
+      setError('Não foi possível alternar o ecrã completo neste navegador.')
+    }
+  }
+
   return (
     <div className="flex min-h-[calc(100dvh-3.5rem)] flex-col md:min-h-[calc(100dvh-1px)] lg:flex-row">
       {success ? (
@@ -298,8 +323,19 @@ export function PdvClient({
                 Balcão
               </h1>
             </div>
-            <div className="text-right text-xs text-vyria-navy-muted">
-              <span className="tabular-nums">{products.length}</span> produtos
+            <div className="flex items-center gap-2">
+              {canFullscreen ? (
+                <button
+                  type="button"
+                  onClick={() => void toggleFullscreen()}
+                  className="rounded-xl border border-[var(--card-border)] bg-white px-3 py-2 text-xs font-semibold text-vyria-navy transition hover:bg-zinc-50"
+                >
+                  {isFullscreen ? 'Sair do ecrã completo' : 'Ecrã completo'}
+                </button>
+              ) : null}
+              <div className="text-right text-xs text-vyria-navy-muted">
+                <span className="tabular-nums">{products.length}</span> produtos
+              </div>
             </div>
           </div>
 

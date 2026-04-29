@@ -86,6 +86,12 @@ const nav: Array<{
     menuKey: 'financeiro',
   },
   {
+    href: '/dashboard/caixa',
+    label: 'Caixa',
+    icon: IconCurrency,
+    menuKey: 'caixa',
+  },
+  {
     href: '/dashboard/promotions',
     label: 'Promoções',
     icon: IconTag,

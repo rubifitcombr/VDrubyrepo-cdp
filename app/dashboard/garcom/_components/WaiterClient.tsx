@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { MenuProductRow } from '@/lib/menu-product'
 import type { StoreOrderRow } from '@/lib/store-order'
 import { effectiveProductPrice } from '@/lib/product-pricing'
@@ -79,6 +79,8 @@ export function WaiterClient({
   const [busyOrderId, setBusyOrderId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const [canFullscreen, setCanFullscreen] = useState(false)
+  const [isFullscreen, setIsFullscreen] = useState(false)
 
   const filteredProducts = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -109,6 +111,16 @@ export function WaiterClient({
     }
     return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0], 'pt'))
   }, [openOrders])
+
+  useEffect(() => {
+    const hasApi = typeof document !== 'undefined' && !!document.documentElement.requestFullscreen
+    setCanFullscreen(hasApi)
+    if (!hasApi) return
+    const sync = () => setIsFullscreen(!!document.fullscreenElement)
+    sync()
+    document.addEventListener('fullscreenchange', sync)
+    return () => document.removeEventListener('fullscreenchange', sync)
+  }, [])
 
   function addProduct(product: MenuProductRow) {
     const price = effectiveProductPrice(product)
@@ -251,6 +263,19 @@ export function WaiterClient({
     setSuccess(`Conta da mesa ${parseTableFromNotes(order.notes) || '—'} fechada.`)
   }
 
+  async function toggleFullscreen() {
+    if (!canFullscreen) return
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen()
+      } else {
+        await document.documentElement.requestFullscreen()
+      }
+    } catch {
+      setError('Não foi possível alternar o ecrã completo neste navegador.')
+    }
+  }
+
   return (
     <div className="mx-auto w-full max-w-7xl">
       <nav className="text-xs text-vyria-navy-muted">
@@ -262,12 +287,25 @@ export function WaiterClient({
       </nav>
 
       <header className="mt-4">
-        <h1 className="font-brand text-2xl font-bold text-vyria-navy md:text-3xl">
-          Garçom — Pedidos por mesa
-        </h1>
-        <p className="mt-1 text-sm text-vyria-navy-muted">
-          Registre pedidos nas mesas, envie para produção e acompanhe o andamento em tempo real.
-        </p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="font-brand text-2xl font-bold text-vyria-navy md:text-3xl">
+              Garçom — Pedidos por mesa
+            </h1>
+            <p className="mt-1 text-sm text-vyria-navy-muted">
+              Registre pedidos nas mesas, envie para produção e acompanhe o andamento em tempo real.
+            </p>
+          </div>
+          {canFullscreen ? (
+            <button
+              type="button"
+              onClick={() => void toggleFullscreen()}
+              className="rounded-xl border border-[var(--card-border)] bg-white px-3 py-2 text-xs font-semibold text-vyria-navy transition hover:bg-zinc-50"
+            >
+              {isFullscreen ? 'Sair do ecrã completo' : 'Ecrã completo'}
+            </button>
+          ) : null}
+        </div>
       </header>
 
       <div className="mt-6 grid gap-5 lg:grid-cols-[1.4fr_1fr]">

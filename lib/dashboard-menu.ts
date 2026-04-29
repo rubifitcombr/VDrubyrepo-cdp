@@ -6,6 +6,7 @@ export type DashboardMenuKey =
   | 'produtos'
   | 'pedidos'
   | 'financeiro'
+  | 'caixa'
   | 'configuracoes'
   | 'assinatura'
   | 'promocoes'
@@ -26,6 +27,7 @@ export const MENU_POR_PLANO: Record<
     'dashboard',
     'produtos',
     'financeiro',
+    'caixa',
     'configuracoes',
     'assinatura',
   ],
@@ -34,6 +36,7 @@ export const MENU_POR_PLANO: Record<
     'produtos',
     'pedidos',
     'financeiro',
+    'caixa',
     'promocoes',
     'relatorios',
     'automacoes',
@@ -48,6 +51,7 @@ export const MENU_POR_PLANO: Record<
     'garcom',
     'pedidos',
     'financeiro',
+    'caixa',
     'promocoes',
     'relatorios',
     'automacoes',
@@ -65,6 +69,7 @@ const MENU_KEY_TO_PATH_PREFIX: Record<DashboardMenuKey, string> = {
   produtos: '/dashboard/menu',
   pedidos: '/dashboard/orders',
   financeiro: '/dashboard/finance',
+  caixa: '/dashboard/caixa',
   configuracoes: '/dashboard/settings',
   assinatura: '/dashboard/assinatura',
   promocoes: '/dashboard/promotions',
