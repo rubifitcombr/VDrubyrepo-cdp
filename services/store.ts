@@ -31,6 +31,7 @@ const STORE_ALLOWED_FIELDS = new Set([
   'location_lng',
   'location_address',
   'location_label',
+  'table_sectors',
 ])
 
 export async function getStoreByUser(userId: string) {

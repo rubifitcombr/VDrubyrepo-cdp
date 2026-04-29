@@ -18,7 +18,6 @@ import {
 } from '@/lib/product-pricing'
 import {
   submitPdvSale,
-  type PdvPaymentMethod,
 } from '@/services/pdv'
 
 const money = new Intl.NumberFormat('pt-BR', {
@@ -50,7 +49,6 @@ export function PdvClient({
 }) {
   const [cart, setCart] = useState<CartLine[]>([])
   const [customerName, setCustomerName] = useState('')
-  const [paymentMethod, setPaymentMethod] = useState<PdvPaymentMethod>('cash')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
@@ -65,6 +63,7 @@ export function PdvClient({
   const searchInputRef = useRef<HTMLInputElement>(null)
   const formRef = useRef<HTMLFormElement>(null)
   const qtyInputRefs = useRef<Map<string, HTMLInputElement>>(new Map())
+  const fullscreenRootRef = useRef<HTMLDivElement>(null)
 
   const products = initialProducts
 
@@ -136,7 +135,8 @@ export function PdvClient({
     const hasApi = typeof document !== 'undefined' && !!document.documentElement.requestFullscreen
     setCanFullscreen(hasApi)
     if (!hasApi) return
-    const sync = () => setIsFullscreen(!!document.fullscreenElement)
+    const sync = () =>
+      setIsFullscreen(document.fullscreenElement === fullscreenRootRef.current)
     sync()
     document.addEventListener('fullscreenchange', sync)
     return () => document.removeEventListener('fullscreenchange', sync)
@@ -255,7 +255,6 @@ export function PdvClient({
       const result = await submitPdvSale({
         storeId,
         customerName: customerName.trim() || null,
-        paymentMethod,
         items: cart.map((l) => ({
           productId: l.productId,
           name: l.name,
@@ -271,7 +270,6 @@ export function PdvClient({
       }
       setCart([])
       setCustomerName('')
-      setPaymentMethod('cash')
       setInternalNotes('')
       setDiscountInput('')
       setSuccess(true)
@@ -282,12 +280,12 @@ export function PdvClient({
   }
 
   async function toggleFullscreen() {
-    if (!canFullscreen) return
+    if (!canFullscreen || !fullscreenRootRef.current) return
     try {
-      if (document.fullscreenElement) {
+      if (document.fullscreenElement === fullscreenRootRef.current) {
         await document.exitFullscreen()
       } else {
-        await document.documentElement.requestFullscreen()
+        await fullscreenRootRef.current.requestFullscreen()
       }
     } catch {
       setError('Não foi possível alternar o ecrã completo neste navegador.')
@@ -295,7 +293,21 @@ export function PdvClient({
   }
 
   return (
-    <div className="flex min-h-[calc(100dvh-3.5rem)] flex-col md:min-h-[calc(100dvh-1px)] lg:flex-row">
+    <div
+      ref={fullscreenRootRef}
+      className="flex min-h-[calc(100dvh-3.5rem)] flex-col bg-[var(--dash-surface)] md:min-h-[calc(100dvh-1px)] lg:flex-row"
+    >
+      {isFullscreen ? (
+        <button
+          type="button"
+          onClick={() => void toggleFullscreen()}
+          className="fixed right-3 top-3 z-[80] inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/35 bg-black/65 text-sm font-bold text-white shadow-lg backdrop-blur-sm hover:bg-black/75"
+          aria-label="Fechar ecrã completo"
+          title="Fechar ecrã completo"
+        >
+          ×
+        </button>
+      ) : null}
       {success ? (
         <div
           className="fixed inset-x-0 top-14 z-40 mx-auto max-w-lg px-3 md:top-4 md:max-w-md"
@@ -303,7 +315,7 @@ export function PdvClient({
           aria-live="polite"
         >
           <div className="rounded-xl border border-emerald-500/40 bg-emerald-600 px-4 py-3 text-center text-sm font-semibold text-white shadow-lg shadow-emerald-900/20">
-            Venda registada. Podes iniciar outra venda.
+            Pedido lançado no PDV. Feche a comanda no Caixa.
           </div>
         </div>
       ) : null}
@@ -324,13 +336,13 @@ export function PdvClient({
               </h1>
             </div>
             <div className="flex items-center gap-2">
-              {canFullscreen ? (
+              {canFullscreen && !isFullscreen ? (
                 <button
                   type="button"
                   onClick={() => void toggleFullscreen()}
                   className="rounded-xl border border-[var(--card-border)] bg-white px-3 py-2 text-xs font-semibold text-vyria-navy transition hover:bg-zinc-50"
                 >
-                  {isFullscreen ? 'Sair do ecrã completo' : 'Ecrã completo'}
+                  Ecrã completo
                 </button>
               ) : null}
               <div className="text-right text-xs text-vyria-navy-muted">
@@ -631,37 +643,6 @@ export function PdvClient({
           </div>
 
           <div>
-            <span className="mb-2 block text-xs font-medium text-vyria-navy-muted">
-              Pagamento
-            </span>
-            <div className="grid grid-cols-3 gap-2">
-              {(
-                [
-                  { v: 'cash' as const, label: 'Dinheiro' },
-                  { v: 'pix' as const, label: 'PIX' },
-                  { v: 'card' as const, label: 'Cartão' },
-                ] as const
-              ).map(({ v, label }) => (
-                <button
-                  key={v}
-                  type="button"
-                  onClick={() => {
-                    setPaymentMethod(v)
-                    setSuccess(false)
-                  }}
-                  className={`min-h-[48px] rounded-xl border-2 px-2 text-sm font-semibold transition active:scale-[0.98] ${
-                    paymentMethod === v
-                      ? 'border-[var(--dash-primary)] bg-[var(--dash-primary)]/10 text-vyria-navy'
-                      : 'border-[var(--card-border)] bg-white text-vyria-navy-muted hover:border-zinc-300'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
             <label
               htmlFor="pdv-internal-notes"
               className="mb-1 block text-xs font-medium text-vyria-navy-muted"
@@ -736,7 +717,7 @@ export function PdvClient({
               disabled={!cart.length || submitting}
               className="min-h-[52px] min-w-[160px] rounded-2xl bg-[var(--dash-primary)] px-6 text-base font-bold text-white shadow-md shadow-[var(--dash-primary)]/30 transition enabled:hover:opacity-95 enabled:active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {submitting ? 'A registar…' : 'Finalizar venda'}
+              {submitting ? 'A lançar…' : 'Lançar pedido'}
             </button>
           </div>
         </form>

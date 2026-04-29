@@ -51,12 +51,19 @@ export default async function GarcomPage() {
     getMenuProductsForStore(storeId),
     getWaiterOpenOrdersForStore(storeId),
   ])
+  const s = store as Record<string, unknown>
+  const tableSectors = Array.isArray(s.table_sectors)
+    ? (s.table_sectors as unknown[])
+        .map((x) => String(x ?? '').trim())
+        .filter(Boolean)
+    : ['Salão', 'Varanda']
 
   return (
     <WaiterClient
       storeId={storeId}
       initialProducts={products.filter((p) => p.active !== false)}
       initialOpenOrders={openOrders}
+      initialSectors={tableSectors}
     />
   )
 }

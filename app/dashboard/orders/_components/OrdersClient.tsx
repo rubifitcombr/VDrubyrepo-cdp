@@ -555,7 +555,12 @@ export function OrdersClient({
             const isTrocoNote = Boolean(notes && /troco/i.test(notes))
             const payKind = paymentKind(o.payment_method)
             const showPaymentHighlight = payKind === 'pix' || payKind === 'card'
-            const isCounterOrder = (o.source ?? '').trim().toLowerCase() === 'pdv'
+            const source = (o.source ?? '').trim().toLowerCase()
+            const isCounterOrder = source === 'pdv'
+            const isWaiterOrder = source === 'waiter'
+            const isPickupOrder = source === 'site_pickup'
+            const isDeliveryOrder =
+              !isCounterOrder && !isWaiterOrder && !isPickupOrder
 
             const mobileExpanded = expandedMobileId === o.id
             const customerName = o.customer_name?.trim() || 'Cliente'
@@ -614,11 +619,28 @@ export function OrdersClient({
                     <p className="text-sm leading-snug text-[#374151]">
                       {itemsLine}
                     </p>
-                    {isCounterOrder ? (
-                      <p className="inline-flex w-fit items-center rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-semibold text-sky-900 ring-1 ring-sky-200">
-                        Pedido balcão
-                      </p>
-                    ) : null}
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {isCounterOrder ? (
+                        <p className="inline-flex w-fit items-center rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-semibold text-sky-900 ring-1 ring-sky-200">
+                          Pedido balcão
+                        </p>
+                      ) : null}
+                      {isWaiterOrder ? (
+                        <p className="inline-flex w-fit items-center rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-semibold text-violet-900 ring-1 ring-violet-200">
+                          Pedido garçom
+                        </p>
+                      ) : null}
+                      {isDeliveryOrder ? (
+                        <p className="inline-flex w-fit items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900 ring-1 ring-amber-200">
+                          Para entrega
+                        </p>
+                      ) : null}
+                      {isPickupOrder ? (
+                        <p className="inline-flex w-fit items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-900 ring-1 ring-emerald-200">
+                          Retirada
+                        </p>
+                      ) : null}
+                    </div>
                     <p className="text-sm text-[#6b7280]">{address}</p>
                     <p className="text-xs font-medium text-[#9ca3af]">
                       {relativeTimePt(o.created_at)}

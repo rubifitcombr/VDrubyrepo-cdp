@@ -75,6 +75,8 @@ export default function SettingsPage() {
   const [locationMapsUrl, setLocationMapsUrl] = useState('')
   const [locationLat, setLocationLat] = useState<number | null>(null)
   const [locationLng, setLocationLng] = useState<number | null>(null)
+  const [supportsTableSectors, setSupportsTableSectors] = useState(true)
+  const [tableSectorsText, setTableSectorsText] = useState('Salão\nVaranda')
 
   useEffect(() => {
     async function load() {
@@ -101,6 +103,15 @@ export default function SettingsPage() {
       setPhone((s.phone as string) || '')
       setAddress(typeof s.address === 'string' ? s.address : '')
       setBusinessHours('business_hours' in s ? s.business_hours : null)
+      setSupportsTableSectors('table_sectors' in s)
+      const loadedSectors = Array.isArray(s.table_sectors)
+        ? (s.table_sectors as unknown[])
+            .map((x) => String(x ?? '').trim())
+            .filter(Boolean)
+        : []
+      if (loadedSectors.length > 0) {
+        setTableSectorsText(loadedSectors.join('\n'))
+      }
       const hasLocationColumns =
         'location_enabled' in s ||
         'location_lat' in s ||
@@ -180,6 +191,17 @@ export default function SettingsPage() {
         }
       }
     }
+    if (supportsTableSectors) {
+      const unique = Array.from(
+        new Set(
+          tableSectorsText
+            .split('\n')
+            .map((x) => x.trim())
+            .filter(Boolean)
+        )
+      )
+      patch.table_sectors = unique.length > 0 ? unique : ['Salão', 'Varanda']
+    }
 
     const attemptedPatch: Record<string, unknown> = { ...patch }
     const droppedFields: string[] = []
@@ -226,6 +248,14 @@ export default function SettingsPage() {
         delete attemptedPatch.location_label
         droppedFields.push('location')
         setSupportsLocationFields(false)
+        continue
+      }
+      const canDropTableSectors =
+        'table_sectors' in attemptedPatch && msg.includes('table_sectors')
+      if (canDropTableSectors) {
+        delete attemptedPatch.table_sectors
+        droppedFields.push('table_sectors')
+        setSupportsTableSectors(false)
         continue
       }
       error = result.error
@@ -557,6 +587,28 @@ export default function SettingsPage() {
               </p>
             </label>
           </div>
+        </section>
+
+        <section className="rounded-2xl border border-[var(--card-border)] bg-white p-6 shadow-sm shadow-black/[0.04] md:p-8">
+          <h2 className="text-base font-bold text-[#1a1614]">Setores de mesa (Garçom)</h2>
+          <p className="mt-1 text-sm text-[#6b7280]">
+            Configure os setores usados na tela de Garçom. Informe um setor por linha.
+          </p>
+          <label className="mt-4 block text-sm font-medium text-[#374151]">
+            Lista de setores
+            <textarea
+              className={`${inputClass} min-h-[110px] resize-y`}
+              value={tableSectorsText}
+              onChange={(e) => setTableSectorsText(e.target.value)}
+              placeholder={'Salão\nVaranda'}
+              disabled={!supportsTableSectors}
+            />
+          </label>
+          {!supportsTableSectors ? (
+            <p className="mt-2 text-xs text-amber-700">
+              A coluna <code>table_sectors</code> ainda não existe no teu Supabase.
+            </p>
+          ) : null}
         </section>
 
         {storeId ? (

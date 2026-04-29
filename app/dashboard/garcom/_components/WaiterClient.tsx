@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { MenuProductRow } from '@/lib/menu-product'
 import type { StoreOrderRow } from '@/lib/store-order'
 import { effectiveProductPrice } from '@/lib/product-pricing'
@@ -26,12 +26,11 @@ function parseTableFromNotes(notes: string | null | undefined): string | null {
   return m?.[1]?.trim() || null
 }
 
-function parseSectorFromNotes(notes: string | null | undefined): 'salão' | 'varanda' {
+function parseSectorFromNotes(notes: string | null | undefined): string {
   const t = notes?.trim()
-  if (!t) return 'salão'
+  if (!t) return 'Salão'
   const m = t.match(/\[Setor\s+([^\]]+)\]/i)
-  const value = m?.[1]?.trim().toLowerCase()
-  return value === 'varanda' ? 'varanda' : 'salão'
+  return m?.[1]?.trim() || 'Salão'
 }
 
 function escapeHtml(raw: string): string {
@@ -62,16 +61,22 @@ export function WaiterClient({
   storeId,
   initialProducts,
   initialOpenOrders,
+  initialSectors,
 }: {
   storeId: string
   initialProducts: MenuProductRow[]
   initialOpenOrders: StoreOrderRow[]
+  initialSectors: string[]
 }) {
+  const sectors = useMemo(() => {
+    const unique = Array.from(new Set(initialSectors.map((x) => x.trim()).filter(Boolean)))
+    return unique.length > 0 ? unique : ['Salão', 'Varanda']
+  }, [initialSectors])
   const [query, setQuery] = useState('')
   const [table, setTable] = useState('')
   const [customerName, setCustomerName] = useState('')
   const [notes, setNotes] = useState('')
-  const [sector, setSector] = useState<'salão' | 'varanda'>('salão')
+  const [sector, setSector] = useState<string>(() => sectors[0] || 'Salão')
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'pix' | 'card'>('cash')
   const [cart, setCart] = useState<CartLine[]>([])
   const [openOrders, setOpenOrders] = useState<StoreOrderRow[]>(initialOpenOrders)
@@ -81,6 +86,7 @@ export function WaiterClient({
   const [success, setSuccess] = useState<string | null>(null)
   const [canFullscreen, setCanFullscreen] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const fullscreenRootRef = useRef<HTMLDivElement>(null)
 
   const filteredProducts = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -98,7 +104,7 @@ export function WaiterClient({
   )
 
   const tableSummary = useMemo(() => {
-    const m = new Map<string, { count: number; sector: 'salão' | 'varanda' }>()
+    const m = new Map<string, { count: number; sector: string }>()
     for (const order of openOrders) {
       const tableLabel = parseTableFromNotes(order.notes) || 'Sem mesa'
       const current = m.get(tableLabel)
@@ -116,7 +122,8 @@ export function WaiterClient({
     const hasApi = typeof document !== 'undefined' && !!document.documentElement.requestFullscreen
     setCanFullscreen(hasApi)
     if (!hasApi) return
-    const sync = () => setIsFullscreen(!!document.fullscreenElement)
+    const sync = () =>
+      setIsFullscreen(document.fullscreenElement === fullscreenRootRef.current)
     sync()
     document.addEventListener('fullscreenchange', sync)
     return () => document.removeEventListener('fullscreenchange', sync)
@@ -264,12 +271,12 @@ export function WaiterClient({
   }
 
   async function toggleFullscreen() {
-    if (!canFullscreen) return
+    if (!canFullscreen || !fullscreenRootRef.current) return
     try {
-      if (document.fullscreenElement) {
+      if (document.fullscreenElement === fullscreenRootRef.current) {
         await document.exitFullscreen()
       } else {
-        await document.documentElement.requestFullscreen()
+        await fullscreenRootRef.current.requestFullscreen()
       }
     } catch {
       setError('Não foi possível alternar o ecrã completo neste navegador.')
@@ -277,7 +284,21 @@ export function WaiterClient({
   }
 
   return (
-    <div className="mx-auto w-full max-w-7xl">
+    <div
+      ref={fullscreenRootRef}
+      className={`mx-auto w-full ${isFullscreen ? 'max-w-none bg-[var(--dash-surface)] p-3' : 'max-w-7xl'}`}
+    >
+      {isFullscreen ? (
+        <button
+          type="button"
+          onClick={() => void toggleFullscreen()}
+          className="fixed right-3 top-3 z-[80] inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/35 bg-black/65 text-sm font-bold text-white shadow-lg backdrop-blur-sm hover:bg-black/75"
+          aria-label="Fechar ecrã completo"
+          title="Fechar ecrã completo"
+        >
+          ×
+        </button>
+      ) : null}
       <nav className="text-xs text-vyria-navy-muted">
         <Link href="/dashboard" className="hover:text-vyria-navy">
           Início
@@ -296,13 +317,13 @@ export function WaiterClient({
               Registre pedidos nas mesas, envie para produção e acompanhe o andamento em tempo real.
             </p>
           </div>
-          {canFullscreen ? (
+          {canFullscreen && !isFullscreen ? (
             <button
               type="button"
               onClick={() => void toggleFullscreen()}
               className="rounded-xl border border-[var(--card-border)] bg-white px-3 py-2 text-xs font-semibold text-vyria-navy transition hover:bg-zinc-50"
             >
-              {isFullscreen ? 'Sair do ecrã completo' : 'Ecrã completo'}
+              Ecrã completo
             </button>
           ) : null}
         </div>
@@ -356,28 +377,20 @@ export function WaiterClient({
                 className="rounded-xl border border-[var(--card-border)] px-3 py-2 text-sm"
               />
               <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setSector('salão')}
-                  className={`rounded-xl border px-2 py-2 text-xs font-semibold ${
-                    sector === 'salão'
-                      ? 'border-[var(--dash-primary)] bg-[var(--dash-primary)]/10 text-vyria-navy'
-                      : 'border-[var(--card-border)] bg-white text-vyria-navy-muted'
-                  }`}
-                >
-                  Salão
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSector('varanda')}
-                  className={`rounded-xl border px-2 py-2 text-xs font-semibold ${
-                    sector === 'varanda'
-                      ? 'border-[var(--dash-primary)] bg-[var(--dash-primary)]/10 text-vyria-navy'
-                      : 'border-[var(--card-border)] bg-white text-vyria-navy-muted'
-                  }`}
-                >
-                  Varanda
-                </button>
+                {sectors.map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => setSector(name)}
+                    className={`rounded-xl border px-2 py-2 text-xs font-semibold ${
+                      sector === name
+                        ? 'border-[var(--dash-primary)] bg-[var(--dash-primary)]/10 text-vyria-navy'
+                        : 'border-[var(--card-border)] bg-white text-vyria-navy-muted'
+                    }`}
+                  >
+                    {name}
+                  </button>
+                ))}
               </div>
               <input
                 value={customerName}

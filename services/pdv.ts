@@ -38,7 +38,7 @@ const brl = new Intl.NumberFormat('pt-BR', {
 export async function submitPdvSale(params: {
   storeId: string
   customerName: string | null
-  paymentMethod: PdvPaymentMethod
+  paymentMethod?: PdvPaymentMethod | null
   items: PdvSaleLine[]
   /** Desconto em reais (não pode exceder o subtotal). */
   discountBrl?: number
@@ -87,7 +87,7 @@ export async function submitPdvSale(params: {
       total,
       status: 'pending',
       source: 'pdv',
-      payment_method: paymentMethod,
+      payment_method: paymentMethod ?? null,
       items_summary: itemsSummary,
       notes,
     })

@@ -26,10 +26,9 @@ function parseTableLabel(raw: unknown): string | null {
 
 function parseSectorLabel(raw: unknown): string {
   const t = String(raw ?? '').trim()
-  if (!t) return 'salão'
-  const normalized = t.toLowerCase()
-  if (normalized === 'varanda') return 'varanda'
-  return 'salão'
+  if (!t) return 'Salão'
+  if (t.length > 40) return 'Salão'
+  return t
 }
 
 export async function POST(request: Request) {
