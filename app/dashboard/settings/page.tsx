@@ -606,7 +606,7 @@ export default function SettingsPage() {
           </label>
           {!supportsTableSectors ? (
             <p className="mt-2 text-xs text-amber-700">
-              A coluna <code>table_sectors</code> ainda não existe no teu Supabase.
+              A coluna table_sectors ainda não existe no teu Supabase.
             </p>
           ) : null}
         </section>
