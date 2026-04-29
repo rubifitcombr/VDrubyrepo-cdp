@@ -26,6 +26,7 @@ export type Feature =
   /** Gestão de estoque — exclusivo do plano Pro. */
   | 'inventory'
   | 'waiter'
+  | 'cashier'
 
 const PLAN_FEATURES: Record<Plan, Record<Feature, boolean>> = {
   START: {
@@ -46,6 +47,7 @@ const PLAN_FEATURES: Record<Plan, Record<Feature, boolean>> = {
     kds: false,
     inventory: false,
     waiter: false,
+    cashier: false,
   },
   GROWTH: {
     dashboard: true,
@@ -65,6 +67,7 @@ const PLAN_FEATURES: Record<Plan, Record<Feature, boolean>> = {
     kds: false,
     inventory: false,
     waiter: false,
+    cashier: false,
   },
   PRO: {
     dashboard: true,
@@ -84,6 +87,7 @@ const PLAN_FEATURES: Record<Plan, Record<Feature, boolean>> = {
     kds: true,
     inventory: true,
     waiter: true,
+    cashier: true,
   },
 }
 
@@ -170,6 +174,7 @@ const FEATURE_MIN_PLAN: Partial<Record<Feature, MinPlanForFeature>> = {
   reports_advanced: 'PRO',
   inventory: 'PRO',
   waiter: 'PRO',
+  cashier: 'PRO',
 }
 
 export function minPlanForFeature(feature: Feature): MinPlanForFeature | null {

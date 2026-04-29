@@ -20,6 +20,7 @@ const FEATURE_LABEL: Record<string, { title: string; minPlan: string }> = {
   },
   inventory: { title: 'Gestão de estoque', minPlan: 'Pro' },
   waiter: { title: 'Garçom — pedidos por mesa', minPlan: 'Pro' },
+  cashier: { title: 'Caixa completo', minPlan: 'Pro' },
 }
 
 export default async function UpgradePage({
