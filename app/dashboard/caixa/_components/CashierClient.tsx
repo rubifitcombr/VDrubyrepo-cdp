@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
+import { dashboardFetch } from '@/lib/dashboard-fetch.client'
 import type { StoreOrderRow } from '@/lib/store-order'
 
 type SourceKey = 'waiter' | 'pdv' | 'menu_link'
@@ -43,6 +44,14 @@ function sourceLabel(k: SourceKey): string {
   return 'Link de cardápio'
 }
 
+function paymentLabel(v: string | null | undefined): string {
+  const p = String(v ?? '').trim().toLowerCase()
+  if (p === 'pix') return 'PIX'
+  if (p === 'card') return 'Cartão'
+  if (p === 'cash') return 'Dinheiro'
+  return '—'
+}
+
 function periodStart(period: 'today' | '7d' | '30d'): number {
   const now = Date.now()
   if (period === 'today') {
@@ -61,24 +70,28 @@ export function CashierClient({
   initialOrders: StoreOrderRow[]
   operatorLabel: string
 }) {
+  const [orders, setOrders] = useState<StoreOrderRow[]>(initialOrders)
   const [period, setPeriod] = useState<'today' | '7d' | '30d'>('today')
   const [sourceFilter, setSourceFilter] = useState<'all' | SourceKey>('all')
   const [shift, setShift] = useState<ShiftState | null>(null)
   const [openingCashInput, setOpeningCashInput] = useState('')
   const [shiftHistory, setShiftHistory] = useState<ShiftHistory[]>([])
+  const [paymentDraftByOrder, setPaymentDraftByOrder] = useState<Record<string, 'cash' | 'pix' | 'card'>>({})
+  const [closingOrderId, setClosingOrderId] = useState<string | null>(null)
+  const [cashierError, setCashierError] = useState<string | null>(null)
   const storageKey = 'vyria.cashier.shift.v1'
   const historyKey = 'vyria.cashier.shift.history.v1'
 
   const filteredOrders = useMemo(() => {
     const from = periodStart(period)
-    return initialOrders.filter((o) => {
+    return orders.filter((o) => {
       const created = new Date(o.created_at).getTime()
       if (!Number.isFinite(created) || created < from) return false
       if (o.status === 'cancelled') return false
       if (sourceFilter === 'all') return true
       return mapSource(o.source) === sourceFilter
     })
-  }, [initialOrders, period, sourceFilter])
+  }, [orders, period, sourceFilter])
 
   const summary = useMemo(() => {
     const base: Record<SourceKey, { count: number; total: number }> = {
@@ -145,7 +158,7 @@ export function CashierClient({
   function closeShift() {
     if (!shift) return
     const openedTs = new Date(shift.openedAt).getTime()
-    const shiftOrders = initialOrders.filter((o) => {
+    const shiftOrders = orders.filter((o) => {
       const ts = new Date(o.created_at).getTime()
       return Number.isFinite(ts) && ts >= openedTs && o.status !== 'cancelled'
     })
@@ -162,6 +175,58 @@ export function CashierClient({
     setShiftHistory((prev) => [closed, ...prev])
     setShift(null)
     setOpeningCashInput('')
+  }
+
+  const openComandas = useMemo(() => {
+    return orders.filter((o) => {
+      if (o.status === 'cancelled' || o.status === 'delivered') return false
+      const src = mapSource(o.source)
+      return src === 'pdv' || src === 'waiter'
+    })
+  }, [orders])
+
+  function paymentDraft(order: StoreOrderRow): 'cash' | 'pix' | 'card' {
+    const existing = paymentDraftByOrder[order.id]
+    if (existing) return existing
+    const current = String(order.payment_method ?? '').toLowerCase()
+    if (current === 'pix' || current === 'card' || current === 'cash') return current
+    return 'cash'
+  }
+
+  async function closeComanda(order: StoreOrderRow) {
+    setCashierError(null)
+    const paymentMethod = paymentDraft(order)
+    setClosingOrderId(order.id)
+    try {
+      const res = await dashboardFetch('/api/cashier/orders/close', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: order.id, paymentMethod }),
+      })
+      if (res.status === 403) return
+      const json = (await res.json().catch(() => ({}))) as {
+        error?: string
+        order?: { id: string; status: string; payment_method: string; notes?: string }
+      }
+      if (!res.ok) {
+        setCashierError(json.error || 'Não foi possível fechar a comanda.')
+        return
+      }
+      setOrders((prev) =>
+        prev.map((o) =>
+          o.id === order.id
+            ? {
+                ...o,
+                status: json.order?.status || 'delivered',
+                payment_method: json.order?.payment_method || paymentMethod,
+                notes: json.order?.notes ?? o.notes,
+              }
+            : o
+        )
+      )
+    } finally {
+      setClosingOrderId(null)
+    }
   }
 
   function exportCsv() {
@@ -267,6 +332,65 @@ export function CashierClient({
               Fechar turno
             </button>
           </div>
+        )}
+      </section>
+
+      <section className="mt-5 rounded-2xl border border-[var(--card-border)] bg-white p-4 shadow-sm">
+        <h2 className="text-sm font-semibold text-[#1a1614]">
+          Receber e fechar comanda (PDV/Garçom)
+        </h2>
+        <p className="mt-1 text-xs text-[#6b7280]">
+          Ao fechar, o pedido é marcado como entregue e permanece lançado no Financeiro com o pagamento informado.
+        </p>
+        {cashierError ? (
+          <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{cashierError}</p>
+        ) : null}
+        {openComandas.length === 0 ? (
+          <p className="mt-2 text-sm text-[#6b7280]">Sem comandas abertas de balcão/garçom.</p>
+        ) : (
+          <ul className="mt-3 space-y-2">
+            {openComandas.map((o) => (
+              <li
+                key={o.id}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--card-border)] px-3 py-2"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-[#1a1614]">
+                    {sourceLabel(mapSource(o.source))} · {o.customer_name || 'Cliente'} ·{' '}
+                    {o.items_summary || 'Comanda'}
+                  </p>
+                  <p className="text-xs text-[#6b7280]">
+                    {dateTime.format(new Date(o.created_at))} · Atual: {paymentLabel(o.payment_method)} ·{' '}
+                    {money.format(Number(o.total) || 0)}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    value={paymentDraft(o)}
+                    onChange={(e) =>
+                      setPaymentDraftByOrder((prev) => ({
+                        ...prev,
+                        [o.id]: e.target.value as 'cash' | 'pix' | 'card',
+                      }))
+                    }
+                    className="rounded-lg border border-[var(--card-border)] bg-white px-2 py-2 text-xs font-semibold text-[#1f2937]"
+                  >
+                    <option value="cash">Dinheiro</option>
+                    <option value="pix">PIX</option>
+                    <option value="card">Cartão</option>
+                  </select>
+                  <button
+                    type="button"
+                    disabled={closingOrderId === o.id}
+                    onClick={() => void closeComanda(o)}
+                    className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                  >
+                    {closingOrderId === o.id ? 'Fechando...' : 'Receber e fechar'}
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
         )}
       </section>
 
