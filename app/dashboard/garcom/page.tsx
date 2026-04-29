@@ -1,15 +1,12 @@
 import Link from 'next/link'
-import { MenuManagerClient } from './_components/MenuManagerClient'
-import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
-import { readStorePlano } from '@/lib/store-columns'
 import { getUser } from '@/services/auth.server'
-import { getProductStocksForStore } from '@/services/inventory.server'
 import { getMenuProductsForStore } from '@/services/menu.server'
 import { getStoreByUser } from '@/services/store.server'
+import { getWaiterOpenOrdersForStore } from '@/services/waiter.server'
+import { WaiterClient } from './_components/WaiterClient'
 
-export default async function MenuManagerPage() {
+export default async function GarcomPage() {
   const user = await getUser()
-
   if (!user) {
     return (
       <div className="mx-auto max-w-md rounded-2xl border border-[var(--card-border)] bg-white p-10 text-center shadow-sm">
@@ -17,7 +14,7 @@ export default async function MenuManagerPage() {
           Sessão necessária
         </h1>
         <p className="mt-2 text-sm text-vyria-navy-muted">
-          Inicia sessão para gerires o cardápio.
+          Inicia sessão para usar o módulo Garçom.
         </p>
         <Link
           href="/login"
@@ -49,27 +46,18 @@ export default async function MenuManagerPage() {
     )
   }
 
-  const storeId = store.id as string
-  const storeSlug =
-    'slug' in store && store.slug ? String(store.slug) : null
-  const [initialProducts, stockMap] = await Promise.all([
+  const storeId = String(store.id)
+  const [products, openOrders] = await Promise.all([
     getMenuProductsForStore(storeId),
-    getProductStocksForStore(storeId),
+    getWaiterOpenOrdersForStore(storeId),
   ])
 
-  const rawPlan =
-    store && typeof store === 'object'
-      ? readStorePlano(store as Record<string, unknown>)
-      : undefined
-  const plan = effectiveDashboardPlan(user.email ?? null, rawPlan)
-
   return (
-    <MenuManagerClient
-      initialProducts={initialProducts}
-      stockByProduct={Object.fromEntries(stockMap)}
+    <WaiterClient
       storeId={storeId}
-      storeSlug={storeSlug}
-      plan={plan}
+      initialProducts={products.filter((p) => p.active !== false)}
+      initialOpenOrders={openOrders}
     />
   )
 }
+

@@ -35,6 +35,10 @@ import {
 import { MenuImportReviewModal } from './MenuImportReviewModal'
 
 type Product = MenuProductRow
+type StockInfo = {
+  quantity: number
+  lowStockAlert: number | null
+}
 
 type AddonItemDraft = { key: string; name: string; price: string }
 type AddonGroupDraft = {
@@ -333,11 +337,13 @@ function Modal({
 
 export function MenuManagerClient({
   initialProducts,
+  stockByProduct,
   storeId,
   storeSlug,
   plan,
 }: {
   initialProducts: Product[]
+  stockByProduct: Record<string, StockInfo>
   storeId: string
   storeSlug: string | null
   plan: Plan
@@ -723,6 +729,29 @@ export function MenuManagerClient({
     productCount === 1
       ? '1 produto cadastrado'
       : `${productCount} produtos cadastrados`
+  const stockSummary = useMemo(() => {
+    let withoutControl = 0
+    let outOfStock = 0
+    let lowStock = 0
+    for (const p of products) {
+      const stock = stockByProduct[p.id]
+      if (!stock) {
+        withoutControl += 1
+        continue
+      }
+      const qty = Math.max(0, Math.floor(Number(stock.quantity) || 0))
+      const low =
+        stock.lowStockAlert == null
+          ? null
+          : Math.max(0, Math.floor(Number(stock.lowStockAlert) || 0))
+      if (qty <= 0) {
+        outOfStock += 1
+      } else if (low != null && low > 0 && qty <= low) {
+        lowStock += 1
+      }
+    }
+    return { withoutControl, outOfStock, lowStock }
+  }, [products, stockByProduct])
 
   const importPhotoInputRef = useRef<HTMLInputElement>(null)
   const [importPhotoBusy, setImportPhotoBusy] = useState(false)
@@ -813,8 +842,25 @@ export function MenuManagerClient({
             Produtos
           </h1>
           <p className="mt-1 text-sm text-[#6b7280]">{productCountLabel}</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <span className="inline-flex items-center rounded-full border border-[var(--card-border)] bg-white px-3 py-1 text-xs font-semibold text-[#374151]">
+              Sem controle: {stockSummary.withoutControl}
+            </span>
+            <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-900">
+              Baixo: {stockSummary.lowStock}
+            </span>
+            <span className="inline-flex items-center rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-800">
+              Zerado: {stockSummary.outOfStock}
+            </span>
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+          <Link
+            href="/dashboard/inventory"
+            className="rounded-xl border border-[var(--card-border)] bg-white px-4 py-2.5 text-sm font-semibold text-[#374151] shadow-sm transition-colors hover:bg-[#f9fafb]"
+          >
+            Gerenciar estoque
+          </Link>
           {hasAiMenuPhotoImport(effectivePlan) ? (
             <>
               <input
@@ -1181,6 +1227,19 @@ export function MenuManagerClient({
               const catLabel = p.category?.trim() || 'Sem categoria'
               const imgUrl = p.image_url?.trim()
               const desc = p.description?.trim()
+              const stock = stockByProduct[p.id]
+              const stockQty = stock ? Math.max(0, Math.floor(Number(stock.quantity) || 0)) : null
+              const stockLow =
+                stock?.lowStockAlert == null
+                  ? null
+                  : Math.max(0, Math.floor(Number(stock.lowStockAlert) || 0))
+              const stockBadge = !stock
+                ? { label: 'Sem controle', className: 'bg-zinc-100 text-zinc-700' }
+                : stockQty <= 0
+                  ? { label: 'Sem estoque', className: 'bg-red-100 text-red-800' }
+                  : stockLow != null && stockLow > 0 && stockQty <= stockLow
+                    ? { label: `Baixo (${stockQty})`, className: 'bg-amber-100 text-amber-900' }
+                    : { label: `Estoque ${stockQty}`, className: 'bg-emerald-100 text-emerald-800' }
               return (
                 <li
                   key={p.id}
@@ -1210,6 +1269,13 @@ export function MenuManagerClient({
                       </h2>
                       <span className="shrink-0 max-w-[42%] truncate text-right text-xs font-medium text-[#9ca3af]">
                         {catLabel}
+                      </span>
+                    </div>
+                    <div className="mt-2">
+                      <span
+                        className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${stockBadge.className}`}
+                      >
+                        {stockBadge.label}
                       </span>
                     </div>
                     {desc ? (

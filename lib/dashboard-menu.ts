@@ -15,6 +15,7 @@ export type DashboardMenuKey =
   | 'kds'
   | 'pdv'
   | 'estoque'
+  | 'garcom'
   | 'automacoes'
 
 export const MENU_POR_PLANO: Record<
@@ -43,6 +44,8 @@ export const MENU_POR_PLANO: Record<
   pro: [
     'dashboard',
     'produtos',
+    'estoque',
+    'garcom',
     'pedidos',
     'financeiro',
     'promocoes',
@@ -71,6 +74,7 @@ const MENU_KEY_TO_PATH_PREFIX: Record<DashboardMenuKey, string> = {
   kds: '/dashboard/kds',
   pdv: '/dashboard/pdv',
   estoque: '/dashboard/inventory',
+  garcom: '/dashboard/garcom',
   automacoes: '/dashboard/automations',
 }
 

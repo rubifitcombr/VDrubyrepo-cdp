@@ -62,6 +62,12 @@ const nav: Array<{
     menuKey: 'pedidos',
   },
   {
+    href: '/dashboard/garcom',
+    label: 'Garçom',
+    icon: IconClipboard,
+    menuKey: 'garcom',
+  },
+  {
     href: '/dashboard/pdv',
     label: 'PDV',
     icon: IconBag,

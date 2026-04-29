@@ -42,6 +42,7 @@ export default async function InventoryPage() {
       active: p.active !== false,
       quantity: s?.quantity ?? 0,
       lowStockAlert: s?.lowStockAlert ?? null,
+      updatedAt: s?.updatedAt ?? null,
     }
   })
 

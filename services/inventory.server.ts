@@ -10,15 +10,20 @@ export type ProductStockRow = {
 
 export async function getProductStocksForStore(
   storeId: string
-): Promise<Map<string, { quantity: number; lowStockAlert: number | null }>> {
+): Promise<
+  Map<
+    string,
+    { quantity: number; lowStockAlert: number | null; updatedAt: string | null }
+  >
+> {
   const map = new Map<
     string,
-    { quantity: number; lowStockAlert: number | null }
+    { quantity: number; lowStockAlert: number | null; updatedAt: string | null }
   >()
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('store_product_stock')
-    .select('product_id, quantity, low_stock_alert')
+    .select('product_id, quantity, low_stock_alert, updated_at')
     .eq('store_id', storeId)
 
   if (error) {
@@ -41,6 +46,7 @@ export async function getProductStocksForStore(
         row.low_stock_alert == null
           ? null
           : Math.max(0, Number(row.low_stock_alert)),
+      updatedAt: row.updated_at == null ? null : String(row.updated_at),
     })
   }
   return map

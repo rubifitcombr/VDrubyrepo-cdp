@@ -27,6 +27,7 @@ export const BENEFICIOS_POR_PLANO: Record<PlanoSlug, string[]> = {
     'Tudo do Growth',
     'KDS — monitor de cozinha',
     'PDV / atendimento balcão',
+    'Garçom — pedidos por mesa',
     'Impressão automática de pedidos',
     'Descrição e imagem de produto com IA',
     'Relatórios avançados (comparativos e insights extra)',
