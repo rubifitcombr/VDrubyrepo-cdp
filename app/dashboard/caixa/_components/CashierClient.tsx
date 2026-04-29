@@ -348,45 +348,71 @@ export function CashierClient({
         {openComandas.length === 0 ? (
           <p className="mt-2 text-sm text-[#6b7280]">Sem comandas abertas de balcão/garçom.</p>
         ) : (
-          <ul className="mt-3 space-y-2">
+          <ul className="mt-3 grid gap-3 lg:grid-cols-2">
             {openComandas.map((o) => (
               <li
                 key={o.id}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--card-border)] px-3 py-2"
+                className="overflow-hidden rounded-2xl border border-[var(--card-border)] bg-white shadow-sm shadow-black/[0.04]"
               >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-[#1a1614]">
-                    {sourceLabel(mapSource(o.source))} · {o.customer_name || 'Cliente'} ·{' '}
-                    {o.items_summary || 'Comanda'}
-                  </p>
-                  <p className="text-xs text-[#6b7280]">
-                    {dateTime.format(new Date(o.created_at))} · Atual: {paymentLabel(o.payment_method)} ·{' '}
-                    {money.format(Number(o.total) || 0)}
-                  </p>
+                <div className="border-b border-[var(--card-border)] bg-[#fafafa] px-4 py-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
+                      {sourceLabel(mapSource(o.source))}
+                    </p>
+                    <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">
+                      Em aberto
+                    </span>
+                  </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <select
-                    value={paymentDraft(o)}
-                    onChange={(e) =>
-                      setPaymentDraftByOrder((prev) => ({
-                        ...prev,
-                        [o.id]: e.target.value as 'cash' | 'pix' | 'card',
-                      }))
-                    }
-                    className="rounded-lg border border-[var(--card-border)] bg-white px-2 py-2 text-xs font-semibold text-[#1f2937]"
-                  >
-                    <option value="cash">Dinheiro</option>
-                    <option value="pix">PIX</option>
-                    <option value="card">Cartão</option>
-                  </select>
-                  <button
-                    type="button"
-                    disabled={closingOrderId === o.id}
-                    onClick={() => void closeComanda(o)}
-                    className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
-                  >
-                    {closingOrderId === o.id ? 'Fechando...' : 'Receber e fechar'}
-                  </button>
+                <div className="space-y-3 p-4">
+                  <div className="min-w-0 space-y-1">
+                    <p className="truncate text-sm font-semibold text-[#1a1614]">
+                      {o.customer_name || 'Cliente'}
+                    </p>
+                    <p className="line-clamp-2 text-sm text-[#374151]">
+                      {o.items_summary || 'Comanda'}
+                    </p>
+                    <p className="text-xs text-[#6b7280]">
+                      {dateTime.format(new Date(o.created_at))}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--card-border)] pt-3">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-[#9ca3af]">
+                        Total
+                      </p>
+                      <p className="text-lg font-bold text-[#1a1614]">
+                        {money.format(Number(o.total) || 0)}
+                      </p>
+                      <p className="text-xs text-[#6b7280]">
+                        Atual: {paymentLabel(o.payment_method)}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <select
+                        value={paymentDraft(o)}
+                        onChange={(e) =>
+                          setPaymentDraftByOrder((prev) => ({
+                            ...prev,
+                            [o.id]: e.target.value as 'cash' | 'pix' | 'card',
+                          }))
+                        }
+                        className="rounded-lg border border-[var(--card-border)] bg-white px-2 py-2 text-xs font-semibold text-[#1f2937]"
+                      >
+                        <option value="cash">Dinheiro</option>
+                        <option value="pix">PIX</option>
+                        <option value="card">Cartão</option>
+                      </select>
+                      <button
+                        type="button"
+                        disabled={closingOrderId === o.id}
+                        onClick={() => void closeComanda(o)}
+                        className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                      >
+                        {closingOrderId === o.id ? 'Fechando...' : 'Receber e fechar'}
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </li>
             ))}
