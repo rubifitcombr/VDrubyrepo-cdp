@@ -1228,18 +1228,28 @@ export function MenuManagerClient({
               const imgUrl = p.image_url?.trim()
               const desc = p.description?.trim()
               const stock = stockByProduct[p.id]
-              const stockQty = stock ? Math.max(0, Math.floor(Number(stock.quantity) || 0)) : null
-              const stockLow =
-                stock?.lowStockAlert == null
-                  ? null
-                  : Math.max(0, Math.floor(Number(stock.lowStockAlert) || 0))
               const stockBadge = !stock
                 ? { label: 'Sem controle', className: 'bg-zinc-100 text-zinc-700' }
-                : stockQty <= 0
-                  ? { label: 'Sem estoque', className: 'bg-red-100 text-red-800' }
-                  : stockLow != null && stockLow > 0 && stockQty <= stockLow
-                    ? { label: `Baixo (${stockQty})`, className: 'bg-amber-100 text-amber-900' }
-                    : { label: `Estoque ${stockQty}`, className: 'bg-emerald-100 text-emerald-800' }
+                : (() => {
+                    const stockQty = Math.max(0, Math.floor(Number(stock.quantity) || 0))
+                    const stockLow =
+                      stock.lowStockAlert == null
+                        ? null
+                        : Math.max(0, Math.floor(Number(stock.lowStockAlert) || 0))
+                    if (stockQty <= 0) {
+                      return { label: 'Sem estoque', className: 'bg-red-100 text-red-800' }
+                    }
+                    if (stockLow != null && stockLow > 0 && stockQty <= stockLow) {
+                      return {
+                        label: `Baixo (${stockQty})`,
+                        className: 'bg-amber-100 text-amber-900',
+                      }
+                    }
+                    return {
+                      label: `Estoque ${stockQty}`,
+                      className: 'bg-emerald-100 text-emerald-800',
+                    }
+                  })()
               return (
                 <li
                   key={p.id}
