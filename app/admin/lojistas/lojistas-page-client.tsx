@@ -34,6 +34,8 @@ type LojistaRow = {
   plano_vence_em: string | null
   cadastrado_em: string | null
   cancelamento_solicitado: boolean
+  produtos_count: number
+  faturamento_pedidos: number
 }
 
 type Metrics = {
@@ -333,6 +335,15 @@ function Modal({
   )
 }
 
+function numFromApi(v: unknown): number {
+  if (typeof v === 'number' && Number.isFinite(v)) return v
+  if (typeof v === 'string' && v.trim() !== '') {
+    const n = Number(v.replace(',', '.'))
+    return Number.isFinite(n) ? n : 0
+  }
+  return 0
+}
+
 function normalizeLojista(raw: Record<string, unknown>): LojistaRow {
   const c = raw.cancelamento_solicitado
   return {
@@ -345,6 +356,8 @@ function normalizeLojista(raw: Record<string, unknown>): LojistaRow {
     plano_vence_em: typeof raw.plano_vence_em === 'string' ? raw.plano_vence_em : null,
     cadastrado_em: typeof raw.cadastrado_em === 'string' ? raw.cadastrado_em : null,
     cancelamento_solicitado: c === true || c === 'true' || c === 1,
+    produtos_count: Math.max(0, Math.floor(numFromApi(raw.produtos_count))),
+    faturamento_pedidos: Math.max(0, numFromApi(raw.faturamento_pedidos)),
   }
 }
 
@@ -383,7 +396,10 @@ export function LojistasPageClient() {
 
   const [confirmBlock, setConfirmBlock] = useState<LojistaRow | null>(null)
   const [confirmCancel, setConfirmCancel] = useState<LojistaRow | null>(null)
+  const [confirmPurge, setConfirmPurge] = useState<LojistaRow | null>(null)
+  const [purgeConfirmName, setPurgeConfirmName] = useState('')
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [busyPurge, setBusyPurge] = useState(false)
 
   const [drawerId, setDrawerId] = useState<string | null>(null)
   const [drawerLoading, setDrawerLoading] = useState(false)
@@ -580,8 +596,13 @@ export function LojistasPageClient() {
   function openPlanoModal(mode: 'ativar' | 'renovar', row: LojistaRow) {
     setPlanoModal({ mode, row })
     if (mode === 'ativar') {
-      setPlanoPick('GROWTH')
-      setPlanoVenceEm(addDaysIso(null, 30))
+      if (row.status === 'cancelado') {
+        setPlanoPick(row.plano)
+        setPlanoVenceEm(defaultRenovarVenceEm(row))
+      } else {
+        setPlanoPick('GROWTH')
+        setPlanoVenceEm(addDaysIso(null, 30))
+      }
     } else {
       setPlanoPick(row.plano)
       setPlanoVenceEm(defaultRenovarVenceEm(row))
@@ -608,7 +629,10 @@ export function LojistasPageClient() {
         mergeRowFromApi(data.lojista)
         setToast({
           type: 'ok',
-          msg: `Plano de ${row.nome} atualizado para ${planShortLabel(planoPick)}`,
+          msg:
+            row.status === 'cancelado'
+              ? `${row.nome} reativado · ${planShortLabel(planoPick)}`
+              : `Plano de ${row.nome} atualizado para ${planShortLabel(planoPick)}`,
         })
         void load(true)
       } else {
@@ -754,6 +778,34 @@ export function LojistasPageClient() {
       void refreshDrawerDetail()
     } finally {
       setBusyId(null)
+    }
+  }
+
+  async function postPurgeLoja(row: LojistaRow, confirmName: string) {
+    setBusyPurge(true)
+    try {
+      const res = await fetch(`/api/admin/lojistas/${row.id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ confirmName }),
+      })
+      const data = (await res.json()) as {
+        error?: string
+        message?: string
+        ok?: boolean
+      }
+      if (!res.ok) {
+        setToast({ type: 'err', msg: data.error || 'Erro ao eliminar.' })
+        return
+      }
+      setConfirmPurge(null)
+      setPurgeConfirmName('')
+      setDrawerId(null)
+      setToast({ type: 'ok', msg: data.message || 'Loja eliminada.' })
+      await load(true)
+    } finally {
+      setBusyPurge(false)
     }
   }
 
@@ -1076,7 +1128,7 @@ export function LojistasPageClient() {
       </div>
 
       <div className="mt-6 overflow-x-auto rounded-2xl border border-[var(--card-border)] bg-white shadow-sm">
-        <table className="w-full min-w-[960px] text-left text-sm">
+        <table className="w-full min-w-[1120px] text-left text-sm">
           <thead className="border-b border-[var(--card-border)] bg-[#f9fafb] text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
             <tr>
               <th className="px-4 py-3">Nome</th>
@@ -1084,6 +1136,18 @@ export function LojistasPageClient() {
               <th className="px-4 py-3">Telefone</th>
               <th className="px-4 py-3">Plano</th>
               <th className="px-4 py-3">Status</th>
+              <th
+                className="px-4 py-3 text-right"
+                title="Itens no cardápio (tabela products)"
+              >
+                Produtos
+              </th>
+              <th
+                className="px-4 py-3 text-right"
+                title="Soma do total dos pedidos, exceto cancelados"
+              >
+                Fat. pedidos
+              </th>
               <th className="px-4 py-3">Vence em</th>
               <th className="px-4 py-3">Cadastro</th>
               <th className="px-4 py-3">Ações</th>
@@ -1092,13 +1156,13 @@ export function LojistasPageClient() {
           <tbody className="divide-y divide-[var(--card-border)]">
             {loading ? (
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-[#6b7280]">
+                <td colSpan={10} className="px-4 py-8 text-center text-[#6b7280]">
                   A carregar…
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-[#6b7280]">
+                <td colSpan={10} className="px-4 py-8 text-center text-[#6b7280]">
                   Nenhum resultado.
                 </td>
               </tr>
@@ -1142,6 +1206,12 @@ export function LojistasPageClient() {
                       </div>
                     </div>
                   </td>
+                  <td className="px-4 py-3 text-right tabular-nums font-medium text-[#1a1614]">
+                    {row.produtos_count}
+                  </td>
+                  <td className="px-4 py-3 text-right tabular-nums font-medium text-[#1a1614]">
+                    {moneyBr.format(row.faturamento_pedidos)}
+                  </td>
                   <td className="px-4 py-3 tabular-nums text-[#374151]">
                     <span className="inline-flex flex-wrap items-center">
                       {fmtDate(row.plano_vence_em)}
@@ -1153,14 +1223,16 @@ export function LojistasPageClient() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      {(row.status === 'pendente' || row.status === 'bloqueado') && (
+                      {(row.status === 'pendente' ||
+                        row.status === 'bloqueado' ||
+                        row.status === 'cancelado') && (
                         <button
                           type="button"
                           disabled={busyId === row.id}
                           onClick={() => openPlanoModal('ativar', row)}
                           className="rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50"
                         >
-                          Ativar
+                          {row.status === 'cancelado' ? 'Reativar' : 'Ativar'}
                         </button>
                       )}
                       {row.status === 'ativo' && (
@@ -1224,13 +1296,25 @@ export function LojistasPageClient() {
         open={!!planoModal}
         title={
           planoModal
-            ? `${planoModal.mode === 'ativar' ? 'Ativar' : 'Renovar'} · ${planoModal.row.nome}`
+            ? `${
+                planoModal.mode === 'ativar'
+                  ? planoModal.row.status === 'cancelado'
+                    ? 'Reativar'
+                    : 'Ativar'
+                  : 'Renovar'
+              } · ${planoModal.row.nome}`
             : ''
         }
         onClose={() => !busyId && setPlanoModal(null)}
       >
         {planoModal ? (
           <div className="space-y-4">
+            {planoModal.mode === 'ativar' && planoModal.row.status === 'cancelado' ? (
+              <p className="rounded-xl border border-emerald-200/80 bg-emerald-50/90 px-3 py-2 text-sm text-emerald-950">
+                Esta conta estava cancelada. Define o plano e a nova data de vencimento para voltar
+                a ativar o acesso do lojista.
+              </p>
+            ) : null}
             <label className="block text-sm font-medium text-[#374151]">
               Plano
               <select
@@ -1363,6 +1447,48 @@ export function LojistasPageClient() {
         ) : null}
       </Modal>
 
+      <Modal
+        open={!!confirmPurge}
+        title="Eliminar loja permanentemente"
+        onClose={() => {
+          if (!busyPurge) {
+            setConfirmPurge(null)
+            setPurgeConfirmName('')
+          }
+        }}
+      >
+        {confirmPurge ? (
+          <div className="space-y-4">
+            <p className="text-sm text-red-900">
+              Isto apaga a loja <strong>{confirmPurge.nome}</strong>, todos os pedidos, produtos,
+              caixa, faturas registadas no painel e restantes dados ligados a esta loja. Se o
+              dono não tiver outras lojas, a conta de utilizador também é removida.
+            </p>
+            <p className="text-sm font-medium text-[#374151]">
+              Escreve o nome exacto da loja para confirmar:
+            </p>
+            <input
+              type="text"
+              autoComplete="off"
+              className="w-full rounded-xl border border-[var(--card-border)] bg-white px-3 py-2.5 text-sm"
+              placeholder={confirmPurge.nome}
+              value={purgeConfirmName}
+              onChange={(e) => setPurgeConfirmName(e.target.value)}
+            />
+            <button
+              type="button"
+              disabled={
+                busyPurge || purgeConfirmName.trim() !== confirmPurge.nome.trim()
+              }
+              onClick={() => void postPurgeLoja(confirmPurge, purgeConfirmName.trim())}
+              className="w-full rounded-xl bg-red-600 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-red-700 disabled:opacity-50"
+            >
+              {busyPurge ? 'A eliminar…' : 'Eliminar para sempre'}
+            </button>
+          </div>
+        ) : null}
+      </Modal>
+
       {drawerId ? (
         <div className="fixed inset-0 z-50 flex justify-end" role="presentation">
           <button
@@ -1475,6 +1601,30 @@ export function LojistasPageClient() {
 
                   <section className="rounded-2xl border border-[var(--card-border)] bg-[#fafafa] p-4">
                     <h3 className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
+                      Loja / vendas
+                    </h3>
+                    <p className="mt-1 text-[11px] leading-snug text-[#9ca3af]">
+                      Produtos no cardápio. Faturamento = soma do total dos pedidos na base (exceto
+                      cancelados).
+                    </p>
+                    <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                      <div className="rounded-xl border border-[var(--card-border)] bg-white px-3 py-2.5">
+                        <dt className="text-[11px] font-medium text-[#6b7280]">Produtos</dt>
+                        <dd className="mt-0.5 text-lg font-bold tabular-nums text-[#1a1614]">
+                          {drawerLojista.produtos_count}
+                        </dd>
+                      </div>
+                      <div className="rounded-xl border border-[var(--card-border)] bg-white px-3 py-2.5">
+                        <dt className="text-[11px] font-medium text-[#6b7280]">Fat. pedidos</dt>
+                        <dd className="mt-0.5 text-lg font-bold tabular-nums text-[var(--dash-primary)]">
+                          {moneyBr.format(drawerLojista.faturamento_pedidos)}
+                        </dd>
+                      </div>
+                    </dl>
+                  </section>
+
+                  <section className="rounded-2xl border border-[var(--card-border)] bg-[#fafafa] p-4">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
                       Assinatura
                     </h3>
                     <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -1494,14 +1644,15 @@ export function LojistasPageClient() {
                     </p>
                     <div className="mt-4 flex flex-wrap gap-2">
                       {(drawerLojista.status === 'pendente' ||
-                        drawerLojista.status === 'bloqueado') && (
+                        drawerLojista.status === 'bloqueado' ||
+                        drawerLojista.status === 'cancelado') && (
                         <button
                           type="button"
                           disabled={busyId === drawerLojista.id}
                           onClick={() => openPlanoModal('ativar', drawerLojista)}
                           className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50"
                         >
-                          Ativar
+                          {drawerLojista.status === 'cancelado' ? 'Reativar' : 'Ativar'}
                         </button>
                       )}
                       {drawerLojista.status === 'ativo' && (
@@ -1640,6 +1791,27 @@ export function LojistasPageClient() {
                         ))}
                       </ul>
                     )}
+                  </section>
+
+                  <section className="rounded-2xl border border-red-200/80 bg-red-50/40 p-4">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-red-800">
+                      Zona perigosa
+                    </h3>
+                    <p className="mt-2 text-sm text-red-950">
+                      Remove esta loja e todos os dados associados na base. A operação não pode ser
+                      desfeita.
+                    </p>
+                    <button
+                      type="button"
+                      disabled={busyPurge || busyId === drawerLojista.id}
+                      onClick={() => {
+                        setConfirmPurge(drawerLojista)
+                        setPurgeConfirmName('')
+                      }}
+                      className="mt-3 w-full rounded-xl border border-red-300 bg-white px-3 py-2.5 text-sm font-semibold text-red-800 shadow-sm hover:bg-red-50 disabled:opacity-50"
+                    >
+                      Excluir loja e todos os dados
+                    </button>
                   </section>
                 </div>
               )}

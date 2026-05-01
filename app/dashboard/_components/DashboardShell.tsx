@@ -311,7 +311,7 @@ export function DashboardShell({
 
   return (
     <div className="flex min-h-dvh flex-col bg-[var(--dash-surface)] md:flex-row">
-      <aside className="sticky top-0 z-30 flex min-h-0 w-full flex-col border-b border-white/10 bg-[var(--dash-sidebar)] shadow-lg shadow-black/25 md:fixed md:inset-y-0 md:w-60 md:border-b-0 md:border-r md:border-white/10 md:shadow-xl lg:w-64">
+      <aside className="hidden min-h-0 w-full flex-col border-b border-white/10 bg-[var(--dash-sidebar)] shadow-lg shadow-black/25 md:fixed md:inset-y-0 md:z-30 md:flex md:w-60 md:border-b-0 md:border-r md:border-white/10 md:shadow-xl lg:w-64">
         <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-white/10 px-3 py-2 md:h-auto md:flex-col md:items-stretch md:gap-3 md:px-4 md:py-5">
           <Link
             href="/dashboard"
@@ -330,24 +330,6 @@ export function DashboardShell({
             </span>
           </Link>
         </div>
-        <button
-          type="button"
-          onClick={() => setMobileMenuOpen(true)}
-          className="absolute right-3 top-2.5 z-10 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/15 bg-white/5 text-white/85 transition-colors hover:bg-white/10 active:bg-white/25 md:hidden"
-          aria-label="Abrir menu"
-        >
-          <svg
-            className="h-5 w-5"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            aria-hidden="true"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M4 12h16M4 17h16" />
-          </svg>
-        </button>
-
         <div className="hidden min-h-0 flex-1 overflow-y-auto overscroll-y-contain md:block">
           <DashboardNavLinks pathname={pathname} plan={plan} layout="sidebar" />
         </div>
@@ -403,13 +385,34 @@ export function DashboardShell({
         <header className="sticky top-0 z-20 shrink-0 border-b border-[var(--card-border)] bg-white/95 shadow-sm shadow-black/[0.03] backdrop-blur-md">
           <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-3 px-4 py-3 sm:px-5 md:flex-row md:items-center md:gap-4 md:px-6 md:py-3.5 lg:px-8 xl:max-w-[1400px] xl:px-10">
             {isAuthenticated ? (
-              <DashboardTopBar
-                storeName={storeName}
-                storeLogoUrl={storeLogoUrl}
-                storeId={storeId}
-                plan={plan}
-                notificationCount={notificationCount}
-              />
+              <div className="flex w-full min-w-0 items-start gap-2 md:items-center">
+                <button
+                  type="button"
+                  onClick={() => setMobileMenuOpen(true)}
+                  className="mt-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--card-border)] bg-[#f3f4f6] text-[#374151] shadow-sm transition-colors hover:bg-[#e5e7eb] md:hidden"
+                  aria-label="Abrir menu"
+                >
+                  <svg
+                    className="h-5 w-5"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.8"
+                    aria-hidden="true"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M4 12h16M4 17h16" />
+                  </svg>
+                </button>
+                <div className="min-w-0 flex-1">
+                  <DashboardTopBar
+                    storeName={storeName}
+                    storeLogoUrl={storeLogoUrl}
+                    storeId={storeId}
+                    plan={plan}
+                    notificationCount={notificationCount}
+                  />
+                </div>
+              </div>
             ) : (
               <div className="flex w-full items-center justify-between">
                 <span className="text-sm font-medium text-[#6b7280]">
@@ -427,7 +430,7 @@ export function DashboardShell({
         </header>
 
         <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
-          <main className="mx-auto w-full max-w-[1280px] px-4 pb-[calc(7.25rem+env(safe-area-inset-bottom,0px))] pt-4 sm:px-5 sm:pt-5 md:px-6 md:pb-10 md:pt-6 lg:px-8 lg:pt-8 xl:max-w-[1400px] xl:px-10 xl:pb-12">
+          <main className="mx-auto w-full max-w-[1280px] px-4 pb-8 pt-4 sm:px-5 sm:pt-5 md:px-6 md:pb-10 md:pt-6 lg:px-8 lg:pt-8 xl:max-w-[1400px] xl:px-10 xl:pb-12">
             <InstallAppBanner />
             {isAuthenticated ? <DashboardNotificationPrompt /> : null}
             {mainInner}
