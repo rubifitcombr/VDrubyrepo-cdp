@@ -167,6 +167,8 @@ export function WaiterClient({
   const [selectedTableKey, setSelectedTableKey] = useState<string | null>(null)
   const [tableActionSheetOpen, setTableActionSheetOpen] = useState(false)
   const router = useRouter()
+  const avulsaToggleRef = useRef<HTMLButtonElement>(null)
+  const avulsaPopoverRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     setTables(initialTables)
@@ -188,6 +190,25 @@ export function WaiterClient({
     document.addEventListener('fullscreenchange', sync)
     return () => document.removeEventListener('fullscreenchange', sync)
   }, [])
+
+  useEffect(() => {
+    if (!avulsaOpen) return
+
+    function handleOutsideClick(event: MouseEvent | TouchEvent) {
+      const target = event.target as Node | null
+      if (!target) return
+      if (avulsaPopoverRef.current?.contains(target)) return
+      if (avulsaToggleRef.current?.contains(target)) return
+      setAvulsaOpen(false)
+    }
+
+    document.addEventListener('mousedown', handleOutsideClick)
+    document.addEventListener('touchstart', handleOutsideClick)
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick)
+      document.removeEventListener('touchstart', handleOutsideClick)
+    }
+  }, [avulsaOpen])
 
   const categories = useMemo(() => {
     const c = new Set<string>()
@@ -871,13 +892,17 @@ export function WaiterClient({
 
               <button
                 type="button"
+                ref={avulsaToggleRef}
                 onClick={() => setAvulsaOpen((v) => !v)}
                 className="absolute bottom-4 right-4 rounded-full bg-[var(--dash-primary)] px-4 py-2.5 text-xs font-bold text-white shadow-lg transition hover:brightness-105"
               >
                 + Nova mesa avulsa
               </button>
               {avulsaOpen ? (
-                <div className="absolute bottom-16 right-4 z-10 w-56 rounded-xl border border-[var(--card-border)] bg-white p-3 shadow-xl">
+                <div
+                  ref={avulsaPopoverRef}
+                  className="absolute bottom-16 right-4 z-10 w-56 rounded-xl border border-[var(--card-border)] bg-white p-3 shadow-xl"
+                >
                   <input
                     value={avulsaName}
                     onChange={(e) => setAvulsaName(e.target.value)}
