@@ -216,15 +216,6 @@ export function WaiterClient({
     }
   }, [avulsaOpen])
 
-  useEffect(() => {
-    if (!mobileScreenOpen) return
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.body.style.overflow = prev
-    }
-  }, [mobileScreenOpen])
-
   const categories = useMemo(() => {
     const c = new Set<string>()
     for (const p of initialProducts) {
@@ -680,7 +671,9 @@ export function WaiterClient({
     <div
       ref={fullscreenRootRef}
       className={`flex min-h-0 flex-col bg-[var(--color-background-secondary)] ${
-        inScreenMode ? 'fixed inset-0 z-[60] max-w-none p-0' : '-mx-4 px-4 pb-4 sm:-mx-5 sm:px-5 md:-mx-6 md:px-6'
+        inScreenMode
+          ? 'fixed inset-0 z-[60] flex h-[100dvh] max-h-[100dvh] max-w-none flex-col overflow-hidden p-0'
+          : '-mx-4 px-4 pb-4 sm:-mx-5 sm:px-5 md:-mx-6 md:px-6'
       }`}
     >
       {inScreenMode ? (
@@ -694,6 +687,13 @@ export function WaiterClient({
         </button>
       ) : null}
 
+      <div
+        className={
+          inScreenMode
+            ? 'min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[env(safe-area-inset-top)] [-webkit-overflow-scrolling:touch] sm:px-5 md:px-6'
+            : 'contents'
+        }
+      >
       <nav className="shrink-0 py-2 text-xs text-[#6b7280]">
         <Link href="/dashboard" className="hover:text-[#1a1614]">
           Início
@@ -1096,6 +1096,8 @@ export function WaiterClient({
           </ul>
         )}
       </section>
+
+      </div>
 
       {/* Modal configurar mesas */}
       {configOpen ? (
