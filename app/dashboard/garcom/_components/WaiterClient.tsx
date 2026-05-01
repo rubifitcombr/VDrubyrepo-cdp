@@ -153,6 +153,7 @@ export function WaiterClient({
   const [success, setSuccess] = useState<string | null>(null)
   const [canFullscreen, setCanFullscreen] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [mobileScreenOpen, setMobileScreenOpen] = useState(false)
   const fullscreenRootRef = useRef<HTMLDivElement>(null)
   const [configOpen, setConfigOpen] = useState(false)
   const [configAmbTab, setConfigAmbTab] = useState<string>(sectors[0] || 'Salão')
@@ -214,6 +215,15 @@ export function WaiterClient({
       document.removeEventListener('touchstart', handleOutsideClick)
     }
   }, [avulsaOpen])
+
+  useEffect(() => {
+    if (!mobileScreenOpen) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [mobileScreenOpen])
 
   const categories = useMemo(() => {
     const c = new Set<string>()
@@ -523,8 +533,10 @@ export function WaiterClient({
   }
 
   async function toggleFullscreen() {
-    if (!canFullscreen || !fullscreenRootRef.current) return
-    if (document.fullscreenElement === fullscreenRootRef.current) {
+    if (!fullscreenRootRef.current) return
+    const onMobile = typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches
+    const inScreenMode = isFullscreen || mobileScreenOpen
+    if (inScreenMode) {
       if (!waiterExitPin) {
         setError('Configure o PIN do Garçom nas Configurações para sair do ecrã.')
         return
@@ -536,6 +548,14 @@ export function WaiterClient({
     }
     if (!waiterExitPin) {
       setError('Defina o PIN do Garçom nas Configurações antes de abrir o ecrã.')
+      return
+    }
+    if (onMobile) {
+      setMobileScreenOpen(true)
+      return
+    }
+    if (!canFullscreen) {
+      setError('Ecrã completo indisponível neste dispositivo.')
       return
     }
     const el = fullscreenRootRef.current as HTMLDivElement & {
@@ -559,7 +579,11 @@ export function WaiterClient({
     }
     const doc = document as Document & { webkitExitFullscreen?: () => Promise<void> | void }
     try {
-      await (doc.exitFullscreen?.() ?? doc.webkitExitFullscreen?.())
+      if (mobileScreenOpen) {
+        setMobileScreenOpen(false)
+      } else {
+        await (doc.exitFullscreen?.() ?? doc.webkitExitFullscreen?.())
+      }
       setPinExitOpen(false)
       setPinAttempt('')
       setPinError(null)
@@ -650,15 +674,16 @@ export function WaiterClient({
 
   const workspaceClass =
     'flex min-h-0 flex-1 flex-col md:h-[min(1080px,calc(100dvh-7.5rem))] md:max-h-[calc(100dvh-7.5rem)]'
+  const inScreenMode = isFullscreen || mobileScreenOpen
 
   return (
     <div
       ref={fullscreenRootRef}
       className={`flex min-h-0 flex-col bg-[var(--color-background-secondary)] ${
-        isFullscreen ? 'fixed inset-0 z-[60] max-w-none p-0' : '-mx-4 px-4 pb-4 sm:-mx-5 sm:px-5 md:-mx-6 md:px-6'
+        inScreenMode ? 'fixed inset-0 z-[60] max-w-none p-0' : '-mx-4 px-4 pb-4 sm:-mx-5 sm:px-5 md:-mx-6 md:px-6'
       }`}
     >
-      {isFullscreen ? (
+      {inScreenMode ? (
         <button
           type="button"
           onClick={() => void toggleFullscreen()}
@@ -685,7 +710,7 @@ export function WaiterClient({
           </span>
         </div>
         <div className="flex items-center gap-2">
-          {!isFullscreen ? (
+          {!inScreenMode ? (
             <button
               type="button"
               onClick={() => void toggleFullscreen()}
