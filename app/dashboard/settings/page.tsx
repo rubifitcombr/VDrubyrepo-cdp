@@ -976,11 +976,6 @@ export default function SettingsPage() {
               Defina 4 dígitos. Quando o modo ecrã estiver aberto no Garçom, esse PIN será exigido para sair.
             </p>
           </label>
-          {!supportsWaiterExitPin ? (
-            <p className="mt-2 text-xs text-amber-700">
-              A coluna waiter_exit_pin ainda não existe no teu Supabase.
-            </p>
-          ) : null}
         </section>
 
         {storeId ? (
