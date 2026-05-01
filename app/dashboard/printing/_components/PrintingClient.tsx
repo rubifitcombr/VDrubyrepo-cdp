@@ -1,9 +1,12 @@
 'use client'
 
+import Link from 'next/link'
 import { useCallback, useMemo, useState } from 'react'
 import type { StorePrintingKey, StorePrintingState } from '@/lib/store-printing'
+import { openPrintingPreviewPopup } from '@/lib/printing-preview-window'
 import { updateStore } from '@/services/store'
 import { IconPrinter } from '@/app/dashboard/_components/NavIcons'
+import { ReceiptPreview } from './ReceiptPreview'
 
 function PrintSwitch({
   on,
@@ -61,58 +64,6 @@ const ROWS: Array<{
   },
 ]
 
-const money = new Intl.NumberFormat('pt-BR', {
-  style: 'currency',
-  currency: 'BRL',
-})
-
-function ReceiptPreview({
-  storeName,
-  includeCustomer,
-  deliveryCopy,
-  deliveryFee,
-}: {
-  storeName: string
-  includeCustomer: boolean
-  deliveryCopy: boolean
-  deliveryFee: number
-}) {
-  const header = storeName.trim().toUpperCase() || 'A TUA LOJA'
-  const subtotal = 63.8
-  const total = subtotal + deliveryFee
-
-  return (
-    <div className="mx-auto max-w-[220px] rounded-lg border border-vyria-navy/10 bg-[#ececec] p-4 shadow-inner">
-      <div className="bg-white px-3 py-4 font-mono text-[11px] leading-relaxed text-vyria-navy shadow-sm">
-        <p className="text-center font-bold tracking-wide">{header}</p>
-        <p className="my-2 border-t border-dashed border-vyria-navy/30" />
-        <p className="font-semibold">PEDIDO #001</p>
-        <p className="mt-2">2x Smash Burger Clássico</p>
-        <p>1x Coca Cola 350ml</p>
-        <p className="my-2 border-t border-dashed border-vyria-navy/30" />
-        <p>Subtotal: {money.format(subtotal)}</p>
-        <p>Taxa entrega: {money.format(deliveryFee)}</p>
-        <p className="mt-1 font-bold">TOTAL: {money.format(total)}</p>
-        {includeCustomer ? (
-          <>
-            <p className="my-2 border-t border-dashed border-vyria-navy/30" />
-            <p>Cliente: João Silva</p>
-            <p>Tel: (11) 98765-4321</p>
-            <p>Rua das Acácias, 456</p>
-            <p>Pagamento: PIX</p>
-          </>
-        ) : null}
-        {deliveryCopy ? (
-          <>
-            <p className="my-2 border-t border-dashed border-vyria-navy/30" />
-            <p className="text-center font-bold uppercase">2ª via — entregador</p>
-          </>
-        ) : null}
-      </div>
-    </div>
-  )
-}
-
 export function PrintingClient({
   storeId,
   storeName,
@@ -134,43 +85,18 @@ export function PrintingClient({
   )
 
   const printPreviewToWindow = useCallback(() => {
-    const subtotal = 63.8
-    const total = subtotal + fee
-    const w = window.open('', 'PRINT', 'width=360,height=640')
-    if (!w) {
+    const ok = openPrintingPreviewPopup({
+      storeName,
+      fee,
+      values: {
+        print_include_customer_details: values.print_include_customer_details,
+        print_delivery_copy: values.print_delivery_copy,
+      },
+      returnPath: '/dashboard/printing',
+    })
+    if (!ok) {
       alert('Permite pop-ups para testar a impressão.')
-      return
     }
-    const esc = (s: string) =>
-      s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    const header = esc(storeName.trim().toUpperCase() || 'A TUA LOJA')
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Cupom</title>
-<style>
-  body{font-family:ui-monospace,monospace;font-size:12px;padding:12px;max-width:220px;margin:0 auto;color:#111}
-  h1{font-size:13px;text-align:center;margin:0 0 8px}
-  .line{border-top:1px dashed #999;margin:8px 0}
-</style></head><body>
-<h1>${header}</h1>
-<p><strong>PEDIDO #001</strong></p>
-<p>2x Smash Burger Clássico<br/>1x Coca Cola 350ml</p>
-<div class="line"></div>
-<p>Subtotal: ${money.format(subtotal)}</p>
-<p>Taxa entrega: ${money.format(fee)}</p>
-<p><strong>TOTAL: ${money.format(total)}</strong></p>
-${
-  values.print_include_customer_details
-    ? `<div class="line"></div><p>Cliente: João Silva<br/>Tel: (11) 98765-4321<br/>Rua das Acácias, 456<br/>Pagamento: PIX</p>`
-    : ''
-}
-${
-  values.print_delivery_copy
-    ? `<div class="line"></div><p style="text-align:center;font-weight:bold">2ª via — entregador</p>`
-    : ''
-}
-<script>window.onload=function(){window.print();}</script>
-</body></html>`
-    w.document.write(html)
-    w.document.close()
   }, [fee, storeName, values.print_delivery_copy, values.print_include_customer_details])
 
   async function toggle(key: StorePrintingKey) {
@@ -268,13 +194,21 @@ ${
               Simulação de cupom térmico com base nas opções ativas.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={printPreviewToWindow}
-            className="shrink-0 rounded-xl border border-[var(--card-border)] bg-white px-4 py-2.5 text-sm font-semibold text-vyria-navy shadow-sm hover:bg-[#f9fafb]"
-          >
-            Imprimir teste (janela)
-          </button>
+          <div className="flex shrink-0 flex-col gap-2 sm:items-end">
+            <Link
+              href="/dashboard/printing/preview"
+              className="inline-flex items-center justify-center rounded-xl bg-[var(--dash-primary)] px-4 py-2.5 text-center text-sm font-semibold text-white shadow-sm transition-[filter] hover:brightness-105"
+            >
+              Abrir pré-visualização (voltar ao painel)
+            </Link>
+            <button
+              type="button"
+              onClick={printPreviewToWindow}
+              className="rounded-xl border border-[var(--card-border)] bg-white px-4 py-2.5 text-sm font-semibold text-vyria-navy shadow-sm hover:bg-[#f9fafb]"
+            >
+              Imprimir teste (janela)
+            </button>
+          </div>
         </div>
         <div className="mt-6 flex justify-center">
           <ReceiptPreview
