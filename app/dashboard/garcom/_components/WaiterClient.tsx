@@ -165,6 +165,7 @@ export function WaiterClient({
   const [menuSheetOpen, setMenuSheetOpen] = useState(false)
   const [orderDrawerOpen, setOrderDrawerOpen] = useState(false)
   const [selectedTableKey, setSelectedTableKey] = useState<string | null>(null)
+  const [tableActionSheetOpen, setTableActionSheetOpen] = useState(false)
   const router = useRouter()
 
   useEffect(() => {
@@ -175,7 +176,10 @@ export function WaiterClient({
   }, [initialOpenOrders])
 
   useEffect(() => {
-    const hasApi = typeof document !== 'undefined' && !!document.documentElement.requestFullscreen
+    const root = typeof document !== 'undefined' ? (document.documentElement as HTMLElement & {
+      webkitRequestFullscreen?: () => Promise<void> | void
+    }) : null
+    const hasApi = !!(root && (root.requestFullscreen || root.webkitRequestFullscreen))
     setCanFullscreen(hasApi)
     if (!hasApi) return
     const sync = () =>
@@ -228,7 +232,7 @@ export function WaiterClient({
 
   const hasSavedOrder = !!activeOrderId && !!activeOrder
 
-  async function loadOrderEditor(order: StoreOrderRow) {
+  async function loadOrderEditor(order: StoreOrderRow, openDrawer = true) {
     setLoadingOrder(true)
     setError(null)
     try {
@@ -259,15 +263,15 @@ export function WaiterClient({
       setCart(lines)
       setDiscountBrl(parseDiscountFromNotes(o.notes))
       setDiscountOpen(false)
-      setCenterTab('order')
-      setOrderDrawerOpen(true)
+      setCenterTab('map')
+      if (openDrawer) setOrderDrawerOpen(true)
       setSelectedTableKey(`${parseSectorFromNotes(o.notes)}::${parseTableFromNotes(o.notes) || ''}`)
     } finally {
       setLoadingOrder(false)
     }
   }
 
-  function selectFreeTable(name: string, amb: string) {
+  function selectFreeTable(name: string, amb: string, openDrawer = true) {
     setSelectedTableKey(`${amb}::${name}`)
     setActiveOrderId(null)
     setTable(name)
@@ -278,8 +282,26 @@ export function WaiterClient({
     setDiscountBrl(0)
     setDiscountOpen(false)
     setPaymentMethod('cash')
-    setCenterTab('order')
-    setOrderDrawerOpen(true)
+    setCenterTab('map')
+    if (openDrawer) setOrderDrawerOpen(true)
+  }
+
+  function isMobileViewport() {
+    return typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches
+  }
+
+  async function handleTablePress(tb: StoreTableDTO) {
+    const st = tableState(openOrders, tb.name, tb.ambiente)
+    const agg = aggregateTable(openOrders, tb.name, tb.ambiente)
+    const mobile = isMobileViewport()
+
+    if (st === 'free') {
+      selectFreeTable(tb.name, tb.ambiente, !mobile)
+    } else if (agg.primary) {
+      await loadOrderEditor(agg.primary, !mobile)
+    }
+
+    if (mobile) setTableActionSheetOpen(true)
   }
 
   function addProduct(product: MenuProductRow) {
@@ -476,11 +498,15 @@ export function WaiterClient({
 
   async function toggleFullscreen() {
     if (!canFullscreen || !fullscreenRootRef.current) return
+    const doc = document as Document & { webkitExitFullscreen?: () => Promise<void> | void }
+    const el = fullscreenRootRef.current as HTMLDivElement & {
+      webkitRequestFullscreen?: () => Promise<void> | void
+    }
     try {
       if (document.fullscreenElement === fullscreenRootRef.current) {
-        await document.exitFullscreen()
+        await (doc.exitFullscreen?.() ?? doc.webkitExitFullscreen?.())
       } else {
-        await fullscreenRootRef.current.requestFullscreen()
+        await (el.requestFullscreen?.() ?? el.webkitRequestFullscreen?.())
       }
     } catch {
       setError('Ecrã completo indisponível.')
@@ -604,13 +630,13 @@ export function WaiterClient({
           </span>
         </div>
         <div className="flex items-center gap-2">
-          {canFullscreen && !isFullscreen ? (
+          {!isFullscreen ? (
             <button
               type="button"
               onClick={() => void toggleFullscreen()}
               className="rounded-lg border border-[var(--card-border)] bg-white px-3 py-1.5 text-xs font-semibold text-[#374151] shadow-sm transition hover:bg-[#f9fafb]"
             >
-              Ecrã completo
+              Abrir ecrã
             </button>
           ) : null}
         </div>
@@ -738,7 +764,7 @@ export function WaiterClient({
             <button
               type="button"
               onClick={() => setCenterTab('map')}
-              className={`flex-1 px-3 py-2.5 text-sm font-semibold transition duration-150 ${
+              className={`w-full px-3 py-2.5 text-sm font-semibold transition duration-150 ${
                 centerTab === 'map'
                   ? 'border-b-2 border-[var(--dash-primary)] text-[var(--dash-primary)]'
                   : 'text-[#6b7280] hover:text-[#1a1614]'
@@ -746,21 +772,9 @@ export function WaiterClient({
             >
               Mapa de Mesas
             </button>
-            <button
-              type="button"
-              onClick={() => setCenterTab('order')}
-              className={`flex-1 px-3 py-2.5 text-sm font-semibold transition duration-150 ${
-                centerTab === 'order'
-                  ? 'border-b-2 border-[var(--dash-primary)] text-[var(--dash-primary)]'
-                  : 'text-[#6b7280] hover:text-[#1a1614]'
-              }`}
-            >
-              Pedido Ativo
-            </button>
           </div>
 
-          {centerTab === 'map' ? (
-            <div className="min-h-0 flex-1 overflow-y-auto p-3">
+          <div className="min-h-0 flex-1 overflow-y-auto p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-sm font-bold text-[#1a1614]">Mesas</h2>
                 <button
@@ -811,10 +825,7 @@ export function WaiterClient({
                             <li key={tb.id}>
                               <button
                                 type="button"
-                                onClick={() => {
-                                  if (st === 'free') selectFreeTable(tb.name, tb.ambiente)
-                                  else if (agg.primary) void loadOrderEditor(agg.primary)
-                                }}
+                                onClick={() => void handleTablePress(tb)}
                                 className={`flex w-full flex-col items-center rounded-lg border p-3 text-center transition duration-150 ${base} ${
                                   sel ? 'ring-2 ring-[var(--dash-primary)] ring-offset-2' : ''
                                 } hover:shadow-md`}
@@ -888,17 +899,7 @@ export function WaiterClient({
                   </button>
                 </div>
               ) : null}
-            </div>
-          ) : (
-            <div className="min-h-0 flex-1 overflow-y-auto p-4 text-sm text-[#6b7280]">
-              <p className="font-medium text-[#1a1614]">Pedido ativo</p>
-              <p className="mt-2">
-                {table.trim()
-                  ? `Mesa ${table.trim()} · ${sector}. Os itens estão no painel à direita (ou no botão «Pedido» no telemóvel).`
-                  : 'Escolhe uma mesa no mapa ou adiciona produtos.'}
-              </p>
-            </div>
-          )}
+          </div>
         </main>
 
         {/* Direita — desktop */}
@@ -1225,6 +1226,39 @@ export function WaiterClient({
                 onConfirmClose={() => setConfirmCloseOpen(true)}
                 sticky={false}
               />
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Mobile: ações da mesa */}
+      {tableActionSheetOpen ? (
+        <div className="fixed inset-0 z-[87] md:hidden" role="dialog">
+          <button type="button" className="absolute inset-0 bg-black/40" onClick={() => setTableActionSheetOpen(false)} />
+          <div className="absolute bottom-0 left-0 right-0 rounded-t-2xl bg-white p-4 shadow-2xl">
+            <p className="text-sm font-bold text-[#1a1614]">Mesa {table.trim() || 'selecionada'}</p>
+            <p className="mt-1 text-xs text-[#6b7280]">Escolha onde continuar.</p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setTableActionSheetOpen(false)
+                  setMenuSheetOpen(true)
+                }}
+                className="rounded-xl border border-[var(--card-border)] bg-white py-2.5 text-sm font-semibold text-[#1a1614]"
+              >
+                Cardápio
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setTableActionSheetOpen(false)
+                  setOrderDrawerOpen(true)
+                }}
+                className="rounded-xl bg-[var(--dash-primary)] py-2.5 text-sm font-semibold text-white"
+              >
+                Pedido
+              </button>
             </div>
           </div>
         </div>
