@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
 
     const { data: order, error: fetchErr } = await supabase
       .from('orders')
-      .select('id, store_id, status, customer_phone, customer_name')
+      .select('id, store_id, status, customer_phone, customer_name, source')
       .eq('id', orderId)
       .eq('store_id', storeId)
       .maybeSingle()
@@ -88,7 +88,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, deliveryNotified: false })
     }
 
-    const allowed = ALLOWED_NEXT[current]
+    const src = String((order as { source?: string }).source ?? '').trim().toLowerCase()
+    const waiterToDelivered =
+      src === 'waiter' &&
+      newStatus === 'delivered' &&
+      ['pending', 'preparing', 'ready', 'confirmed'].includes(current)
+
+    const allowed = waiterToDelivered
+      ? new Set(['delivered'])
+      : ALLOWED_NEXT[current]
     if (!allowed || !allowed.has(newStatus)) {
       return NextResponse.json(
         { error: 'Transição de estado não permitida.' },

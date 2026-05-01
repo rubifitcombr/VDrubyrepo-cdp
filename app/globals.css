@@ -24,6 +24,8 @@
   --dash-surface: #f8f9fa;
   --dash-primary: #ff5c26;
   --dash-success: #28a745;
+  /* Fundo secundário (ex.: Garçom) */
+  --color-background-secondary: #eef0f3;
   /* Painel admin — fundo ligeiramente distinto do lojista */
   --admin-surface: #eef1f5;
   --admin-sidebar: #243044;

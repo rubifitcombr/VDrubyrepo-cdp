@@ -1,0 +1,118 @@
+import { NextResponse } from 'next/server'
+import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
+import { hasFeature } from '@/lib/plan'
+import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
+import { readStorePlano } from '@/lib/store-columns'
+import { getUser } from '@/services/auth.server'
+import { createClient } from '@/lib/supabase/server'
+
+type TableInput = {
+  id?: string
+  name?: string
+  ambiente?: string
+  sort_order?: number
+  active?: boolean
+}
+
+export async function GET() {
+  const user = await getUser()
+  if (!user) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 })
+
+  const gate = await requireLojistaAtivoApi(user.id)
+  if (!gate.ok) return gate.response
+
+  const rawPlan = readStorePlano(gate.ctx.store)
+  const plan = effectiveDashboardPlan(user.email ?? null, rawPlan)
+  if (!hasFeature(plan, 'waiter')) {
+    return NextResponse.json({ error: 'Recurso disponível apenas no plano Pro.' }, { status: 403 })
+  }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('store_tables')
+    .select('id, store_id, name, ambiente, active, sort_order')
+    .eq('store_id', gate.ctx.storeId)
+    .order('ambiente', { ascending: true })
+    .order('sort_order', { ascending: true })
+    .order('name', { ascending: true })
+
+  if (error) {
+    if (/does not exist|relation|schema cache/i.test(error.message)) {
+      return NextResponse.json({ tables: [], missingTable: true })
+    }
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  return NextResponse.json({ tables: data ?? [] })
+}
+
+export async function PUT(request: Request) {
+  const user = await getUser()
+  if (!user) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 })
+
+  const gate = await requireLojistaAtivoApi(user.id)
+  if (!gate.ok) return gate.response
+
+  const rawPlan = readStorePlano(gate.ctx.store)
+  const plan = effectiveDashboardPlan(user.email ?? null, rawPlan)
+  if (!hasFeature(plan, 'waiter')) {
+    return NextResponse.json({ error: 'Recurso disponível apenas no plano Pro.' }, { status: 403 })
+  }
+
+  let body: { tables?: TableInput[] }
+  try {
+    body = await request.json()
+  } catch {
+    return NextResponse.json({ error: 'JSON inválido.' }, { status: 400 })
+  }
+
+  const rows = Array.isArray(body.tables) ? body.tables : []
+  const storeId = gate.ctx.storeId
+  const supabase = await createClient()
+
+  const cleaned = rows
+    .map((t, idx) => ({
+      name: String(t.name ?? '').trim(),
+      ambiente: String(t.ambiente ?? 'Salão').trim() || 'Salão',
+      sort_order: Math.round(Number(t.sort_order) ?? idx),
+      active: t.active !== false,
+    }))
+    .filter((t) => t.name.length > 0 && t.name.length <= 42)
+
+  const { error: delErr } = await supabase.from('store_tables').delete().eq('store_id', storeId)
+  if (delErr) {
+    if (/does not exist|relation|schema cache/i.test(delErr.message)) {
+      return NextResponse.json(
+        {
+          error:
+            'Tabela store_tables não existe. Executa o SQL em sql/store_tables.sql no Supabase.',
+        },
+        { status: 503 }
+      )
+    }
+    return NextResponse.json({ error: delErr.message }, { status: 500 })
+  }
+
+  if (cleaned.length === 0) {
+    return NextResponse.json({ ok: true, tables: [] })
+  }
+
+  const insertRows = cleaned.map((t) => ({
+    store_id: storeId,
+    name: t.name,
+    ambiente: t.ambiente,
+    sort_order: t.sort_order,
+    active: t.active,
+  }))
+
+  const { data: inserted, error: insErr } = await supabase
+    .from('store_tables')
+    .insert(insertRows)
+    .select('id, store_id, name, ambiente, active, sort_order')
+
+  if (insErr) {
+    return NextResponse.json({ error: insErr.message ?? 'Erro ao guardar mesas.' }, { status: 500 })
+  }
+
+  return NextResponse.json({ ok: true, tables: inserted ?? [] })
+}

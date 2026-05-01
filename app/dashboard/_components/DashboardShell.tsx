@@ -195,10 +195,10 @@ function DashboardNavLinks({
 
   const navClass =
     layout === 'sidebar'
-      ? 'flex touch-pan-x gap-1 overflow-x-auto overscroll-x-contain p-2 [-ms-overflow-style:none] [scrollbar-width:none] md:flex-col md:overflow-visible md:gap-0.5 md:p-3 md:pt-2 [&::-webkit-scrollbar]:hidden'
+      ? 'flex flex-col gap-0.5 p-3 pt-2'
       : layout === 'drawer'
         ? 'flex flex-col gap-1 p-3 pt-2'
-        : 'flex touch-pan-x gap-1 overflow-x-auto overscroll-x-contain p-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
+        : 'flex touch-pan-x gap-1 overflow-x-auto overscroll-x-contain p-2'
 
   return (
     <nav className={navClass} aria-label="Navegação do painel">
@@ -321,7 +321,7 @@ export function DashboardShell({
 
   return (
     <div className="flex min-h-dvh flex-col bg-[var(--dash-surface)] md:flex-row">
-      <aside className="sticky top-0 z-30 flex w-full flex-col border-b border-white/10 bg-[var(--dash-sidebar)] shadow-lg shadow-black/25 md:fixed md:inset-y-0 md:w-60 md:border-b-0 md:border-r md:border-white/10 md:shadow-xl lg:w-64">
+      <aside className="sticky top-0 z-30 flex min-h-0 w-full flex-col border-b border-white/10 bg-[var(--dash-sidebar)] shadow-lg shadow-black/25 md:fixed md:inset-y-0 md:w-60 md:border-b-0 md:border-r md:border-white/10 md:shadow-xl lg:w-64">
         <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-white/10 px-3 py-2 md:h-auto md:flex-col md:items-stretch md:gap-3 md:px-4 md:py-5">
           <Link
             href="/dashboard"
@@ -358,11 +358,11 @@ export function DashboardShell({
           </svg>
         </button>
 
-        <div className="hidden md:contents">
+        <div className="hidden min-h-0 flex-1 overflow-y-auto overscroll-y-contain md:block">
           <DashboardNavLinks pathname={pathname} plan={plan} layout="sidebar" />
         </div>
 
-        <div className="mt-auto hidden space-y-2 border-t border-white/10 p-3 md:block">
+        <div className="mt-auto hidden shrink-0 space-y-2 border-t border-white/10 p-3 md:block">
           {vyriaDualAccount ? (
             <VyriaPanelModeSwitcher
               variant="dashboard"
@@ -453,7 +453,7 @@ export function DashboardShell({
             aria-label="Fechar menu"
             onClick={() => setMobileMenuOpen(false)}
           />
-          <aside className="absolute right-0 top-0 flex h-dvh w-[min(88vw,21rem)] flex-col border-l border-white/10 bg-[var(--dash-sidebar)] shadow-2xl shadow-black/40">
+          <aside className="absolute right-0 top-0 flex h-dvh min-h-0 w-[min(88vw,21rem)] flex-col border-l border-white/10 bg-[var(--dash-sidebar)] shadow-2xl shadow-black/40">
             <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
               <p className="text-sm font-semibold text-white/85">Menu</p>
               <button
@@ -474,9 +474,11 @@ export function DashboardShell({
               </div>
             ) : null}
 
-            <DashboardNavLinks pathname={pathname} plan={plan} layout="drawer" />
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
+              <DashboardNavLinks pathname={pathname} plan={plan} layout="drawer" />
+            </div>
 
-            <div className="mt-auto flex flex-col gap-2 border-t border-white/10 p-3">
+            <div className="flex shrink-0 flex-col gap-2 border-t border-white/10 p-3">
               <PlansNavCta pathname={pathname} layout="drawer" />
               {storeSlug ? (
                 <a

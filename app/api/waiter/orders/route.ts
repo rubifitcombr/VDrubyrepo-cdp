@@ -4,6 +4,8 @@ import { hasFeature } from '@/lib/plan'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
 import { readStorePlano } from '@/lib/store-columns'
 import { getUser } from '@/services/auth.server'
+import { ORDER_SELECT, mapStoreOrderRow } from '@/lib/store-order'
+import { buildWaiterNotes } from '@/lib/waiter-order-notes'
 import { createClient } from '@/lib/supabase/server'
 
 type BodyItem = {
@@ -56,6 +58,7 @@ export async function POST(request: Request) {
     payment_method?: string | null
     notes?: string | null
     items?: BodyItem[]
+    discount_brl?: unknown
   }
   try {
     body = await request.json()
@@ -114,15 +117,15 @@ export async function POST(request: Request) {
     )
   }
 
-  const total = round2(
+  const gross = round2(
     cleanItems.reduce((sum, line) => sum + line.unit_price * line.quantity, 0)
   )
+  const discountBrl = round2(Math.max(0, Number(body.discount_brl) || 0))
+  const total = round2(Math.max(0, gross - discountBrl))
   const itemsSummary = cleanItems.map((i) => `${i.quantity}x ${i.name}`).join(', ')
 
   const extraNotes = String(body.notes ?? '').trim()
-  const noteLines = [`[Mesa ${table}]`, `[Setor ${sector}]`]
-  if (extraNotes) noteLines.push(extraNotes)
-  const notes = noteLines.join('\n')
+  const notes = buildWaiterNotes(table, sector, extraNotes, discountBrl)
 
   const payment =
     typeof body.payment_method === 'string' && body.payment_method.trim()
@@ -151,8 +154,10 @@ export async function POST(request: Request) {
     )
   }
 
+  const orderId = String(order.id)
+
   const rows = cleanItems.map((i) => ({
-    order_id: String(order.id),
+    order_id: orderId,
     product_id: i.product_id,
     quantity: i.quantity,
     price: i.unit_price,
@@ -162,27 +167,41 @@ export async function POST(request: Request) {
   const { error: itemsErr } = await supabase.from('order_items').insert(rows)
 
   if (itemsErr) {
-    await supabase.from('orders').delete().eq('id', String(order.id))
+    await supabase.from('orders').delete().eq('id', orderId)
     return NextResponse.json(
       { error: itemsErr.message || 'Não foi possível gravar os itens.' },
       { status: 500 }
     )
   }
 
+  const { data: full, error: fullErr } = await supabase
+    .from('orders')
+    .select(ORDER_SELECT)
+    .eq('id', orderId)
+    .single()
+
+  if (fullErr || !full) {
+    return NextResponse.json({
+      ok: true,
+      orderId,
+      order: {
+        id: orderId,
+        customer_name: body.customer_name?.trim() || null,
+        total,
+        status: 'pending',
+        source: 'waiter',
+        payment_method: payment,
+        items_summary: itemsSummary,
+        notes,
+        created_at: new Date().toISOString(),
+      },
+    })
+  }
+
   return NextResponse.json({
     ok: true,
-    orderId: String(order.id),
-    order: {
-      id: String(order.id),
-      customer_name: body.customer_name?.trim() || null,
-      total,
-      status: 'pending',
-      source: 'waiter',
-      payment_method: payment,
-      items_summary: itemsSummary,
-      notes,
-      created_at: new Date().toISOString(),
-    },
+    orderId,
+    order: mapStoreOrderRow(full as Record<string, unknown>),
   })
 }
 

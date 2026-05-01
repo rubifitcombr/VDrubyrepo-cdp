@@ -10,10 +10,12 @@ export type StoreOrderRow = {
   notes?: string | null
   customer_phone?: string | null
   items_summary?: string | null
+  /** Pedido contabilizado neste turno de caixa (após «Receber e fechar»). */
+  caixa_turno_id?: string | null
 }
 
 export const ORDER_SELECT =
-  'id, customer_name, total, status, created_at, source, delivery_address, payment_method, notes, customer_phone, items_summary'
+  'id, customer_name, total, status, created_at, source, delivery_address, payment_method, notes, customer_phone, items_summary, caixa_turno_id'
 
 /** Mapeia linha Supabase / payload Realtime para o tipo do painel. */
 export function mapStoreOrderRow(row: Record<string, unknown>): StoreOrderRow {
@@ -44,5 +46,7 @@ export function mapStoreOrderRow(row: Record<string, unknown>): StoreOrderRow {
       typeof row.customer_phone === 'string' ? row.customer_phone : null,
     items_summary:
       typeof row.items_summary === 'string' ? row.items_summary : null,
+    caixa_turno_id:
+      typeof row.caixa_turno_id === 'string' ? row.caixa_turno_id : null,
   }
 }

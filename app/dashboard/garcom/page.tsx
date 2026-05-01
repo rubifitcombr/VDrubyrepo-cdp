@@ -1,7 +1,9 @@
 import Link from 'next/link'
 import { getUser } from '@/services/auth.server'
+import { getProductStocksForStore } from '@/services/inventory.server'
 import { getMenuProductsForStore } from '@/services/menu.server'
 import { getStoreByUser } from '@/services/store.server'
+import { getStoreTablesForStore } from '@/services/waiter-tables.server'
 import { getWaiterOpenOrdersForStore } from '@/services/waiter.server'
 import { WaiterClient } from './_components/WaiterClient'
 
@@ -47,10 +49,16 @@ export default async function GarcomPage() {
   }
 
   const storeId = String(store.id)
-  const [products, openOrders] = await Promise.all([
+  const [products, openOrders, configuredTables, stockMap] = await Promise.all([
     getMenuProductsForStore(storeId),
     getWaiterOpenOrdersForStore(storeId),
+    getStoreTablesForStore(storeId),
+    getProductStocksForStore(storeId),
   ])
+  const stockQuantityByProductId: Record<string, number> = {}
+  for (const [pid, row] of stockMap) {
+    stockQuantityByProductId[pid] = row.quantity
+  }
   const s = store as Record<string, unknown>
   const tableSectors = Array.isArray(s.table_sectors)
     ? (s.table_sectors as unknown[])
@@ -60,10 +68,17 @@ export default async function GarcomPage() {
 
   return (
     <WaiterClient
-      storeId={storeId}
       initialProducts={products.filter((p) => p.active !== false)}
       initialOpenOrders={openOrders}
       initialSectors={tableSectors}
+      initialTables={configuredTables.map((t) => ({
+        id: t.id,
+        name: t.name,
+        ambiente: t.ambiente,
+        sort_order: t.sort_order,
+        active: t.active,
+      }))}
+      stockQuantityByProductId={stockQuantityByProductId}
     />
   )
 }

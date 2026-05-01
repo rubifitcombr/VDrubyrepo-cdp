@@ -1,25 +1,16 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import { aggregateTurnClosedOrders } from '@/lib/caixa-payments'
+import type { CaixaMovimentacaoDTO, CaixaTurnoDTO } from '@/lib/caixa-types'
 import { dashboardFetch } from '@/lib/dashboard-fetch.client'
 import type { StoreOrderRow } from '@/lib/store-order'
+import { createClient } from '@/lib/supabase/client'
 
 type SourceKey = 'waiter' | 'pdv' | 'menu_link'
-type ShiftState = {
-  openedAt: string
-  operator: string
-  openingCash: number
-}
-type ShiftHistory = {
-  id: string
-  openedAt: string
-  closedAt: string
-  operator: string
-  openingCash: number
-  revenue: number
-  orderCount: number
-}
+type PaymentDraft = 'cash' | 'pix' | 'card' | 'credit'
 
 const money = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
@@ -28,6 +19,10 @@ const money = new Intl.NumberFormat('pt-BR', {
 
 const dateTime = new Intl.DateTimeFormat('pt-BR', {
   dateStyle: 'short',
+  timeStyle: 'short',
+})
+
+const timeOnlyFmt = new Intl.DateTimeFormat('pt-BR', {
   timeStyle: 'short',
 })
 
@@ -44,15 +39,8 @@ function sourceLabel(k: SourceKey): string {
   return 'Link de cardápio'
 }
 
-function paymentLabel(v: string | null | undefined): string {
-  const p = String(v ?? '').trim().toLowerCase()
-  if (p === 'pix') return 'PIX'
-  if (p === 'card') return 'Cartão'
-  if (p === 'cash') return 'Dinheiro'
-  return '—'
-}
-
-function periodStart(period: 'today' | '7d' | '30d'): number {
+function periodStart(period: 'today' | '7d' | '30d' | 'all'): number {
+  if (period === 'all') return 0
   const now = Date.now()
   if (period === 'today') {
     const d = new Date()
@@ -63,30 +51,116 @@ function periodStart(period: 'today' | '7d' | '30d'): number {
   return now - 30 * 86400000
 }
 
+function formatDurationFrom(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime()
+  if (!Number.isFinite(ms) || ms < 0) return '—'
+  const m = Math.floor(ms / 60000)
+  if (m < 60) return `${m} min`
+  const h = Math.floor(m / 60)
+  const rm = m % 60
+  return `${h}h ${rm}min`
+}
+
+function parseMoneyInput(raw: string): number {
+  const n = Number(raw.replace(',', '.').trim())
+  if (Number.isNaN(n) || n < 0) return 0
+  return Math.round(n * 100) / 100
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100
+}
+
 export function CashierClient({
+  storeId,
   initialOrders,
   operatorLabel,
+  initialTurno,
+  initialHistorico,
+  initialMovimentacoesPorTurno,
 }: {
+  storeId: string
   initialOrders: StoreOrderRow[]
   operatorLabel: string
+  initialTurno: CaixaTurnoDTO | null
+  initialHistorico: CaixaTurnoDTO[]
+  initialMovimentacoesPorTurno: Record<string, CaixaMovimentacaoDTO[]>
 }) {
-  const [orders, setOrders] = useState<StoreOrderRow[]>(initialOrders)
-  const [period, setPeriod] = useState<'today' | '7d' | '30d'>('today')
+  const router = useRouter()
+  const [orders, setOrders] = useState(initialOrders)
+  const [turno, setTurno] = useState<CaixaTurnoDTO | null>(initialTurno)
+  const [historico, setHistorico] = useState(initialHistorico)
+  const [movMap, setMovMap] = useState(initialMovimentacoesPorTurno)
+  const [period, setPeriod] = useState<'today' | '7d' | '30d' | 'all'>('today')
   const [sourceFilter, setSourceFilter] = useState<'all' | SourceKey>('all')
-  const [shift, setShift] = useState<ShiftState | null>(null)
   const [openingCashInput, setOpeningCashInput] = useState('')
-  const [shiftHistory, setShiftHistory] = useState<ShiftHistory[]>([])
-  const [paymentDraftByOrder, setPaymentDraftByOrder] = useState<Record<string, 'cash' | 'pix' | 'card'>>({})
+  const [paymentDraftByOrder, setPaymentDraftByOrder] = useState<Record<string, PaymentDraft>>({})
   const [closingOrderId, setClosingOrderId] = useState<string | null>(null)
   const [cashierError, setCashierError] = useState<string | null>(null)
-  const storageKey = 'vyria.cashier.shift.v1'
-  const historyKey = 'vyria.cashier.shift.history.v1'
+  const [toast, setToast] = useState<string | null>(null)
+  const [busyOpen, setBusyOpen] = useState(false)
+  const [busyClose, setBusyClose] = useState(false)
+  const [movModalOpen, setMovModalOpen] = useState(false)
+  const [movTipo, setMovTipo] = useState<'suprimento' | 'sangria'>('suprimento')
+  const [movValor, setMovValor] = useState('')
+  const [movMotivo, setMovMotivo] = useState('')
+  const [busyMov, setBusyMov] = useState(false)
+  const [closeFlow, setCloseFlow] = useState<
+    null | { step: 'warn' | 'summary'; comandasCount: number }
+  >(null)
+  const [infD, setInfD] = useState('')
+  const [infP, setInfP] = useState('')
+  const [infC, setInfC] = useState('')
+  const [infCr, setInfCr] = useState('')
+  const [fundoProximo, setFundoProximo] = useState('')
+  const [expandedHistoricoId, setExpandedHistoricoId] = useState<string | null>(null)
+
+  useEffect(() => {
+    setOrders(initialOrders)
+  }, [initialOrders])
+  useEffect(() => {
+    setTurno(initialTurno)
+  }, [initialTurno])
+  useEffect(() => {
+    setHistorico(initialHistorico)
+  }, [initialHistorico])
+  useEffect(() => {
+    setMovMap(initialMovimentacoesPorTurno)
+  }, [initialMovimentacoesPorTurno])
+
+  const showToast = useCallback((msg: string) => {
+    setToast(msg)
+    window.setTimeout(() => setToast(null), 4500)
+  }, [])
+
+  useEffect(() => {
+    if (!storeId) return
+    const supabase = createClient()
+    const ch = supabase
+      .channel(`cashier-orders-${storeId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'orders',
+          filter: `store_id=eq.${storeId}`,
+        },
+        () => {
+          router.refresh()
+        }
+      )
+      .subscribe()
+    return () => {
+      void supabase.removeChannel(ch)
+    }
+  }, [storeId, router])
 
   const filteredOrders = useMemo(() => {
     const from = periodStart(period)
     return orders.filter((o) => {
       const created = new Date(o.created_at).getTime()
-      if (!Number.isFinite(created) || created < from) return false
+      if (period !== 'all' && (!Number.isFinite(created) || created < from)) return false
       if (o.status === 'cancelled') return false
       if (sourceFilter === 'all') return true
       return mapSource(o.source) === sourceFilter
@@ -112,70 +186,12 @@ export function CashierClient({
   const totalRevenue = summary.waiter.total + summary.pdv.total + summary.menu_link.total
   const avgTicket = totalCount > 0 ? totalRevenue / totalCount : 0
 
-  useEffect(() => {
-    try {
-      const rawShift = window.localStorage.getItem(storageKey)
-      const rawHistory = window.localStorage.getItem(historyKey)
-      if (rawShift) setShift(JSON.parse(rawShift) as ShiftState)
-      if (rawHistory) setShiftHistory(JSON.parse(rawHistory) as ShiftHistory[])
-    } catch {
-      // ignore storage errors
-    }
-  }, [])
-
-  useEffect(() => {
-    try {
-      if (shift) window.localStorage.setItem(storageKey, JSON.stringify(shift))
-      else window.localStorage.removeItem(storageKey)
-    } catch {
-      // ignore storage errors
-    }
-  }, [shift])
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(historyKey, JSON.stringify(shiftHistory.slice(0, 10)))
-    } catch {
-      // ignore storage errors
-    }
-  }, [shiftHistory])
-
-  function parseOpeningCash() {
-    const n = Number(openingCashInput.replace(',', '.').trim())
-    if (Number.isNaN(n) || n < 0) return 0
-    return n
-  }
-
-  function openShift() {
-    if (shift) return
-    setShift({
-      openedAt: new Date().toISOString(),
-      operator: operatorLabel,
-      openingCash: parseOpeningCash(),
-    })
-  }
-
-  function closeShift() {
-    if (!shift) return
-    const openedTs = new Date(shift.openedAt).getTime()
-    const shiftOrders = orders.filter((o) => {
-      const ts = new Date(o.created_at).getTime()
-      return Number.isFinite(ts) && ts >= openedTs && o.status !== 'cancelled'
-    })
-    const revenue = shiftOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0)
-    const closed: ShiftHistory = {
-      id: `${Date.now()}`,
-      openedAt: shift.openedAt,
-      closedAt: new Date().toISOString(),
-      operator: shift.operator,
-      openingCash: shift.openingCash,
-      revenue,
-      orderCount: shiftOrders.length,
-    }
-    setShiftHistory((prev) => [closed, ...prev])
-    setShift(null)
-    setOpeningCashInput('')
-  }
+  const shiftBreakdown = useMemo(() => {
+    if (!turno || turno.status !== 'aberto') return null
+    return aggregateTurnClosedOrders(
+      orders.filter((o) => o.caixa_turno_id === turno.id && o.status === 'delivered')
+    )
+  }, [orders, turno])
 
   const openComandas = useMemo(() => {
     return orders.filter((o) => {
@@ -185,11 +201,15 @@ export function CashierClient({
     })
   }, [orders])
 
-  function paymentDraft(order: StoreOrderRow): 'cash' | 'pix' | 'card' {
+  const movimentacoesTurnoAtual = turno ? movMap[turno.id] ?? [] : []
+
+  function paymentDraft(order: StoreOrderRow): PaymentDraft {
     const existing = paymentDraftByOrder[order.id]
     if (existing) return existing
-    const current = String(order.payment_method ?? '').toLowerCase()
-    if (current === 'pix' || current === 'card' || current === 'cash') return current
+    const current = String(order.payment_method ?? '').trim().toLowerCase()
+    if (current === 'pix') return 'pix'
+    if (current === 'card') return 'card'
+    if (current === 'credit' || current === 'credito' || current === 'crédito') return 'credit'
     return 'cash'
   }
 
@@ -206,10 +226,18 @@ export function CashierClient({
       if (res.status === 403) return
       const json = (await res.json().catch(() => ({}))) as {
         error?: string
-        order?: { id: string; status: string; payment_method: string; notes?: string }
+        order?: {
+          id: string
+          status: string
+          payment_method: string
+          notes?: string
+          caixa_turno_id?: string
+        }
       }
       if (!res.ok) {
-        setCashierError(json.error || 'Não foi possível fechar a comanda.')
+        const err = json.error || 'Não foi possível fechar a comanda.'
+        setCashierError(err)
+        showToast(err)
         return
       }
       setOrders((prev) =>
@@ -220,6 +248,7 @@ export function CashierClient({
                 status: json.order?.status || 'delivered',
                 payment_method: json.order?.payment_method || paymentMethod,
                 notes: json.order?.notes ?? o.notes,
+                caixa_turno_id: json.order?.caixa_turno_id ?? turno?.id ?? o.caixa_turno_id,
               }
             : o
         )
@@ -228,6 +257,115 @@ export function CashierClient({
       setClosingOrderId(null)
     }
   }
+
+  async function handleOpenTurno() {
+    setBusyOpen(true)
+    setCashierError(null)
+    try {
+      const res = await dashboardFetch('/api/cashier/turno/open', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fundoInicial: parseMoneyInput(openingCashInput) }),
+      })
+      const json = (await res.json().catch(() => ({}))) as { error?: string }
+      if (!res.ok) {
+        showToast(json.error || 'Não foi possível abrir o turno.')
+        return
+      }
+      setOpeningCashInput('')
+      router.refresh()
+    } finally {
+      setBusyOpen(false)
+    }
+  }
+
+  async function handleMovimentacao() {
+    if (!turno) return
+    setBusyMov(true)
+    try {
+      const res = await dashboardFetch('/api/cashier/movimentacao', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tipo: movTipo,
+          valor: parseMoneyInput(movValor),
+          motivo: movMotivo.trim(),
+        }),
+      })
+      const json = (await res.json().catch(() => ({}))) as { error?: string }
+      if (!res.ok) {
+        showToast(json.error || 'Erro ao registar.')
+        return
+      }
+      setMovValor('')
+      setMovMotivo('')
+      router.refresh()
+    } finally {
+      setBusyMov(false)
+    }
+  }
+
+  function openCloseModal() {
+    if (!turno) return
+    const n = openComandas.length
+    if (n > 0) setCloseFlow({ step: 'warn', comandasCount: n })
+    else openCloseSummary()
+  }
+
+  function openCloseSummary() {
+    if (!shiftBreakdown) return
+    setInfD(String(shiftBreakdown.dinheiro.total.toFixed(2)).replace('.', ','))
+    setInfP(String(shiftBreakdown.pix.total.toFixed(2)).replace('.', ','))
+    setInfC(String(shiftBreakdown.cartao.total.toFixed(2)).replace('.', ','))
+    setInfCr(String(shiftBreakdown.credito.total.toFixed(2)).replace('.', ','))
+    setFundoProximo('0,00')
+    setCloseFlow({ step: 'summary', comandasCount: openComandas.length })
+  }
+
+  async function confirmCloseTurno() {
+    if (!turno || !shiftBreakdown) return
+    setBusyClose(true)
+    try {
+      const res = await dashboardFetch('/api/cashier/turno/close', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          turnoId: turno.id,
+          informadoDinheiro: parseMoneyInput(infD),
+          informadoPix: parseMoneyInput(infP),
+          informadoCartao: parseMoneyInput(infC),
+          informadoCredito: parseMoneyInput(infCr),
+          fundoProximoTurno: parseMoneyInput(fundoProximo),
+        }),
+      })
+      const json = (await res.json().catch(() => ({}))) as { error?: string }
+      if (!res.ok) {
+        showToast(json.error || 'Não foi possível fechar o turno.')
+        return
+      }
+      setCloseFlow(null)
+      router.refresh()
+    } finally {
+      setBusyClose(false)
+    }
+  }
+
+  const sysD = shiftBreakdown?.dinheiro.total ?? 0
+  const sysP = shiftBreakdown?.pix.total ?? 0
+  const sysC = shiftBreakdown?.cartao.total ?? 0
+  const sysCr = shiftBreakdown?.credito.total ?? 0
+  const sysTotal = round2(sysD + sysP + sysC + sysCr)
+
+  const informedD = parseMoneyInput(infD)
+  const informedP = parseMoneyInput(infP)
+  const informedC = parseMoneyInput(infC)
+  const informedCr = parseMoneyInput(infCr)
+  const informedTotal = round2(informedD + informedP + informedC + informedCr)
+  const diffD = round2(informedD - sysD)
+  const diffP = round2(informedP - sysP)
+  const diffC = round2(informedC - sysC)
+  const diffCr = round2(informedCr - sysCr)
+  const diffTotal = round2(informedTotal - sysTotal)
 
   function exportCsv() {
     const header = [
@@ -262,8 +400,17 @@ export function CashierClient({
     URL.revokeObjectURL(url)
   }
 
+  const fatTurno = shiftBreakdown?.totalGeral ?? 0
+  const nPedidosFechados = shiftBreakdown?.pedidosFechados ?? 0
+
   return (
-    <div className="mx-auto w-full max-w-7xl">
+    <div className="mx-auto w-full max-w-7xl pb-10">
+      {toast ? (
+        <div className="fixed bottom-6 left-1/2 z-[80] w-[min(92vw,24rem)] -translate-x-1/2 rounded-xl border border-[var(--card-border)] bg-[#1a1614] px-4 py-3 text-center text-sm font-medium text-white shadow-lg">
+          {toast}
+        </div>
+      ) : null}
+
       <nav className="text-xs text-[#6b7280]">
         <Link href="/dashboard" className="hover:text-[#1a1614]">
           Início
@@ -279,7 +426,7 @@ export function CashierClient({
               Caixa
             </h1>
             <p className="mt-1 text-sm text-[#6b7280]">
-              Visão completa do faturamento, com divisória por origem dos pedidos.
+              Turno, recebimentos, comandas e faturamento por origem.
             </p>
           </div>
           <button
@@ -292,11 +439,15 @@ export function CashierClient({
         </div>
       </header>
 
-      <section className="mt-5 rounded-2xl border border-[var(--card-border)] bg-white p-4 shadow-sm">
-        <h2 className="text-sm font-semibold text-[#1a1614]">Fechamento de caixa por turno</h2>
-        {!shift ? (
-          <div className="mt-3 flex flex-wrap items-end gap-2">
-            <label className="text-xs text-[#6b7280]">
+      {/* BLOCO 1 — Header do turno */}
+      {!turno || turno.status !== 'aberto' ? (
+        <section className="mt-6 rounded-2xl border border-[var(--card-border)] bg-[#f9fafb] p-6 shadow-sm">
+          <p className="text-sm font-semibold text-[#1a1614]">Nenhum turno aberto</p>
+          <p className="mt-1 text-sm text-[#6b7280]">
+            Abra um turno para começar a registrar vendas
+          </p>
+          <div className="mt-4 flex max-w-md flex-col gap-3 sm:flex-row sm:items-end">
+            <label className="flex-1 text-xs font-medium text-[#6b7280]">
               Fundo inicial (R$)
               <input
                 type="text"
@@ -304,148 +455,367 @@ export function CashierClient({
                 value={openingCashInput}
                 onChange={(e) => setOpeningCashInput(e.target.value)}
                 placeholder="0,00"
-                className="mt-1 block rounded-lg border border-[var(--card-border)] px-3 py-2 text-sm"
+                className="mt-1 block w-full rounded-xl border border-[var(--card-border)] bg-white px-3 py-2.5 text-sm text-[#1a1614]"
               />
             </label>
             <button
               type="button"
-              onClick={openShift}
-              className="rounded-xl bg-[var(--dash-primary)] px-4 py-2 text-sm font-semibold text-white"
+              disabled={busyOpen}
+              onClick={() => void handleOpenTurno()}
+              className="shrink-0 rounded-xl bg-[var(--dash-primary)] px-6 py-2.5 text-sm font-semibold text-white shadow-md shadow-[var(--dash-primary)]/25 disabled:opacity-50"
             >
-              Abrir turno ({operatorLabel})
+              {busyOpen ? 'A abrir…' : 'Abrir turno'}
             </button>
           </div>
-        ) : (
-          <div className="mt-3 space-y-2">
-            <p className="text-sm text-[#374151]">
-              Operador: <span className="font-semibold">{shift.operator}</span> · Abertura:{' '}
-              <span className="font-semibold">{dateTime.format(new Date(shift.openedAt))}</span>
-            </p>
-            <p className="text-sm text-[#374151]">
-              Fundo inicial: <span className="font-semibold">{money.format(shift.openingCash)}</span>
-            </p>
-            <button
-              type="button"
-              onClick={closeShift}
-              className="rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-800"
-            >
-              Fechar turno
-            </button>
+        </section>
+      ) : (
+        <section className="mt-6 overflow-hidden rounded-2xl bg-[#1a1a1a] px-4 py-6 text-white shadow-lg sm:px-8 sm:py-8">
+          <div className="grid gap-6 lg:grid-cols-3 lg:items-center">
+            <div className="space-y-2">
+              <span className="inline-flex items-center rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-semibold text-emerald-300 ring-1 ring-emerald-400/40">
+                Turno aberto
+              </span>
+              <p className="text-sm text-white/90">
+                Aberto às {timeOnlyFmt.format(new Date(turno.aberto_em))} por{' '}
+                <span className="font-semibold">{turno.operador}</span>
+              </p>
+              <p className="text-xs text-white/50">
+                Fundo inicial: {money.format(turno.fundo_inicial)}
+              </p>
+            </div>
+            <div className="text-center lg:px-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/45">
+                Faturamento do turno
+              </p>
+              <p className="mt-2 text-3xl font-bold text-[var(--dash-primary)] sm:text-4xl">
+                {money.format(fatTurno)}
+              </p>
+              <p className="mt-1 text-sm text-white/55">
+                {nPedidosFechados} pedido{nPedidosFechados === 1 ? '' : 's'} fechado
+                {nPedidosFechados === 1 ? '' : 's'}
+              </p>
+            </div>
+            <div className="flex flex-wrap justify-end gap-2 lg:flex-nowrap">
+              <button
+                type="button"
+                onClick={() => {
+                  setMovModalOpen(true)
+                  setMovTipo('suprimento')
+                  setMovValor('')
+                  setMovMotivo('')
+                }}
+                className="rounded-xl border border-white/40 bg-transparent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10"
+              >
+                Sangria / Suprimento
+              </button>
+              <button
+                type="button"
+                onClick={openCloseModal}
+                className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md hover:bg-red-700"
+              >
+                Fechar turno
+              </button>
+            </div>
           </div>
-        )}
-      </section>
+        </section>
+      )}
 
-      <section className="mt-5 rounded-2xl border border-[var(--card-border)] bg-white p-4 shadow-sm">
-        <h2 className="text-sm font-semibold text-[#1a1614]">
-          Receber e fechar comanda (PDV/Garçom)
-        </h2>
+      {/* BLOCO 2 — Resumo por forma de pagamento */}
+      {turno && turno.status === 'aberto' && shiftBreakdown ? (
+        <section className="mt-6">
+          <h2 className="text-sm font-semibold text-[#1a1614]">Resumo financeiro do turno</h2>
+          <p className="mt-0.5 text-xs text-[#6b7280]">
+            Atualiza automaticamente quando fechas comandas neste turno.
+          </p>
+          <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
+            {(
+              [
+                {
+                  key: 'dinheiro',
+                  label: 'Dinheiro',
+                  icon: '💵',
+                  b: shiftBreakdown.dinheiro,
+                },
+                { key: 'pix', label: 'PIX', icon: '◈', b: shiftBreakdown.pix },
+                {
+                  key: 'cartao',
+                  label: 'Cartão',
+                  icon: '💳',
+                  b: shiftBreakdown.cartao,
+                },
+              ] as const
+            ).map(({ key, label, icon, b }) => (
+              <div
+                key={key}
+                className="rounded-2xl border border-[var(--card-border)] bg-white p-4 shadow-sm"
+              >
+                <div className="flex items-center gap-2 text-sm font-semibold text-[#374151]">
+                  <span className="text-lg" aria-hidden>
+                    {icon}
+                  </span>
+                  {label}
+                </div>
+                <p className="mt-2 text-xl font-bold text-[#1a1614]">{money.format(b.total)}</p>
+                <p className="mt-1 text-xs text-[#6b7280]">
+                  {b.count} pedido{b.count === 1 ? '' : 's'}
+                </p>
+              </div>
+            ))}
+            <div className="rounded-2xl border border-[var(--dash-primary)]/35 bg-[var(--dash-primary)]/[0.08] p-4 shadow-sm ring-1 ring-[var(--dash-primary)]/20">
+              <div className="flex items-center gap-2 text-sm font-semibold text-[#9a3412]">
+                <span className="text-lg" aria-hidden>
+                  ∑
+                </span>
+                Total
+              </div>
+              <p className="mt-2 text-xl font-bold text-[var(--dash-primary)]">
+                {money.format(shiftBreakdown.totalGeral)}
+              </p>
+              <p className="mt-1 text-xs text-[#6b7280]">
+                {shiftBreakdown.pedidosFechados} pedido
+                {shiftBreakdown.pedidosFechados === 1 ? '' : 's'}
+              </p>
+            </div>
+          </div>
+          {shiftBreakdown.credito.count > 0 ? (
+            <p className="mt-2 text-xs text-[#6b7280]">
+              Inclui {shiftBreakdown.credito.count} pedido
+              {shiftBreakdown.credito.count === 1 ? '' : 's'} a crédito (
+              {money.format(shiftBreakdown.credito.total)}).
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+
+      {/* BLOCO 3 — Comandas */}
+      <section className="mt-8 rounded-2xl border border-[var(--card-border)] bg-white p-4 shadow-sm sm:p-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-base font-semibold text-[#1a1614]">Comandas em aberto</h2>
+          <span className="rounded-full bg-[#f3f4f6] px-2.5 py-0.5 text-xs font-bold text-[#374151]">
+            {openComandas.length}
+          </span>
+        </div>
         <p className="mt-1 text-xs text-[#6b7280]">
-          Ao fechar, o pedido é marcado como entregue e permanece lançado no Financeiro com o pagamento informado.
+          Só é possível receber com turno aberto. O pedido fica como entregue e ligado ao turno
+          atual.
         </p>
         {cashierError ? (
-          <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{cashierError}</p>
+          <p className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-800">{cashierError}</p>
         ) : null}
         {openComandas.length === 0 ? (
-          <p className="mt-2 text-sm text-[#6b7280]">Sem comandas abertas de balcão/garçom.</p>
+          <div className="mt-10 flex flex-col items-center justify-center gap-2 pb-6 text-center">
+            <span className="text-4xl opacity-40" aria-hidden>
+              📋
+            </span>
+            <p className="text-sm font-medium text-[#374151]">Nenhuma comanda em aberto</p>
+            <p className="max-w-sm text-xs text-[#6b7280]">
+              As comandas criadas no Garçom ou no PDV aparecem aqui para pagamento.
+            </p>
+          </div>
         ) : (
-          <ul className="mt-3 grid gap-3 lg:grid-cols-2">
-            {openComandas.map((o) => (
-              <li
-                key={o.id}
-                className="overflow-hidden rounded-2xl border border-[var(--card-border)] bg-white shadow-sm shadow-black/[0.04]"
-              >
-                <div className="border-b border-[var(--card-border)] bg-[#fafafa] px-4 py-2.5">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
-                      {sourceLabel(mapSource(o.source))}
-                    </p>
-                    <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">
-                      Em aberto
+          <ul className="mt-4 grid gap-4 lg:grid-cols-2">
+            {openComandas.map((o) => {
+              const src = mapSource(o.source)
+              const badgeWaiter = src === 'waiter'
+              return (
+                <li
+                  key={o.id}
+                  className="overflow-hidden rounded-2xl border border-[var(--card-border)] bg-white shadow-sm shadow-black/[0.04]"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--card-border)] bg-[#fafafa] px-4 py-2.5">
+                    <span
+                      className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                        badgeWaiter
+                          ? 'bg-sky-100 text-sky-900 ring-1 ring-sky-200'
+                          : 'bg-violet-100 text-violet-900 ring-1 ring-violet-200'
+                      }`}
+                    >
+                      {badgeWaiter ? 'GARÇOM' : 'BALCÃO'}
+                    </span>
+                    <span className="text-[11px] font-medium text-[#6b7280]">
+                      {dateTime.format(new Date(o.created_at))}
                     </span>
                   </div>
-                </div>
-                <div className="space-y-3 p-4">
-                  <div className="min-w-0 space-y-1">
-                    <p className="truncate text-sm font-semibold text-[#1a1614]">
-                      {o.customer_name || 'Cliente'}
-                    </p>
-                    <p className="line-clamp-2 text-sm text-[#374151]">
-                      {o.items_summary || 'Comanda'}
-                    </p>
-                    <p className="text-xs text-[#6b7280]">
-                      {dateTime.format(new Date(o.created_at))}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--card-border)] pt-3">
-                    <div>
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-[#9ca3af]">
-                        Total
+                  <div className="space-y-3 p-4">
+                    <div className="min-w-0 space-y-1">
+                      <p className="truncate text-sm font-semibold text-[#1a1614]">
+                        {o.customer_name?.trim() || 'Cliente'}
                       </p>
-                      <p className="text-lg font-bold text-[#1a1614]">
-                        {money.format(Number(o.total) || 0)}
-                      </p>
-                      <p className="text-xs text-[#6b7280]">
-                        Atual: {paymentLabel(o.payment_method)}
+                      <p className="line-clamp-2 text-sm text-[#374151]">
+                        {o.items_summary || 'Comanda'}
                       </p>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <select
-                        value={paymentDraft(o)}
-                        onChange={(e) =>
-                          setPaymentDraftByOrder((prev) => ({
-                            ...prev,
-                            [o.id]: e.target.value as 'cash' | 'pix' | 'card',
-                          }))
-                        }
-                        className="rounded-lg border border-[var(--card-border)] bg-white px-2 py-2 text-xs font-semibold text-[#1f2937]"
-                      >
-                        <option value="cash">Dinheiro</option>
-                        <option value="pix">PIX</option>
-                        <option value="card">Cartão</option>
-                      </select>
-                      <button
-                        type="button"
-                        disabled={closingOrderId === o.id}
-                        onClick={() => void closeComanda(o)}
-                        className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
-                      >
-                        {closingOrderId === o.id ? 'Fechando...' : 'Receber e fechar'}
-                      </button>
+                    <div className="flex flex-wrap items-end justify-between gap-3 border-t border-[var(--card-border)] pt-3">
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-[#9ca3af]">
+                          Total
+                        </p>
+                        <p className="text-xl font-bold text-[#1a1614]">
+                          {money.format(Number(o.total) || 0)}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <select
+                          value={paymentDraft(o)}
+                          onChange={(e) =>
+                            setPaymentDraftByOrder((prev) => ({
+                              ...prev,
+                              [o.id]: e.target.value as PaymentDraft,
+                            }))
+                          }
+                          className="rounded-lg border border-[var(--card-border)] bg-white px-2 py-2 text-xs font-semibold text-[#1f2937]"
+                        >
+                          <option value="cash">Dinheiro</option>
+                          <option value="pix">PIX</option>
+                          <option value="card">Cartão</option>
+                          <option value="credit">Crédito</option>
+                        </select>
+                        <button
+                          type="button"
+                          disabled={closingOrderId === o.id || !turno || turno.status !== 'aberto'}
+                          onClick={() => void closeComanda(o)}
+                          className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50"
+                        >
+                          {closingOrderId === o.id ? 'A processar…' : 'Receber e fechar'}
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </li>
-            ))}
+                </li>
+              )
+            })}
           </ul>
         )}
       </section>
 
-      <section className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
-        <div className="rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
-            Faturamento
-          </p>
-          <p className="mt-2 text-2xl font-bold text-[#1a1614]">{money.format(totalRevenue)}</p>
-        </div>
-        <div className="rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">Pedidos</p>
-          <p className="mt-2 text-2xl font-bold text-[#1a1614]">{totalCount}</p>
-        </div>
-        <div className="rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
-            Ticket médio
-          </p>
-          <p className="mt-2 text-2xl font-bold text-[#1a1614]">{money.format(avgTicket)}</p>
-        </div>
+      {/* BLOCO 6 — Histórico de turnos */}
+      <section className="mt-8 rounded-2xl border border-[var(--card-border)] bg-white p-4 shadow-sm sm:p-6">
+        <h2 className="text-base font-semibold text-[#1a1614]">Histórico de turnos</h2>
+        <p className="mt-0.5 text-xs text-[#6b7280]">Últimos {historico.length} turnos fechados.</p>
+        {historico.length === 0 ? (
+          <p className="mt-4 text-sm text-[#6b7280]">Ainda não há turnos fechados registados.</p>
+        ) : (
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full min-w-[640px] border-collapse text-left text-sm">
+              <thead>
+                <tr className="border-b border-[var(--card-border)] text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
+                  <th className="py-2 pr-3">Data</th>
+                  <th className="py-2 pr-3">Operador</th>
+                  <th className="py-2 pr-3">Abertura</th>
+                  <th className="py-2 pr-3">Fechamento</th>
+                  <th className="py-2 pr-3">Total</th>
+                  <th className="py-2 pr-3">Diferença</th>
+                  <th className="py-2">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {historico.map((h) => {
+                  const movs = movMap[h.id] ?? []
+                  const open = expandedHistoricoId === h.id
+                  const diff = h.diferenca
+                  return (
+                    <Fragment key={h.id}>
+                      <tr className="border-b border-[var(--card-border)]/80">
+                        <td className="py-3 pr-3 text-[#1a1614]">
+                          {h.fechado_em
+                            ? dateTime.format(new Date(h.fechado_em))
+                            : '—'}
+                        </td>
+                        <td className="max-w-[8rem] truncate py-3 pr-3 text-[#374151]" title={h.operador}>
+                          {h.operador}
+                        </td>
+                        <td className="py-3 pr-3 text-[#6b7280]">
+                          {timeOnlyFmt.format(new Date(h.aberto_em))}
+                        </td>
+                        <td className="py-3 pr-3 text-[#6b7280]">
+                          {h.fechado_em ? timeOnlyFmt.format(new Date(h.fechado_em)) : '—'}
+                        </td>
+                        <td className="py-3 pr-3 font-semibold text-[#1a1614]">
+                          {money.format(h.total_geral)}
+                        </td>
+                        <td
+                          className={`py-3 pr-3 font-semibold ${
+                            Math.abs(diff) < 0.005 ? 'text-emerald-700' : 'text-red-600'
+                          }`}
+                        >
+                          {money.format(diff)}
+                        </td>
+                        <td className="py-3">
+                          <button
+                            type="button"
+                            onClick={() => setExpandedHistoricoId(open ? null : h.id)}
+                            className="text-xs font-semibold text-[var(--dash-primary)] hover:underline"
+                          >
+                            {open ? 'Ocultar' : 'Ver detalhes'}
+                          </button>
+                        </td>
+                      </tr>
+                      {open ? (
+                        <tr>
+                          <td colSpan={7} className="bg-[#fafafa] px-4 py-4">
+                            <div className="grid gap-4 text-sm md:grid-cols-2">
+                              <div>
+                                <p className="text-xs font-semibold uppercase text-[#6b7280]">
+                                  Por forma de pagamento
+                                </p>
+                                <ul className="mt-2 space-y-1 text-[#374151]">
+                                  <li>Dinheiro: {money.format(h.total_dinheiro)}</li>
+                                  <li>PIX: {money.format(h.total_pix)}</li>
+                                  <li>Cartão: {money.format(h.total_cartao)}</li>
+                                  <li>Crédito: {money.format(h.total_credito)}</li>
+                                </ul>
+                              </div>
+                              <div>
+                                <p className="text-xs font-semibold uppercase text-[#6b7280]">
+                                  Sangrias / suprimentos
+                                </p>
+                                {movs.length === 0 ? (
+                                  <p className="mt-2 text-xs text-[#6b7280]">Nenhuma movimentação.</p>
+                                ) : (
+                                  <ul className="mt-2 max-h-40 space-y-1 overflow-y-auto text-xs text-[#374151]">
+                                    {movs.map((m) => (
+                                      <li key={m.id}>
+                                        {timeOnlyFmt.format(new Date(m.criado_em))} ·{' '}
+                                        {m.tipo === 'sangria' ? 'Sangria' : 'Suprimento'} ·{' '}
+                                        {m.motivo || '—'} ·{' '}
+                                        <span
+                                          className={
+                                            m.tipo === 'sangria' ? 'text-red-600' : 'text-emerald-700'
+                                          }
+                                        >
+                                          {m.tipo === 'sangria' ? '−' : '+'}
+                                          {money.format(m.valor)}
+                                        </span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : null}
+                    </Fragment>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
-      <section className="mt-5 rounded-2xl border border-[var(--card-border)] bg-white p-4 shadow-sm">
+      <section className="mt-8 rounded-2xl border border-[var(--card-border)] bg-white p-4 shadow-sm">
+        <h2 className="text-base font-semibold text-[#1a1614]">Métricas por origem</h2>
+        <p className="mt-0.5 text-xs text-[#6b7280]">
+          Faturamento consoante o período e a origem selecionados.
+        </p>
         <div className="flex flex-wrap items-center gap-2">
           {(
             [
               ['today', 'Hoje'],
               ['7d', 'Últimos 7 dias'],
               ['30d', 'Últimos 30 dias'],
+              ['all', 'Todos'],
             ] as const
           ).map(([id, label]) => (
             <button
@@ -461,7 +831,7 @@ export function CashierClient({
               {label}
             </button>
           ))}
-          <span className="mx-1 h-5 w-px bg-[var(--card-border)]" />
+          <span className="mx-1 hidden h-5 w-px bg-[var(--card-border)] sm:inline" />
           {(['all', 'waiter', 'pdv', 'menu_link'] as const).map((id) => (
             <button
               key={id}
@@ -480,65 +850,295 @@ export function CashierClient({
       </section>
 
       <section className="mt-5 grid gap-4 lg:grid-cols-3">
-        {(['waiter', 'pdv', 'menu_link'] as const).map((k) => (
-          <div key={k} className="rounded-2xl border border-[var(--card-border)] bg-white p-4 shadow-sm">
-            <p className="text-sm font-semibold text-[#1a1614]">{sourceLabel(k)}</p>
-            <p className="mt-2 text-2xl font-bold text-[var(--dash-primary)]">
-              {money.format(summary[k].total)}
-            </p>
-            <p className="text-xs text-[#6b7280]">{summary[k].count} pedidos</p>
-          </div>
-        ))}
-      </section>
-
-      <section className="mt-5 rounded-2xl border border-[var(--card-border)] bg-white p-4 shadow-sm">
-        <h2 className="text-sm font-semibold text-[#1a1614]">Lançamentos recentes</h2>
-        {filteredOrders.length === 0 ? (
-          <p className="mt-2 text-sm text-[#6b7280]">Sem pedidos no filtro selecionado.</p>
-        ) : (
-          <ul className="mt-3 space-y-2">
-            {filteredOrders.slice(0, 60).map((o) => (
-              <li
-                key={o.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[var(--card-border)] px-3 py-2"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-[#1a1614]">
-                    {sourceLabel(mapSource(o.source))} · {o.items_summary || 'Pedido'}
-                  </p>
-                  <p className="text-xs text-[#6b7280]">
-                    {dateTime.format(new Date(o.created_at))}
-                  </p>
-                </div>
-                <span className="text-sm font-bold text-[#1a1614]">
-                  {money.format(Number(o.total) || 0)}
+        {(['waiter', 'pdv', 'menu_link'] as const).map((k) => {
+          const pct = totalRevenue > 0 ? Math.round((summary[k].total / totalRevenue) * 1000) / 10 : 0
+          const ticket = summary[k].count > 0 ? summary[k].total / summary[k].count : 0
+          const icon = k === 'waiter' ? '🧑‍🍳' : k === 'pdv' ? '🏪' : '🔗'
+          return (
+            <div
+              key={k}
+              className="rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-sm"
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-xl" aria-hidden>
+                  {icon}
                 </span>
-              </li>
-            ))}
-          </ul>
-        )}
+                <p className="text-sm font-semibold text-[#1a1614]">{sourceLabel(k)}</p>
+              </div>
+              <p className="mt-2 text-2xl font-bold text-[var(--dash-primary)]">
+                {money.format(summary[k].total)}
+              </p>
+              <p className="mt-1 text-xs text-[#6b7280]">
+                {summary[k].count} pedidos · ticket médio {money.format(ticket)}
+              </p>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#f3f4f6]">
+                <div
+                  className="h-full rounded-full bg-[var(--dash-primary)]/80 transition-all"
+                  style={{ width: `${Math.min(100, pct)}%` }}
+                />
+              </div>
+              <p className="mt-1 text-[10px] font-medium text-[#9ca3af]">{pct}% do total filtrado</p>
+            </div>
+          )
+        })}
       </section>
 
-      {shiftHistory.length > 0 ? (
-        <section className="mt-5 rounded-2xl border border-[var(--card-border)] bg-white p-4 shadow-sm">
-          <h2 className="text-sm font-semibold text-[#1a1614]">Histórico de fechamentos</h2>
-          <ul className="mt-3 space-y-2">
-            {shiftHistory.slice(0, 6).map((h) => (
-              <li key={h.id} className="rounded-xl border border-[var(--card-border)] px-3 py-2">
-                <p className="text-sm font-semibold text-[#1a1614]">
-                  {h.operator} · {dateTime.format(new Date(h.openedAt))} →{' '}
-                  {dateTime.format(new Date(h.closedAt))}
+      <section className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div className="rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
+            Faturamento (filtro)
+          </p>
+          <p className="mt-2 text-2xl font-bold text-[#1a1614]">{money.format(totalRevenue)}</p>
+        </div>
+        <div className="rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">Pedidos</p>
+          <p className="mt-2 text-2xl font-bold text-[#1a1614]">{totalCount}</p>
+        </div>
+        <div className="rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
+            Ticket médio
+          </p>
+          <p className="mt-2 text-2xl font-bold text-[#1a1614]">{money.format(avgTicket)}</p>
+        </div>
+      </section>
+
+      {/* Modal movimentação */}
+      {movModalOpen && turno && turno.status === 'aberto' ? (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4" role="dialog">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/50"
+            aria-label="Fechar"
+            onClick={() => setMovModalOpen(false)}
+          />
+          <div className="relative z-10 w-full max-w-md rounded-2xl border border-[var(--card-border)] bg-white p-6 shadow-xl">
+            <h3 className="text-lg font-bold text-[#1a1614]">Movimentação de caixa</h3>
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setMovTipo('suprimento')}
+                className={`flex-1 rounded-xl border px-3 py-2 text-sm font-semibold ${
+                  movTipo === 'suprimento'
+                    ? 'border-[var(--dash-primary)] bg-[var(--dash-primary)]/10 text-[#9a3412]'
+                    : 'border-[var(--card-border)] text-[#374151]'
+                }`}
+              >
+                Suprimento (entrada)
+              </button>
+              <button
+                type="button"
+                onClick={() => setMovTipo('sangria')}
+                className={`flex-1 rounded-xl border px-3 py-2 text-sm font-semibold ${
+                  movTipo === 'sangria'
+                    ? 'border-[var(--dash-primary)] bg-[var(--dash-primary)]/10 text-[#9a3412]'
+                    : 'border-[var(--card-border)] text-[#374151]'
+                }`}
+              >
+                Sangria (retirada)
+              </button>
+            </div>
+            <label className="mt-4 block text-xs font-medium text-[#6b7280]">
+              Valor (R$)
+              <input
+                type="text"
+                inputMode="decimal"
+                value={movValor}
+                onChange={(e) => setMovValor(e.target.value)}
+                className="mt-1 block w-full rounded-xl border border-[var(--card-border)] px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="mt-3 block text-xs font-medium text-[#6b7280]">
+              Motivo
+              <input
+                type="text"
+                value={movMotivo}
+                onChange={(e) => setMovMotivo(e.target.value)}
+                placeholder={
+                  movTipo === 'suprimento'
+                    ? 'Ex: troco para o caixa'
+                    : 'Ex: pagamento de fornecedor'
+                }
+                className="mt-1 block w-full rounded-xl border border-[var(--card-border)] px-3 py-2 text-sm"
+              />
+            </label>
+            <button
+              type="button"
+              disabled={busyMov}
+              onClick={() => void handleMovimentacao()}
+              className="mt-5 w-full rounded-xl bg-[var(--dash-primary)] py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              {busyMov ? 'A guardar…' : 'Confirmar'}
+            </button>
+            <div className="mt-6 border-t border-[var(--card-border)] pt-4">
+              <p className="text-xs font-semibold uppercase text-[#6b7280]">Movimentações do turno</p>
+              {movimentacoesTurnoAtual.length === 0 ? (
+                <p className="mt-2 text-xs text-[#6b7280]">Nenhuma ainda.</p>
+              ) : (
+                <ul className="mt-2 max-h-40 space-y-1.5 overflow-y-auto text-xs text-[#374151]">
+                  {movimentacoesTurnoAtual.map((m) => (
+                    <li key={m.id} className="flex flex-wrap justify-between gap-1">
+                      <span>
+                        {timeOnlyFmt.format(new Date(m.criado_em))} ·{' '}
+                        {m.tipo === 'sangria' ? 'Sangria' : 'Suprimento'} · {m.motivo || '—'}
+                      </span>
+                      <span className={m.tipo === 'sangria' ? 'text-red-600' : 'text-emerald-700'}>
+                        {m.tipo === 'sangria' ? '−' : '+'}
+                        {money.format(m.valor)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Modal fechar turno */}
+      {closeFlow && turno && shiftBreakdown ? (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4" role="dialog">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/50"
+            aria-label="Fechar"
+            onClick={() => setCloseFlow(null)}
+          />
+          <div className="relative z-10 max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-[var(--card-border)] bg-white p-6 shadow-xl">
+            {closeFlow.step === 'warn' ? (
+              <>
+                <h3 className="text-lg font-bold text-[#1a1614]">Comandas em aberto</h3>
+                <p className="mt-2 text-sm text-[#374151]">
+                  Existem {closeFlow.comandasCount} comanda
+                  {closeFlow.comandasCount === 1 ? '' : 's'} em aberto. Deseja fechar o turno mesmo
+                  assim?
                 </p>
-                <p className="text-xs text-[#6b7280]">
-                  Pedidos: {h.orderCount} · Faturamento: {money.format(h.revenue)} · Fundo:{' '}
-                  {money.format(h.openingCash)}
+                <div className="mt-6 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCloseFlow(null)}
+                    className="rounded-xl border border-[var(--card-border)] px-4 py-2 text-sm font-semibold text-[#374151]"
+                  >
+                    Voltar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openCloseSummary()}
+                    className="rounded-xl bg-[var(--dash-primary)] px-4 py-2 text-sm font-semibold text-white"
+                  >
+                    Continuar
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h3 className="text-lg font-bold text-[#1a1614]">Resumo do turno</h3>
+                <p className="mt-1 text-sm text-[#6b7280]">
+                  Aberto às {timeOnlyFmt.format(new Date(turno.aberto_em))} ·{' '}
+                  {formatDurationFrom(turno.aberto_em)} · {turno.operador}
                 </p>
-              </li>
-            ))}
-          </ul>
-        </section>
+                <div className="mt-4 overflow-x-auto">
+                  <table className="w-full min-w-[420px] text-sm">
+                    <thead>
+                      <tr className="border-b border-[var(--card-border)] text-left text-xs text-[#6b7280]">
+                        <th className="py-2 pr-2">Forma</th>
+                        <th className="py-2 pr-2">Vendas sistema</th>
+                        <th className="py-2 pr-2">Valor informado</th>
+                        <th className="py-2">Diferença</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(
+                        [
+                          ['Dinheiro', sysD, infD, setInfD, diffD],
+                          ['PIX', sysP, infP, setInfP, diffP],
+                          ['Cartão', sysC, infC, setInfC, diffC],
+                          ['Crédito', sysCr, infCr, setInfCr, diffCr],
+                        ] as const
+                      ).map(([label, sys, val, setVal, diff]) => (
+                        <tr key={label} className="border-b border-[var(--card-border)]/70">
+                          <td className="py-2 pr-2 font-medium">{label}</td>
+                          <td className="py-2 pr-2">{money.format(sys)}</td>
+                          <td className="py-2 pr-2">
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              value={val}
+                              onChange={(e) => setVal(e.target.value)}
+                              className="w-full min-w-[5rem] rounded-lg border border-[var(--card-border)] px-2 py-1 text-sm"
+                            />
+                          </td>
+                          <td
+                            className={`py-2 font-semibold ${
+                              Math.abs(diff) < 0.005 ? 'text-[#374151]' : 'text-red-600'
+                            }`}
+                          >
+                            {money.format(diff)}
+                          </td>
+                        </tr>
+                      ))}
+                      <tr className="font-bold">
+                        <td className="py-2 pr-2">Total</td>
+                        <td className="py-2 pr-2">{money.format(sysTotal)}</td>
+                        <td className="py-2 pr-2">{money.format(informedTotal)}</td>
+                        <td
+                          className={`py-2 ${
+                            Math.abs(diffTotal) < 0.005 ? 'text-emerald-700' : 'text-red-600'
+                          }`}
+                        >
+                          {money.format(diffTotal)}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div className="mt-4 rounded-xl bg-[#fafafa] p-3 text-xs text-[#374151]">
+                  <p className="font-semibold text-[#6b7280]">Movimentações</p>
+                  {movimentacoesTurnoAtual.length === 0 ? (
+                    <p className="mt-1 text-[#6b7280]">Nenhuma.</p>
+                  ) : (
+                    <ul className="mt-1 space-y-0.5">
+                      {movimentacoesTurnoAtual.map((m) => (
+                        <li key={m.id}>
+                          {timeOnlyFmt.format(new Date(m.criado_em))} — {m.tipo} — {m.motivo || '—'}{' '}
+                          ({m.tipo === 'sangria' ? '-' : '+'}
+                          {money.format(m.valor)})
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <label className="mt-4 block text-xs font-medium text-[#6b7280]">
+                  Fundo para o próximo turno (R$)
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={fundoProximo}
+                    onChange={(e) => setFundoProximo(e.target.value)}
+                    className="mt-1 block w-full rounded-xl border border-[var(--card-border)] px-3 py-2 text-sm"
+                  />
+                </label>
+                <div className="mt-6 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCloseFlow(null)}
+                    className="rounded-xl border border-[var(--card-border)] px-4 py-2 text-sm font-semibold text-[#374151]"
+                  >
+                    Voltar
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busyClose}
+                    onClick={() => void confirmCloseTurno()}
+                    className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                  >
+                    {busyClose ? 'A fechar…' : 'Confirmar fechamento'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       ) : null}
     </div>
   )
 }
-

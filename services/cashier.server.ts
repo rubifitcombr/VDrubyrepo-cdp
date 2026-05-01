@@ -1,7 +1,7 @@
 import 'server-only'
 
 import type { StoreOrderRow } from '@/lib/store-order'
-import { ORDER_SELECT } from '@/lib/store-order'
+import { mapStoreOrderRow, ORDER_SELECT } from '@/lib/store-order'
 import { createClient } from '@/lib/supabase/server'
 
 export async function getCashierOrdersForStore(
@@ -21,6 +21,6 @@ export async function getCashierOrdersForStore(
     console.error('[cashier] list orders:', error.message)
     return []
   }
-  return (data as StoreOrderRow[]) ?? []
+  return (data ?? []).map((row) => mapStoreOrderRow(row as Record<string, unknown>))
 }
 

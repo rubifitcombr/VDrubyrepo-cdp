@@ -5,12 +5,14 @@ import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
 import { readStorePlano } from '@/lib/store-columns'
 import { getUser } from '@/services/auth.server'
 import { createClient } from '@/lib/supabase/server'
+import { getOpenCaixaTurno } from '@/services/caixa-turnos.server'
 
-type PaymentMethod = 'cash' | 'pix' | 'card'
+type PaymentMethod = 'cash' | 'pix' | 'card' | 'credit'
 
 function normalizePayment(v: unknown): PaymentMethod | null {
   const t = String(v ?? '').trim().toLowerCase()
-  if (t === 'cash' || t === 'pix' || t === 'card') return t
+  if (t === 'cash' || t === 'pix' || t === 'card' || t === 'credit') return t
+  if (t === 'credito' || t === 'crédito' || t === 'fiado') return 'credit'
   return null
 }
 
@@ -50,6 +52,15 @@ export async function POST(request: Request) {
 
   const supabase = await createClient()
   const storeId = gate.ctx.storeId
+
+  const turnoAberto = await getOpenCaixaTurno(supabase, storeId)
+  if (!turnoAberto) {
+    return NextResponse.json(
+      { error: 'Abra um turno para receber pagamentos.' },
+      { status: 400 }
+    )
+  }
+
   const { data: order, error: fetchErr } = await supabase
     .from('orders')
     .select('id, source, status, notes, payment_method')
@@ -81,21 +92,34 @@ export async function POST(request: Request) {
   const closeLine = `[Caixa] Fechado em ${new Date().toISOString()} (${paymentMethod})`
   const notes = noteBase ? `${noteBase}\n${closeLine}` : closeLine
 
+  const updatePayload: Record<string, unknown> = {
+    status: 'delivered',
+    payment_method: paymentMethod,
+    notes,
+    caixa_turno_id: turnoAberto.id,
+  }
+
   const { data: updated, error: upErr } = await supabase
     .from('orders')
-    .update({
-      status: 'delivered',
-      payment_method: paymentMethod,
-      notes,
-    })
+    .update(updatePayload)
     .eq('store_id', storeId)
     .eq('id', orderId)
-    .select('id, status, payment_method, notes')
+    .select('id, status, payment_method, notes, caixa_turno_id')
     .single()
 
   if (upErr || !updated) {
+    const msg = upErr?.message ?? ''
+    if (/caixa_turno_id|column/i.test(msg)) {
+      return NextResponse.json(
+        {
+          error:
+            'Coluna caixa_turno_id em orders em falta. Aplica a migração SQL do caixa no Supabase.',
+        },
+        { status: 503 }
+      )
+    }
     return NextResponse.json(
-      { error: upErr?.message ?? 'Não foi possível fechar a comanda.' },
+      { error: msg || 'Não foi possível fechar a comanda.' },
       { status: 500 }
     )
   }
@@ -107,6 +131,7 @@ export async function POST(request: Request) {
       status: String(updated.status ?? 'delivered'),
       payment_method: String(updated.payment_method ?? paymentMethod),
       notes: String(updated.notes ?? ''),
+      caixa_turno_id: String((updated as { caixa_turno_id?: string }).caixa_turno_id ?? turnoAberto.id),
     },
   })
 }
