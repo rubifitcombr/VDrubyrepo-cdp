@@ -1,11 +1,10 @@
-import type { Plan } from '@/lib/plan'
+import { hasFeature, type Plan } from '@/lib/plan'
 
 /** Chaves alinhadas ao menu comercial (filtro do sidebar). */
 export type DashboardMenuKey =
   | 'dashboard'
   | 'produtos'
   | 'pedidos'
-  | 'financeiro'
   | 'caixa'
   | 'configuracoes'
   | 'assinatura'
@@ -15,7 +14,6 @@ export type DashboardMenuKey =
   | 'impressao'
   | 'kds'
   | 'pdv'
-  | 'estoque'
   | 'garcom'
   | 'automacoes'
 
@@ -26,7 +24,7 @@ export const MENU_POR_PLANO: Record<
   start: [
     'dashboard',
     'produtos',
-    'financeiro',
+    'relatorios',
     'configuracoes',
     'assinatura',
   ],
@@ -34,7 +32,6 @@ export const MENU_POR_PLANO: Record<
     'dashboard',
     'produtos',
     'pedidos',
-    'financeiro',
     'promocoes',
     'relatorios',
     'automacoes',
@@ -45,10 +42,8 @@ export const MENU_POR_PLANO: Record<
   pro: [
     'dashboard',
     'produtos',
-    'estoque',
     'garcom',
     'pedidos',
-    'financeiro',
     'caixa',
     'promocoes',
     'relatorios',
@@ -66,7 +61,6 @@ const MENU_KEY_TO_PATH_PREFIX: Record<DashboardMenuKey, string> = {
   dashboard: '/dashboard',
   produtos: '/dashboard/menu',
   pedidos: '/dashboard/orders',
-  financeiro: '/dashboard/finance',
   caixa: '/dashboard/caixa',
   configuracoes: '/dashboard/settings',
   assinatura: '/dashboard/assinatura',
@@ -76,7 +70,6 @@ const MENU_KEY_TO_PATH_PREFIX: Record<DashboardMenuKey, string> = {
   impressao: '/dashboard/printing',
   kds: '/dashboard/kds',
   pdv: '/dashboard/pdv',
-  estoque: '/dashboard/inventory',
   garcom: '/dashboard/garcom',
   automacoes: '/dashboard/automations',
 }
@@ -108,6 +101,10 @@ export function isPathAllowedForMerchantPlan(
 
   if (n.startsWith('/dashboard/products')) {
     return keys.has('produtos')
+  }
+
+  if (n === '/dashboard/inventory' || n.startsWith('/dashboard/inventory/')) {
+    return hasFeature(plan, 'inventory')
   }
 
   if (!n.startsWith('/dashboard')) return true

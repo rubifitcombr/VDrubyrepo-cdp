@@ -1,6 +1,7 @@
 'use client'
 
 import { ADMIN_PLAN_OPTIONS } from '@/lib/admin-plans'
+import { createClient } from '@/lib/supabase/client'
 import type { MerchantStatus } from '@/lib/merchant-status'
 import {
   parseMerchantStatus,
@@ -8,7 +9,20 @@ import {
   statusLabel,
 } from '@/lib/merchant-status'
 import { parsePlan, planShortLabel, type Plan } from '@/lib/plan'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  Cell,
+  Legend,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts'
 
 type LojistaRow = {
   id: string
@@ -29,6 +43,30 @@ type Metrics = {
   bloqueadosCancelados: number
   mrr: number
   urgentesCount: number
+}
+
+type CadastroPorDia = { data: string; count: number }
+type StatusSlice = { name: string; value: number }
+
+type ChartsPayload = {
+  cadastros14d: CadastroPorDia[]
+  statusDistrib: StatusSlice[]
+}
+
+type AdminNotif = {
+  id: string
+  tipo: string
+  mensagem: string
+  store_id: string | null
+  lida: boolean
+  criado_em: string
+}
+
+const STATUS_CHART_COLORS: Record<string, string> = {
+  Pendente: '#f59e0b',
+  Ativo: '#10b981',
+  Bloqueado: '#6b7280',
+  Cancelado: '#ef4444',
 }
 
 type FaturaRow = {
@@ -205,6 +243,25 @@ function IconXCircle(props: { className?: string }) {
   )
 }
 
+function IconBell(props: { className?: string }) {
+  return (
+    <svg
+      className={props.className}
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.5}
+      stroke="currentColor"
+      aria-hidden
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"
+      />
+    </svg>
+  )
+}
+
 function VenceUrgenciaBadge({ plano_vence_em }: { plano_vence_em: string | null }) {
   const days = daysUntilVencimento(plano_vence_em)
   if (days === null) return null
@@ -291,12 +348,24 @@ function normalizeLojista(raw: Record<string, unknown>): LojistaRow {
   }
 }
 
+function fmtChartDay(iso: string) {
+  if (!iso || iso.length < 10) return iso
+  const [y, m, d] = iso.slice(0, 10).split('-')
+  return `${d}/${m}`
+}
+
 export function LojistasPageClient() {
   const [filtro, setFiltro] = useState<string>('todos')
   const [q, setQ] = useState('')
   const [loading, setLoading] = useState(true)
   const [metrics, setMetrics] = useState<Metrics | null>(null)
+  const [charts, setCharts] = useState<ChartsPayload | null>(null)
   const [rows, setRows] = useState<LojistaRow[]>([])
+
+  const [notifications, setNotifications] = useState<AdminNotif[]>([])
+  const [notifUnread, setNotifUnread] = useState(0)
+  const [notifOpen, setNotifOpen] = useState(false)
+  const notifWrapRef = useRef<HTMLDivElement>(null)
 
   const [toast, setToast] = useState<{ type: 'ok' | 'err'; msg: string } | null>(null)
 
@@ -338,6 +407,30 @@ export function LojistasPageClient() {
   }, [toast])
 
   useEffect(() => {
+    if (!notifOpen) return
+    function onDoc(e: MouseEvent) {
+      const el = notifWrapRef.current
+      if (el && !el.contains(e.target as Node)) setNotifOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [notifOpen])
+
+  const loadNotifications = useCallback(async () => {
+    const res = await fetch('/api/admin/notifications', { credentials: 'include' })
+    const data = (await res.json()) as {
+      ok?: boolean
+      items?: AdminNotif[]
+      unread?: number
+      error?: string
+    }
+    if (data.ok && data.items) {
+      setNotifications(data.items)
+      setNotifUnread(typeof data.unread === 'number' ? data.unread : data.items.filter((n) => !n.lida).length)
+    }
+  }, [])
+
+  useEffect(() => {
     if (!drawerId) return
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') setDrawerId(null)
@@ -358,11 +451,13 @@ export function LojistasPageClient() {
       const data = (await res.json()) as {
         ok?: boolean
         metrics?: Metrics
+        charts?: ChartsPayload
         lojistas?: Record<string, unknown>[]
         error?: string
       }
       if (data.ok && data.metrics && data.lojistas) {
         setMetrics(data.metrics)
+        setCharts(data.charts ?? null)
         setRows(data.lojistas.map((r) => normalizeLojista(r)))
       }
       if (!silent) setLoading(false)
@@ -373,6 +468,65 @@ export function LojistasPageClient() {
   useEffect(() => {
     void load()
   }, [load])
+
+  useEffect(() => {
+    void loadNotifications()
+  }, [loadNotifications])
+
+  const refreshFromStoresRealtime = useCallback(async () => {
+    await loadNotifications()
+    await load(true)
+  }, [load, loadNotifications])
+
+  useEffect(() => {
+    const supabase = createClient()
+    const channel = supabase
+      .channel('admin-notifications')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'stores' },
+        () => {
+          void refreshFromStoresRealtime()
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'stores' },
+        () => {
+          void refreshFromStoresRealtime()
+        }
+      )
+      .subscribe()
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+  }, [refreshFromStoresRealtime])
+
+  async function patchNotifications(body: { markAll?: boolean; ids?: string[] }) {
+    const res = await fetch('/api/admin/notifications', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(body),
+    })
+    const data = (await res.json()) as {
+      ok?: boolean
+      items?: AdminNotif[]
+      unread?: number
+    }
+    if (data.ok && data.items) {
+      setNotifications(data.items)
+      setNotifUnread(typeof data.unread === 'number' ? data.unread : 0)
+    }
+  }
+
+  async function onSelectNotification(n: AdminNotif) {
+    if (!n.lida) {
+      await patchNotifications({ ids: [n.id] })
+    }
+    if (n.store_id) setDrawerId(n.store_id)
+    setNotifOpen(false)
+  }
 
   const refreshDrawerDetail = useCallback(async () => {
     if (!drawerId) return
@@ -632,6 +786,9 @@ export function LojistasPageClient() {
     ? moneyBr.format(metrics.mrr)
     : '—'
 
+  const badgeUnread =
+    notifUnread > 99 ? '99+' : String(notifUnread)
+
   return (
     <div className="relative mx-auto max-w-[1400px]">
       {toast ? (
@@ -651,74 +808,233 @@ export function LojistasPageClient() {
         </div>
       ) : null}
 
-      <h1 className="text-2xl font-bold tracking-tight text-[#1a1614]">Lojistas</h1>
-      <p className="mt-1 text-sm text-[#6b7280]">
-        Gerir planos, estados e acessos manualmente.
-      </p>
-
-      <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        {metrics ? (
-          <>
-            <div className="rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-sm">
-              <p className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
-                Total de lojistas
-              </p>
-              <p className="mt-2 text-2xl font-bold tabular-nums text-[#1a1614]">
-                {metrics.total}
-              </p>
-            </div>
-            <div className="rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-sm">
-              <p className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
-                Ativos
-              </p>
-              <p className="mt-2 text-2xl font-bold tabular-nums text-[var(--dash-success)]">
-                {metrics.ativos}
-              </p>
-            </div>
-            <div className="rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-sm">
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
-                  Pendentes
-                </p>
-                {metrics.pendentes > 0 ? (
-                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900 ring-1 ring-amber-200/80">
-                    {metrics.pendentes}
-                  </span>
+      {/* Bloco 1 — header + notificações */}
+      <header className="flex flex-col gap-4 rounded-2xl border border-[var(--card-border)] bg-white p-4 shadow-sm sm:flex-row sm:items-start sm:justify-between sm:p-5">
+        <div>
+          <h1 className="text-xl font-bold tracking-tight text-[#1a1614] sm:text-2xl">
+            Vyria Admin
+          </h1>
+          <p className="mt-0.5 text-sm text-[#6b7280]">Gestão de lojistas</p>
+        </div>
+        <div className="relative shrink-0 self-end sm:self-start" ref={notifWrapRef}>
+          <button
+            type="button"
+            onClick={() => setNotifOpen((o) => !o)}
+            className="relative inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[var(--card-border)] bg-[#fafafa] text-[#374151] shadow-sm transition hover:bg-white"
+            aria-expanded={notifOpen}
+            aria-haspopup="true"
+            aria-label="Notificações"
+          >
+            <IconBell className="h-5 w-5" />
+            {notifUnread > 0 ? (
+              <span className="absolute -right-1 -top-1 flex h-[1.125rem] min-w-[1.125rem] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white ring-2 ring-white">
+                {badgeUnread}
+              </span>
+            ) : null}
+          </button>
+          {notifOpen ? (
+            <div
+              className="absolute right-0 z-50 mt-2 w-[min(100vw-1.5rem,22rem)] overflow-hidden rounded-2xl border border-[var(--card-border)] bg-white shadow-xl"
+              role="menu"
+            >
+              <div className="flex items-center justify-between border-b border-[var(--card-border)] px-3 py-2">
+                <span className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
+                  Recentes
+                </span>
+                {notifUnread > 0 ? (
+                  <button
+                    type="button"
+                    className="text-xs font-semibold text-[var(--dash-primary)] hover:underline"
+                    onClick={() => void patchNotifications({ markAll: true })}
+                  >
+                    Marcar todas lidas
+                  </button>
                 ) : null}
               </div>
-              <p className="mt-2 text-2xl font-bold tabular-nums text-amber-800">
-                {metrics.pendentes}
-              </p>
-            </div>
-            <div className="rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-sm">
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
-                  Bloqueados / Cancelados
-                </p>
-                {metrics.bloqueadosCancelados > 0 ? (
-                  <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-900 ring-1 ring-red-200/80">
-                    {metrics.bloqueadosCancelados}
-                  </span>
-                ) : null}
+              <div className="max-h-[min(60vh,22rem)] overflow-y-auto">
+                {notifications.length === 0 ? (
+                  <p className="px-4 py-6 text-center text-sm text-[#9ca3af]">
+                    Sem notificações recentes. Eventos de lojas (cadastro, plano,
+                    cancelamento) aparecem aqui quando a base de dados estiver
+                    configurada para as gravar.
+                  </p>
+                ) : (
+                  <ul className="divide-y divide-[var(--card-border)]">
+                    {notifications.map((n) => (
+                      <li key={n.id}>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => void onSelectNotification(n)}
+                          className={`flex w-full flex-col gap-0.5 px-3 py-2.5 text-left text-sm transition hover:bg-[#f9fafb] ${
+                            n.lida ? 'text-[#6b7280]' : 'bg-sky-50/40 font-medium text-[#1a1614]'
+                          }`}
+                        >
+                          <span className="leading-snug">{n.mensagem}</span>
+                          <span className="text-[10px] tabular-nums text-[#9ca3af]">
+                            {fmtDateTime(n.criado_em)}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
-              <p className="mt-2 text-2xl font-bold tabular-nums text-[#374151]">
-                {metrics.bloqueadosCancelados}
-              </p>
             </div>
-            <div className="rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-sm sm:col-span-2 xl:col-span-1">
-              <p className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
-                MRR estimado
-              </p>
-              <p className="mt-2 text-2xl font-bold tabular-nums text-[#1a1614]">{mrrFmt}</p>
-              <p className="mt-1 text-[11px] text-[#9ca3af]">Soma dos planos ativos</p>
-            </div>
-          </>
-        ) : (
-          <p className="text-sm text-[#6b7280] sm:col-span-2">A carregar métricas…</p>
-        )}
-      </div>
+          ) : null}
+        </div>
+      </header>
 
-      <div className="mt-6 flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between">
+      {/* Bloco 2 — métricas + gráficos */}
+      <section className="mt-6 space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+          {metrics ? (
+            <>
+              <div className="rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
+                  Total de lojistas
+                </p>
+                <p className="mt-2 text-2xl font-bold tabular-nums text-[#1a1614]">
+                  {metrics.total}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
+                  Ativos
+                </p>
+                <p className="mt-2 text-2xl font-bold tabular-nums text-[var(--dash-success)]">
+                  {metrics.ativos}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-sm">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
+                    Pendentes
+                  </p>
+                  {metrics.pendentes > 0 ? (
+                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900 ring-1 ring-amber-200/80">
+                      {metrics.pendentes}
+                    </span>
+                  ) : null}
+                </div>
+                <p className="mt-2 text-2xl font-bold tabular-nums text-amber-800">
+                  {metrics.pendentes}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-sm">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
+                    Bloqueados / Cancelados
+                  </p>
+                  {metrics.bloqueadosCancelados > 0 ? (
+                    <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-900 ring-1 ring-red-200/80">
+                      {metrics.bloqueadosCancelados}
+                    </span>
+                  ) : null}
+                </div>
+                <p className="mt-2 text-2xl font-bold tabular-nums text-[#374151]">
+                  {metrics.bloqueadosCancelados}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-sm sm:col-span-2 xl:col-span-1">
+                <p className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
+                  MRR estimado
+                </p>
+                <p className="mt-2 text-2xl font-bold tabular-nums text-[#1a1614]">{mrrFmt}</p>
+                <p className="mt-1 text-[11px] text-[#9ca3af]">Soma dos planos ativos</p>
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-[#6b7280] sm:col-span-2">A carregar métricas…</p>
+          )}
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="rounded-2xl border border-[var(--card-border)] bg-white p-4 shadow-sm sm:p-5">
+            <h2 className="text-sm font-bold text-[#1a1614]">Novos cadastros (14 dias)</h2>
+            <p className="mt-0.5 text-xs text-[#6b7280]">Por dia de criação da loja</p>
+            <div className="mt-4 h-[220px] w-full min-w-0">
+              {charts && charts.cadastros14d.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart
+                    data={charts.cadastros14d}
+                    margin={{ left: 0, right: 8, top: 8, bottom: 0 }}
+                  >
+                    <defs>
+                      <linearGradient id="adminCadastroFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="var(--dash-primary)" stopOpacity={0.35} />
+                        <stop offset="100%" stopColor="var(--dash-primary)" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis
+                      dataKey="data"
+                      tick={{ fontSize: 9, fill: '#6b7280' }}
+                      tickFormatter={fmtChartDay}
+                      interval="preserveStartEnd"
+                    />
+                    <YAxis allowDecimals={false} width={28} tick={{ fontSize: 10, fill: '#6b7280' }} />
+                    <Tooltip
+                      formatter={(v) => [String(v), 'Novos']}
+                      labelFormatter={(l) => (typeof l === 'string' ? fmtDate(l) : String(l))}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="count"
+                      name="Cadastros"
+                      stroke="var(--dash-primary)"
+                      strokeWidth={2}
+                      fill="url(#adminCadastroFill)"
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : (
+                <p className="flex h-full items-center justify-center text-sm text-[#9ca3af]">
+                  Sem dados de gráfico.
+                </p>
+              )}
+            </div>
+          </div>
+          <div className="rounded-2xl border border-[var(--card-border)] bg-white p-4 shadow-sm sm:p-5">
+            <h2 className="text-sm font-bold text-[#1a1614]">Lojistas por estado</h2>
+            <p className="mt-0.5 text-xs text-[#6b7280]">Distribuição global (todos os filtros)</p>
+            <div className="mt-4 h-[220px] w-full min-w-0">
+              {charts && charts.statusDistrib.some((s) => s.value > 0) ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={charts.statusDistrib}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={48}
+                      outerRadius={78}
+                      paddingAngle={2}
+                    >
+                      {charts.statusDistrib.map((entry) => (
+                        <Cell
+                          key={entry.name}
+                          fill={STATUS_CHART_COLORS[entry.name] ?? '#94a3b8'}
+                        />
+                      ))}
+                    </Pie>
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <Tooltip formatter={(v) => [v, 'Lojistas']} />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <p className="flex h-full items-center justify-center text-sm text-[#9ca3af]">
+                  Sem dados.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Bloco 3 — tabela */}
+      <div className="mt-8 flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between">
         <div className="flex flex-wrap gap-2">
           {filtros.map((f) => {
             const urgentBadge =

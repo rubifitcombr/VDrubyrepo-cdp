@@ -12,9 +12,6 @@ export type Feature =
   | 'subscription'
   | 'orders'
   | 'pdv'
-  | 'finance'
-  /** Financeiro completo (vs. básico no Start) — Growth+ */
-  | 'finance_complete'
   | 'promotions'
   | 'reports'
   | 'reports_advanced'
@@ -35,10 +32,8 @@ const PLAN_FEATURES: Record<Plan, Record<Feature, boolean>> = {
     subscription: true,
     orders: false,
     pdv: false,
-    finance: true,
-    finance_complete: false,
     promotions: false,
-    reports: false,
+    reports: true,
     reports_advanced: false,
     settings: true,
     appearance: false,
@@ -55,8 +50,6 @@ const PLAN_FEATURES: Record<Plan, Record<Feature, boolean>> = {
     subscription: true,
     orders: true,
     pdv: true,
-    finance: true,
-    finance_complete: true,
     promotions: true,
     reports: true,
     reports_advanced: false,
@@ -75,8 +68,6 @@ const PLAN_FEATURES: Record<Plan, Record<Feature, boolean>> = {
     subscription: true,
     orders: true,
     pdv: true,
-    finance: true,
-    finance_complete: true,
     promotions: true,
     reports: true,
     reports_advanced: true,
@@ -163,9 +154,7 @@ export type MinPlanForFeature = 'GROWTH' | 'PRO'
 
 const FEATURE_MIN_PLAN: Partial<Record<Feature, MinPlanForFeature>> = {
   orders: 'GROWTH',
-  finance_complete: 'GROWTH',
   promotions: 'GROWTH',
-  reports: 'GROWTH',
   pdv: 'GROWTH',
   automations: 'GROWTH',
   appearance: 'GROWTH',

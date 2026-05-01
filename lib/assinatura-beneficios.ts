@@ -10,7 +10,7 @@ export const BENEFICIOS_POR_PLANO: Record<PlanoSlug, string[]> = {
   start: [
     'Dashboard e métricas básicas',
     'Cardápio de produtos',
-    'Financeiro básico',
+    'Relatórios de vendas (essencial)',
     'Configurações da loja',
     'Link público da loja',
   ],
@@ -19,7 +19,6 @@ export const BENEFICIOS_POR_PLANO: Record<PlanoSlug, string[]> = {
     'Pedidos em tempo real',
     'Promoções e cupons',
     'Relatórios de vendas',
-    'Financeiro completo',
     'Aparência personalizada (logo, cor, banner)',
     'Importar cardápio por foto (IA)',
   ],

@@ -128,6 +128,53 @@ export function isUrgente(row: LojistaListRow): boolean {
   return days <= 3
 }
 
+export type CadastroPorDia = { data: string; count: number }
+export type StatusSlice = { name: string; value: number }
+
+function isoDateLocal(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/** Contagem de novos cadastros por dia (últimos 14 dias, timezone local do servidor). */
+export function buildCadastros14dSeries(
+  stores: Record<string, unknown>[]
+): CadastroPorDia[] {
+  const end = new Date()
+  end.setHours(0, 0, 0, 0)
+  const series: CadastroPorDia[] = []
+  for (let i = 13; i >= 0; i--) {
+    const d = new Date(end)
+    d.setDate(d.getDate() - i)
+    series.push({ data: isoDateLocal(d), count: 0 })
+  }
+  const idx = new Map(series.map((x) => [x.data, x]))
+  for (const s of stores) {
+    const ca = s.created_at
+    if (typeof ca !== 'string') continue
+    const day = ca.slice(0, 10)
+    const slot = idx.get(day)
+    if (slot) slot.count++
+  }
+  return series
+}
+
+export function buildStatusDistribution(rows: LojistaListRow[]): StatusSlice[] {
+  const counts: Record<string, number> = {}
+  for (const r of rows) {
+    counts[r.status] = (counts[r.status] ?? 0) + 1
+  }
+  const labels: Record<string, string> = {
+    pendente: 'Pendente',
+    ativo: 'Ativo',
+    bloqueado: 'Bloqueado',
+    cancelado: 'Cancelado',
+  }
+  return Object.entries(counts).map(([k, value]) => ({
+    name: labels[k] ?? k,
+    value,
+  }))
+}
+
 export async function fetchLojistasForAdmin(
   svc: SupabaseClient,
   params: { filtro: string; q: string }
@@ -139,6 +186,10 @@ export async function fetchLojistasForAdmin(
     bloqueadosCancelados: number
     mrr: number
     urgentesCount: number
+  }
+  charts: {
+    cadastros14d: CadastroPorDia[]
+    statusDistrib: StatusSlice[]
   }
   lojistas: LojistaListRow[]
 }> {
@@ -167,6 +218,11 @@ export async function fetchLojistasForAdmin(
   const allRows = sortLojistas(
     list.map((s) => rowToLojista(s, emailMap))
   )
+
+  const charts = {
+    cadastros14d: buildCadastros14dSeries(list),
+    statusDistrib: buildStatusDistribution(allRows),
+  }
 
   let metrics = {
     total: allRows.length,
@@ -212,7 +268,7 @@ export async function fetchLojistasForAdmin(
       break
   }
 
-  return { metrics, lojistas: filtered }
+  return { metrics, charts, lojistas: filtered }
 }
 
 async function fetchFaturasForStore(

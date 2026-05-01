@@ -157,6 +157,7 @@ export function WaiterClient({
   const [newTableName, setNewTableName] = useState('')
   const [newAmbienteName, setNewAmbienteName] = useState('')
   const [savingTables, setSavingTables] = useState(false)
+  const [tablesSaveError, setTablesSaveError] = useState<string | null>(null)
   const [avulsaOpen, setAvulsaOpen] = useState(false)
   const [avulsaName, setAvulsaName] = useState('')
   const [confirmCloseOpen, setConfirmCloseOpen] = useState(false)
@@ -488,6 +489,7 @@ export function WaiterClient({
 
   async function saveTableConfig() {
     setSavingTables(true)
+    setTablesSaveError(null)
     try {
       const res = await dashboardFetch('/api/waiter/tables', {
         method: 'PUT',
@@ -503,11 +505,13 @@ export function WaiterClient({
       })
       const json = (await res.json().catch(() => ({}))) as { error?: string; tables?: StoreTableDTO[] }
       if (!res.ok) {
-        setError(json.error || 'Erro ao guardar mesas.')
+        setTablesSaveError(json.error || 'Erro ao guardar mesas.')
         return
       }
       setTables(json.tables ?? [])
       setConfigOpen(false)
+      setTablesSaveError(null)
+      setError(null)
       setSuccess('Mesas atualizadas.')
       router.refresh()
     } finally {
@@ -762,6 +766,8 @@ export function WaiterClient({
                 <button
                   type="button"
                   onClick={() => {
+                    setTablesSaveError(null)
+                    setSuccess(null)
                     setConfigOpen(true)
                     setConfigAmbTab(sectors[0] || 'Salão')
                   }}
@@ -1009,9 +1015,19 @@ export function WaiterClient({
       {/* Modal configurar mesas */}
       {configOpen ? (
         <div className="fixed inset-0 z-[90] flex items-center justify-center p-4" role="dialog">
-          <button type="button" className="absolute inset-0 bg-black/45" onClick={() => setConfigOpen(false)} />
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/45"
+            onClick={() => {
+              setConfigOpen(false)
+              setTablesSaveError(null)
+            }}
+          />
           <div className="relative z-10 max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-xl">
             <h3 className="text-lg font-bold text-[#1a1614]">Configurar mesas</h3>
+            {tablesSaveError ? (
+              <p className="mt-2 rounded-lg bg-red-50 px-2 py-1.5 text-xs text-red-800">{tablesSaveError}</p>
+            ) : null}
             <div className="mt-3 flex flex-wrap gap-2 border-b border-[var(--card-border)] pb-2">
               {ambientesInConfig.map((a) => (
                 <button
@@ -1461,7 +1477,9 @@ function OrderPanelContent({
             )}
           </>
         )}
-        {error ? <p className="mt-2 rounded-lg bg-red-50 px-2 py-1.5 text-xs text-red-800">{error}</p> : null}
+        {error && !showEmpty ? (
+          <p className="mt-2 rounded-lg bg-red-50 px-2 py-1.5 text-xs text-red-800">{error}</p>
+        ) : null}
         {success ? <p className="mt-2 rounded-lg bg-emerald-50 px-2 py-1.5 text-xs text-emerald-800">{success}</p> : null}
       </div>
 

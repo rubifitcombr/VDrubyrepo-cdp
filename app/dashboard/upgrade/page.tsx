@@ -2,10 +2,6 @@ import Link from 'next/link'
 
 const FEATURE_LABEL: Record<string, { title: string; minPlan: string }> = {
   orders: { title: 'Pedidos em tempo real', minPlan: 'Growth' },
-  finance_complete: {
-    title: 'Financeiro completo (comparativos e tendências)',
-    minPlan: 'Growth',
-  },
   pdv: { title: 'PDV / balcão presencial', minPlan: 'Growth' },
   promotions: { title: 'Promoções (cupons e campanhas)', minPlan: 'Growth' },
   reports: { title: 'Relatórios de vendas', minPlan: 'Growth' },
@@ -64,7 +60,7 @@ export default async function UpgradePage({
             </p>
             <ul className="mt-3 space-y-1 text-sm text-vyria-navy-muted">
               <li>Dashboard, produtos, configs</li>
-              <li>Financeiro básico</li>
+              <li>Relatórios de vendas (essencial)</li>
             </ul>
           </div>
 
@@ -77,8 +73,7 @@ export default async function UpgradePage({
             </p>
             <ul className="mt-3 space-y-1 text-sm text-vyria-navy-muted">
               <li>Pedidos em tempo real</li>
-              <li>Promoções, relatórios e PDV</li>
-              <li>Financeiro completo</li>
+              <li>Promoções, PDV e relatórios extra</li>
             </ul>
           </div>
 

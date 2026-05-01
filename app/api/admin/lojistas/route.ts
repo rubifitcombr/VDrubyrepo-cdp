@@ -11,11 +11,11 @@ export async function GET(req: NextRequest) {
   const q = searchParams.get('q') ?? ''
 
   try {
-    const { metrics, lojistas } = await fetchLojistasForAdmin(ctx.svc, {
+    const { metrics, charts, lojistas } = await fetchLojistasForAdmin(ctx.svc, {
       filtro,
       q,
     })
-    return NextResponse.json({ ok: true, metrics, lojistas })
+    return NextResponse.json({ ok: true, metrics, charts, lojistas })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Erro ao listar'
     return NextResponse.json({ error: msg }, { status: 500 })

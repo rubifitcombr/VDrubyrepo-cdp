@@ -22,7 +22,6 @@ import {
   IconChartBars,
   IconClipboard,
   IconCog,
-  IconCube,
   IconCurrency,
   IconExternal,
   IconHome,
@@ -50,12 +49,6 @@ const nav: Array<{
     menuKey: 'produtos',
   },
   {
-    href: '/dashboard/inventory',
-    label: 'Estoque',
-    icon: IconCube,
-    menuKey: 'estoque',
-  },
-  {
     href: '/dashboard/orders',
     label: 'Pedidos',
     icon: IconCart,
@@ -78,12 +71,6 @@ const nav: Array<{
     label: 'KDS',
     icon: IconKds,
     menuKey: 'kds',
-  },
-  {
-    href: '/dashboard/finance',
-    label: 'Financeiro',
-    icon: IconCurrency,
-    menuKey: 'financeiro',
   },
   {
     href: '/dashboard/caixa',
@@ -202,11 +189,14 @@ function DashboardNavLinks({
 
   return (
     <nav className={navClass} aria-label="Navegação do painel">
-      {items.map(({ href, label, icon: Icon, quiet }) => {
+      {items.map(({ href, label, icon: Icon, quiet, menuKey }) => {
         const active =
           href === '/dashboard'
             ? pathname === '/dashboard'
-            : pathname.startsWith(href)
+            : menuKey === 'produtos'
+              ? pathname.startsWith('/dashboard/menu') ||
+                pathname.startsWith('/dashboard/inventory')
+              : pathname.startsWith(href)
         const quietInactive = !!quiet && !active
 
         const linkSidebar =

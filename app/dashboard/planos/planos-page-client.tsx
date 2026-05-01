@@ -23,7 +23,7 @@ const FEATURE_LINES: Record<Plan, string[]> = {
   START: [
     'Dashboard',
     'Produtos',
-    'Financeiro básico',
+    'Relatórios de vendas (essencial)',
     'Configurações',
   ],
   GROWTH: [

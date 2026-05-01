@@ -26,7 +26,7 @@ export type CaixaMovimentacaoDTO = {
   id: string
   store_id: string
   turno_id: string
-  tipo: 'suprimento' | 'sangria'
+  tipo: 'suprimento' | 'sangria' | 'acerto_entregador'
   valor: number
   motivo: string | null
   operador: string | null

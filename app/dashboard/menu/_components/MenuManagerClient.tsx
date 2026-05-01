@@ -15,6 +15,7 @@ import type { MenuProductRow } from '@/lib/menu-product'
 import type { Plan } from '@/lib/plan'
 import {
   hasAiMenuPhotoImport,
+  hasFeature,
   hasMarketingAiDescription,
   hasProMarketingAi,
   parsePlan,
@@ -855,12 +856,14 @@ export function MenuManagerClient({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-          <Link
-            href="/dashboard/inventory"
-            className="rounded-xl border border-[var(--card-border)] bg-white px-4 py-2.5 text-sm font-semibold text-[#374151] shadow-sm transition-colors hover:bg-[#f9fafb]"
-          >
-            Gerenciar estoque
-          </Link>
+          {hasFeature(plan, 'inventory') ? (
+            <Link
+              href="/dashboard/inventory"
+              className="rounded-xl border border-[var(--card-border)] bg-white px-4 py-2.5 text-sm font-semibold text-[#374151] shadow-sm transition-colors hover:bg-[#f9fafb]"
+            >
+              Gerenciar estoque
+            </Link>
+          ) : null}
           {hasAiMenuPhotoImport(effectivePlan) ? (
             <>
               <input

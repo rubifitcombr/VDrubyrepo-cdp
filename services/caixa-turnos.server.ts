@@ -30,7 +30,7 @@ export type CaixaMovimentacaoRow = {
   id: string
   store_id: string
   turno_id: string
-  tipo: 'suprimento' | 'sangria'
+  tipo: 'suprimento' | 'sangria' | 'acerto_entregador'
   valor: number
   motivo: string | null
   operador: string | null
@@ -76,13 +76,20 @@ function mapTurno(row: Record<string, unknown>): CaixaTurnoRow {
   }
 }
 
+function mapMovTipo(raw: string): CaixaMovimentacaoRow['tipo'] {
+  const t = raw.trim().toLowerCase()
+  if (t === 'sangria') return 'sangria'
+  if (t === 'acerto_entregador') return 'acerto_entregador'
+  return 'suprimento'
+}
+
 function mapMov(row: Record<string, unknown>): CaixaMovimentacaoRow {
   const tipo = String(row.tipo ?? '')
   return {
     id: String(row.id ?? ''),
     store_id: String(row.store_id ?? ''),
     turno_id: String(row.turno_id ?? ''),
-    tipo: tipo === 'sangria' ? 'sangria' : 'suprimento',
+    tipo: mapMovTipo(tipo),
     valor: num(row.valor),
     motivo: typeof row.motivo === 'string' ? row.motivo : null,
     operador: typeof row.operador === 'string' ? row.operador : null,
@@ -235,8 +242,9 @@ export async function computeSaldoDinheiroDisponivel(
   let sup = 0
   let san = 0
   for (const m of movs) {
+    if (m.tipo === 'acerto_entregador') continue
     if (m.tipo === 'suprimento') sup += m.valor
-    else san += m.valor
+    else if (m.tipo === 'sangria') san += m.valor
   }
 
   return round2(turno.fundo_inicial + cashSales + sup - san)

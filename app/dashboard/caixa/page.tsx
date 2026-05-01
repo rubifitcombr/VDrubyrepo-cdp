@@ -9,6 +9,9 @@ import {
 } from '@/services/caixa-turnos.server'
 import type { CaixaMovimentacaoDTO, CaixaTurnoDTO } from '@/lib/caixa-types'
 import { getStoreByUser } from '@/services/store.server'
+import { listEntregadoresForStore } from '@/services/store-entregadores.server'
+import { listEntregasForTurno } from '@/services/entregas.server'
+import type { EntregaDTO, StoreEntregadorDTO } from '@/lib/entregas-types'
 import { CashierClient } from './_components/CashierClient'
 
 export default async function CaixaPage() {
@@ -65,6 +68,21 @@ export default async function CaixaPage() {
   ]
   const movimentacoesPorTurno = await getMovimentacoesForTurnos(supabase, turnoIds)
 
+  let entregadoresInicial: StoreEntregadorDTO[] = []
+  let entregasTurnoInicial: EntregaDTO[] = []
+  try {
+    entregadoresInicial = await listEntregadoresForStore(supabase, storeId)
+  } catch {
+    entregadoresInicial = []
+  }
+  if (turnoAberto?.id) {
+    try {
+      entregasTurnoInicial = await listEntregasForTurno(supabase, storeId, turnoAberto.id)
+    } catch {
+      entregasTurnoInicial = []
+    }
+  }
+
   const operatorLabel =
     (typeof user.user_metadata?.name === 'string' && user.user_metadata.name.trim()) ||
     user.email ||
@@ -77,6 +95,8 @@ export default async function CaixaPage() {
       initialTurno={turnoAberto as CaixaTurnoDTO | null}
       initialHistorico={historico as CaixaTurnoDTO[]}
       initialMovimentacoesPorTurno={movimentacoesPorTurno as Record<string, CaixaMovimentacaoDTO[]>}
+      initialEntregadores={entregadoresInicial}
+      initialEntregasTurno={entregasTurnoInicial}
     />
   )
 }

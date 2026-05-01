@@ -230,6 +230,7 @@ export async function POST(req: NextRequest) {
         customer_name: customerName,
         customer_phone: customerPhone,
         delivery_address: normalizedDeliveryAddress,
+        delivery_fee: fulfillment === 'pickup' ? 0 : deliveryCharge,
         payment_method: paymentMethod,
         notes,
         total,

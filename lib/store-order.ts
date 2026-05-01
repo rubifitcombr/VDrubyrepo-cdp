@@ -6,6 +6,8 @@ export type StoreOrderRow = {
   created_at: string
   source?: string | null
   delivery_address?: string | null
+  /** Taxa de entrega cobrada no pedido (checkout), quando existir coluna. */
+  delivery_fee?: number | string | null
   payment_method?: string | null
   notes?: string | null
   customer_phone?: string | null
@@ -15,7 +17,7 @@ export type StoreOrderRow = {
 }
 
 export const ORDER_SELECT =
-  'id, customer_name, total, status, created_at, source, delivery_address, payment_method, notes, customer_phone, items_summary, caixa_turno_id'
+  'id, customer_name, total, status, created_at, source, delivery_address, delivery_fee, payment_method, notes, customer_phone, items_summary, caixa_turno_id'
 
 /** Mapeia linha Supabase / payload Realtime para o tipo do painel. */
 export function mapStoreOrderRow(row: Record<string, unknown>): StoreOrderRow {
@@ -39,6 +41,12 @@ export function mapStoreOrderRow(row: Record<string, unknown>): StoreOrderRow {
       typeof row.delivery_address === 'string'
         ? row.delivery_address
         : null,
+    delivery_fee:
+      row.delivery_fee == null
+        ? null
+        : typeof row.delivery_fee === 'number'
+          ? row.delivery_fee
+          : Number(String(row.delivery_fee).replace(',', '.')) || null,
     payment_method:
       typeof row.payment_method === 'string' ? row.payment_method : null,
     notes: typeof row.notes === 'string' ? row.notes : null,

@@ -45,9 +45,19 @@ export async function POST(request: Request) {
   }
 
   const tipoRaw = String(body.tipo ?? '').trim().toLowerCase()
-  const tipo = tipoRaw === 'sangria' ? 'sangria' : tipoRaw === 'suprimento' ? 'suprimento' : null
+  const tipo =
+    tipoRaw === 'sangria'
+      ? 'sangria'
+      : tipoRaw === 'suprimento'
+        ? 'suprimento'
+        : tipoRaw === 'acerto_entregador'
+          ? 'acerto_entregador'
+          : null
   if (!tipo) {
-    return NextResponse.json({ error: 'Tipo inválido (use suprimento ou sangria).' }, { status: 400 })
+    return NextResponse.json(
+      { error: 'Tipo inválido (use suprimento, sangria ou acerto_entregador).' },
+      { status: 400 }
+    )
   }
 
   const valor = parseMoney(body.valor)
@@ -84,6 +94,7 @@ export async function POST(request: Request) {
       )
     }
   }
+  /* acerto_entregador: não entra na validação de sangria (valor acordado com entregador). */
 
   const { data, error } = await supabase
     .from('caixa_movimentacoes')

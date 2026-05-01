@@ -14,6 +14,13 @@ type TableInput = {
   active?: boolean
 }
 
+function publicDbError(message: string): string {
+  if (/row-level security|violates row-level security policy/i.test(message)) {
+    return 'Sem permissão para alterar mesas. Aplica as políticas RLS em sql/store_tables.sql no Supabase.'
+  }
+  return message
+}
+
 export async function GET() {
   const user = await getUser()
   if (!user) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 })
@@ -40,7 +47,7 @@ export async function GET() {
     if (/does not exist|relation|schema cache/i.test(error.message)) {
       return NextResponse.json({ tables: [], missingTable: true })
     }
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ error: publicDbError(error.message) }, { status: 500 })
   }
 
   return NextResponse.json({ tables: data ?? [] })
@@ -90,7 +97,7 @@ export async function PUT(request: Request) {
         { status: 503 }
       )
     }
-    return NextResponse.json({ error: delErr.message }, { status: 500 })
+    return NextResponse.json({ error: publicDbError(delErr.message) }, { status: 500 })
   }
 
   if (cleaned.length === 0) {
@@ -111,7 +118,10 @@ export async function PUT(request: Request) {
     .select('id, store_id, name, ambiente, active, sort_order')
 
   if (insErr) {
-    return NextResponse.json({ error: insErr.message ?? 'Erro ao guardar mesas.' }, { status: 500 })
+    return NextResponse.json(
+      { error: publicDbError(insErr.message ?? 'Erro ao guardar mesas.') },
+      { status: 500 }
+    )
   }
 
   return NextResponse.json({ ok: true, tables: inserted ?? [] })

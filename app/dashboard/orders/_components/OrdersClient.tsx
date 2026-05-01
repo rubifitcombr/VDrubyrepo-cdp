@@ -9,6 +9,8 @@ import {
   type StoreOrderRow,
 } from '@/lib/store-order'
 import { updateOrderStatus } from '@/services/orders'
+import { dashboardFetch } from '@/lib/dashboard-fetch.client'
+import type { StoreEntregadorDTO } from '@/lib/entregas-types'
 
 function playNewOrderBeep() {
   try {
@@ -181,6 +183,29 @@ function paymentKind(
   return null
 }
 
+/** Entrega com endereço (não retirada no balcão / garçom / pickup no site). */
+function isDeliveryFlowOrder(o: StoreOrderRow): boolean {
+  const source = (o.source ?? '').trim().toLowerCase()
+  if (source === 'pdv' || source === 'waiter' || source === 'site_pickup') return false
+  const addr = (o.delivery_address ?? '').trim()
+  if (!addr) return false
+  if (/^retirada/i.test(addr)) return false
+  return true
+}
+
+function deliveryFeeNumber(o: StoreOrderRow): number {
+  const v = o.delivery_fee
+  if (v == null) return 0
+  const n = typeof v === 'number' ? v : Number(String(v).replace(',', '.'))
+  return Number.isFinite(n) ? Math.round(n * 100) / 100 : 0
+}
+
+function parseMoneyInputLocal(raw: string): number {
+  const n = Number(raw.replace(',', '.').trim())
+  if (Number.isNaN(n) || n < 0) return 0
+  return Math.round(n * 100) / 100
+}
+
 function relativeTimePt(iso: string): string {
   const d = new Date(iso)
   const ms = Date.now() - d.getTime()
@@ -282,6 +307,21 @@ export function OrdersClient({
   const [waNotice, setWaNotice] = useState<string | null>(null)
   const waNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  const [deliveryModal, setDeliveryModal] = useState<
+    null | { mode: 'on_deliver' | 'late'; order: StoreOrderRow }
+  >(null)
+  const [entregadoresOpts, setEntregadoresOpts] = useState<StoreEntregadorDTO[]>([])
+  const [deliveryEntLoading, setDeliveryEntLoading] = useState(false)
+  const [delSel, setDelSel] = useState('')
+  const [delNomeAvulso, setDelNomeAvulso] = useState('')
+  const [delValorCorrida, setDelValorCorrida] = useState('')
+  const [delClientePagou, setDelClientePagou] = useState(false)
+  const [delValorRecebido, setDelValorRecebido] = useState('')
+  const [delForma, setDelForma] = useState<'dinheiro' | 'pix' | 'cartao'>('dinheiro')
+  const [delObs, setDelObs] = useState('')
+  const [delSubmitting, setDelSubmitting] = useState(false)
+  const [orderIdsComEntrega, setOrderIdsComEntrega] = useState<Set<string>>(new Set())
+
   useEffect(() => {
     return () => {
       if (waNoticeTimerRef.current) {
@@ -345,6 +385,55 @@ export function OrdersClient({
     }
   }, [storeId])
 
+  useEffect(() => {
+    if (tab !== 'delivered') return
+    let cancelled = false
+    void (async () => {
+      const res = await dashboardFetch('/api/entregas?period=7d')
+      const json = (await res.json().catch(() => ({}))) as {
+        entregas?: { order_id: string }[]
+      }
+      if (cancelled || !Array.isArray(json.entregas)) return
+      setOrderIdsComEntrega(new Set(json.entregas.map((e) => e.order_id)))
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [tab, orders])
+
+  useEffect(() => {
+    if (!deliveryModal) return
+    const o = deliveryModal.order
+    setDelSel('')
+    setDelNomeAvulso('')
+    setDelValorCorrida('')
+    setDelClientePagou(false)
+    const fee = deliveryFeeNumber(o)
+    setDelValorRecebido(fee > 0 ? String(fee).replace('.', ',') : '')
+    setDelForma('dinheiro')
+    setDelObs('')
+    setDeliveryEntLoading(true)
+    void (async () => {
+      if (deliveryModal.mode === 'late') {
+        const chk = await dashboardFetch(`/api/entregas?orderId=${encodeURIComponent(o.id)}`)
+        const cj = (await chk.json().catch(() => ({}))) as { entrega?: unknown }
+        if (cj.entrega) {
+          alert('Este pedido já tem entrega registada.')
+          setDeliveryModal(null)
+          setDeliveryEntLoading(false)
+          return
+        }
+      }
+      const res = await dashboardFetch('/api/store/entregadores')
+      const json = (await res.json().catch(() => ({}))) as {
+        entregadores?: StoreEntregadorDTO[]
+      }
+      const list = (json.entregadores ?? []).filter((e) => e.ativo)
+      setEntregadoresOpts(list)
+      setDeliveryEntLoading(false)
+    })()
+  }, [deliveryModal])
+
   const displayNumberById = useMemo(() => {
     const sorted = [...orders].sort(
       (a, b) =>
@@ -402,6 +491,114 @@ export function OrdersClient({
     }
     if (deliveryNotified) {
       flashWaNotice('Aviso de entrega enviado ao cliente por WhatsApp.')
+    }
+  }
+
+  function onMarkDelivered(o: StoreOrderRow) {
+    if (o.status !== 'confirmed') return
+    if (isDeliveryFlowOrder(o)) {
+      setDeliveryModal({ mode: 'on_deliver', order: o })
+      return
+    }
+    void patchStatus(o.id, 'delivered')
+  }
+
+  async function submitDeliveryModal(skip: boolean) {
+    if (!deliveryModal) return
+    const o = deliveryModal.order
+    setDelSubmitting(true)
+    try {
+      if (skip) {
+        const res = await dashboardFetch('/api/orders/register-delivery', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderId: o.id, skip: true }),
+        })
+        const json = (await res.json().catch(() => ({}))) as { error?: string }
+        if (!res.ok) {
+          alert(json.error || 'Não foi possível marcar como entregue.')
+          return
+        }
+        setOrders((prev) => prev.map((x) => (x.id === o.id ? { ...x, status: 'delivered' } : x)))
+        setDeliveryModal(null)
+        setTab('delivered')
+        return
+      }
+
+      const avulso = delSel === '__avulso__'
+      const entregadorId =
+        !avulso && delSel.trim() ? delSel.trim() : null
+      const nomeAvulso = avulso ? delNomeAvulso.trim() : ''
+      if (!entregadorId && !nomeAvulso) {
+        alert('Seleciona um entregador ou indica nome avulso.')
+        return
+      }
+      const valorCorrida = parseMoneyInputLocal(delValorCorrida)
+      const clientePagou = delClientePagou
+      const valorRecebido = clientePagou ? parseMoneyInputLocal(delValorRecebido) : 0
+      if (clientePagou && valorRecebido <= 0) {
+        alert('Indica o valor recebido do cliente.')
+        return
+      }
+
+      const body = {
+        orderId: o.id,
+        skip: false,
+        entregadorId,
+        entregadorNomeAvulso: avulso ? nomeAvulso : undefined,
+        valorCorrida,
+        clientePagouTaxa: clientePagou,
+        valorRecebidoCliente: clientePagou ? valorRecebido : 0,
+        formaPagamentoEntrega: clientePagou ? delForma : undefined,
+        observacao: delObs.trim() || undefined,
+      }
+
+      if (deliveryModal.mode === 'on_deliver') {
+        const res = await dashboardFetch('/api/orders/register-delivery', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+        const json = (await res.json().catch(() => ({}))) as {
+          error?: string
+          order?: Record<string, unknown>
+        }
+        if (!res.ok) {
+          alert(json.error || 'Não foi possível confirmar a entrega.')
+          return
+        }
+        if (json.order) {
+          const row = mapStoreOrderRow(json.order)
+          setOrders((prev) => prev.map((x) => (x.id === o.id ? row : x)))
+        } else {
+          setOrders((prev) => prev.map((x) => (x.id === o.id ? { ...x, status: 'delivered' } : x)))
+        }
+      } else {
+        const res = await dashboardFetch('/api/entregas', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orderId: o.id,
+            entregadorId,
+            entregadorNomeAvulso: avulso ? nomeAvulso : undefined,
+            valorCorrida,
+            clientePagouTaxa: clientePagou,
+            valorRecebidoCliente: clientePagou ? valorRecebido : 0,
+            formaPagamentoEntrega: clientePagou ? delForma : undefined,
+            observacao: delObs.trim() || undefined,
+          }),
+        })
+        const json = (await res.json().catch(() => ({}))) as { error?: string }
+        if (!res.ok) {
+          alert(json.error || 'Não foi possível registar a entrega.')
+          return
+        }
+        setOrderIdsComEntrega((prev) => new Set(prev).add(o.id))
+      }
+      setDeliveryModal(null)
+      setTab('delivered')
+    } finally {
+      setDelSubmitting(false)
     }
   }
 
@@ -738,7 +935,7 @@ export function OrdersClient({
                         <button
                           type="button"
                           disabled={busy}
-                          onClick={() => void patchStatus(o.id, 'delivered')}
+                          onClick={() => onMarkDelivered(o)}
                           className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
                         >
                           Marcar entregue
@@ -754,6 +951,18 @@ export function OrdersClient({
                             Avisar envio
                           </a>
                         ) : null}
+                      </div>
+                    ) : null}
+                    {st === 'delivered' && isDeliveryFlowOrder(o) && !orderIdsComEntrega.has(o.id) ? (
+                      <div className="pt-2 sm:hidden">
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => setDeliveryModal({ mode: 'late', order: o })}
+                          className="rounded-lg border border-emerald-600 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-800 disabled:opacity-50"
+                        >
+                          Registar entrega
+                        </button>
                       </div>
                     ) : null}
                   </div>
@@ -833,7 +1042,7 @@ export function OrdersClient({
                           <button
                             type="button"
                             disabled={busy}
-                            onClick={() => void patchStatus(o.id, 'delivered')}
+                            onClick={() => onMarkDelivered(o)}
                             className="w-full rounded-lg bg-emerald-600 py-2 text-sm font-semibold text-white disabled:opacity-50"
                           >
                             Marcar entregue
@@ -849,6 +1058,18 @@ export function OrdersClient({
                               Avisar envio
                             </a>
                           ) : null}
+                        </div>
+                      ) : null}
+                      {st === 'delivered' && isDeliveryFlowOrder(o) && !orderIdsComEntrega.has(o.id) ? (
+                        <div className="hidden w-full flex-col gap-2 sm:flex">
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => setDeliveryModal({ mode: 'late', order: o })}
+                            className="w-full rounded-lg border border-emerald-600 bg-white py-2 text-sm font-semibold text-emerald-800 disabled:opacity-50"
+                          >
+                            Registar entrega
+                          </button>
                         </div>
                       ) : null}
                       {st === 'ready' || st === 'confirmed' ? (
@@ -880,6 +1101,179 @@ export function OrdersClient({
           })}
         </ul>
       )}
+
+      {deliveryModal ? (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4" role="dialog">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/50"
+            aria-label="Fechar"
+            onClick={() => !delSubmitting && setDeliveryModal(null)}
+          />
+          <div className="relative z-10 max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-[var(--card-border)] bg-white p-6 shadow-xl">
+            {(() => {
+              const o = deliveryModal.order
+              const ref = `#${displayNumberById.get(o.id) ?? '—'}`
+              const addr = o.delivery_address?.trim() || '—'
+              const title =
+                deliveryModal.mode === 'late'
+                  ? `Registar entrega — ${ref}`
+                  : `Confirmar entrega — ${ref}`
+              return (
+                <>
+                  <h3 className="text-lg font-bold text-[#1a1614]">{title}</h3>
+                  <p className="mt-1 text-sm text-[#6b7280]">
+                    {(o.customer_name || 'Cliente').trim()} · {addr} · Total{' '}
+                    {money.format(Number(o.total) || 0)}
+                  </p>
+                  {deliveryEntLoading ? (
+                    <p className="mt-4 text-sm text-[#6b7280]">A carregar…</p>
+                  ) : (
+                    <>
+                      <label className="mt-5 block text-xs font-medium text-[#6b7280]">
+                        Entregador
+                        <select
+                          value={delSel}
+                          onChange={(e) => setDelSel(e.target.value)}
+                          className="mt-1 block w-full rounded-xl border border-[var(--card-border)] bg-white px-3 py-2.5 text-sm text-[#1a1614]"
+                        >
+                          <option value="">Selecionar…</option>
+                          {entregadoresOpts.map((e) => (
+                            <option key={e.id} value={e.id}>
+                              {e.nome}
+                              {e.tipo === 'autonomo' ? ' (Autônomo)' : ' (Fixo)'}
+                            </option>
+                          ))}
+                          <option value="__avulso__">+ Adicionar entregador avulso</option>
+                        </select>
+                      </label>
+                      {delSel === '__avulso__' ? (
+                        <label className="mt-3 block text-xs font-medium text-[#6b7280]">
+                          Nome do entregador avulso <span className="text-red-600">*</span>
+                          <input
+                            value={delNomeAvulso}
+                            onChange={(e) => setDelNomeAvulso(e.target.value)}
+                            className="mt-1 block w-full rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm"
+                            placeholder="Nome"
+                          />
+                        </label>
+                      ) : null}
+
+                      <label className="mt-4 block text-xs font-medium text-[#6b7280]">
+                        Valor da corrida (R$)
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={delValorCorrida}
+                          onChange={(e) => setDelValorCorrida(e.target.value)}
+                          placeholder="0,00"
+                          className="mt-1 block w-full rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm"
+                        />
+                        <span className="mt-1 block text-[11px] text-[#9ca3af]">
+                          Quanto o entregador vai receber por essa corrida
+                        </span>
+                      </label>
+
+                      <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-[var(--card-border)] bg-[#fafafa] px-3 py-3">
+                        <span className="text-sm font-medium text-[#374151]">
+                          O cliente pagou a taxa de entrega ao entregador?
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDelClientePagou((v) => {
+                              if (!v) {
+                                const fee = deliveryFeeNumber(o)
+                                setDelValorRecebido(
+                                  fee > 0 ? String(fee).replace('.', ',') : ''
+                                )
+                              }
+                              return !v
+                            })
+                          }}
+                          className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold ${
+                            delClientePagou
+                              ? 'bg-emerald-600 text-white'
+                              : 'bg-white text-[#6b7280] ring-1 ring-[var(--card-border)]'
+                          }`}
+                        >
+                          {delClientePagou ? 'Sim' : 'Não'}
+                        </button>
+                      </div>
+                      {delClientePagou ? (
+                        <div className="mt-3 space-y-3">
+                          <label className="block text-xs font-medium text-[#6b7280]">
+                            Valor recebido do cliente (R$)
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              value={delValorRecebido}
+                              onChange={(e) => setDelValorRecebido(e.target.value)}
+                              className="mt-1 block w-full rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm"
+                            />
+                          </label>
+                          <label className="block text-xs font-medium text-[#6b7280]">
+                            Como pagou?
+                            <select
+                              value={delForma}
+                              onChange={(e) =>
+                                setDelForma(e.target.value as 'dinheiro' | 'pix' | 'cartao')
+                              }
+                              className="mt-1 block w-full rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm"
+                            >
+                              <option value="dinheiro">Dinheiro</option>
+                              <option value="pix">PIX</option>
+                              <option value="cartao">Cartão</option>
+                            </select>
+                          </label>
+                        </div>
+                      ) : null}
+
+                      <label className="mt-4 block text-xs font-medium text-[#6b7280]">
+                        Observação <span className="font-normal text-[#9ca3af]">(opcional)</span>
+                        <input
+                          value={delObs}
+                          onChange={(e) => setDelObs(e.target.value)}
+                          className="mt-1 block w-full rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm"
+                        />
+                      </label>
+
+                      <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                        <button
+                          type="button"
+                          disabled={delSubmitting}
+                          onClick={() => setDeliveryModal(null)}
+                          className="rounded-xl border border-[var(--card-border)] px-4 py-2.5 text-sm font-semibold text-[#374151] disabled:opacity-50"
+                        >
+                          Cancelar
+                        </button>
+                        {deliveryModal.mode === 'on_deliver' ? (
+                          <button
+                            type="button"
+                            disabled={delSubmitting}
+                            onClick={() => void submitDeliveryModal(true)}
+                            className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-950 disabled:opacity-50"
+                          >
+                            Pular por agora
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          disabled={delSubmitting}
+                          onClick={() => void submitDeliveryModal(false)}
+                          className="rounded-xl bg-[var(--dash-primary)] px-4 py-2.5 text-sm font-semibold text-white shadow-sm disabled:opacity-50"
+                        >
+                          {delSubmitting ? 'A guardar…' : 'Confirmar entrega'}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </>
+              )
+            })()}
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

@@ -6,6 +6,8 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { aggregateTurnClosedOrders } from '@/lib/caixa-payments'
 import type { CaixaMovimentacaoDTO, CaixaTurnoDTO } from '@/lib/caixa-types'
 import { dashboardFetch } from '@/lib/dashboard-fetch.client'
+import type { EntregaDTO, StoreEntregadorDTO } from '@/lib/entregas-types'
+import { saldoEntregaLinha } from '@/lib/entregas-types'
 import type { StoreOrderRow } from '@/lib/store-order'
 import { createClient } from '@/lib/supabase/client'
 
@@ -71,6 +73,16 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100
 }
 
+function entregaGroupKey(e: EntregaDTO): string {
+  return e.entregador_id ? e.entregador_id : `av:${e.entregador_nome.trim().toLowerCase()}`
+}
+
+function movTipoLabel(t: CaixaMovimentacaoDTO['tipo']): string {
+  if (t === 'sangria') return 'Sangria'
+  if (t === 'suprimento') return 'Suprimento'
+  return 'Acerto entregador'
+}
+
 export function CashierClient({
   storeId,
   initialOrders,
@@ -78,6 +90,8 @@ export function CashierClient({
   initialTurno,
   initialHistorico,
   initialMovimentacoesPorTurno,
+  initialEntregadores = [],
+  initialEntregasTurno = [],
 }: {
   storeId: string
   initialOrders: StoreOrderRow[]
@@ -85,6 +99,8 @@ export function CashierClient({
   initialTurno: CaixaTurnoDTO | null
   initialHistorico: CaixaTurnoDTO[]
   initialMovimentacoesPorTurno: Record<string, CaixaMovimentacaoDTO[]>
+  initialEntregadores?: StoreEntregadorDTO[]
+  initialEntregasTurno?: EntregaDTO[]
 }) {
   const router = useRouter()
   const [orders, setOrders] = useState(initialOrders)
@@ -115,6 +131,33 @@ export function CashierClient({
   const [fundoProximo, setFundoProximo] = useState('')
   const [expandedHistoricoId, setExpandedHistoricoId] = useState<string | null>(null)
 
+  const [entregadores, setEntregadores] = useState<StoreEntregadorDTO[]>(initialEntregadores)
+  const [entregasApi, setEntregasApi] = useState<EntregaDTO[]>(initialEntregasTurno)
+  const [entPeriod, setEntPeriod] = useState<'turno' | 'hoje' | '7d'>('turno')
+  const [entFilterQuick, setEntFilterQuick] = useState<'all' | 'pendente' | 'by_driver'>('all')
+  const [entDriverKey, setEntDriverKey] = useState('')
+  const [busyEntregas, setBusyEntregas] = useState(false)
+  const [acertoModal, setAcertoModal] = useState<
+    | null
+    | {
+        key: string
+        nome: string
+        tipo: 'fixo' | 'autonomo' | null
+        n: number
+        saldo: number
+      }
+  >(null)
+  const [acertoValor, setAcertoValor] = useState('')
+  const [acertoForma, setAcertoForma] = useState<'dinheiro' | 'pix'>('dinheiro')
+  const [acertoObs, setAcertoObs] = useState('')
+  const [busyAcerto, setBusyAcerto] = useState(false)
+  const [acertoFeitoPorKey, setAcertoFeitoPorKey] = useState<Record<string, boolean>>({})
+  const [entregasTurnoAtual, setEntregasTurnoAtual] = useState<EntregaDTO[]>(initialEntregasTurno)
+
+  useEffect(() => {
+    setEntregasTurnoAtual(initialEntregasTurno)
+  }, [initialEntregasTurno])
+
   useEffect(() => {
     setOrders(initialOrders)
   }, [initialOrders])
@@ -127,6 +170,12 @@ export function CashierClient({
   useEffect(() => {
     setMovMap(initialMovimentacoesPorTurno)
   }, [initialMovimentacoesPorTurno])
+  useEffect(() => {
+    setEntregadores(initialEntregadores)
+  }, [initialEntregadores])
+  useEffect(() => {
+    setEntregasApi(initialEntregasTurno)
+  }, [initialEntregasTurno])
 
   const showToast = useCallback((msg: string) => {
     setToast(msg)
@@ -202,6 +251,151 @@ export function CashierClient({
   }, [orders])
 
   const movimentacoesTurnoAtual = turno ? movMap[turno.id] ?? [] : []
+
+  const turnoId = turno?.id
+
+  const reloadEntregas = useCallback(async () => {
+    if (entPeriod === 'turno' && !turnoId) {
+      setEntregasApi([])
+      setEntregasTurnoAtual([])
+      return
+    }
+    setBusyEntregas(true)
+    try {
+      const params = new URLSearchParams()
+      if (entPeriod === 'turno') {
+        params.set('period', 'turno')
+        params.set('turnoId', turnoId!)
+      } else {
+        params.set('period', entPeriod === 'hoje' ? 'hoje' : '7d')
+      }
+      if (entFilterQuick === 'pendente') params.set('pendenteSaldo', '1')
+      if (entFilterQuick === 'by_driver' && entDriverKey && !entDriverKey.startsWith('av:')) {
+        params.set('entregadorId', entDriverKey)
+      }
+      const res = await dashboardFetch(`/api/entregas?${params.toString()}`)
+      const json = (await res.json().catch(() => ({}))) as {
+        entregas?: EntregaDTO[]
+        error?: string
+      }
+      if (!res.ok) {
+        showToast(json.error || 'Erro ao listar entregas.')
+        return
+      }
+      const list = json.entregas ?? []
+      setEntregasApi(list)
+      if (entPeriod === 'turno') setEntregasTurnoAtual(list)
+    } finally {
+      setBusyEntregas(false)
+    }
+  }, [turnoId, entPeriod, entFilterQuick, entDriverKey, showToast])
+
+  useEffect(() => {
+    void reloadEntregas()
+  }, [reloadEntregas])
+
+  const entregasTabela = useMemo(() => {
+    if (entFilterQuick === 'by_driver' && !entDriverKey) return []
+    let rows = entregasApi
+    if (entFilterQuick === 'by_driver' && entDriverKey.startsWith('av:')) {
+      const name = entDriverKey.slice(3).trim().toLowerCase()
+      rows = rows.filter(
+        (e) => !e.entregador_id && e.entregador_nome.trim().toLowerCase() === name
+      )
+    }
+    return rows
+  }, [entregasApi, entFilterQuick, entDriverKey])
+
+  const driverFilterOptions = useMemo(() => {
+    const seen = new Set<string>()
+    const opts: { key: string; label: string }[] = []
+    for (const e of entregasApi) {
+      const k = entregaGroupKey(e)
+      if (seen.has(k)) continue
+      seen.add(k)
+      opts.push({ key: k, label: e.entregador_nome })
+    }
+    return opts.sort((a, b) => a.label.localeCompare(b.label, 'pt'))
+  }, [entregasApi])
+
+  const totEntCorr = useMemo(
+    () => round2(entregasTabela.reduce((s, e) => s + e.valor_corrida, 0)),
+    [entregasTabela]
+  )
+  const totEntRec = useMemo(
+    () => round2(entregasTabela.reduce((s, e) => s + e.valor_recebido_cliente, 0)),
+    [entregasTabela]
+  )
+  const totEntSaldo = useMemo(() => round2(totEntRec - totEntCorr), [totEntRec, totEntCorr])
+
+  const gruposEntregador = useMemo(() => {
+    const m = new Map<
+      string,
+      {
+        key: string
+        nome: string
+        tipo: 'fixo' | 'autonomo' | null
+        items: EntregaDTO[]
+      }
+    >()
+    for (const e of entregasTabela) {
+      const key = entregaGroupKey(e)
+      const cur = m.get(key)
+      if (!cur) {
+        const tipo = e.entregador_id
+          ? entregadores.find((x) => x.id === e.entregador_id)?.tipo ?? null
+          : null
+        m.set(key, { key, nome: e.entregador_nome, tipo: tipo, items: [e] })
+      } else {
+        cur.items.push(e)
+      }
+    }
+    return [...m.values()]
+      .map((g) => {
+        const tc = round2(g.items.reduce((s, x) => s + x.valor_corrida, 0))
+        const tr = round2(g.items.reduce((s, x) => s + x.valor_recebido_cliente, 0))
+        const saldo = round2(tr - tc)
+        return { ...g, tc, tr, saldo, n: g.items.length }
+      })
+      .sort((a, b) => a.nome.localeCompare(b.nome, 'pt'))
+  }, [entregasTabela, entregadores])
+
+  const gruposFechoTurno = useMemo(() => {
+    const m = new Map<
+      string,
+      {
+        key: string
+        nome: string
+        tipo: 'fixo' | 'autonomo' | null
+        items: EntregaDTO[]
+      }
+    >()
+    for (const e of entregasTurnoAtual) {
+      const key = entregaGroupKey(e)
+      const cur = m.get(key)
+      if (!cur) {
+        const tipo = e.entregador_id
+          ? entregadores.find((x) => x.id === e.entregador_id)?.tipo ?? null
+          : null
+        m.set(key, { key, nome: e.entregador_nome, tipo: tipo, items: [e] })
+      } else {
+        cur.items.push(e)
+      }
+    }
+    return [...m.values()].map((g) => {
+      const tc = round2(g.items.reduce((s, x) => s + x.valor_corrida, 0))
+      const tr = round2(g.items.reduce((s, x) => s + x.valor_recebido_cliente, 0))
+      const saldo = round2(tr - tc)
+      return { ...g, tc, tr, saldo, n: g.items.length }
+    })
+  }, [entregasTurnoAtual, entregadores])
+
+  function temAcertoRegistado(nome: string): boolean {
+    const prefix = `Acerto com ${nome}`
+    return movimentacoesTurnoAtual.some(
+      (m) => m.tipo === 'acerto_entregador' && (m.motivo ?? '').startsWith(prefix)
+    )
+  }
 
   function paymentDraft(order: StoreOrderRow): PaymentDraft {
     const existing = paymentDraftByOrder[order.id]
@@ -319,7 +513,77 @@ export function CashierClient({
     setInfC(String(shiftBreakdown.cartao.total.toFixed(2)).replace('.', ','))
     setInfCr(String(shiftBreakdown.credito.total.toFixed(2)).replace('.', ','))
     setFundoProximo('0,00')
+    setAcertoFeitoPorKey({})
     setCloseFlow({ step: 'summary', comandasCount: openComandas.length })
+  }
+
+  async function confirmarAcertoEntregador() {
+    if (!acertoModal || !turno) return
+    const v = parseMoneyInput(acertoValor)
+    if (v <= 0) {
+      showToast('Indica um valor válido para o acerto.')
+      return
+    }
+    const formaLabel = acertoForma === 'pix' ? 'PIX' : 'Dinheiro'
+    const base = `Acerto com ${acertoModal.nome} — ${acertoModal.n} entrega(s)`
+    const motivo = [base, formaLabel, acertoObs.trim()].filter(Boolean).join(' · ')
+    setBusyAcerto(true)
+    try {
+      const res = await dashboardFetch('/api/cashier/movimentacao', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tipo: 'acerto_entregador',
+          valor: v,
+          motivo,
+        }),
+      })
+      const json = (await res.json().catch(() => ({}))) as { error?: string }
+      if (!res.ok) {
+        showToast(json.error || 'Não foi possível registar o acerto.')
+        return
+      }
+      setAcertoModal(null)
+      setAcertoValor('')
+      setAcertoObs('')
+      showToast('Acerto registado.')
+      router.refresh()
+    } finally {
+      setBusyAcerto(false)
+    }
+  }
+
+  function exportarEntregasCsv() {
+    const header = [
+      'data',
+      'pedido_id',
+      'entregador',
+      'valor_corrida',
+      'recebido_cliente',
+      'saldo',
+      'acerto_realizado',
+    ]
+    const lines = entregasTabela.map((e) => {
+      const saldo = saldoEntregaLinha(e)
+      const acerto = temAcertoRegistado(e.entregador_nome) ? 'Sim' : 'Não'
+      return [
+        e.criado_em,
+        e.order_id,
+        e.entregador_nome.replaceAll(';', ','),
+        String(e.valor_corrida),
+        String(e.valor_recebido_cliente),
+        String(saldo),
+        acerto,
+      ]
+    })
+    const csv = [header, ...lines].map((r) => r.join(';')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `entregas-${entPeriod}-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   async function confirmCloseTurno() {
@@ -530,31 +794,16 @@ export function CashierClient({
           <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
             {(
               [
-                {
-                  key: 'dinheiro',
-                  label: 'Dinheiro',
-                  icon: '💵',
-                  b: shiftBreakdown.dinheiro,
-                },
-                { key: 'pix', label: 'PIX', icon: '◈', b: shiftBreakdown.pix },
-                {
-                  key: 'cartao',
-                  label: 'Cartão',
-                  icon: '💳',
-                  b: shiftBreakdown.cartao,
-                },
+                { key: 'dinheiro', label: 'Dinheiro', b: shiftBreakdown.dinheiro },
+                { key: 'pix', label: 'PIX', b: shiftBreakdown.pix },
+                { key: 'cartao', label: 'Cartão', b: shiftBreakdown.cartao },
               ] as const
-            ).map(({ key, label, icon, b }) => (
+            ).map(({ key, label, b }) => (
               <div
                 key={key}
                 className="rounded-2xl border border-[var(--card-border)] bg-white p-4 shadow-sm"
               >
-                <div className="flex items-center gap-2 text-sm font-semibold text-[#374151]">
-                  <span className="text-lg" aria-hidden>
-                    {icon}
-                  </span>
-                  {label}
-                </div>
+                <div className="text-sm font-semibold text-[#374151]">{label}</div>
                 <p className="mt-2 text-xl font-bold text-[#1a1614]">{money.format(b.total)}</p>
                 <p className="mt-1 text-xs text-[#6b7280]">
                   {b.count} pedido{b.count === 1 ? '' : 's'}
@@ -562,12 +811,7 @@ export function CashierClient({
               </div>
             ))}
             <div className="rounded-2xl border border-[var(--dash-primary)]/35 bg-[var(--dash-primary)]/[0.08] p-4 shadow-sm ring-1 ring-[var(--dash-primary)]/20">
-              <div className="flex items-center gap-2 text-sm font-semibold text-[#9a3412]">
-                <span className="text-lg" aria-hidden>
-                  ∑
-                </span>
-                Total
-              </div>
+              <div className="text-sm font-semibold text-[#9a3412]">Total</div>
               <p className="mt-2 text-xl font-bold text-[var(--dash-primary)]">
                 {money.format(shiftBreakdown.totalGeral)}
               </p>
@@ -604,9 +848,7 @@ export function CashierClient({
         ) : null}
         {openComandas.length === 0 ? (
           <div className="mt-10 flex flex-col items-center justify-center gap-2 pb-6 text-center">
-            <span className="text-4xl opacity-40" aria-hidden>
-              📋
-            </span>
+            <div className="h-10 w-10 rounded-full bg-[#e5e7eb]" aria-hidden />
             <p className="text-sm font-medium text-[#374151]">Nenhuma comanda em aberto</p>
             <p className="max-w-sm text-xs text-[#6b7280]">
               As comandas criadas no Garçom ou no PDV aparecem aqui para pagamento.
@@ -686,6 +928,263 @@ export function CashierClient({
             })}
           </ul>
         )}
+      </section>
+
+      <section className="mt-8 rounded-2xl border border-[var(--card-border)] bg-white p-4 shadow-sm sm:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-base font-semibold text-[#1a1614]">Entregas do turno</h2>
+            <span className="rounded-full bg-[#f3f4f6] px-2.5 py-0.5 text-xs font-bold text-[#374151]">
+              {entregasTabela.length}
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href="/dashboard/settings#entregadores"
+              className="text-xs font-semibold text-[var(--dash-primary)] hover:underline"
+            >
+              Gerenciar entregadores
+            </Link>
+            <button
+              type="button"
+              onClick={() => exportarEntregasCsv()}
+              disabled={entregasTabela.length === 0}
+              className="rounded-lg border border-[var(--card-border)] bg-white px-3 py-1.5 text-xs font-semibold text-[#374151] shadow-sm hover:bg-[#f9fafb] disabled:opacity-50"
+            >
+              Exportar CSV
+            </button>
+          </div>
+        </div>
+        <p className="mt-1 text-xs text-[#6b7280]">
+          Corridas e valores recebidos dos clientes; saldo positivo = entregador deve repassar à
+          loja.
+        </p>
+
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          {(['all', 'pendente', 'by_driver'] as const).map((id) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => {
+                setEntFilterQuick(id)
+                if (id !== 'by_driver') setEntDriverKey('')
+              }}
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
+                entFilterQuick === id
+                  ? 'bg-[var(--dash-primary)] text-white'
+                  : 'border border-[var(--card-border)] bg-white text-[#374151]'
+              }`}
+            >
+              {id === 'all' ? 'Todos' : id === 'pendente' ? 'Com saldo pendente' : 'Por entregador'}
+            </button>
+          ))}
+          {entFilterQuick === 'by_driver' ? (
+            <select
+              value={entDriverKey}
+              onChange={(e) => setEntDriverKey(e.target.value)}
+              className="rounded-lg border border-[var(--card-border)] bg-white px-2 py-1.5 text-xs font-semibold text-[#1f2937]"
+            >
+              <option value="">Escolher entregador…</option>
+              {driverFilterOptions.map((o) => (
+                <option key={o.key} value={o.key}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          ) : null}
+          <span className="hidden h-4 w-px bg-[var(--card-border)] sm:inline" aria-hidden />
+          {(['turno', 'hoje', '7d'] as const).map((id) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setEntPeriod(id)}
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
+                entPeriod === id
+                  ? 'bg-[#111827] text-white'
+                  : 'border border-[var(--card-border)] bg-white text-[#374151]'
+              }`}
+            >
+              {id === 'turno' ? 'Este turno' : id === 'hoje' ? 'Hoje' : 'Últimos 7 dias'}
+            </button>
+          ))}
+        </div>
+
+        {entPeriod === 'turno' && (!turno || turno.status !== 'aberto') ? (
+          <p className="mt-4 text-sm text-[#6b7280]">
+            Abre um turno para ver entregas ligadas a este período.
+          </p>
+        ) : busyEntregas && entregasTabela.length === 0 ? (
+          <p className="mt-4 text-sm text-[#6b7280]">A carregar entregas…</p>
+        ) : entregasTabela.length === 0 ? (
+          <p className="mt-4 text-sm text-[#6b7280]">Nenhuma entrega neste filtro.</p>
+        ) : (
+          <>
+            <div className="mt-4 overflow-x-auto">
+              <table className="w-full min-w-[720px] border-collapse text-left text-sm">
+                <thead>
+                  <tr className="border-b border-[var(--card-border)] text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
+                    <th className="py-2 pr-3">Horário</th>
+                    <th className="py-2 pr-3">Pedido</th>
+                    <th className="py-2 pr-3">Entregador</th>
+                    <th className="py-2 pr-3 text-right">Valor corrida</th>
+                    <th className="py-2 pr-3 text-right">Recebeu do cliente</th>
+                    <th className="py-2 text-right">Saldo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {entregasTabela.map((e) => {
+                    const saldo = saldoEntregaLinha(e)
+                    const saldoCls =
+                      Math.abs(saldo) < 0.005
+                        ? 'text-[#6b7280]'
+                        : saldo > 0
+                          ? 'text-emerald-700'
+                          : 'text-red-600'
+                    return (
+                      <tr key={e.id} className="border-b border-[var(--card-border)]/80">
+                        <td className="py-2.5 pr-3 text-[#374151]">
+                          {timeOnlyFmt.format(new Date(e.criado_em))}
+                        </td>
+                        <td className="py-2.5 pr-3 font-mono text-xs text-[#1a1614]">
+                          …{e.order_id.slice(0, 8)}
+                        </td>
+                        <td className="py-2.5 pr-3 text-[#1a1614]">{e.entregador_nome}</td>
+                        <td className="py-2.5 pr-3 text-right tabular-nums">
+                          {money.format(e.valor_corrida)}
+                        </td>
+                        <td className="py-2.5 pr-3 text-right tabular-nums">
+                          {money.format(e.valor_recebido_cliente)}
+                        </td>
+                        <td className={`py-2.5 text-right font-semibold tabular-nums ${saldoCls}`}>
+                          {saldo > 0 ? '+' : ''}
+                          {money.format(saldo)}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t border-[var(--card-border)] font-semibold text-[#1a1614]">
+                    <td colSpan={3} className="py-3 pr-3">
+                      Totais
+                    </td>
+                    <td className="py-3 pr-3 text-right tabular-nums">{money.format(totEntCorr)}</td>
+                    <td className="py-3 pr-3 text-right tabular-nums">{money.format(totEntRec)}</td>
+                    <td
+                      className={`py-3 text-right tabular-nums ${
+                        Math.abs(totEntSaldo) < 0.005
+                          ? 'text-[#6b7280]'
+                          : totEntSaldo > 0
+                            ? 'text-emerald-700'
+                            : 'text-red-600'
+                      }`}
+                    >
+                      {totEntSaldo > 0 ? '+' : ''}
+                      {money.format(totEntSaldo)}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+            <p className="mt-2 text-xs text-[#6b7280]">
+              {totEntSaldo > 0.005
+                ? `Saldo a repassar para a loja: ${money.format(totEntSaldo)}`
+                : totEntSaldo < -0.005
+                  ? `A pagar entregadores: ${money.format(Math.abs(totEntSaldo))}`
+                  : 'Saldo líquido equilibrado neste filtro.'}
+            </p>
+          </>
+        )}
+
+        {gruposEntregador.length > 0 ? (
+          <div className="mt-8 grid gap-4 md:grid-cols-2">
+            {gruposEntregador.map((g) => {
+              const tipoBadge =
+                g.tipo === 'autonomo' ? 'Autônomo' : g.tipo === 'fixo' ? 'Fixo' : 'Avulso'
+              const podeAcerto = Math.abs(g.saldo) >= 0.005
+              return (
+                <div
+                  key={g.key}
+                  className="overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[#fafafa] shadow-sm"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--card-border)] bg-white px-4 py-3">
+                    <p className="text-sm font-bold text-[#1a1614]">
+                      <span aria-hidden>🛵</span> {g.nome}
+                      <span className="ml-2 rounded-full bg-[#f3f4f6] px-2 py-0.5 text-[10px] font-bold text-[#374151] ring-1 ring-[var(--card-border)]">
+                        {tipoBadge}
+                      </span>
+                    </p>
+                    <span className="text-xs font-semibold text-[#6b7280]">{g.n} entrega(s)</span>
+                  </div>
+                  <div className="space-y-1 px-4 py-3 text-sm text-[#374151]">
+                    <div className="flex justify-between">
+                      <span>Corridas realizadas:</span>
+                      <span className="font-semibold tabular-nums">{money.format(g.tc)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Recebeu dos clientes:</span>
+                      <span className="font-semibold tabular-nums">{money.format(g.tr)}</span>
+                    </div>
+                    <div className="border-t border-[var(--card-border)] pt-2" />
+                    <div className="flex justify-between">
+                      <span>Deve repassar à loja:</span>
+                      <span
+                        className={`font-semibold tabular-nums ${
+                          g.saldo > 0.005 ? 'text-emerald-700' : 'text-[#9ca3af]'
+                        }`}
+                      >
+                        {money.format(g.saldo > 0 ? g.saldo : 0)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Loja deve ao entregador:</span>
+                      <span
+                        className={`font-semibold tabular-nums ${
+                          g.saldo < -0.005 ? 'text-red-600' : 'text-[#9ca3af]'
+                        }`}
+                      >
+                        {money.format(g.saldo < 0 ? Math.abs(g.saldo) : 0)}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2 border-t border-[var(--card-border)] bg-white px-4 py-3">
+                    <button
+                      type="button"
+                      disabled={!podeAcerto || !turno || turno.status !== 'aberto'}
+                      onClick={() => {
+                        setAcertoValor(
+                          String(Math.abs(g.saldo).toFixed(2)).replace('.', ',')
+                        )
+                        setAcertoForma('dinheiro')
+                        setAcertoObs('')
+                        setAcertoModal({
+                          key: g.key,
+                          nome: g.nome,
+                          tipo: g.tipo,
+                          n: g.n,
+                          saldo: g.saldo,
+                        })
+                      }}
+                      className="rounded-lg bg-[var(--dash-primary)] px-3 py-2 text-xs font-semibold text-white shadow-sm disabled:opacity-50"
+                    >
+                      Registrar acerto
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEntFilterQuick('by_driver')
+                        setEntDriverKey(g.key)
+                      }}
+                      className="rounded-lg border border-[var(--card-border)] bg-white px-3 py-2 text-xs font-semibold text-[#374151]"
+                    >
+                      Ver entregas
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        ) : null}
       </section>
 
       {/* BLOCO 6 — Histórico de turnos */}
@@ -776,14 +1275,21 @@ export function CashierClient({
                                     {movs.map((m) => (
                                       <li key={m.id}>
                                         {timeOnlyFmt.format(new Date(m.criado_em))} ·{' '}
-                                        {m.tipo === 'sangria' ? 'Sangria' : 'Suprimento'} ·{' '}
-                                        {m.motivo || '—'} ·{' '}
+                                        {movTipoLabel(m.tipo)} · {m.motivo || '—'} ·{' '}
                                         <span
                                           className={
-                                            m.tipo === 'sangria' ? 'text-red-600' : 'text-emerald-700'
+                                            m.tipo === 'sangria'
+                                              ? 'text-red-600'
+                                              : m.tipo === 'acerto_entregador'
+                                                ? 'text-[#374151]'
+                                                : 'text-emerald-700'
                                           }
                                         >
-                                          {m.tipo === 'sangria' ? '−' : '+'}
+                                          {m.tipo === 'sangria'
+                                            ? '−'
+                                            : m.tipo === 'acerto_entregador'
+                                              ? ''
+                                              : '+'}
                                           {money.format(m.valor)}
                                         </span>
                                       </li>
@@ -853,18 +1359,12 @@ export function CashierClient({
         {(['waiter', 'pdv', 'menu_link'] as const).map((k) => {
           const pct = totalRevenue > 0 ? Math.round((summary[k].total / totalRevenue) * 1000) / 10 : 0
           const ticket = summary[k].count > 0 ? summary[k].total / summary[k].count : 0
-          const icon = k === 'waiter' ? '🧑‍🍳' : k === 'pdv' ? '🏪' : '🔗'
           return (
             <div
               key={k}
               className="rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-sm"
             >
-              <div className="flex items-center gap-2">
-                <span className="text-xl" aria-hidden>
-                  {icon}
-                </span>
-                <p className="text-sm font-semibold text-[#1a1614]">{sourceLabel(k)}</p>
-              </div>
+              <p className="text-sm font-semibold text-[#1a1614]">{sourceLabel(k)}</p>
               <p className="mt-2 text-2xl font-bold text-[var(--dash-primary)]">
                 {money.format(summary[k].total)}
               </p>
@@ -978,17 +1478,97 @@ export function CashierClient({
                   {movimentacoesTurnoAtual.map((m) => (
                     <li key={m.id} className="flex flex-wrap justify-between gap-1">
                       <span>
-                        {timeOnlyFmt.format(new Date(m.criado_em))} ·{' '}
-                        {m.tipo === 'sangria' ? 'Sangria' : 'Suprimento'} · {m.motivo || '—'}
+                        {timeOnlyFmt.format(new Date(m.criado_em))} · {movTipoLabel(m.tipo)} ·{' '}
+                        {m.motivo || '—'}
                       </span>
-                      <span className={m.tipo === 'sangria' ? 'text-red-600' : 'text-emerald-700'}>
-                        {m.tipo === 'sangria' ? '−' : '+'}
+                      <span
+                        className={
+                          m.tipo === 'sangria'
+                            ? 'text-red-600'
+                            : m.tipo === 'acerto_entregador'
+                              ? 'text-[#374151]'
+                              : 'text-emerald-700'
+                        }
+                      >
+                        {m.tipo === 'sangria'
+                          ? '−'
+                          : m.tipo === 'acerto_entregador'
+                            ? ''
+                            : '+'}
                         {money.format(m.valor)}
                       </span>
                     </li>
                   ))}
                 </ul>
               )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {acertoModal && turno ? (
+        <div className="fixed inset-0 z-[75] flex items-center justify-center p-4" role="dialog">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/50"
+            aria-label="Fechar"
+            onClick={() => !busyAcerto && setAcertoModal(null)}
+          />
+          <div className="relative z-10 w-full max-w-md rounded-2xl border border-[var(--card-border)] bg-white p-6 shadow-xl">
+            <h3 className="text-lg font-bold text-[#1a1614]">
+              Acerto com {acertoModal.nome} —{' '}
+              {new Date().toLocaleDateString('pt-BR', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+              })}
+            </h3>
+            <label className="mt-4 block text-xs font-medium text-[#6b7280]">
+              Valor do acerto (R$)
+              <input
+                type="text"
+                inputMode="decimal"
+                value={acertoValor}
+                onChange={(e) => setAcertoValor(e.target.value)}
+                className="mt-1 block w-full rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm"
+              />
+            </label>
+            <label className="mt-3 block text-xs font-medium text-[#6b7280]">
+              Forma de pagamento
+              <select
+                value={acertoForma}
+                onChange={(e) => setAcertoForma(e.target.value === 'pix' ? 'pix' : 'dinheiro')}
+                className="mt-1 block w-full rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm"
+              >
+                <option value="dinheiro">Dinheiro</option>
+                <option value="pix">PIX</option>
+              </select>
+            </label>
+            <label className="mt-3 block text-xs font-medium text-[#6b7280]">
+              Observação <span className="font-normal text-[#9ca3af]">(opcional)</span>
+              <input
+                value={acertoObs}
+                onChange={(e) => setAcertoObs(e.target.value)}
+                className="mt-1 block w-full rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm"
+              />
+            </label>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={busyAcerto}
+                onClick={() => setAcertoModal(null)}
+                className="rounded-xl border border-[var(--card-border)] px-4 py-2 text-sm font-semibold text-[#374151]"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={busyAcerto}
+                onClick={() => void confirmarAcertoEntregador()}
+                className="rounded-xl bg-[var(--dash-primary)] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {busyAcerto ? 'A guardar…' : 'Confirmar'}
+              </button>
             </div>
           </div>
         </div>
@@ -1099,14 +1679,109 @@ export function CashierClient({
                     <ul className="mt-1 space-y-0.5">
                       {movimentacoesTurnoAtual.map((m) => (
                         <li key={m.id}>
-                          {timeOnlyFmt.format(new Date(m.criado_em))} — {m.tipo} — {m.motivo || '—'}{' '}
-                          ({m.tipo === 'sangria' ? '-' : '+'}
+                          {timeOnlyFmt.format(new Date(m.criado_em))} — {movTipoLabel(m.tipo)} —{' '}
+                          {m.motivo || '—'} (
+                          {m.tipo === 'sangria' ? '-' : m.tipo === 'acerto_entregador' ? '' : '+'}
                           {money.format(m.valor)})
                         </li>
                       ))}
                     </ul>
                   )}
                 </div>
+                {gruposFechoTurno.length > 0 ? (
+                  <div className="mt-4 rounded-xl border border-[var(--card-border)] bg-white p-3 text-xs text-[#374151]">
+                    <p className="font-bold uppercase tracking-wide text-[#6b7280]">
+                      Resumo de entregadores
+                    </p>
+                    <div className="mt-2 overflow-x-auto">
+                      <table className="w-full min-w-[280px] text-left">
+                        <thead>
+                          <tr className="border-b border-[var(--card-border)] text-[10px] font-semibold uppercase text-[#6b7280]">
+                            <th className="py-1.5 pr-2">Entregador</th>
+                            <th className="py-1.5 pr-2 text-right">Corridas</th>
+                            <th className="py-1.5 text-right">Saldo</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {gruposFechoTurno.map((g) => (
+                            <tr key={g.key} className="border-b border-[var(--card-border)]/70">
+                              <td className="py-1.5 pr-2 font-medium">{g.nome}</td>
+                              <td className="py-1.5 pr-2 text-right">{g.n}</td>
+                              <td
+                                className={`py-1.5 text-right font-semibold ${
+                                  Math.abs(g.saldo) < 0.005
+                                    ? 'text-[#6b7280]'
+                                    : g.saldo > 0
+                                      ? 'text-emerald-700'
+                                      : 'text-red-600'
+                                }`}
+                              >
+                                {g.saldo > 0 ? '+' : ''}
+                                {money.format(g.saldo)}
+                                {Math.abs(g.saldo) < 0.005
+                                  ? ''
+                                  : g.saldo > 0
+                                    ? ' (repassa)'
+                                    : ' (loja paga)'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <p
+                      className={`mt-2 border-t border-[var(--card-border)] pt-2 text-sm font-bold ${
+                        Math.abs(
+                          gruposFechoTurno.reduce((s, g) => s + g.saldo, 0)
+                        ) < 0.005
+                          ? 'text-[#6b7280]'
+                          : gruposFechoTurno.reduce((s, g) => s + g.saldo, 0) > 0
+                            ? 'text-emerald-700'
+                            : 'text-red-600'
+                      }`}
+                    >
+                      Saldo líquido entregadores:{' '}
+                      {(() => {
+                        const net = round2(
+                          gruposFechoTurno.reduce((s, g) => s + g.saldo, 0)
+                        )
+                        return (
+                          <>
+                            {net > 0 ? '+' : ''}
+                            {money.format(net)}
+                          </>
+                        )
+                      })()}
+                    </p>
+                    <div className="mt-3 space-y-2 border-t border-[var(--card-border)] pt-2">
+                      {gruposFechoTurno.map((g) => (
+                        <label key={g.key} className="flex cursor-pointer items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(acertoFeitoPorKey[g.key])}
+                            onChange={(e) =>
+                              setAcertoFeitoPorKey((prev) => ({
+                                ...prev,
+                                [g.key]: e.target.checked,
+                              }))
+                            }
+                            className="rounded border-[var(--card-border)]"
+                          />
+                          <span>
+                            Acerto realizado — <span className="font-semibold">{g.nome}</span>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                    {gruposFechoTurno.some(
+                      (g) => Math.abs(g.saldo) >= 0.005 && !acertoFeitoPorKey[g.key]
+                    ) ? (
+                      <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] font-medium text-amber-900">
+                        Há entregadores com acerto pendente
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
                 <label className="mt-4 block text-xs font-medium text-[#6b7280]">
                   Fundo para o próximo turno (R$)
                   <input
