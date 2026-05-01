@@ -116,12 +116,14 @@ export function WaiterClient({
   initialSectors,
   initialTables,
   stockQuantityByProductId,
+  waiterExitPin,
 }: {
   initialProducts: MenuProductRow[]
   initialOpenOrders: StoreOrderRow[]
   initialSectors: string[]
   initialTables: StoreTableDTO[]
   stockQuantityByProductId: Record<string, number>
+  waiterExitPin: string
 }) {
   const sectors = useMemo(() => {
     const fromTables = initialTables.map((t) => t.ambiente.trim()).filter(Boolean)
@@ -166,6 +168,9 @@ export function WaiterClient({
   const [orderDrawerOpen, setOrderDrawerOpen] = useState(false)
   const [selectedTableKey, setSelectedTableKey] = useState<string | null>(null)
   const [tableActionSheetOpen, setTableActionSheetOpen] = useState(false)
+  const [pinExitOpen, setPinExitOpen] = useState(false)
+  const [pinAttempt, setPinAttempt] = useState('')
+  const [pinError, setPinError] = useState<string | null>(null)
   const router = useRouter()
   const avulsaToggleRef = useRef<HTMLButtonElement>(null)
   const avulsaPopoverRef = useRef<HTMLDivElement>(null)
@@ -519,18 +524,47 @@ export function WaiterClient({
 
   async function toggleFullscreen() {
     if (!canFullscreen || !fullscreenRootRef.current) return
-    const doc = document as Document & { webkitExitFullscreen?: () => Promise<void> | void }
+    if (document.fullscreenElement === fullscreenRootRef.current) {
+      if (!waiterExitPin) {
+        setError('Configure o PIN do Garçom nas Configurações para sair do ecrã.')
+        return
+      }
+      setPinAttempt('')
+      setPinError(null)
+      setPinExitOpen(true)
+      return
+    }
+    if (!waiterExitPin) {
+      setError('Defina o PIN do Garçom nas Configurações antes de abrir o ecrã.')
+      return
+    }
     const el = fullscreenRootRef.current as HTMLDivElement & {
       webkitRequestFullscreen?: () => Promise<void> | void
     }
     try {
-      if (document.fullscreenElement === fullscreenRootRef.current) {
-        await (doc.exitFullscreen?.() ?? doc.webkitExitFullscreen?.())
-      } else {
-        await (el.requestFullscreen?.() ?? el.webkitRequestFullscreen?.())
-      }
+      await (el.requestFullscreen?.() ?? el.webkitRequestFullscreen?.())
     } catch {
       setError('Ecrã completo indisponível.')
+    }
+  }
+
+  async function confirmExitWithPin() {
+    if (!waiterExitPin) {
+      setPinError('PIN do Garçom não configurado.')
+      return
+    }
+    if (pinAttempt !== waiterExitPin) {
+      setPinError('PIN inválido.')
+      return
+    }
+    const doc = document as Document & { webkitExitFullscreen?: () => Promise<void> | void }
+    try {
+      await (doc.exitFullscreen?.() ?? doc.webkitExitFullscreen?.())
+      setPinExitOpen(false)
+      setPinAttempt('')
+      setPinError(null)
+    } catch {
+      setPinError('Não foi possível sair do ecrã completo.')
     }
   }
 
@@ -1283,6 +1317,63 @@ export function WaiterClient({
                 className="rounded-xl bg-[var(--dash-primary)] py-2.5 text-sm font-semibold text-white"
               >
                 Pedido
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* PIN para sair do ecrã */}
+      {pinExitOpen ? (
+        <div className="fixed inset-0 z-[96] flex items-center justify-center p-4" role="dialog">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/50"
+            onClick={() => {
+              setPinExitOpen(false)
+              setPinAttempt('')
+              setPinError(null)
+            }}
+          />
+          <div className="relative z-10 w-full max-w-sm rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-xl">
+            <p className="text-sm font-bold text-[#1a1614]">PIN para sair do ecrã</p>
+            <p className="mt-1 text-xs text-[#6b7280]">
+              O modo ecrã do Garçom exige PIN de segurança para fechar.
+            </p>
+            <input
+              type="password"
+              value={pinAttempt}
+              onChange={(e) => {
+                setPinAttempt(e.target.value.replace(/\D/g, '').slice(0, 4))
+                if (pinError) setPinError(null)
+              }}
+              placeholder="Digite 4 dígitos"
+              inputMode="numeric"
+              maxLength={4}
+              className="mt-3 w-full rounded-lg border border-[var(--card-border)] px-3 py-2 text-center text-lg tracking-[0.25em]"
+            />
+            {pinError ? (
+              <p className="mt-2 rounded-lg bg-red-50 px-2 py-1.5 text-xs text-red-700">{pinError}</p>
+            ) : null}
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                className="flex-1 rounded-xl border border-[var(--card-border)] py-2 text-sm font-semibold"
+                onClick={() => {
+                  setPinExitOpen(false)
+                  setPinAttempt('')
+                  setPinError(null)
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="flex-1 rounded-xl bg-[var(--dash-primary)] py-2 text-sm font-semibold text-white disabled:opacity-50"
+                disabled={pinAttempt.length !== 4}
+                onClick={() => void confirmExitWithPin()}
+              >
+                Confirmar
               </button>
             </div>
           </div>

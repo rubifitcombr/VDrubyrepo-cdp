@@ -65,6 +65,8 @@ export default async function GarcomPage() {
         .map((x) => String(x ?? '').trim())
         .filter(Boolean)
     : ['Salão', 'Varanda']
+  const waiterExitPin =
+    typeof s.waiter_exit_pin === 'string' ? s.waiter_exit_pin.trim() : ''
 
   return (
     <WaiterClient
@@ -79,6 +81,7 @@ export default async function GarcomPage() {
         active: t.active,
       }))}
       stockQuantityByProductId={stockQuantityByProductId}
+      waiterExitPin={waiterExitPin}
     />
   )
 }

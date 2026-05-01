@@ -32,6 +32,7 @@ const STORE_ALLOWED_FIELDS = new Set([
   'location_address',
   'location_label',
   'table_sectors',
+  'waiter_exit_pin',
 ])
 
 export async function getStoreByUser(userId: string) {

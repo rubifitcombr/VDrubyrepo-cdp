@@ -79,6 +79,8 @@ export default function SettingsPage() {
   const [locationLng, setLocationLng] = useState<number | null>(null)
   const [supportsTableSectors, setSupportsTableSectors] = useState(true)
   const [tableSectorsText, setTableSectorsText] = useState('Salão\nVaranda')
+  const [supportsWaiterExitPin, setSupportsWaiterExitPin] = useState(true)
+  const [waiterExitPin, setWaiterExitPin] = useState('')
 
   const [entregadores, setEntregadores] = useState<StoreEntregadorDTO[]>([])
   const [entregadoresLoading, setEntregadoresLoading] = useState(false)
@@ -118,6 +120,7 @@ export default function SettingsPage() {
       setAddress(typeof s.address === 'string' ? s.address : '')
       setBusinessHours('business_hours' in s ? s.business_hours : null)
       setSupportsTableSectors('table_sectors' in s)
+      setSupportsWaiterExitPin('waiter_exit_pin' in s)
       const loadedSectors = Array.isArray(s.table_sectors)
         ? (s.table_sectors as unknown[])
             .map((x) => String(x ?? '').trim())
@@ -126,6 +129,7 @@ export default function SettingsPage() {
       if (loadedSectors.length > 0) {
         setTableSectorsText(loadedSectors.join('\n'))
       }
+      setWaiterExitPin(typeof s.waiter_exit_pin === 'string' ? s.waiter_exit_pin.trim().slice(0, 4) : '')
       const hasLocationColumns =
         'location_enabled' in s ||
         'location_lat' in s ||
@@ -302,6 +306,15 @@ export default function SettingsPage() {
       )
       patch.table_sectors = unique.length > 0 ? unique : ['Salão', 'Varanda']
     }
+    if (supportsWaiterExitPin) {
+      const pin = waiterExitPin.replace(/\D/g, '').slice(0, 4)
+      if (pin.length > 0 && pin.length < 4) {
+        setSaving(false)
+        alert('O PIN do Garçom deve ter 4 dígitos.')
+        return
+      }
+      patch.waiter_exit_pin = pin || null
+    }
 
     const attemptedPatch: Record<string, unknown> = { ...patch }
     const droppedFields: string[] = []
@@ -356,6 +369,14 @@ export default function SettingsPage() {
         delete attemptedPatch.table_sectors
         droppedFields.push('table_sectors')
         setSupportsTableSectors(false)
+        continue
+      }
+      const canDropWaiterPin =
+        'waiter_exit_pin' in attemptedPatch && msg.includes('waiter_exit_pin')
+      if (canDropWaiterPin) {
+        delete attemptedPatch.waiter_exit_pin
+        droppedFields.push('waiter_exit_pin')
+        setSupportsWaiterExitPin(false)
         continue
       }
       error = result.error
@@ -934,6 +955,30 @@ export default function SettingsPage() {
           {!supportsTableSectors ? (
             <p className="mt-2 text-xs text-amber-700">
               A coluna table_sectors ainda não existe no teu Supabase.
+            </p>
+          ) : null}
+
+          <label className="mt-5 block text-sm font-medium text-[#374151]">
+            PIN de saída do ecrã (Garçom)
+            <input
+              className={inputClass}
+              value={waiterExitPin}
+              onChange={(e) => {
+                const digits = e.target.value.replace(/\D/g, '').slice(0, 4)
+                setWaiterExitPin(digits)
+              }}
+              placeholder="0000"
+              inputMode="numeric"
+              maxLength={4}
+              disabled={!supportsWaiterExitPin}
+            />
+            <p className="mt-2 text-xs text-[#6b7280]">
+              Defina 4 dígitos. Quando o modo ecrã estiver aberto no Garçom, esse PIN será exigido para sair.
+            </p>
+          </label>
+          {!supportsWaiterExitPin ? (
+            <p className="mt-2 text-xs text-amber-700">
+              A coluna waiter_exit_pin ainda não existe no teu Supabase.
             </p>
           ) : null}
         </section>
