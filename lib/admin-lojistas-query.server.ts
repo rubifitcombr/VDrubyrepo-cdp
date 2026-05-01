@@ -26,6 +26,10 @@ export type LojistaListRow = {
   plano_vence_em: string | null
   cadastrado_em: string | null
   cancelamento_solicitado: boolean
+  /** Linhas na tabela `products` desta loja. */
+  produtos_count: number
+  /** Soma do campo `total` dos pedidos não cancelados (`orders`). */
+  faturamento_pedidos: number
 }
 
 export type AdminLogRow = {
@@ -36,10 +40,19 @@ export type AdminLogRow = {
   admin_email: string | null
 }
 
+/** PostgREST devolve no máx. ~1000 linhas por pedido sem range; agregações admin precisam de todas. */
+const ADMIN_AGG_PAGE_SIZE = 1000
+
+function orderCountsTowardFaturamento(status: unknown): boolean {
+  const s = String(status ?? '').trim().toLowerCase()
+  if (s === 'cancelled' || s === 'cancelado' || s === 'canceled') return false
+  return true
+}
+
 function rowToLojista(
   store: Record<string, unknown>,
   emailMap: Record<string, string | null>
-): LojistaListRow {
+): Omit<LojistaListRow, 'produtos_count' | 'faturamento_pedidos'> {
   const ownerId = String(store.owner_id ?? '')
   const cancelRaw = store.cancelamento_solicitado
   return {
@@ -61,6 +74,114 @@ function rowToLojista(
     cancelamento_solicitado:
       cancelRaw === true || cancelRaw === 'true' || cancelRaw === 1,
   }
+}
+
+async function aggregateProductsByStore(
+  svc: SupabaseClient
+): Promise<Record<string, number>> {
+  const rows: { store_id?: string }[] = []
+  for (let from = 0; ; from += ADMIN_AGG_PAGE_SIZE) {
+    const to = from + ADMIN_AGG_PAGE_SIZE - 1
+    const { data, error } = await svc
+      .from('products')
+      .select('store_id')
+      .order('id', { ascending: true })
+      .range(from, to)
+    if (error) {
+      if (/relation|does not exist|42P01/i.test(error.message)) return {}
+      console.warn('[admin-lojistas] products:', error.message)
+      return {}
+    }
+    const chunk = data ?? []
+    rows.push(...chunk)
+    if (chunk.length < ADMIN_AGG_PAGE_SIZE) break
+  }
+  const m: Record<string, number> = {}
+  for (const r of rows) {
+    const sid = String(r.store_id ?? '')
+    if (!sid) continue
+    m[sid] = (m[sid] ?? 0) + 1
+  }
+  return m
+}
+
+async function aggregateOrderRevenueByStore(
+  svc: SupabaseClient
+): Promise<Record<string, number>> {
+  const rows: Record<string, unknown>[] = []
+  for (let from = 0; ; from += ADMIN_AGG_PAGE_SIZE) {
+    const to = from + ADMIN_AGG_PAGE_SIZE - 1
+    const { data, error } = await svc
+      .from('orders')
+      .select('store_id, total, status')
+      .order('id', { ascending: true })
+      .range(from, to)
+    if (error) {
+      if (/relation|does not exist|42P01/i.test(error.message)) return {}
+      console.warn('[admin-lojistas] orders:', error.message)
+      return {}
+    }
+    const chunk = data ?? []
+    rows.push(...(chunk as Record<string, unknown>[]))
+    if (chunk.length < ADMIN_AGG_PAGE_SIZE) break
+  }
+  const m: Record<string, number> = {}
+  for (const row of rows) {
+    if (!orderCountsTowardFaturamento(row.status)) continue
+    const sid = String(row.store_id ?? '')
+    if (!sid) continue
+    const total =
+      typeof row.total === 'number'
+        ? row.total
+        : Number(String(row.total ?? '').replace(',', '.'))
+    if (!Number.isFinite(total)) continue
+    m[sid] = Math.round(((m[sid] ?? 0) + total) * 100) / 100
+  }
+  return m
+}
+
+export async function fetchStoreUsageStats(
+  svc: SupabaseClient,
+  storeId: string
+): Promise<{ produtos_count: number; faturamento_pedidos: number }> {
+  const { count, error: eProd } = await svc
+    .from('products')
+    .select('id', { count: 'exact', head: true })
+    .eq('store_id', storeId)
+
+  let produtos_count = 0
+  if (!eProd && typeof count === 'number') produtos_count = count
+
+  let faturamento_pedidos = 0
+  for (let from = 0; ; from += ADMIN_AGG_PAGE_SIZE) {
+    const to = from + ADMIN_AGG_PAGE_SIZE - 1
+    const { data: orders, error: eOrd } = await svc
+      .from('orders')
+      .select('total, status')
+      .eq('store_id', storeId)
+      .order('id', { ascending: true })
+      .range(from, to)
+    if (eOrd) {
+      if (!/relation|does not exist|42P01/i.test(eOrd.message)) {
+        console.warn('[admin-lojistas] orders(store):', eOrd.message)
+      }
+      break
+    }
+    const chunk = orders ?? []
+    for (const r of chunk) {
+      const row = r as Record<string, unknown>
+      if (!orderCountsTowardFaturamento(row.status)) continue
+      const total =
+        typeof row.total === 'number'
+          ? row.total
+          : Number(String(row.total ?? '').replace(',', '.'))
+      if (!Number.isFinite(total)) continue
+      faturamento_pedidos = Math.round((faturamento_pedidos + total) * 100) / 100
+    }
+    if (chunk.length < ADMIN_AGG_PAGE_SIZE) break
+  }
+
+  return { produtos_count, faturamento_pedidos }
 }
 
 function sortLojistas(rows: LojistaListRow[]): LojistaListRow[] {
@@ -215,8 +336,21 @@ export async function fetchLojistasForAdmin(
     }
   }
 
+  const [productByStore, revenueByStore] = await Promise.all([
+    aggregateProductsByStore(svc),
+    aggregateOrderRevenueByStore(svc),
+  ])
+
   const allRows = sortLojistas(
-    list.map((s) => rowToLojista(s, emailMap))
+    list.map((s) => {
+      const sid = String(s.id ?? '')
+      const core = rowToLojista(s, emailMap)
+      return {
+        ...core,
+        produtos_count: productByStore[sid] ?? 0,
+        faturamento_pedidos: revenueByStore[sid] ?? 0,
+      }
+    })
   )
 
   const charts = {
@@ -346,8 +480,10 @@ export async function fetchLojistaDetail(
   }
 
   const base = rowToLojista(s, emailMap)
+  const stats = await fetchStoreUsageStats(svc, id)
   const lojista = {
     ...base,
+    ...stats,
     plano_ativado_em:
       typeof s.plano_ativado_em === 'string' ? s.plano_ativado_em : null,
     plano_atualizado_em:
