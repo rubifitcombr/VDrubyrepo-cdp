@@ -45,12 +45,16 @@ export async function POST(
     return NextResponse.json({ error: 'Loja não encontrada' }, { status: 404 })
   }
 
-  const st = String(
-    readStoreStatus(existing as Record<string, unknown>) || ''
-  )
-  if (st !== 'pendente' && st !== 'bloqueado') {
+  const row = existing as Record<string, unknown>
+  const st = String(readStoreStatus(row) || '')
+    .trim()
+    .toLowerCase()
+  if (st !== 'pendente' && st !== 'bloqueado' && st !== 'cancelado') {
     return NextResponse.json(
-      { error: 'Só é possível ativar lojistas pendentes ou bloqueados' },
+      {
+        error:
+          'Só é possível ativar lojistas pendentes, bloqueados ou reativar contas canceladas',
+      },
       { status: 400 }
     )
   }
@@ -63,6 +67,9 @@ export async function POST(
     plano_ativado_em: now,
     plano_atualizado_em: now,
   }
+  if (st === 'cancelado' && Object.prototype.hasOwnProperty.call(row, 'cancelamento_solicitado')) {
+    patch.cancelamento_solicitado = false
+  }
 
   const { error } = await ctx.svc.from('stores').update(patch).eq('id', id)
   if (error) {
@@ -72,8 +79,11 @@ export async function POST(
   await insertAdminLog(ctx.svc, {
     adminId: ctx.user.id,
     lojistaId: id,
-    acao: 'ativou',
-    detalhes: `Plano ativado · ${planShortLabel(plano)} · vence ${fmtDateBr(vence)}`,
+    acao: st === 'cancelado' ? 'reativou' : 'ativou',
+    detalhes:
+      st === 'cancelado'
+        ? `Conta reativada · ${planShortLabel(plano)} · vence ${fmtDateBr(vence)}`
+        : `Plano ativado · ${planShortLabel(plano)} · vence ${fmtDateBr(vence)}`,
   })
 
   const detail = await fetchLojistaDetail(ctx.svc, id)
