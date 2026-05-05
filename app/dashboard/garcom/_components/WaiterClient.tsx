@@ -663,9 +663,14 @@ export function WaiterClient({
     return m
   }, [tables])
 
-  const workspaceClass =
-    'flex min-h-0 flex-1 flex-col md:h-[min(1080px,calc(100dvh-7.5rem))] md:max-h-[calc(100dvh-7.5rem)]'
   const inScreenMode = isFullscreen || mobileScreenOpen
+
+  /** No modo ecrã em mobile, um único scroll no exterior evita colapso flex + overflow aninhado (mapa invisível / gestos bloqueados). */
+  const workspaceClass = [
+    'flex min-h-0 flex-col gap-3 md:flex-row md:gap-0 md:overflow-hidden',
+    inScreenMode ? 'max-md:shrink-0 md:flex-1' : 'flex-1',
+    'md:h-[min(1080px,calc(100dvh-7.5rem))] md:max-h-[calc(100dvh-7.5rem)]',
+  ].join(' ')
 
   return (
     <div
@@ -690,7 +695,7 @@ export function WaiterClient({
       <div
         className={
           inScreenMode
-            ? 'min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[env(safe-area-inset-top)] [-webkit-overflow-scrolling:touch] sm:px-5 md:px-6'
+            ? 'flex min-h-0 flex-1 touch-pan-y flex-col overflow-y-auto overscroll-y-contain px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[env(safe-area-inset-top)] [-webkit-overflow-scrolling:touch] sm:px-5 md:px-6'
             : 'contents'
         }
       >
@@ -723,7 +728,7 @@ export function WaiterClient({
       </div>
 
       {/* Mobile toggles */}
-      <div className="mb-2 flex gap-2 md:hidden">
+      <div className="mb-2 flex shrink-0 gap-2 md:hidden">
         <button
           type="button"
           onClick={() => setMenuSheetOpen(true)}
@@ -740,7 +745,7 @@ export function WaiterClient({
         </button>
       </div>
 
-      <div className={`${workspaceClass} gap-3 md:flex-row md:gap-0 md:overflow-hidden`}>
+      <div className={workspaceClass}>
         {/* Coluna esquerda — desktop */}
         <aside className="hidden min-h-0 w-full shrink-0 flex-col border-r border-[var(--card-border)]/80 bg-[#f4f5f7] md:flex md:w-[400px] md:min-w-[400px]">
           <div className="flex shrink-0 items-center justify-between border-b border-[var(--card-border)]/60 px-3 py-2.5">
@@ -839,7 +844,13 @@ export function WaiterClient({
         </aside>
 
         {/* Centro */}
-        <main className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-[var(--card-border)] bg-white shadow-sm md:rounded-none md:border-0 md:shadow-none">
+        <main
+          className={`relative flex min-h-0 min-w-0 flex-col rounded-xl border border-[var(--card-border)] bg-white shadow-sm md:rounded-none md:border-0 md:shadow-none ${
+            inScreenMode
+              ? 'max-md:flex-none max-md:overflow-visible md:flex-1 md:overflow-hidden'
+              : 'flex-1 overflow-hidden'
+          }`}
+        >
           <div className="flex shrink-0 border-b border-[var(--card-border)]">
             <button
               type="button"
@@ -854,7 +865,13 @@ export function WaiterClient({
             </button>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto p-3">
+          <div
+            className={
+              inScreenMode
+                ? 'p-3 max-md:flex-none max-md:overflow-visible md:min-h-0 md:flex-1 md:overflow-y-auto'
+                : 'min-h-0 flex-1 overflow-y-auto p-3'
+            }
+          >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-sm font-bold text-[#1a1614]">Mesas</h2>
                 <button

@@ -8,6 +8,7 @@ import type { Plan } from '@/lib/plan'
 import { planTitle } from '@/lib/plan'
 import { createClient } from '@/lib/supabase/client'
 import { IconBell, IconSearch } from './NavIcons'
+import { DashboardNotificationPrompt } from './DashboardNotificationPrompt'
 
 function storeInitials(name: string | null): string {
   if (!name?.trim()) return 'VY'
@@ -109,6 +110,7 @@ export function DashboardTopBar({
       </form>
 
       <div className="flex shrink-0 items-center justify-end gap-3 sm:ml-auto">
+        <DashboardNotificationPrompt />
         <Link
           href="/dashboard/orders"
           className="relative inline-flex items-center gap-2 rounded-xl border border-[var(--card-border)] bg-white px-2.5 py-2 text-[#1a1614] shadow-sm transition-colors hover:bg-[#f8f9fa]"

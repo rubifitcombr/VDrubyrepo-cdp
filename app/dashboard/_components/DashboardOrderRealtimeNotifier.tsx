@@ -3,6 +3,13 @@
 import { useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
+const NOTIFICATION_PREF_KEY = 'vyria-notifications-enabled'
+
+function notificationsEnabled() {
+  if (typeof window === 'undefined') return true
+  return window.localStorage.getItem(NOTIFICATION_PREF_KEY) !== '0'
+}
+
 function playNewOrderBeep() {
   try {
     const w = window as Window & { __vyriaLastOrderBeepAt?: number }
@@ -116,6 +123,7 @@ async function showOrderNotification(title: string, body: string, url: string) {
 
 export function DashboardOrderRealtimeNotifier({ storeId }: { storeId: string | null }) {
   const seenIdsRef = useRef<Set<string>>(new Set())
+  const notificationsEnabledRef = useRef(true)
 
   useEffect(() => {
     if (!storeId) return
@@ -125,8 +133,13 @@ export function DashboardOrderRealtimeNotifier({ storeId }: { storeId: string | 
 
     const supabase = createClient()
     let closed = false
+    notificationsEnabledRef.current = notificationsEnabled()
 
-    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+    if (
+      notificationsEnabledRef.current &&
+      typeof Notification !== 'undefined' &&
+      Notification.permission === 'default'
+    ) {
       void Notification.requestPermission().catch(() => {})
     }
 
@@ -166,6 +179,7 @@ export function DashboardOrderRealtimeNotifier({ storeId }: { storeId: string | 
     void ensurePushSubscription()
 
     const onManualEnable = () => {
+      if (!notificationsEnabledRef.current) return
       unlockAudioForMobile()
       if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
         void Notification.requestPermission()
@@ -185,6 +199,12 @@ export function DashboardOrderRealtimeNotifier({ storeId }: { storeId: string | 
     window.addEventListener('focus', onManualEnable)
     document.addEventListener('visibilitychange', onManualEnable)
     window.addEventListener('vyria-enable-notifications', onManualEnable as EventListener)
+    const onNotificationsToggle = (event: Event) => {
+      const nextEnabled =
+        (event as CustomEvent<{ enabled?: boolean }>).detail?.enabled ?? false
+      notificationsEnabledRef.current = nextEnabled
+    }
+    window.addEventListener('vyria-notifications-toggle', onNotificationsToggle as EventListener)
 
     const channel = supabase
       .channel(`dashboard-order-notify-${storeId}`)
@@ -197,6 +217,7 @@ export function DashboardOrderRealtimeNotifier({ storeId }: { storeId: string | 
           filter: `store_id=eq.${storeId}`,
         },
         (payload) => {
+          if (!notificationsEnabledRef.current) return
           const row = payload.new as { id?: string; customer_name?: string | null }
           const id = String(row.id ?? '')
           if (!id) return
@@ -220,6 +241,10 @@ export function DashboardOrderRealtimeNotifier({ storeId }: { storeId: string | 
       window.removeEventListener('focus', onManualEnable)
       document.removeEventListener('visibilitychange', onManualEnable)
       window.removeEventListener('vyria-enable-notifications', onManualEnable as EventListener)
+      window.removeEventListener(
+        'vyria-notifications-toggle',
+        onNotificationsToggle as EventListener
+      )
       w.__vyriaGlobalOrderNotifierActive = false
     }
   }, [storeId])

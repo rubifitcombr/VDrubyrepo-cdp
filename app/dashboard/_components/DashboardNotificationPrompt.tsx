@@ -1,6 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+
+const NOTIFICATION_PREF_KEY = 'vyria-notifications-enabled'
+
+function readNotificationsEnabled(): boolean {
+  if (typeof window === 'undefined') return true
+  const raw = window.localStorage.getItem(NOTIFICATION_PREF_KEY)
+  return raw !== '0'
+}
 
 function currentPermission(): NotificationPermission | 'unsupported' {
   if (typeof window === 'undefined' || typeof Notification === 'undefined') {
@@ -13,18 +21,33 @@ export function DashboardNotificationPrompt() {
   const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>(
     currentPermission()
   )
+  const [enabled, setEnabled] = useState(true)
   const [busy, setBusy] = useState(false)
 
-  if (permission === 'granted' || permission === 'unsupported') return null
+  useEffect(() => {
+    setEnabled(readNotificationsEnabled())
+    setPermission(currentPermission())
+  }, [])
 
-  async function enableNotifications() {
+  async function setNotificationsState(nextEnabled: boolean) {
     setBusy(true)
     try {
-      if (typeof Notification !== 'undefined') {
-        const p = await Notification.requestPermission()
-        setPermission(p)
+      window.localStorage.setItem(NOTIFICATION_PREF_KEY, nextEnabled ? '1' : '0')
+      setEnabled(nextEnabled)
+      window.dispatchEvent(
+        new CustomEvent('vyria-notifications-toggle', {
+          detail: { enabled: nextEnabled },
+        })
+      )
+
+      if (nextEnabled && typeof Notification !== 'undefined') {
+        const newPermission =
+          Notification.permission === 'default'
+            ? await Notification.requestPermission()
+            : Notification.permission
+        setPermission(newPermission)
+        window.dispatchEvent(new Event('vyria-enable-notifications'))
       }
-      window.dispatchEvent(new Event('vyria-enable-notifications'))
     } catch {
       /* ignore */
     } finally {
@@ -33,22 +56,39 @@ export function DashboardNotificationPrompt() {
   }
 
   return (
-    <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <p>
-          Ative as notificações deste aparelho para receber alerta com som quando
-          chegar novo pedido.
-        </p>
-        <button
-          type="button"
-          onClick={() => void enableNotifications()}
-          disabled={busy}
-          className="inline-flex shrink-0 items-center justify-center rounded-lg bg-[var(--dash-primary)] px-3 py-2 text-xs font-semibold text-white shadow-sm disabled:opacity-60"
-        >
-          {busy ? 'Ativando…' : 'Ativar notificações'}
-        </button>
-      </div>
+    <div className="flex items-center gap-2 rounded-xl border border-[var(--card-border)] bg-white px-2.5 py-1.5 shadow-sm">
+      <span className="text-xs font-semibold text-[#4b5563]">Notificações</span>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={enabled}
+        aria-label={enabled ? 'Desativar notificações' : 'Ativar notificações'}
+        onClick={() => void setNotificationsState(!enabled)}
+        disabled={busy || permission === 'unsupported'}
+        className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors duration-200 ${
+          enabled ? 'bg-[var(--dash-primary)]' : 'bg-[#e5e7eb]'
+        } disabled:cursor-not-allowed disabled:opacity-60`}
+      >
+        <span
+          className={`inline-block h-6 w-6 transform rounded-full bg-white shadow-md transition-transform duration-200 ${
+            enabled ? 'translate-x-5' : 'translate-x-1'
+          }`}
+        />
+      </button>
+      <span className="text-[11px] font-medium text-[#6b7280]">
+        {permission === 'unsupported'
+          ? 'Indisponível'
+          : busy
+            ? 'Salvando...'
+            : enabled
+              ? 'Ativo'
+              : 'Desativo'}
+      </span>
+      {enabled && permission === 'denied' ? (
+        <span className="hidden text-[11px] text-amber-700 sm:inline">
+          Permissão bloqueada no navegador
+        </span>
+      ) : null}
     </div>
   )
 }
-
