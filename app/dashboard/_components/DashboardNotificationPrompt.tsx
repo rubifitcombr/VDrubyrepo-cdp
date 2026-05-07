@@ -41,6 +41,7 @@ export function DashboardNotificationPrompt() {
       )
 
       if (nextEnabled && typeof Notification !== 'undefined') {
+        // Só solicita permissão quando o usuário ativar explicitamente.
         const newPermission =
           Notification.permission === 'default'
             ? await Notification.requestPermission()
@@ -81,12 +82,14 @@ export function DashboardNotificationPrompt() {
           : busy
             ? 'Salvando...'
             : enabled
-              ? 'Ativo'
+              ? permission === 'denied'
+                ? 'Bloqueado'
+                : 'Ativo'
               : 'Desativo'}
       </span>
       {enabled && permission === 'denied' ? (
         <span className="hidden text-[11px] text-amber-700 sm:inline">
-          Permissão bloqueada no navegador
+          Permissão bloqueada. Desbloqueie em: cadeado na barra de endereço → Notificações → Permitir.
         </span>
       ) : null}
     </div>

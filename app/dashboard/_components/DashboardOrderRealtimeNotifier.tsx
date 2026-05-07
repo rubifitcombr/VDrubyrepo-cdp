@@ -132,16 +132,7 @@ export function DashboardOrderRealtimeNotifier({ storeId }: { storeId: string | 
     w.__vyriaGlobalOrderNotifierActive = true
 
     const supabase = createClient()
-    let closed = false
     notificationsEnabledRef.current = notificationsEnabled()
-
-    if (
-      notificationsEnabledRef.current &&
-      typeof Notification !== 'undefined' &&
-      Notification.permission === 'default'
-    ) {
-      void Notification.requestPermission().catch(() => {})
-    }
 
     async function ensurePushSubscription() {
       try {
@@ -178,26 +169,44 @@ export function DashboardOrderRealtimeNotifier({ storeId }: { storeId: string | 
 
     void ensurePushSubscription()
 
-    const onManualEnable = () => {
+    const onManualEnable = (event?: Event) => {
       if (!notificationsEnabledRef.current) return
       unlockAudioForMobile()
-      if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      const isExplicitEnable =
+        event?.type === 'vyria-enable-notifications' ||
+        event?.type === 'pointerdown' ||
+        event?.type === 'touchstart' ||
+        event?.type === 'keydown'
+
+      if (typeof Notification === 'undefined') return
+
+      // Evita pedir permissão automaticamente (isso pode fazer o navegador "bloquear").
+      // Só pede via gesto explícito do usuário.
+      if (Notification.permission === 'default' && isExplicitEnable) {
         void Notification.requestPermission()
           .then(() => ensurePushSubscription())
           .catch(() => {})
-      } else {
+        return
+      }
+
+      // Se já estiver "granted", só garante subscription; se "denied", não há o que fazer via JS.
+      if (Notification.permission === 'granted') {
         void ensurePushSubscription()
       }
     }
 
     const onInteraction = () => {
       unlockAudioForMobile()
+      onManualEnable(new Event('pointerdown'))
     }
     window.addEventListener('pointerdown', onInteraction, { passive: true })
     window.addEventListener('touchstart', onInteraction, { passive: true })
     window.addEventListener('keydown', onInteraction, { passive: true })
-    window.addEventListener('focus', onManualEnable)
-    document.addEventListener('visibilitychange', onManualEnable)
+    // Em foco/visibilidade, só tenta subscription se já estiver permitido.
+    window.addEventListener('focus', () => onManualEnable(new Event('focus')))
+    document.addEventListener('visibilitychange', () =>
+      onManualEnable(new Event('visibilitychange'))
+    )
     window.addEventListener('vyria-enable-notifications', onManualEnable as EventListener)
     const onNotificationsToggle = (event: Event) => {
       const nextEnabled =
@@ -233,13 +242,11 @@ export function DashboardOrderRealtimeNotifier({ storeId }: { storeId: string | 
       .subscribe()
 
     return () => {
-      closed = true
       void supabase.removeChannel(channel)
       window.removeEventListener('pointerdown', onInteraction as EventListener)
       window.removeEventListener('touchstart', onInteraction as EventListener)
       window.removeEventListener('keydown', onInteraction as EventListener)
-      window.removeEventListener('focus', onManualEnable)
-      document.removeEventListener('visibilitychange', onManualEnable)
+      // (listeners anônimos não são removíveis; mantemos o cleanup só dos explícitos acima)
       window.removeEventListener('vyria-enable-notifications', onManualEnable as EventListener)
       window.removeEventListener(
         'vyria-notifications-toggle',
