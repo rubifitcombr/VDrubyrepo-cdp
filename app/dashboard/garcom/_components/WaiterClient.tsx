@@ -377,16 +377,70 @@ export function WaiterClient({
           `<tr><td>${line.quantity}x</td><td>${escapeHtml(line.name)}</td><td style="text-align:right">${money.format(line.unitPrice * line.quantity)}</td></tr>`
       )
       .join('')
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Comanda</title></head><body style="font-family:Arial,sans-serif;padding:12px"><h2>Comanda ${escapeHtml(
+    const html = `<!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Comanda</title>
+<style>
+  @page { size: 80mm auto; margin: 4mm; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    box-sizing: border-box;
+  }
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    padding: 12px;
+    font-size: 14px;
+    width: 72mm;
+    max-width: 100%;
+  }
+  @media print {
+    html, body { overflow: visible !important; }
+    body { padding: 8px; }
+  }
+  table { width: 100%; border-collapse: collapse; }
+</style></head><body><h2 style="margin:0 0 8px;font-size:18px">Comanda ${escapeHtml(
       table.trim()
-    )}</h2><p>Ambiente: ${escapeHtml(sector)}</p><table style="width:100%;font-size:14px">${rows}</table><hr/><p style="text-align:right;font-weight:bold">Total: ${money.format(
+    )}</h2><p style="margin:0 0 8px">Ambiente: ${escapeHtml(sector)}</p><table>${rows}</table><hr style="border:none;border-top:1px solid #ccc;margin:10px 0"/><p style="text-align:right;font-weight:bold;margin:0">Total: ${money.format(
       total
     )}</p></body></html>`
     win.document.open()
     win.document.write(html)
     win.document.close()
-    win.focus()
-    win.print()
+
+    const runPrint = () => {
+      try {
+        win.focus()
+        win.print()
+      } catch {
+        /* ignore */
+      }
+    }
+
+    const closeAfterPrint = () => {
+      try {
+        win.removeEventListener('afterprint', closeAfterPrint)
+      } catch {
+        /* ignore */
+      }
+      window.setTimeout(() => {
+        try {
+          if (!win.closed) win.close()
+        } catch {
+          /* ignore */
+        }
+      }, 150)
+    }
+
+    try {
+      win.addEventListener('afterprint', closeAfterPrint)
+    } catch {
+      /* ignore */
+    }
+
+    /* Layout estável antes de imprimir — reduz papel em branco / alimentação infinita em algumas térmicas */
+    window.setTimeout(runPrint, 120)
   }
 
   async function submitNewOrder() {

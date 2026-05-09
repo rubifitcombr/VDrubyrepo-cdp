@@ -5,8 +5,28 @@ const serviceOpts = {
   auth: { autoRefreshToken: false, persistSession: false },
 } as const
 
+function readEnv(...keys: string[]): string | null {
+  for (const k of keys) {
+    const v = process.env[k]?.trim()
+    if (v) return v
+  }
+  return null
+}
+
 function serviceRoleClient(url: string, key: string): SupabaseClient {
   return createClient(url, key, serviceOpts)
+}
+
+function serviceRoleUrl(): string | null {
+  return readEnv('NEXT_PUBLIC_SUPABASE_URL', 'SUPABASE_URL')
+}
+
+function serviceRoleKey(): string | null {
+  return readEnv(
+    'SUPABASE_SERVICE_ROLE_KEY',
+    'SUPABASE_SERVICE_KEY',
+    'SUPABASE_SERVICE_ROLE'
+  )
 }
 
 /**
@@ -14,8 +34,8 @@ function serviceRoleClient(url: string, key: string): SupabaseClient {
  * quando RLS não permite `anon` sem cookies (comum em mobile / in-app browsers).
  */
 export function tryCreateServiceRoleClient(): SupabaseClient | null {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
+  const url = serviceRoleUrl()
+  const key = serviceRoleKey()
   if (!url || !key) return null
   return serviceRoleClient(url, key)
 }
@@ -25,11 +45,11 @@ export function tryCreateServiceRoleClient(): SupabaseClient | null {
  * nunca em código que dependa do utilizador autenticado.
  */
 export function createServiceRoleClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
+  const url = serviceRoleUrl()
+  const key = serviceRoleKey()
   if (!url || !key) {
     throw new Error(
-      'SUPABASE_SERVICE_ROLE_KEY e NEXT_PUBLIC_SUPABASE_URL são obrigatórios para o webhook WhatsApp.'
+      'Define NEXT_PUBLIC_SUPABASE_URL (ou SUPABASE_URL) e SUPABASE_SERVICE_ROLE_KEY (ou SUPABASE_SERVICE_KEY) no servidor.'
     )
   }
   return serviceRoleClient(url, key)

@@ -6,11 +6,12 @@ import {
   parseVyriaPanelMode,
   VYRIA_PANEL_MODE_COOKIE,
 } from '@/lib/vyria-panel-mode'
-import { createServiceRoleClient } from '@/lib/supabase/service-role.server'
+import { tryCreateServiceRoleClient } from '@/lib/supabase/service-role.server'
 import type { User } from '@supabase/supabase-js'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
+import { NextResponse } from 'next/server'
 
 export async function requireAdminApi(): Promise<
   | { ok: true; user: User; svc: SupabaseClient }
@@ -45,15 +46,17 @@ export async function requireAdminApi(): Promise<
     }
   }
 
-  let svc: SupabaseClient
-  try {
-    svc = createServiceRoleClient()
-  } catch {
+  const svc = tryCreateServiceRoleClient()
+  if (!svc) {
     return {
       ok: false,
-      response: Response.json(
-        { error: 'Servidor sem SUPABASE_SERVICE_ROLE_KEY' },
-        { status: 500 }
+      response: NextResponse.json(
+        {
+          error:
+            'Painel admin inacessível: falta a chave de serviço Supabase no servidor. Define SUPABASE_SERVICE_ROLE_KEY (ou SUPABASE_SERVICE_KEY / SUPABASE_SERVICE_ROLE) juntamente com NEXT_PUBLIC_SUPABASE_URL — necessário para listar e gerir todas as lojas e utilizadores.',
+          code: 'MISSING_SUPABASE_SERVICE_ROLE',
+        },
+        { status: 503 }
       ),
     }
   }

@@ -417,7 +417,6 @@ export function CashierClient({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderId: order.id, paymentMethod }),
       })
-      if (res.status === 403) return
       const json = (await res.json().catch(() => ({}))) as {
         error?: string
         order?: {
@@ -467,6 +466,7 @@ export function CashierClient({
         return
       }
       setOpeningCashInput('')
+      showToast('Turno aberto. Já podes receber comandas.')
       router.refresh()
     } finally {
       setBusyOpen(false)
@@ -833,6 +833,19 @@ export function CashierClient({
 
       {/* BLOCO 3 — Comandas */}
       <section className="mt-8 rounded-2xl border border-[var(--card-border)] bg-white p-4 shadow-sm sm:p-6">
+        {openComandas.length > 0 && (!turno || turno.status !== 'aberto') ? (
+          <div
+            className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+            role="status"
+          >
+            <p className="font-semibold">Abre um turno primeiro</p>
+            <p className="mt-1 text-amber-900/90">
+              Com {openComandas.length} comanda
+              {openComandas.length === 1 ? '' : 's'} à espera: usa &quot;Abrir turno&quot; acima.
+              Enquanto não houver turno aberto, o botão «Receber e fechar» fica inativo.
+            </p>
+          </div>
+        ) : null}
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="text-base font-semibold text-[#1a1614]">Comandas em aberto</h2>
           <span className="rounded-full bg-[#f3f4f6] px-2.5 py-0.5 text-xs font-bold text-[#374151]">
@@ -915,6 +928,11 @@ export function CashierClient({
                         <button
                           type="button"
                           disabled={closingOrderId === o.id || !turno || turno.status !== 'aberto'}
+                          title={
+                            !turno || turno.status !== 'aberto'
+                              ? 'Abre um turno na secção acima para receber pagamentos.'
+                              : undefined
+                          }
                           onClick={() => void closeComanda(o)}
                           className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50"
                         >

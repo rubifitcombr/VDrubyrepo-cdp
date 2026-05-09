@@ -371,6 +371,7 @@ export function LojistasPageClient() {
   const [filtro, setFiltro] = useState<string>('todos')
   const [q, setQ] = useState('')
   const [loading, setLoading] = useState(true)
+  const [listError, setListError] = useState<string | null>(null)
   const [metrics, setMetrics] = useState<Metrics | null>(null)
   const [charts, setCharts] = useState<ChartsPayload | null>(null)
   const [rows, setRows] = useState<LojistaRow[]>([])
@@ -461,20 +462,60 @@ export function LojistasPageClient() {
       const params = new URLSearchParams()
       params.set('filtro', filtro)
       if (q.trim()) params.set('q', q.trim())
-      const res = await fetch(`/api/admin/lojistas?${params.toString()}`, {
-        credentials: 'include',
-      })
-      const data = (await res.json()) as {
-        ok?: boolean
-        metrics?: Metrics
-        charts?: ChartsPayload
-        lojistas?: Record<string, unknown>[]
-        error?: string
-      }
-      if (data.ok && data.metrics && data.lojistas) {
-        setMetrics(data.metrics)
-        setCharts(data.charts ?? null)
-        setRows(data.lojistas.map((r) => normalizeLojista(r)))
+      try {
+        const res = await fetch(`/api/admin/lojistas?${params.toString()}`, {
+          credentials: 'include',
+        })
+        let data: {
+          ok?: boolean
+          metrics?: Metrics
+          charts?: ChartsPayload
+          lojistas?: Record<string, unknown>[]
+          error?: string
+          code?: string
+        }
+        try {
+          data = (await res.json()) as typeof data
+        } catch {
+          setListError('Resposta inválida do servidor.')
+          setMetrics(null)
+          setCharts(null)
+          setRows([])
+          if (!silent) setLoading(false)
+          return
+        }
+
+        if (!res.ok || !data.ok) {
+          const msg =
+            typeof data.error === 'string' && data.error.trim()
+              ? data.error.trim()
+              : res.status === 503
+                ? 'Servidor incompleto ou indisponível. Verifica SUPABASE_SERVICE_ROLE_KEY no ambiente.'
+                : `Erro ao carregar (${res.status}).`
+          setListError(msg)
+          setMetrics(null)
+          setCharts(null)
+          setRows([])
+          if (!silent) setLoading(false)
+          return
+        }
+
+        if (data.metrics && data.lojistas) {
+          setListError(null)
+          setMetrics(data.metrics)
+          setCharts(data.charts ?? null)
+          setRows(data.lojistas.map((r) => normalizeLojista(r)))
+        } else {
+          setListError('Resposta incompleta da API admin.')
+          setMetrics(null)
+          setCharts(null)
+          setRows([])
+        }
+      } catch {
+        setListError('Não foi possível ligar ao servidor.')
+        setMetrics(null)
+        setCharts(null)
+        setRows([])
       }
       if (!silent) setLoading(false)
     },
@@ -565,6 +606,13 @@ export function LojistasPageClient() {
         setEditPhone(L.telefone ?? '')
         setDrawerFaturas(data.faturas ?? [])
         setDrawerLogs(data.logs ?? [])
+      } else if (typeof data.error === 'string' && data.error.trim()) {
+        setToast({ type: 'err', msg: data.error.trim() })
+      } else if (!res.ok) {
+        setToast({
+          type: 'err',
+          msg: `Não foi possível carregar o detalhe (${res.status}).`,
+        })
       }
     } finally {
       setDrawerLoading(false)
@@ -857,6 +905,16 @@ export function LojistasPageClient() {
           >
             {toast.msg}
           </div>
+        </div>
+      ) : null}
+
+      {listError ? (
+        <div
+          className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-950 shadow-sm"
+          role="alert"
+        >
+          <p className="font-semibold">Não foi possível carregar os lojistas</p>
+          <p className="mt-1 leading-relaxed text-red-900/90">{listError}</p>
         </div>
       ) : null}
 
@@ -1158,6 +1216,12 @@ export function LojistasPageClient() {
               <tr>
                 <td colSpan={10} className="px-4 py-8 text-center text-[#6b7280]">
                   A carregar…
+                </td>
+              </tr>
+            ) : listError ? (
+              <tr>
+                <td colSpan={10} className="px-4 py-8 text-center text-red-800">
+                  Corrige o erro acima e recarrega a página ou altera o filtro para tentar de novo.
                 </td>
               </tr>
             ) : rows.length === 0 ? (

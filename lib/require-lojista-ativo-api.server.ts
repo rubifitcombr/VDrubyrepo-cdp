@@ -1,18 +1,58 @@
 import 'server-only'
 
 import { NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { createClient as createSessionSupabaseClient } from '@/lib/supabase/server'
 import { parseMerchantStatus } from '@/lib/merchant-status'
 import { isPlanoVencido } from '@/lib/merchant-access-dates'
 import { readStorePlano, readStoreStatus } from '@/lib/store-columns'
 
-function serviceClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
+function readEnv(...keys: string[]) {
+  for (const k of keys) {
+    const v = process.env[k]?.trim()
+    if (v) return v
+  }
+  return null
+}
+
+function serviceClient(): SupabaseClient | null {
+  const url = readEnv('SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_URL')
+  const key = readEnv(
+    'SUPABASE_SERVICE_ROLE_KEY',
+    'SUPABASE_SERVICE_KEY',
+    'SUPABASE_SERVICE_ROLE'
+  )
   if (!url || !key) return null
   return createClient(url, key, {
     auth: { autoRefreshToken: false, persistSession: false },
   })
+}
+
+/**
+ * Sem service role: usa o cliente SSR com cookies (mesma sessão do painel).
+ * Evita 503 em ambientes só com NEXT_PUBLIC_SUPABASE_* + sessão autenticada.
+ */
+async function resolveLojistaDbClient(): Promise<
+  | { ok: true; svc: SupabaseClient | null; db: SupabaseClient }
+  | { ok: false; response: NextResponse }
+> {
+  const svc = serviceClient()
+  if (svc) {
+    return { ok: true, svc, db: svc }
+  }
+  const url = readEnv('SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_URL')
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim()
+  if (!url || !anon) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: 'configuração do servidor incompleta' },
+        { status: 503 }
+      ),
+    }
+  }
+  const db = await createSessionSupabaseClient()
+  return { ok: true, svc: null, db }
 }
 
 export type LojistaAtivoContext = {
@@ -26,18 +66,13 @@ export type LojistaAtivoContext = {
 export async function requireLojistaAtivoApi(
   userId: string
 ): Promise<{ ok: true; ctx: LojistaAtivoContext } | { ok: false; response: NextResponse }> {
-  const svc = serviceClient()
-  if (!svc) {
-    return {
-      ok: false,
-      response: NextResponse.json(
-        { error: 'configuração do servidor incompleta' },
-        { status: 503 }
-      ),
-    }
+  const resolved = await resolveLojistaDbClient()
+  if (!resolved.ok) {
+    return { ok: false, response: resolved.response }
   }
+  const { svc, db } = resolved
 
-  const { data: store, error } = await svc
+  const { data: store, error } = await db
     .from('stores')
     .select('*')
     .eq('owner_id', userId)
@@ -70,7 +105,8 @@ export async function requireLojistaAtivoApi(
   if (!vence || isPlanoVencido(vence)) {
     const id = String(row.id ?? '')
     if (id) {
-      await svc
+      const updater = svc ?? db
+      await updater
         .from('stores')
         .update({
           status: 'bloqueado',

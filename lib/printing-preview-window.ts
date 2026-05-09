@@ -42,9 +42,12 @@ export function openPrintingPreviewPopup(opts: {
   .body{padding:12px;max-width:240px;margin:0 auto}
   h1{font-size:13px;text-align:center;margin:0 0 8px}
   .line{border-top:1px dashed #999;margin:8px 0}
+  @page{size:80mm auto;margin:4mm}
+  html,body{height:auto!important;min-height:0!important}
   @media print{
     .noprint{display:none!important}
     body{background:#fff}
+    html,body{overflow:visible!important}
   }
 </style></head><body>
 <div class="noprint">

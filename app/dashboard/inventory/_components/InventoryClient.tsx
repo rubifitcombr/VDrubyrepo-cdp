@@ -182,7 +182,6 @@ export function InventoryClient({ initialRows }: { initialRows: Row[] }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ items }),
       })
-      if (res.status === 403) return
       const json = await res.json().catch(() => ({}))
       if (!res.ok) {
         setError(
