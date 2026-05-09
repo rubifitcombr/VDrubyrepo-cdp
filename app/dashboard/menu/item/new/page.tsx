@@ -86,19 +86,28 @@ function MenuItemWizardContent() {
   }, [])
 
   useEffect(() => {
-    void loadStore()
+    const t = window.setTimeout(() => {
+      void loadStore()
+    }, 0)
+    return () => window.clearTimeout(t)
   }, [loadStore])
 
   useEffect(() => {
     if (preCategory && !editId) {
-      setCategory(preCategory)
-      setUseNewCategory(false)
+      const t = window.setTimeout(() => {
+        setCategory(preCategory)
+        setUseNewCategory(false)
+      }, 0)
+      return () => window.clearTimeout(t)
     }
   }, [preCategory, editId])
 
   useEffect(() => {
     if (!storeId || !editId) {
-      if (!editId) setEditingProductId(null)
+      if (!editId) {
+        const t = window.setTimeout(() => setEditingProductId(null), 0)
+        return () => window.clearTimeout(t)
+      }
       return
     }
     let cancelled = false

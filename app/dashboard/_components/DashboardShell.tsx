@@ -282,7 +282,8 @@ export function DashboardShell({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   useEffect(() => {
-    setMobileMenuOpen(false)
+    const t = window.setTimeout(() => setMobileMenuOpen(false), 0)
+    return () => window.clearTimeout(t)
   }, [pathname])
 
   const mainInner =

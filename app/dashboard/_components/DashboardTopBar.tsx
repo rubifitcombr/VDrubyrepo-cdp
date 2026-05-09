@@ -113,11 +113,11 @@ export function DashboardTopBar({
         <DashboardNotificationPrompt />
         <Link
           href="/dashboard/orders"
-          className="relative inline-flex items-center gap-2 rounded-xl border border-[var(--card-border)] bg-white px-2.5 py-2 text-[#1a1614] shadow-sm transition-colors hover:bg-[#f8f9fa]"
+          className="relative inline-flex items-center gap-2 rounded-xl border border-[var(--card-border)] bg-white p-2 text-[#1a1614] shadow-sm transition-colors hover:bg-[#f8f9fa] sm:px-2.5 sm:py-2"
           aria-label={`Ver pedidos pendentes: ${pendingCount}`}
         >
           <IconBell className="h-5 w-5" />
-          <span className="text-xs font-semibold text-[#4b5563]">
+          <span className="hidden text-xs font-semibold text-[#4b5563] sm:inline">
             Pendentes: {pendingCount}
           </span>
           {pendingCount > 0 ? (

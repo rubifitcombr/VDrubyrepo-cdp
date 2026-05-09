@@ -9,7 +9,7 @@ import {
 import { verificarAcessoLojista } from '@/middleware/verificarAcesso'
 import { NextResponse, type NextRequest } from 'next/server'
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const rawPath = request.nextUrl.pathname
   const host =
     request.headers.get('host')?.split(':')[0]?.toLowerCase() ?? ''

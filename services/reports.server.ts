@@ -196,7 +196,7 @@ export async function getReportsDashboardData(
   const todayHourRev = new Array(24).fill(0)
   const todayHourN = new Array(24).fill(0)
 
-  let pay30 = { pix: 0, card: 0, cash: 0, other: 0, tagged: 0 }
+  const pay30 = { pix: 0, card: 0, cash: 0, other: 0, tagged: 0 }
   const start30 = addCalendarDaysSp(todayKey, -29)
 
   for (const o of orders) {
@@ -415,7 +415,7 @@ export async function getReportsDashboardData(
     for (let i = daysBack - 1; i >= 0; i--) {
       const key = addCalendarDaysSp(todayKey, -i)
       const b = byDay.get(key) ?? { rev: 0, n: 0 }
-      const [y, m, d] = key.split('-')
+      const [, m, d] = key.split('-')
       pts.push({
         label: daysBack <= 7 ? `${d}/${m}` : i % 3 === 0 || i === 0 ? `${d}/${m}` : '',
         revenue: Math.round(b.rev * 100) / 100,

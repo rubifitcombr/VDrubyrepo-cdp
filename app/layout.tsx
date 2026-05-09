@@ -25,7 +25,6 @@ export const metadata: Metadata = {
   title: "Vyria Delivery",
   description: "Engenharia de vendas local — gestão de entregas e loja online",
   manifest: "/manifest.json",
-  themeColor: "#ff5c26",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
@@ -44,6 +43,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
+  themeColor: "#ff5c26",
 };
 
 export default function RootLayout({
@@ -58,7 +58,6 @@ export default function RootLayout({
     >
       <head>
         <link rel="manifest" href="/manifest.json" />
-        <meta name="theme-color" content="#ff5c26" />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />

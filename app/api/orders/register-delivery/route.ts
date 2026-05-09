@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
 import { getUser } from '@/services/auth.server'
-import { deleteEntregaById, getEntregaByOrderId, insertEntrega } from '@/services/entregas.server'
+import { deleteEntregaById, insertEntrega } from '@/services/entregas.server'
 import { createClient } from '@/lib/supabase/server'
 
 const ALLOWED_BEFORE = new Set(['confirmed'])

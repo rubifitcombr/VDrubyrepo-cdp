@@ -152,11 +152,6 @@ export default async function Dashboard() {
       ? (store.id as string)
       : null
 
-  const storeName =
-    store && typeof store === 'object' && 'name' in store
-      ? (store.name as string)
-      : 'A tua loja'
-
   const storeSlug =
     store && typeof store === 'object' && 'slug' in store && store.slug
       ? String(store.slug)

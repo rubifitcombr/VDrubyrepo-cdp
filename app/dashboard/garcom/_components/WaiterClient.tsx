@@ -1030,7 +1030,6 @@ export function WaiterClient({
             saving={saving}
             loadingOrder={loadingOrder}
             hasSavedOrder={hasSavedOrder}
-            activeOrder={activeOrder}
             onSubmitNew={submitNewOrder}
             onSaveExisting={saveExistingOrder}
             onPrint={printComanda}
@@ -1322,7 +1321,6 @@ export function WaiterClient({
                 saving={saving}
                 loadingOrder={loadingOrder}
                 hasSavedOrder={hasSavedOrder}
-                activeOrder={activeOrder}
                 onSubmitNew={submitNewOrder}
                 onSaveExisting={saveExistingOrder}
                 onPrint={printComanda}
@@ -1452,7 +1450,6 @@ function OrderPanelContent({
   saving,
   loadingOrder,
   hasSavedOrder,
-  activeOrder,
   onSubmitNew,
   onSaveExisting,
   onPrint,
@@ -1483,7 +1480,6 @@ function OrderPanelContent({
   saving: boolean
   loadingOrder: boolean
   hasSavedOrder: boolean
-  activeOrder: StoreOrderRow | null
   onSubmitNew: () => void
   onSaveExisting: () => void
   onPrint: () => void

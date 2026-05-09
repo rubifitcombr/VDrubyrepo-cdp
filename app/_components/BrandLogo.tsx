@@ -1,3 +1,5 @@
+import Image from 'next/image'
+
 type Props = {
   className?: string
   width?: number
@@ -10,14 +12,14 @@ export function BrandLogo({
   priority = false,
 }: Props) {
   return (
-    <img
+    <Image
       src="/brand/vyria-logo.png"
       alt="Vyria Delivery"
       width={width}
       height={Math.max(64, Math.round(width * 0.42))}
       className={`h-auto w-auto max-w-full object-contain object-left ${className}`}
-      loading={priority ? 'eager' : 'lazy'}
-      decoding="async"
+      priority={priority}
+      sizes={`${width}px`}
     />
   )
 }

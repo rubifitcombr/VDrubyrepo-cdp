@@ -278,19 +278,26 @@ export function GuidedPromoWizard({
     prevOpenRef.current = true
 
     if (editing) {
-      if (justOpened) hydrateFromRow(editing)
+      if (justOpened) {
+        const t = window.setTimeout(() => hydrateFromRow(editing), 0)
+        return () => window.clearTimeout(t)
+      }
       return
     }
 
     if (launchKey > 0 && launchSuggestion) {
       if (launchAppliedRef.current !== launchKey) {
         launchAppliedRef.current = launchKey
-        applyFromSuggestion(launchSuggestion)
+        const t = window.setTimeout(() => applyFromSuggestion(launchSuggestion), 0)
+        return () => window.clearTimeout(t)
       }
       return
     }
 
-    if (justOpened) resetForCreate()
+    if (justOpened) {
+      const t = window.setTimeout(() => resetForCreate(), 0)
+      return () => window.clearTimeout(t)
+    }
   }, [
     open,
     editing,
@@ -327,7 +334,10 @@ export function GuidedPromoWizard({
   }, [kind])
 
   useEffect(() => {
-    setStepIndex((i) => Math.min(i, Math.max(0, stepIds.length - 1)))
+    const t = window.setTimeout(() => {
+      setStepIndex((i) => Math.min(i, Math.max(0, stepIds.length - 1)))
+    }, 0)
+    return () => window.clearTimeout(t)
   }, [stepIds.length])
 
   const currentStep: StepId =

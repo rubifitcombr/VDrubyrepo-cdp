@@ -13,22 +13,27 @@ function PlanRestrictedNotice() {
 
   useEffect(() => {
     if (pathname !== '/planos' && !pathname.startsWith('/dashboard/planos')) {
-      setVisible(false)
+      const t = window.setTimeout(() => setVisible(false), 0)
+      return () => window.clearTimeout(t)
       return
     }
     const sp = new URLSearchParams(
       typeof window !== 'undefined' ? window.location.search : ''
     )
     if (sp.get('planRestricted') !== '1') {
-      setVisible(false)
+      const t = window.setTimeout(() => setVisible(false), 0)
+      return () => window.clearTimeout(t)
       return
     }
-    setVisible(true)
+    const openT = window.setTimeout(() => setVisible(true), 0)
     const t = window.setTimeout(() => {
       setVisible(false)
       router.replace('/planos', { scroll: false })
     }, 5200)
-    return () => window.clearTimeout(t)
+    return () => {
+      window.clearTimeout(openT)
+      window.clearTimeout(t)
+    }
   }, [pathname, router])
 
   if (!visible) return null

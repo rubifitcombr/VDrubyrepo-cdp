@@ -358,7 +358,7 @@ export async function fetchLojistasForAdmin(
     statusDistrib: buildStatusDistribution(allRows),
   }
 
-  let metrics = {
+  const metrics = {
     total: allRows.length,
     ativos: 0,
     pendentes: 0,

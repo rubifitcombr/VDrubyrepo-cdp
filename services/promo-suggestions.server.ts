@@ -85,7 +85,7 @@ export async function getPromotionSuggestionsForStore(
   const sorted = [...qtyByProduct.entries()].sort((a, b) => b[1] - a[1])
   if (!sorted.length) return null
 
-  let idA = sorted[0][0]
+  const idA = sorted[0][0]
   let idB = sorted.length > 1 ? sorted[1][0] : ''
 
   if (!idB || idB === idA) {
