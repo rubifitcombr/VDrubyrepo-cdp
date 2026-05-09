@@ -121,7 +121,14 @@ async function showOrderNotification(title: string, body: string, url: string) {
   }
 }
 
-export function DashboardOrderRealtimeNotifier({ storeId }: { storeId: string | null }) {
+export function DashboardOrderRealtimeNotifier({
+  storeId,
+  notifyOnNewOrder = true,
+}: {
+  storeId: string | null
+  /** Quando false, desativa som e notificação no browser (toggle «Notificação de novo pedido» + plano Pro). */
+  notifyOnNewOrder?: boolean
+}) {
   const seenIdsRef = useRef<Set<string>>(new Set())
   const notificationsEnabledRef = useRef(true)
 
@@ -226,6 +233,7 @@ export function DashboardOrderRealtimeNotifier({ storeId }: { storeId: string | 
           filter: `store_id=eq.${storeId}`,
         },
         (payload) => {
+          if (!notifyOnNewOrder) return
           if (!notificationsEnabledRef.current) return
           const row = payload.new as { id?: string; customer_name?: string | null }
           const id = String(row.id ?? '')
@@ -254,7 +262,7 @@ export function DashboardOrderRealtimeNotifier({ storeId }: { storeId: string | 
       )
       w.__vyriaGlobalOrderNotifierActive = false
     }
-  }, [storeId])
+  }, [storeId, notifyOnNewOrder])
 
   return null
 }

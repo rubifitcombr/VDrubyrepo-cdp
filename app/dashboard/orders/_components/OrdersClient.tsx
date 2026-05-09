@@ -9,7 +9,7 @@ import {
   type StoreOrderRow,
 } from '@/lib/store-order'
 import type { StorePrintingState } from '@/lib/store-printing'
-import { openOrderTicketPrint } from '@/lib/order-print-window'
+import { openOrderTicketPrintDeduped } from '@/lib/order-print-window'
 import { updateOrderStatus } from '@/services/orders'
 import { dashboardFetch } from '@/lib/dashboard-fetch.client'
 import type { StoreEntregadorDTO } from '@/lib/entregas-types'
@@ -506,7 +506,7 @@ export function OrdersClient({
     ) {
       const ref =
         displayNumberById.get(orderId) ?? orderId.replace(/-/g, '').slice(0, 8)
-      const ok = openOrderTicketPrint({
+      const ok = openOrderTicketPrintDeduped(orderId, {
         storeName,
         order: { ...orderBefore, status: 'preparing' },
         orderDisplayRef: ref,

@@ -6,8 +6,11 @@ import {
   evaluateDeliveryForCustomer,
   type StoreDeliveryConfig,
 } from '@/lib/delivery-zone.server'
-import { parsePlan } from '@/lib/plan'
+import { hasOrderPipelineAutomations, parsePlan } from '@/lib/plan'
 import { readStorePlano } from '@/lib/store-columns'
+import { getStoreOpenState } from '@/lib/business-hours'
+import { parseAutomationsFromStore } from '@/lib/store-automations'
+import { maybeSendOrderAcceptedWhatsApp } from '@/services/order-accepted-whatsapp.server'
 import { sendWebPushNewOrder } from '@/services/web-push.server'
 
 type CheckoutLine = {
@@ -158,7 +161,7 @@ export async function POST(req: NextRequest) {
     const { data: store, error: storeErr } = await fetchStoreByPublicSlug(
       supabase,
       slug,
-      'id, name, plan, address, delivery_fee, delivery_free_above, delivery_max_km, store_geo_lat, store_geo_lng'
+      'id, name, plan, plano, address, delivery_fee, delivery_free_above, delivery_max_km, store_geo_lat, store_geo_lng, auto_accept_orders, manual_closed, business_hours, auto_whatsapp_confirm, auto_notify_new_order'
     )
 
     if (storeErr || !store) {
@@ -282,12 +285,48 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    void sendWebPushNewOrder({
-      storeId: String(storeRow.id),
-      storeName: String(storeRow.name || ''),
-      orderId: String(order.id),
-      customerName,
-    })
+    const storeMeta = storeRow as Record<string, unknown>
+    const checkoutPlan = parsePlan(readStorePlano(storeMeta))
+    const checkoutAutomations = parseAutomationsFromStore(storeMeta)
+
+    if (
+      checkoutAutomations.auto_accept_orders &&
+      hasOrderPipelineAutomations(checkoutPlan)
+    ) {
+      const { open } = getStoreOpenState(storeMeta.business_hours, {
+        manualClosed: storeMeta.manual_closed === true,
+      })
+      if (open) {
+        const { error: acceptErr } = await supabase
+          .from('orders')
+          .update({ status: 'preparing' })
+          .eq('id', order.id)
+          .eq('store_id', String(storeRow.id))
+          .eq('status', 'pending')
+
+        if (!acceptErr) {
+          await maybeSendOrderAcceptedWhatsApp(supabase, {
+            store: storeMeta,
+            storeId: String(storeRow.id),
+            orderId: String(order.id),
+            customerPhone,
+            customerName,
+          })
+        }
+      }
+    }
+
+    if (
+      hasOrderPipelineAutomations(checkoutPlan) &&
+      checkoutAutomations.auto_notify_new_order
+    ) {
+      void sendWebPushNewOrder({
+        storeId: String(storeRow.id),
+        storeName: String(storeRow.name || ''),
+        orderId: String(order.id),
+        customerName,
+      })
+    }
 
     return NextResponse.json({
       ok: true,

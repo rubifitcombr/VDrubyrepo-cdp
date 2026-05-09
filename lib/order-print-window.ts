@@ -172,3 +172,19 @@ ${deliveryCopyBlock}
   window.setTimeout(runPrint, 120)
   return true
 }
+
+/**
+ * Evita segunda impressão do mesmo pedido (ex.: aceite manual + evento Realtime).
+ */
+export function openOrderTicketPrintDeduped(
+  orderId: string,
+  opts: Parameters<typeof openOrderTicketPrint>[0]
+): boolean {
+  if (typeof window === 'undefined') return false
+  const w = window as Window & { __vyriaTicketPrinted?: Set<string> }
+  w.__vyriaTicketPrinted ??= new Set()
+  if (w.__vyriaTicketPrinted.has(orderId)) return true
+  const ok = openOrderTicketPrint(opts)
+  if (ok) w.__vyriaTicketPrinted.add(orderId)
+  return ok
+}

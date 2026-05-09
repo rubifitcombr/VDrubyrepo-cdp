@@ -14,6 +14,8 @@ import { DashboardPlanGuard } from './DashboardPlanGuard'
 import { DashboardTopBar } from './DashboardTopBar'
 import { InstallAppBanner } from './InstallAppBanner'
 import { DashboardOrderRealtimeNotifier } from './DashboardOrderRealtimeNotifier'
+import { DashboardAutoAcceptOrders } from './DashboardAutoAcceptOrders'
+import type { StorePrintingState } from '@/lib/store-printing'
 import {
   IconBag,
   IconBolt,
@@ -262,6 +264,17 @@ export function DashboardShell({
   billingBanner = null,
   billingBlock = null,
   vyriaDualAccount,
+  disableAutoAccept = false,
+  notifyOnNewOrder = true,
+  autoAcceptOrders = false,
+  autoAcceptPrinting = {
+    print_auto_on_confirm: false,
+    print_include_customer_details: false,
+    print_delivery_copy: false,
+  },
+  businessHours,
+  manualClosed = false,
+  autoAcceptStoreName = 'Meu estabelecimento',
 }: {
   children: React.ReactNode
   storeName: string | null
@@ -277,6 +290,14 @@ export function DashboardShell({
   } | null
   billingBlock?: { payUrl: string | null } | null
   vyriaDualAccount?: { mode: VyriaPanelMode }
+  disableAutoAccept?: boolean
+  /** Som / notificação do browser para novo pedido (automação + plano Pro). */
+  notifyOnNewOrder?: boolean
+  autoAcceptOrders?: boolean
+  autoAcceptPrinting?: StorePrintingState
+  businessHours?: unknown
+  manualClosed?: boolean
+  autoAcceptStoreName?: string
 }) {
   const pathname = usePathname()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -362,7 +383,25 @@ export function DashboardShell({
       </aside>
 
       <div className="flex min-h-dvh min-w-0 flex-1 flex-col md:min-h-dvh md:pl-60 lg:pl-64">
-        {isAuthenticated ? <DashboardOrderRealtimeNotifier storeId={storeId} /> : null}
+        {isAuthenticated ? (
+          <DashboardOrderRealtimeNotifier
+            storeId={storeId}
+            notifyOnNewOrder={notifyOnNewOrder}
+          />
+        ) : null}
+        {isAuthenticated &&
+        storeId &&
+        !disableAutoAccept &&
+        (autoAcceptOrders || autoAcceptPrinting.print_auto_on_confirm) ? (
+          <DashboardAutoAcceptOrders
+            storeId={storeId}
+            storeName={autoAcceptStoreName}
+            businessHours={businessHours}
+            manualClosed={manualClosed}
+            autoAcceptOrders={autoAcceptOrders}
+            printing={autoAcceptPrinting}
+          />
+        ) : null}
         {billingBanner && isAuthenticated ? (
           <div className="shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-3 sm:px-5 md:px-6 lg:px-8 xl:px-10">
             <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-3 sm:flex-row sm:items-center sm:justify-between xl:max-w-[1400px]">

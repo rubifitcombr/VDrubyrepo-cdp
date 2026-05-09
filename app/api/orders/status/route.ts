@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
+import { readStorePlano } from '@/lib/store-columns'
+import { hasOrderPipelineAutomations, parsePlan } from '@/lib/plan'
 import { parseAutomationsFromStore } from '@/lib/store-automations'
+import { maybeSendOrderAcceptedWhatsApp } from '@/services/order-accepted-whatsapp.server'
 import {
   sendWhatsAppMessage,
   shouldSkipAutoReply,
@@ -117,11 +120,28 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    const storePlan = parsePlan(readStorePlano(gate.ctx.store))
+
+    const wasPendingToPreparing =
+      current === 'pending' && newStatus === 'preparing'
+    if (wasPendingToPreparing && hasOrderPipelineAutomations(storePlan)) {
+      await maybeSendOrderAcceptedWhatsApp(supabase, {
+        store: gate.ctx.store,
+        storeId,
+        orderId,
+        customerPhone: order.customer_phone as string | null | undefined,
+        customerName: order.customer_name as string | null | undefined,
+      })
+    }
+
     let deliveryNotified = false
     const wasReadyToConfirmed =
       current === 'ready' && newStatus === 'confirmed'
 
-    if (wasReadyToConfirmed) {
+    if (
+      wasReadyToConfirmed &&
+      hasOrderPipelineAutomations(storePlan)
+    ) {
       const automations = parseAutomationsFromStore(gate.ctx.store)
       if (
         automations.auto_whatsapp_delivery &&

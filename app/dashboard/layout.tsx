@@ -14,6 +14,11 @@ import {
 import { getDashboardNotificationCount } from '@/services/dashboard.server'
 import { getUser } from '@/services/auth.server'
 import { getStoreByUser } from '@/services/store.server'
+import { hasOrderPipelineAutomations } from '@/lib/plan'
+import { parseAutomationsFromStore } from '@/lib/store-automations'
+import { parsePrintingFromStore } from '@/lib/store-printing'
+import { createClient } from '@/lib/supabase/server'
+import { syncAutoCloseOutsideHoursForStore } from '@/services/store-hours-automation.server'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { ServiceWorkerRegister } from '@/app/_components/ServiceWorkerRegister'
@@ -75,10 +80,19 @@ export default async function DashboardLayout({
     ? await getDashboardNotificationCount(storeId)
     : 0
 
-  const storeRecord =
+  let storeRecord: Record<string, unknown> | null =
     store && typeof store === 'object'
       ? (store as Record<string, unknown>)
       : null
+
+  if (storeRecord && user) {
+    const supabase = await createClient()
+    const synced = await syncAutoCloseOutsideHoursForStore(storeRecord, supabase)
+    if (typeof synced === 'boolean') {
+      storeRecord = { ...storeRecord, manual_closed: synced }
+    }
+  }
+
   const billingBlock = storeRecord
     ? getDashboardBillingBlock(storeRecord)
     : null
@@ -92,6 +106,10 @@ export default async function DashboardLayout({
       ? { mode: vyriaPanelMode }
       : undefined
 
+  const autoAcceptStoreName =
+    (typeof storeName === 'string' && storeName.trim()) ||
+    'Meu estabelecimento'
+
   return (
     <DashboardShell
       storeName={storeName}
@@ -104,6 +122,29 @@ export default async function DashboardLayout({
       billingBanner={billingBanner}
       billingBlock={billingBlock}
       vyriaDualAccount={vyriaDualAccount}
+      disableAutoAccept={!!billingBlock}
+      notifyOnNewOrder={
+        !!(
+          storeRecord &&
+          hasOrderPipelineAutomations(plan) &&
+          parseAutomationsFromStore(storeRecord).auto_notify_new_order
+        )
+      }
+      autoAcceptOrders={
+        !!(
+          storeRecord &&
+          hasOrderPipelineAutomations(plan) &&
+          parseAutomationsFromStore(storeRecord).auto_accept_orders
+        )
+      }
+      autoAcceptPrinting={
+        storeRecord
+          ? parsePrintingFromStore(storeRecord)
+          : parsePrintingFromStore({})
+      }
+      businessHours={storeRecord?.business_hours}
+      manualClosed={storeRecord?.manual_closed === true}
+      autoAcceptStoreName={autoAcceptStoreName}
     >
       <ServiceWorkerRegister />
       {children}

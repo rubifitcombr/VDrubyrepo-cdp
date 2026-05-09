@@ -8,6 +8,7 @@ import {
 import { readStorePlano } from '@/lib/store-columns'
 import { parsePlan, planTier } from '@/lib/plan'
 import { getStoreOpenState, getTodayClosingDisplayHM } from '@/lib/business-hours'
+import { syncAutoCloseOutsideHoursForStore } from '@/services/store-hours-automation.server'
 import { effectiveProductPrice, hasActivePromotion } from '@/lib/product-pricing'
 import { MENU_PRODUCT_SELECT } from '@/lib/menu-product'
 import { resolveStoreTheme } from '@/lib/store-theme'
@@ -74,6 +75,8 @@ const STORE_PUBLIC_SELECT = [
   'location_lng',
   'location_address',
   'location_label',
+  'auto_close_outside_hours',
+  'plano',
 ].join(',')
 
 /** Evita 404 em cache (CDN/PWA) para rotas dinâmicas por loja. */
@@ -127,9 +130,17 @@ export default async function StorefrontPage({ params }: Props) {
     redirect(`/${canonicalSlug}`)
   }
   const theme = resolveStoreTheme(s.theme_preset)
+
+  const manualClosedSync = await syncAutoCloseOutsideHoursForStore(
+    s as Record<string, unknown>,
+    supabase
+  )
+  const manualClosedEffective =
+    manualClosedSync !== null ? manualClosedSync : s.manual_closed === true
+
   const { open: storeOpen, mode: hoursMode } = getStoreOpenState(
     s.business_hours,
-    { manualClosed: s.manual_closed === true }
+    { manualClosed: manualClosedEffective }
   )
   const closingTimeToday = getTodayClosingDisplayHM(s.business_hours)
 
