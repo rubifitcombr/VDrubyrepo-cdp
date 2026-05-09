@@ -49,7 +49,7 @@ const ROWS: Array<{
     key: 'print_auto_on_confirm',
     title: 'Impressão automática',
     description:
-      'Imprimir automaticamente quando um pedido for confirmado.',
+      'Ao aceitar um pedido (Preparando), imprimir o cupom na cozinha — Pedidos e KDS.',
   },
   {
     key: 'print_include_customer_details',

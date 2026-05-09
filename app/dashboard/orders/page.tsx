@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { parsePrintingFromStore } from '@/lib/store-printing'
 import { OrdersClient } from './_components/OrdersClient'
 import { getUser } from '@/services/auth.server'
 import { getStoreOrders } from '@/services/orders.server'
@@ -45,7 +46,17 @@ export default async function OrdersPage() {
   const storeId = store.id as string
   const initialOrders = await getStoreOrders(storeId)
 
+  const row = store as Record<string, unknown>
+  const printing = parsePrintingFromStore(row)
+  const storeName =
+    typeof row.name === 'string' ? row.name : 'Meu estabelecimento'
+
   return (
-    <OrdersClient initialOrders={initialOrders} storeId={storeId} />
+    <OrdersClient
+      initialOrders={initialOrders}
+      storeId={storeId}
+      storeName={storeName}
+      printing={printing}
+    />
   )
 }

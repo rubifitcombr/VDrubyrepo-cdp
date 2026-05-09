@@ -8,6 +8,8 @@ import {
   mapStoreOrderRow,
   type StoreOrderRow,
 } from '@/lib/store-order'
+import type { StorePrintingState } from '@/lib/store-printing'
+import { openOrderTicketPrint } from '@/lib/order-print-window'
 import { updateOrderStatus } from '@/services/orders'
 
 const money = new Intl.NumberFormat('pt-BR', {
@@ -37,10 +39,12 @@ export function KdsClient({
   initialOrders,
   storeId,
   storeName,
+  printing,
 }: {
   initialOrders: StoreOrderRow[]
   storeId: string
   storeName: string
+  printing: StorePrintingState
 }) {
   const [orders, setOrders] = useState<StoreOrderRow[]>(initialOrders)
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -163,6 +167,7 @@ export function KdsClient({
   }
 
   async function patch(orderId: string, status: string) {
+    const orderBefore = orders.find((o) => o.id === orderId)
     setBusyId(orderId)
     const { error, deliveryNotified } = await updateOrderStatus(orderId, status)
     setBusyId(null)
@@ -175,6 +180,29 @@ export function KdsClient({
     )
     if (deliveryNotified) {
       flashWaNotice('Aviso de entrega enviado ao cliente por WhatsApp.')
+    }
+    if (
+      status === 'preparing' &&
+      printing.print_auto_on_confirm &&
+      orderBefore
+    ) {
+      const ref =
+        displayNumberById.get(orderId) ?? orderId.replace(/-/g, '').slice(0, 8)
+      const ok = openOrderTicketPrint({
+        storeName,
+        order: { ...orderBefore, status: 'preparing' },
+        orderDisplayRef: ref,
+        printing: {
+          print_include_customer_details:
+            printing.print_include_customer_details,
+          print_delivery_copy: printing.print_delivery_copy,
+        },
+      })
+      if (!ok) {
+        flashWaNotice(
+          'Permite pop-ups neste site para a impressão automática funcionar.'
+        )
+      }
     }
   }
 
