@@ -1,9 +1,4 @@
-function parseCommaMoneySegment(raw: string): number | null {
-  const t = raw.trim().replace(/\./g, '').replace(',', '.')
-  if (!t) return null
-  const n = Number(t)
-  return Number.isFinite(n) ? Math.round(n * 100) / 100 : null
-}
+import { parseBrlMoneyCell } from '@/lib/print/formatter'
 
 /**
  * Soma totais por linha em `items_summary` no formato `…=12,50; …=5,00`.
@@ -17,9 +12,10 @@ export function sumLineTotalsFromItemsSummary(summary: string | null | undefined
   for (const seg of s.split(';')) {
     const t = seg.trim()
     if (!t) continue
-    const m = t.match(/=\s*([\d.,]+)\s*$/i)
-    if (!m?.[1]) continue
-    const v = parseCommaMoneySegment(m[1])
+    const eq = t.lastIndexOf('=')
+    if (eq <= 0) continue
+    const tail = t.slice(eq + 1).trim()
+    const v = parseBrlMoneyCell(tail)
     if (v == null) continue
     sum += v
     count++
@@ -37,7 +33,8 @@ export function buildItemsSummaryWithLineTotals(
       const unit = Math.max(0, Number(l.unit_price) || 0)
       const lineTotal = Math.round(q * unit * 100) / 100
       const totalStr = lineTotal.toFixed(2).replace('.', ',')
-      const name = String(l.name ?? '').trim() || 'Item'
+      const rawName = String(l.name ?? '').trim() || 'Item'
+      const name = rawName.replace(/[=;]/g, ' ').replace(/\s+/g, ' ').trim() || 'Item'
       return `${q}x ${name}=${totalStr}`
     })
     .join('; ')

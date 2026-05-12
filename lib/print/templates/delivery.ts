@@ -1,13 +1,14 @@
 import type { StoreOrderRow } from '@/lib/store-order'
 import type { StorePrintingState } from '@/lib/store-printing'
 import {
-  PRINT_PLACEHOLDER,
   center,
   centerWrappedBlock,
   expandOrderItemLines,
   formatDateTimeAscii,
   leftRight,
   moneyBrl,
+  orderDisplayRefForPrint,
+  parseBrlMoneyCell,
   separator,
   wrapText,
 } from '@/lib/print/formatter'
@@ -23,15 +24,14 @@ export type OrderReceiptPreset = 'delivery' | 'counter'
 function parseNum(v: number | string | null | undefined): number {
   if (typeof v === 'number' && Number.isFinite(v)) return v
   if (typeof v === 'string') {
-    const n = Number(v.replace(',', '.'))
+    const t = v.trim()
+    if (!t) return 0
+    const brl = parseBrlMoneyCell(t)
+    if (brl != null) return brl
+    const n = Number(t.replace(',', '.'))
     return Number.isFinite(n) ? n : 0
   }
   return 0
-}
-
-function orderRefSafe(displayRef: string): string {
-  const r = sanitizePrintText(stringifySafe(displayRef)).trim()
-  return r || PRINT_PLACEHOLDER
 }
 
 export function buildDeliveryReceiptText(opts: {
@@ -52,7 +52,7 @@ export function buildDeliveryReceiptText(opts: {
   const isCounter = preset === 'counter'
 
   const store = sanitizePrintText(stringifySafe(opts.storeName)).trim() || 'Estabelecimento'
-  const ref = orderRefSafe(opts.orderDisplayRef)
+  const ref = orderDisplayRefForPrint(opts.orderDisplayRef, opts.order.id)
   const itemsRaw = stringifySafe(opts.order.items_summary?.trim())
   let total = parseNum(opts.order.total)
   const fee = parseNum(opts.order.delivery_fee)

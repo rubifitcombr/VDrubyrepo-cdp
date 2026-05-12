@@ -1,20 +1,15 @@
 import type { StoreOrderRow } from '@/lib/store-order'
 import {
-  PRINT_PLACEHOLDER,
   center,
   centerWrappedBlock,
   expandOrderItemLines,
+  orderDisplayRefForPrint,
   separator,
   wrapText,
 } from '@/lib/print/formatter'
 import type { PaperMm } from '@/lib/print/layout'
 import { charWidthForPaper } from '@/lib/print/layout'
 import { sanitizePrintText, stringifySafe } from '@/lib/print/sanitize'
-
-function orderRefSafe(displayRef: string): string {
-  const r = sanitizePrintText(stringifySafe(displayRef)).trim()
-  return r || PRINT_PLACEHOLDER
-}
 
 /** Cupom simplificado para cozinha / produção. */
 export function buildCozinhaReceiptText(opts: {
@@ -25,7 +20,7 @@ export function buildCozinhaReceiptText(opts: {
 }): string {
   const w = charWidthForPaper(opts.paperMm)
   const line = (ch: string) => separator(ch, w)
-  const ref = orderRefSafe(opts.orderDisplayRef)
+  const ref = orderDisplayRefForPrint(opts.orderDisplayRef, opts.order.id)
   const itemsRaw = stringifySafe(opts.order.items_summary?.trim())
   const store = sanitizePrintText(stringifySafe(opts.storeName)).toUpperCase() || 'LOJA'
 

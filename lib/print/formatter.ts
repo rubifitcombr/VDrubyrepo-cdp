@@ -1,10 +1,42 @@
 import { PRINT_PLACEHOLDER, sanitizePrintText, stringifySafe } from '@/lib/print/sanitize'
 
-function parseMoneySegment(raw: string): number | null {
-  const t = raw.trim().replace(/\./g, '').replace(',', '.')
-  if (!t) return null
+/**
+ * Interpreta valor monetário em célula de resumo (pt-BR ou decimal com ponto).
+ */
+export function parseBrlMoneyCell(raw: string): number | null {
+  const s = raw.trim().replace(/\s/g, '')
+  if (!s) return null
+  if (/^-?\d+$/.test(s)) {
+    const n = Number(s)
+    return Number.isFinite(n) ? Math.round(n * 100) / 100 : null
+  }
+  if (s.includes(',')) {
+    const t = s.replace(/\./g, '').replace(',', '.')
+    const n = Number(t)
+    return Number.isFinite(n) ? Math.round(n * 100) / 100 : null
+  }
+  if (/^-?\d+\.\d{1,4}$/.test(s)) {
+    const n = Number(s)
+    return Number.isFinite(n) ? Math.round(n * 100) / 100 : null
+  }
+  const cleaned = s.replace(/[^\d.,-]/g, '')
+  const t = cleaned.replace(/\./g, '').replace(',', '.')
   const n = Number(t)
   return Number.isFinite(n) ? Math.round(n * 100) / 100 : null
+}
+
+/** Referência do pedido no cupom; se vazia usa início do UUID. */
+export function orderDisplayRefForPrint(
+  displayRef: string | null | undefined,
+  orderId: string
+): string {
+  const r = sanitizePrintText(stringifySafe(displayRef)).trim()
+  if (r) return r
+  const id = String(orderId ?? '')
+    .replace(/-/g, '')
+    .trim()
+  const short = id.slice(0, 8)
+  return short || PRINT_PLACEHOLDER
 }
 
 /**
@@ -128,26 +160,49 @@ export function expandOrderItemLines(summary: string, width: number): string[] {
   const priceColMin = 10
 
   for (const seg of segments) {
-    const withPrice = seg.match(/^(\d+)\s*x\s*(.+?)\s*=\s*([\d.,]+)\s*$/i)
-    if (withPrice) {
-      const qty = withPrice[1]!
-      const name = sanitizePrintText(withPrice[2]!.trim())
-      const lineTotal = parseMoneySegment(withPrice[3]!)
-      const priceStr = lineTotal != null ? moneyBrl(lineTotal) : PRINT_PLACEHOLDER
-      const prefix = `${qty}x `
-      const maxNameW = Math.max(6, width - prefix.length - priceColMin)
-      const nameLines = wrapText(name, maxNameW)
-      const first = (nameLines[0] || PRINT_PLACEHOLDER).trim() || PRINT_PLACEHOLDER
-      out.push(leftRight(truncate(prefix + first, width - priceColMin), priceStr, width))
-      for (let i = 1; i < nameLines.length; i++) {
-        const cont = nameLines[i]!.trim()
-        if (cont) out.push(truncate(indent + cont, width))
+    const trimmed = seg.trim()
+    const eq = trimmed.lastIndexOf('=')
+    if (eq > 0) {
+      const head = trimmed.slice(0, eq).trim()
+      const tail = trimmed.slice(eq + 1).trim()
+      const headQty = head.match(/^(\d+)\s*x\s*(.+)$/i)
+      if (headQty) {
+        const qty = headQty[1]!
+        const rawName = headQty[2]!.trim()
+        const lineTotal = parseBrlMoneyCell(tail)
+        if (lineTotal != null) {
+          const name = sanitizePrintText(rawName)
+          const priceStr = moneyBrl(lineTotal)
+          const prefix = `${qty}x `
+          const maxNameW = Math.max(6, width - prefix.length - priceColMin)
+          const nameLines = wrapText(name, maxNameW)
+          const first = (nameLines[0] || PRINT_PLACEHOLDER).trim() || PRINT_PLACEHOLDER
+          out.push(leftRight(truncate(prefix + first, width - priceColMin), priceStr, width))
+          for (let i = 1; i < nameLines.length; i++) {
+            const cont = nameLines[i]!.trim()
+            if (cont) out.push(truncate(indent + cont, width))
+          }
+          continue
+        }
+        if (!tail) {
+          const name = sanitizePrintText(rawName)
+          const priceStr = moneyBrl(0)
+          const prefix = `${qty}x `
+          const maxNameW = Math.max(6, width - prefix.length - priceColMin)
+          const nameLines = wrapText(name, maxNameW)
+          const first = (nameLines[0] || PRINT_PLACEHOLDER).trim() || PRINT_PLACEHOLDER
+          out.push(leftRight(truncate(prefix + first, width - priceColMin), priceStr, width))
+          for (let i = 1; i < nameLines.length; i++) {
+            const cont = nameLines[i]!.trim()
+            if (cont) out.push(truncate(indent + cont, width))
+          }
+          continue
+        }
       }
-      continue
     }
 
-    const mQty = seg.match(/^(\d+)\s*x\s*(.+)$/i)
-    const mBare = seg.match(/^x\s+(.+)$/i)
+    const mQty = trimmed.match(/^(\d+)\s*x\s*(.+)$/i)
+    const mBare = trimmed.match(/^x\s+(.+)$/i)
     if (mQty) {
       const qty = mQty[1]!
       const name = sanitizePrintText(mQty[2]!.trim())
@@ -172,7 +227,7 @@ export function expandOrderItemLines(summary: string, width: number): string[] {
         if (cont) out.push(truncate(indent + cont, width))
       }
     } else {
-      out.push(...wrapText(seg, width))
+      out.push(...wrapText(trimmed, width))
     }
   }
   return out

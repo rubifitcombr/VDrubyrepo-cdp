@@ -5,7 +5,11 @@ import { logPrintJob } from '@/lib/print/logger'
 /** Inicializa impressora. */
 export const ESC_INIT = Uint8Array.of(0x1b, 0x40)
 
-/** Selecciona tabela de caracteres PC850 (multilingue Latin-1) — comum em Epson. */
+/**
+ * Selecciona tabela PC850 (multilingue Latin-1) em Epson/compatíveis.
+ * O corpo do cupom é codificado em CP850; sem este comando muitas térmicas (ex. Stone)
+ * interpretam os bytes no code page errado e saem caracteres corrompidos.
+ */
 export const ESC_CODEPAGE_PC850 = Uint8Array.of(0x1b, 0x74, 0x02)
 
 /** Avanço de linha e corte parcial (GS V). */
@@ -45,7 +49,7 @@ export function buildEscPosTicket(bodyTextUtf8: string): Uint8Array {
   const body = encodeCp850(
     bodyTextUtf8.endsWith('\n') ? bodyTextUtf8 : `${bodyTextUtf8}\n`
   )
-  return concatBytes(ESC_INIT, body, ESC_FEED_CUT)
+  return concatBytes(ESC_INIT, ESC_CODEPAGE_PC850, body, ESC_FEED_CUT)
 }
 
 export function uint8ToBase64(bytes: Uint8Array): string {

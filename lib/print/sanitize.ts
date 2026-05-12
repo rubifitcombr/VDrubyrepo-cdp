@@ -32,6 +32,10 @@ export function removeEmojis(s: string): string {
 export function sanitizePrintText(text: string): string {
   let t = stripEscposControlFromUserText(text)
   t = removeEmojis(t)
+  t = t.replace(/[\u200B-\u200D\uFEFF]/g, '')
+  t = t.replace(/[\u2018\u2019]/g, "'")
+  t = t.replace(/[\u201C\u201D]/g, '"')
+  t = t.replace(/[\u2013\u2014]/g, '-')
   t = t.replace(/[ \t]+\n/g, '\n')
   t = t.replace(/\n{3,}/g, '\n\n')
   return t.trim()
