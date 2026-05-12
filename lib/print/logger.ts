@@ -4,6 +4,7 @@ export type PrintLogPhase =
   | 'sanitize'
   | 'encode_cp850'
   | 'window_open'
+  | 'popup_blocked'
   | 'download'
   | 'serial_error'
   | 'error'

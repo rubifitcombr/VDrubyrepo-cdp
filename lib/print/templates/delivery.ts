@@ -15,6 +15,7 @@ import type { PaperMm } from '@/lib/print/layout'
 import { charWidthForPaper } from '@/lib/print/layout'
 import { paymentMethodLabel, sourceLabel } from '@/lib/print/order-labels'
 import { sanitizePrintText, stringifySafe } from '@/lib/print/sanitize'
+import { sumLineTotalsFromItemsSummary } from '@/lib/print/items-summary-format'
 import { buildEntregadorSectionLines } from '@/lib/print/templates/entregador'
 
 export type OrderReceiptPreset = 'delivery' | 'counter'
@@ -53,8 +54,14 @@ export function buildDeliveryReceiptText(opts: {
   const store = sanitizePrintText(stringifySafe(opts.storeName)).trim() || 'Estabelecimento'
   const ref = orderRefSafe(opts.orderDisplayRef)
   const itemsRaw = stringifySafe(opts.order.items_summary?.trim())
-  const total = parseNum(opts.order.total)
+  let total = parseNum(opts.order.total)
   const fee = parseNum(opts.order.delivery_fee)
+  if (total <= 0) {
+    const fromLines = sumLineTotalsFromItemsSummary(itemsRaw)
+    if (fromLines != null && fromLines > 0) {
+      total = fromLines
+    }
+  }
   const subtotal = fee > 0 ? Math.max(0, total - fee) : total
   const when = formatDateTimeAscii(opts.order.created_at)
   const src = sourceLabel(opts.order.source)

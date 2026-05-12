@@ -10,7 +10,10 @@ import {
   type PaperMm,
 } from '@/lib/print/index'
 import { logPrintJob } from '@/lib/print/logger'
-import { openThermalEscPosWindow } from '@/lib/thermal-print-window'
+import {
+  openThermalEscPosWindow,
+  type ThermalOpenResult,
+} from '@/lib/thermal-print-window'
 
 export type OrderTicketPrintOpts = {
   storeName: string
@@ -31,8 +34,8 @@ export type OrderTicketPrintOpts = {
  * Impressão térmica: gera ESC/POS (CP850), pré-visualização ASCII para o driver
  * de texto do browser e ficheiro .prn para spooler / porta série (Web Serial).
  */
-export function openOrderTicketPrint(opts: OrderTicketPrintOpts): boolean {
-  if (typeof window === 'undefined') return false
+export function openOrderTicketPrint(opts: OrderTicketPrintOpts): ThermalOpenResult {
+  if (typeof window === 'undefined') return 'failed'
 
   const paper = opts.paperMm ?? opts.printing.print_paper_mm
   const baud = opts.serialBaud ?? getPrintSerialBaud()
@@ -48,7 +51,7 @@ export function openOrderTicketPrint(opts: OrderTicketPrintOpts): boolean {
       orderId: opts.order.id,
       detail: e instanceof Error ? e.message : String(e),
     })
-    return false
+    return 'failed'
   }
 
   const safeRef = String(opts.orderDisplayRef || 'ticket').replace(/[^\w.-]+/g, '-')
@@ -64,6 +67,19 @@ export function openOrderTicketPrint(opts: OrderTicketPrintOpts): boolean {
   })
 }
 
+/** Após o lojista abrir o cupom a partir da fila (mobile). */
+export function markOrderTicketPrintDelivered(orderId: string): void {
+  if (typeof window === 'undefined') return
+  const w = window as Window & {
+    __vyriaTicketPrinted?: Set<string>
+    __vyriaTicketPrintQueued?: Set<string>
+  }
+  w.__vyriaTicketPrinted ??= new Set()
+  w.__vyriaTicketPrintQueued ??= new Set()
+  w.__vyriaTicketPrinted.add(orderId)
+  w.__vyriaTicketPrintQueued.delete(orderId)
+}
+
 export function orderTicketVariantFromSource(
   source: string | null | undefined
 ): OrderTicketVariant {
@@ -77,10 +93,24 @@ export function openOrderTicketPrintDeduped(
   opts: OrderTicketPrintOpts
 ): boolean {
   if (typeof window === 'undefined') return false
-  const w = window as Window & { __vyriaTicketPrinted?: Set<string> }
+  const w = window as Window & {
+    __vyriaTicketPrinted?: Set<string>
+    __vyriaTicketPrintQueued?: Set<string>
+  }
   w.__vyriaTicketPrinted ??= new Set()
+  w.__vyriaTicketPrintQueued ??= new Set()
   if (w.__vyriaTicketPrinted.has(orderId)) return true
-  const ok = openOrderTicketPrint(opts)
-  if (ok) w.__vyriaTicketPrinted.add(orderId)
-  return ok
+  if (w.__vyriaTicketPrintQueued.has(orderId)) return true
+
+  const r = openOrderTicketPrint(opts)
+  if (r === 'opened') {
+    w.__vyriaTicketPrinted.add(orderId)
+    w.__vyriaTicketPrintQueued.delete(orderId)
+    return true
+  }
+  if (r === 'queued_no_popup') {
+    w.__vyriaTicketPrintQueued.add(orderId)
+    return true
+  }
+  return false
 }

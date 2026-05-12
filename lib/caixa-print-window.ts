@@ -53,7 +53,7 @@ export function openCaixaTurnoEscPosPrint(opts: CaixaTurnoPrintOpts): boolean {
 
   const safeStem = `vyria-caixa-${String(opts.turno.id).replace(/[^\w.-]+/g, '-').slice(0, 36)}`
 
-  return openThermalEscPosWindow({
+  const r = openThermalEscPosWindow({
     documentTitle: `Vyria — caixa ${safeStem}`,
     safeFilenameStem: safeStem,
     asciiPreview: ascii,
@@ -61,4 +61,5 @@ export function openCaixaTurnoEscPosPrint(opts: CaixaTurnoPrintOpts): boolean {
     serialBaud: baud,
     logOrderId: opts.turno.id,
   })
+  return r !== 'failed'
 }

@@ -2,7 +2,6 @@
 
 import { useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { getStoreOpenState } from '@/lib/business-hours'
 import {
   ORDER_SELECT,
   mapStoreOrderRow,
@@ -36,14 +35,12 @@ function buildDisplayRefById(rows: StoreOrderRow[]): Map<string, string> {
 export function DashboardAutoAcceptOrders({
   storeId,
   storeName,
-  businessHours,
   manualClosed,
   autoAcceptOrders,
   printing,
 }: {
   storeId: string | null
   storeName: string
-  businessHours: unknown
   manualClosed: boolean
   autoAcceptOrders: boolean
   printing: StorePrintingState
@@ -160,8 +157,10 @@ export function DashboardAutoAcceptOrders({
     async function acceptPending() {
       if (!autoAcceptOrders) return
       if (runningRef.current) return
-      const { open } = getStoreOpenState(businessHours, { manualClosed })
-      if (!open) return
+      // Só respeitamos fecho manual (inclui alinhamento por «Fechar fora de horas» no layout).
+      // O horário do cardápio público não bloqueia aqui: pedidos PDV/garçom/QR podem existir
+      // fora desse intervalo e ainda precisam de aceite automático.
+      if (manualClosed) return
 
       runningRef.current = true
       try {
@@ -347,7 +346,6 @@ export function DashboardAutoAcceptOrders({
   }, [
     storeId,
     storeName,
-    businessHours,
     manualClosed,
     autoAcceptOrders,
     printing.print_auto_on_confirm,

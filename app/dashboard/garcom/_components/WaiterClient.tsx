@@ -469,28 +469,37 @@ export function WaiterClient({
   html, body {
     margin: 0;
     padding: 0;
-    height: auto !important;
-    min-height: 0 !important;
-    overflow: hidden !important;
     box-sizing: border-box;
   }
   body {
     font-family: Arial, Helvetica, sans-serif;
     padding: 12px;
+    padding-bottom: 20px;
     font-size: 14px;
     width: 72mm;
     max-width: 100%;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
   }
   @media print {
     html, body { overflow: visible !important; }
-    body { padding: 8px; }
+    body { padding: 8px; padding-bottom: 12px; }
   }
   table { width: 100%; border-collapse: collapse; }
 </style></head><body><h2 style="margin:0 0 8px;font-size:18px">Comanda ${escapeHtml(
       table.trim()
-    )}</h2><p style="margin:0 0 8px">Ambiente: ${escapeHtml(sector)}</p><table>${rows}</table><hr style="border:none;border-top:1px solid #ccc;margin:10px 0"/><p style="text-align:right;font-weight:bold;margin:0">Total: ${money.format(
+    )}</h2><p style="margin:0 0 8px">Ambiente: ${escapeHtml(sector)}</p><table>${rows}</table><hr style="border:none;border-top:1px solid #ccc;margin:10px 0"/><table style="width:100%;border-collapse:collapse;font-size:14px"><tr><td style="padding:2px 0">Subtotal</td><td style="padding:2px 0;text-align:right">${money.format(
+      subtotal
+    )}</td></tr>${
+      discountBrl > 0
+        ? `<tr><td style="padding:2px 0;color:#b91c1c">Desconto</td><td style="padding:2px 0;text-align:right;color:#b91c1c">− ${money.format(
+            discountBrl
+          )}</td></tr>`
+        : ''
+    }<tr><td style="padding:4px 0 0;font-weight:bold;border-top:1px solid #ddd">Total</td><td style="padding:4px 0 0;text-align:right;font-weight:bold;border-top:1px solid #ddd">${money.format(
       total
-    )}</p></body></html>`
+    )}</td></tr></table></body></html>`
     win.document.open()
     win.document.write(html)
     win.document.close()
@@ -1914,7 +1923,7 @@ function OrderPanelContent({
   const showEmpty = !table.trim() && cart.length === 0 && !hasSavedOrder
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3 pb-28 md:pb-24">
         {loadingOrder ? (
           <p className="text-sm text-[#6b7280]">A carregar…</p>
         ) : showEmpty ? (

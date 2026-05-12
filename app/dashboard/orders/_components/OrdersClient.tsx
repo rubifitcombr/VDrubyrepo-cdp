@@ -517,7 +517,7 @@ export function OrdersClient({
   function printComanda(o: StoreOrderRow) {
     const orderRef =
       displayNumberById.get(o.id) ?? o.id.replace(/-/g, '').slice(0, 8)
-    const ok = openOrderTicketPrint({
+    const r = openOrderTicketPrint({
       storeName,
       order: o,
       orderDisplayRef: orderRef,
@@ -529,7 +529,7 @@ export function OrdersClient({
       },
       variant: orderTicketVariantFromSource(o.source),
     })
-    if (!ok) {
+    if (r === 'failed') {
       flashWaNotice(
         'Permite pop-ups neste site para abrir a janela de impressão da comanda.'
       )

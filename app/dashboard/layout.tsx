@@ -155,7 +155,6 @@ export default async function DashboardLayout({
           ? parsePrintingFromStore(storeRecord)
           : parsePrintingFromStore({})
       }
-      businessHours={storeRecord?.business_hours}
       manualClosed={storeRecord?.manual_closed === true}
       autoAcceptStoreName={autoAcceptStoreName}
     >
