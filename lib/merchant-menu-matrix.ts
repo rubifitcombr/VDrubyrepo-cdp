@@ -5,8 +5,8 @@
  * Resumo alinhado ao produto:
  * - **Delivery:** Growth com pedidos, garçom/QR salão (autoatendimento), promoções, relatórios, aparência, automações (WhatsApp).
  *   Pro acrescenta caixa, impressão, KDS (sem PDV no menu delivery).
- * - **Presencial / Híbrido:** Growth com PDV, pedidos, promoções, relatórios, aparência (sem automações no menu).
- *   Pro acrescenta garçom, PDV, caixa, impressão, KDS.
+ * - **Presencial / Híbrido:** Growth com PDV, pedidos, promoções, relatórios, aparência e automações.
+ *   Pro acrescenta garçom, caixa, impressão, KDS.
  * - **Start** (qualquer modo definido): dashboard, produtos, relatórios, configurações, assinatura.
  *
  * Estoque (`/dashboard/inventory`) continua a depender só de `hasFeature(plan, 'inventory')` em `dashboard-menu`.
@@ -59,7 +59,7 @@ const DELIVERY_PRO: DashboardMenuKey[] = [
   'assinatura',
 ]
 
-/** Presencial/Híbrido Growth = balcão + pedidos; sem item Automações no menu. */
+/** Presencial/Híbrido Growth = balcão + pedidos + automações (mesmo mínimo Growth). */
 const PRESENCIAL_HIBRIDO_GROWTH: DashboardMenuKey[] = [
   'dashboard',
   'produtos',
@@ -67,12 +67,13 @@ const PRESENCIAL_HIBRIDO_GROWTH: DashboardMenuKey[] = [
   'pedidos',
   'promocoes',
   'relatorios',
+  'automacoes',
   'configuracoes',
   'aparencia',
   'assinatura',
 ]
 
-/** Presencial/Híbrido Pro = operação local completa (incl. PDV e garçom). */
+/** Presencial/Híbrido Pro = operação local completa (incl. PDV, garçom e automações). */
 const PRESENCIAL_HIBRIDO_PRO: DashboardMenuKey[] = [
   'dashboard',
   'produtos',
@@ -82,6 +83,7 @@ const PRESENCIAL_HIBRIDO_PRO: DashboardMenuKey[] = [
   'caixa',
   'promocoes',
   'relatorios',
+  'automacoes',
   'configuracoes',
   'aparencia',
   'impressao',
