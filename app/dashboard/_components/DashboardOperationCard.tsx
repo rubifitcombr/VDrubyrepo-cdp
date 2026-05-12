@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { updateStore } from '@/services/store'
 import { StoreOpenSwitch } from '@/app/dashboard/_components/StoreOpenSwitch'
@@ -26,38 +27,20 @@ function parseMoney(raw: string): number | null {
 export function DashboardOperationCard({
   storeId,
   initialManualClosed,
-  initialOperatingHoursNote,
   initialDeliveryFee,
   initialDeliveryFreeAbove,
 }: {
   storeId: string
   initialManualClosed: boolean
-  initialOperatingHoursNote: string
   initialDeliveryFee: string
   initialDeliveryFreeAbove: string
 }) {
   const router = useRouter()
   const [storeOpen, setStoreOpen] = useState(!initialManualClosed)
-  const [operatingHoursNote, setOperatingHoursNote] = useState(
-    initialOperatingHoursNote
-  )
   const [deliveryFee, setDeliveryFee] = useState(initialDeliveryFee)
   const [freeAbove, setFreeAbove] = useState(initialDeliveryFreeAbove)
   const [saving, setSaving] = useState(false)
   const [justSaved, setJustSaved] = useState(false)
-
-  useEffect(() => {
-    setStoreOpen(!initialManualClosed)
-  }, [initialManualClosed])
-
-  useEffect(() => {
-    setOperatingHoursNote(initialOperatingHoursNote)
-  }, [initialOperatingHoursNote])
-
-  useEffect(() => {
-    setDeliveryFee(initialDeliveryFee)
-    setFreeAbove(initialDeliveryFreeAbove)
-  }, [initialDeliveryFee, initialDeliveryFreeAbove])
 
   async function handleSave() {
     setSaving(true)
@@ -77,7 +60,6 @@ export function DashboardOperationCard({
 
     const patch: Record<string, unknown> = {
       manual_closed: !storeOpen,
-      operating_hours_note: operatingHoursNote.trim() || null,
       delivery_fee: deliveryFee.trim() === '' ? null : feeNum,
       delivery_free_above:
         freeAbove.trim() === '' ? null : freeNum,
@@ -99,10 +81,6 @@ export function DashboardOperationCard({
       const canDrop = (key: string, needle: string) =>
         key in attemptedPatch && msg.includes(needle)
 
-      if (canDrop('operating_hours_note', 'operating_hours_note')) {
-        delete attemptedPatch.operating_hours_note
-        continue
-      }
       if (canDrop('delivery_fee', 'delivery_fee')) {
         delete attemptedPatch.delivery_fee
         continue
@@ -157,8 +135,12 @@ export function DashboardOperationCard({
         <div>
           <p className="text-sm font-semibold text-[#1a1614]">Loja aberta</p>
           <p className="mt-0.5 text-xs text-[#6b7280]">
-            Ativa para receber pedidos no link público (respeita também o horário semanal
-            em Configurações, se existir).
+            Ativa para receber pedidos no link público. O horário semanal (aberto/fechado no
+            cardápio) define-se em{' '}
+            <Link href="/dashboard/settings" className="font-medium text-[var(--dash-primary)] underline">
+              Configurações
+            </Link>
+            ; se a loja estiver fechada manualmente aqui, o cardápio fica fechado.
           </p>
         </div>
         <StoreOpenSwitch
@@ -167,20 +149,6 @@ export function DashboardOperationCard({
           onToggle={() => setStoreOpen((o) => !o)}
         />
       </div>
-
-      <label className="mt-5 block text-sm font-medium text-[#374151]">
-        Horário de funcionamento
-        <input
-          className={inputClass}
-          placeholder="Ex.: 18:00 - 23:00"
-          value={operatingHoursNote}
-          onChange={(e) => setOperatingHoursNote(e.target.value)}
-        />
-        <p className="mt-1 text-xs text-[#9ca3af]">
-          Resumo para ti; o calendário semanal está em{' '}
-          <span className="font-medium text-[#374151]">Configurações</span>.
-        </p>
-      </label>
 
       <div className="mt-6 rounded-xl border border-[var(--card-border)] bg-[#fafafa] p-4 md:p-5">
         <h3 className="text-sm font-bold text-[#1a1614]">Taxa de entrega</h3>

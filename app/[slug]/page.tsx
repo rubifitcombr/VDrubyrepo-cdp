@@ -7,6 +7,7 @@ import {
 } from '@/lib/store-public-slug.server'
 import { readStorePlano } from '@/lib/store-columns'
 import { parsePlan, planTier } from '@/lib/plan'
+import { publicDineInCheckoutAllowed } from '@/lib/salao-attendance'
 import { getStoreOpenState, getTodayClosingDisplayHM } from '@/lib/business-hours'
 import { syncAutoCloseOutsideHoursForStore } from '@/services/store-hours-automation.server'
 import { effectiveProductPrice, hasActivePromotion } from '@/lib/product-pricing'
@@ -18,6 +19,7 @@ import type { StorefrontMenuProduct } from './storefront-menu-types'
 
 type Props = {
   params: Promise<{ slug: string }>
+  searchParams?: Promise<Record<string, string | string[] | undefined>>
 }
 
 type StoreRow = {
@@ -76,15 +78,16 @@ const STORE_PUBLIC_SELECT = [
   'location_address',
   'location_label',
   'auto_close_outside_hours',
-  'plano',
+  'salao_attendance_mode',
 ].join(',')
 
 /** Evita 404 em cache (CDN/PWA) para rotas dinâmicas por loja. */
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
 
-export default async function StorefrontPage({ params }: Props) {
+export default async function StorefrontPage({ params, searchParams }: Props) {
   const { slug: rawSlug } = await params
+  const spResolved = searchParams ? await searchParams : {}
   const slugSegment =
     typeof rawSlug === 'string' ? normalizePublicSlugSegment(rawSlug) : ''
   if (!slugSegment) {
@@ -127,7 +130,19 @@ export default async function StorefrontPage({ params }: Props) {
   const s = store as StoreRow
   const canonicalSlug = typeof s.slug === 'string' ? s.slug.trim() : ''
   if (canonicalSlug && canonicalSlug !== slugSegment) {
-    redirect(`/${canonicalSlug}`)
+    const q = new URLSearchParams()
+    for (const [k, v] of Object.entries(spResolved)) {
+      if (v == null) continue
+      if (Array.isArray(v)) {
+        for (const part of v) {
+          if (part) q.append(k, part)
+        }
+      } else if (v) {
+        q.set(k, v)
+      }
+    }
+    const qs = q.toString()
+    redirect(`/${canonicalSlug}${qs ? `?${qs}` : ''}`)
   }
   const theme = resolveStoreTheme(s.theme_preset)
 
@@ -190,7 +205,15 @@ export default async function StorefrontPage({ params }: Props) {
 
   const logoUrl =
     typeof s.logo_url === 'string' ? s.logo_url.trim() || null : null
+  const autoRaw = spResolved.auto
+  const autoFlag = Array.isArray(autoRaw) ? autoRaw[0] : autoRaw
   const storePlan = parsePlan(readStorePlano(s as Record<string, unknown>))
+  const selfServiceFromQr =
+    autoFlag === '1' &&
+    planTier(storePlan) >= planTier('GROWTH') &&
+    publicDineInCheckoutAllowed(storePlan, s as Record<string, unknown>)
+  const salaoAutoUnavailable =
+    autoFlag === '1' && planTier(storePlan) >= planTier('GROWTH') && !selfServiceFromQr
   const canShowLocation = planTier(storePlan) >= planTier('GROWTH')
   const rawLat = s.location_lat != null ? Number(s.location_lat) : null
   const rawLng = s.location_lng != null ? Number(s.location_lng) : null
@@ -230,6 +253,8 @@ export default async function StorefrontPage({ params }: Props) {
       locationLng={locationLng}
       locationAddress={locationAddress}
       locationLabel={locationLabel}
+      selfServiceFromQr={selfServiceFromQr}
+      salaoAutoUnavailable={salaoAutoUnavailable}
     />
   )
 }

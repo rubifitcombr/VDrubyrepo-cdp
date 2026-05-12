@@ -9,9 +9,10 @@ import {
   type StoreOrderRow,
 } from '@/lib/store-order'
 import type { StorePrintingState } from '@/lib/store-printing'
-import { openOrderTicketPrintDeduped } from '@/lib/order-print-window'
+import { openOrderTicketPrintDeduped, openOrderTicketPrint } from '@/lib/order-print-window'
 import { updateOrderStatus } from '@/services/orders'
 import { dashboardFetch } from '@/lib/dashboard-fetch.client'
+import type { Plan } from '@/lib/plan'
 import type { StoreEntregadorDTO } from '@/lib/entregas-types'
 
 function playNewOrderBeep() {
@@ -290,16 +291,26 @@ function IconPixPay({ className }: { className?: string }) {
   )
 }
 
+function canPrintComandaStatus(status: string | null | undefined): boolean {
+  const s = String(status ?? '').trim().toLowerCase()
+  return s === 'pending' || s === 'preparing' || s === 'ready' || s === 'confirmed'
+}
+
 export function OrdersClient({
   initialOrders,
   storeId,
   storeName,
   printing,
+  plan,
+  autoAcceptOrders,
 }: {
   initialOrders: StoreOrderRow[]
   storeId: string
   storeName: string
   printing: StorePrintingState
+  plan: Plan
+  /** Igual ao painel: Pro com toggle «Aceitar pedidos automaticamente». */
+  autoAcceptOrders: boolean
 }) {
   const [orders, setOrders] = useState<StoreOrderRow[]>(initialOrders)
   const [tab, setTab] = useState<TabId>('all')
@@ -327,6 +338,12 @@ export function OrdersClient({
   const [delObs, setDelObs] = useState('')
   const [delSubmitting, setDelSubmitting] = useState(false)
   const [orderIdsComEntrega, setOrderIdsComEntrega] = useState<Set<string>>(new Set())
+
+  /** Growth: sempre. Pro: quando não há aceite+impressão automáticos em conjunto. */
+  const showManualComandaPrint =
+    plan === 'GROWTH' ||
+    (plan === 'PRO' &&
+      !(autoAcceptOrders && printing.print_auto_on_confirm))
 
   useEffect(() => {
     return () => {
@@ -478,6 +495,26 @@ export function OrdersClient({
       setWaNotice(null)
       waNoticeTimerRef.current = null
     }, 5000)
+  }
+
+  function printComanda(o: StoreOrderRow) {
+    const orderRef =
+      displayNumberById.get(o.id) ?? o.id.replace(/-/g, '').slice(0, 8)
+    const ok = openOrderTicketPrint({
+      storeName,
+      order: o,
+      orderDisplayRef: orderRef,
+      printing: {
+        print_include_customer_details:
+          printing.print_include_customer_details,
+        print_delivery_copy: printing.print_delivery_copy,
+      },
+    })
+    if (!ok) {
+      flashWaNotice(
+        'Permite pop-ups neste site para abrir a janela de impressão da comanda.'
+      )
+    }
   }
 
   async function patchStatus(orderId: string, status: string) {
@@ -891,6 +928,18 @@ export function OrdersClient({
                       <p className="text-sm text-[#6b7280]">{notes}</p>
                     ) : null}
 
+                    {showManualComandaPrint && canPrintComandaStatus(st) ? (
+                      <div className="pt-2">
+                        <button
+                          type="button"
+                          onClick={() => printComanda(o)}
+                          className="rounded-lg border border-[var(--card-border)] bg-white px-3 py-2 text-xs font-semibold text-[#374151] shadow-sm transition-colors hover:bg-[#fafafa]"
+                        >
+                          Imprimir comanda
+                        </button>
+                      </div>
+                    ) : null}
+
                     {st === 'pending' ? (
                       <div className="flex flex-wrap items-center gap-2 pt-3 sm:hidden">
                         <button
@@ -1177,6 +1226,14 @@ export function OrdersClient({
                           <option value="__avulso__">+ Adicionar entregador avulso</option>
                         </select>
                       </label>
+                      <p className="mt-2 text-right">
+                        <Link
+                          href="/dashboard/entregadores"
+                          className="text-xs font-semibold text-[var(--dash-primary)] hover:underline"
+                        >
+                          Gerir cadastro de entregadores
+                        </Link>
+                      </p>
                       {delSel === '__avulso__' ? (
                         <label className="mt-3 block text-xs font-medium text-[#6b7280]">
                           Nome do entregador avulso <span className="text-red-600">*</span>

@@ -8,7 +8,8 @@ import { VyriaPanelModeSwitcher } from '@/app/_components/VyriaPanelModeSwitcher
 import type { VyriaPanelMode } from '@/lib/vyria-panel-mode'
 import type { Plan } from '@/lib/plan'
 import type { DashboardMenuKey } from '@/lib/dashboard-menu'
-import { menuKeysForPlan } from '@/lib/dashboard-menu'
+import { menuKeysForMerchant } from '@/lib/dashboard-menu'
+import type { MerchantOperationMode } from '@/lib/merchant-operation-mode'
 import { DashboardLogoutButton } from './DashboardLogoutButton'
 import { DashboardPlanGuard } from './DashboardPlanGuard'
 import { DashboardTopBar } from './DashboardTopBar'
@@ -32,6 +33,7 @@ import {
   IconPrinter,
   IconTag,
   IconTrendUp,
+  IconTruck,
 } from './NavIcons'
 
 const nav: Array<{
@@ -54,6 +56,12 @@ const nav: Array<{
     label: 'Pedidos',
     icon: IconCart,
     menuKey: 'pedidos',
+  },
+  {
+    href: '/dashboard/entregadores',
+    label: 'Entregadores',
+    icon: IconTruck,
+    menuKey: 'entregadores',
   },
   {
     href: '/dashboard/garcom',
@@ -172,13 +180,15 @@ function PlansNavCta({
 function DashboardNavLinks({
   pathname,
   plan,
+  operationMode,
   layout,
 }: {
   pathname: string
   plan: Plan
+  operationMode: MerchantOperationMode | null
   layout: 'sidebar' | 'bottom' | 'drawer'
 }) {
-  const allowed = menuKeysForPlan(plan)
+  const allowed = menuKeysForMerchant(plan, operationMode)
   const items = nav.filter((item) => allowed.has(item.menuKey))
 
   const navClass =
@@ -264,6 +274,7 @@ export function DashboardShell({
   billingBanner = null,
   billingBlock = null,
   vyriaDualAccount,
+  operationMode = null,
   disableAutoAccept = false,
   notifyOnNewOrder = true,
   autoAcceptOrders = false,
@@ -290,6 +301,8 @@ export function DashboardShell({
   } | null
   billingBlock?: { payUrl: string | null } | null
   vyriaDualAccount?: { mode: VyriaPanelMode }
+  /** `null` = legado: menu e rotas como antes (só plano). */
+  operationMode?: MerchantOperationMode | null
   disableAutoAccept?: boolean
   /** Som / notificação do browser para novo pedido (automação + plano Pro). */
   notifyOnNewOrder?: boolean
@@ -327,7 +340,9 @@ export function DashboardShell({
         ) : null}
       </div>
     ) : (
-      <DashboardPlanGuard plan={plan}>{children}</DashboardPlanGuard>
+      <DashboardPlanGuard plan={plan} operationMode={operationMode ?? null}>
+        {children}
+      </DashboardPlanGuard>
     )
 
   return (
@@ -352,7 +367,12 @@ export function DashboardShell({
           </Link>
         </div>
         <div className="hidden min-h-0 flex-1 overflow-y-auto overscroll-y-contain md:block">
-          <DashboardNavLinks pathname={pathname} plan={plan} layout="sidebar" />
+          <DashboardNavLinks
+            pathname={pathname}
+            plan={plan}
+            operationMode={operationMode ?? null}
+            layout="sidebar"
+          />
         </div>
 
         <div className="mt-auto hidden shrink-0 space-y-2 border-t border-white/10 p-3 md:block">
@@ -506,7 +526,12 @@ export function DashboardShell({
             ) : null}
 
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
-              <DashboardNavLinks pathname={pathname} plan={plan} layout="drawer" />
+              <DashboardNavLinks
+                pathname={pathname}
+                plan={plan}
+                operationMode={operationMode ?? null}
+                layout="drawer"
+              />
             </div>
 
             <div className="flex shrink-0 flex-col gap-2 border-t border-white/10 p-3">

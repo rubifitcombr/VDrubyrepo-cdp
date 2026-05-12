@@ -1,4 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
+import {
+  gateMerchantDeliveryPipeline,
+  gateMerchantMenuKey,
+} from '@/lib/merchant-api-gate.server'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
 import { getUser } from '@/services/auth.server'
 import { deleteEntregaById, insertEntrega } from '@/services/entregas.server'
@@ -43,6 +47,14 @@ export async function POST(req: NextRequest) {
   if (!orderId) return NextResponse.json({ error: 'Pedido em falta.' }, { status: 400 })
 
   const skip = body.skip === true
+  if (skip) {
+    const deny = gateMerchantMenuKey(gate.ctx.store, user.email, 'pedidos')
+    if (deny) return deny
+  } else {
+    const deny = gateMerchantDeliveryPipeline(gate.ctx.store, user.email)
+    if (deny) return deny
+  }
+
   const storeId = gate.ctx.storeId
   const supabase = await createClient()
 

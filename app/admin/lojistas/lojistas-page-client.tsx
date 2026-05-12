@@ -8,6 +8,11 @@ import {
   statusBadgeClass,
   statusLabel,
 } from '@/lib/merchant-status'
+import {
+  operationModeLabel,
+  parseOperationModeFromStore,
+  type MerchantOperationMode,
+} from '@/lib/merchant-operation-mode'
 import { parsePlan, planShortLabel, type Plan } from '@/lib/plan'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
@@ -30,6 +35,8 @@ type LojistaRow = {
   email: string | null
   telefone: string | null
   plano: Plan
+  /** `null` = legado no painel (só plano). */
+  operation_mode: MerchantOperationMode | null
   status: MerchantStatus
   plano_vence_em: string | null
   cadastrado_em: string | null
@@ -305,7 +312,7 @@ function Modal({
   if (!open) return null
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/45 p-4"
+      className="fixed inset-0 z-[110] flex items-center justify-center bg-black/45 p-3 sm:p-4"
       role="presentation"
       onClick={onClose}
     >
@@ -344,14 +351,23 @@ function numFromApi(v: unknown): number {
   return 0
 }
 
+function operationModeBadgeLabel(mode: MerchantOperationMode | null): string {
+  if (mode == null) return 'Legado'
+  return operationModeLabel(mode)
+}
+
 function normalizeLojista(raw: Record<string, unknown>): LojistaRow {
   const c = raw.cancelamento_solicitado
+  const operation_mode = parseOperationModeFromStore({
+    operation_mode: raw.operation_mode,
+  })
   return {
     id: String(raw.id ?? ''),
     nome: String(raw.nome ?? ''),
     email: typeof raw.email === 'string' ? raw.email : null,
     telefone: typeof raw.telefone === 'string' ? raw.telefone : null,
     plano: parsePlan(raw.plano),
+    operation_mode,
     status: parseMerchantStatus(raw.status),
     plano_vence_em: typeof raw.plano_vence_em === 'string' ? raw.plano_vence_em : null,
     cadastrado_em: typeof raw.cadastrado_em === 'string' ? raw.cadastrado_em : null,
@@ -415,6 +431,8 @@ export function LojistasPageClient() {
   const [drawerFaturaStatus, setDrawerFaturaStatus] =
     useState<FaturaRow['status']>('pendente')
   const [busyDrawerPatch, setBusyDrawerPatch] = useState(false)
+  const [busyDrawerOperationMode, setBusyDrawerOperationMode] = useState(false)
+  const [drawerOperationModeDraft, setDrawerOperationModeDraft] = useState('')
   const [busyDrawerFatura, setBusyDrawerFatura] = useState(false)
 
   useEffect(() => {
@@ -629,6 +647,12 @@ export function LojistasPageClient() {
     }
     void refreshDrawerDetail()
   }, [drawerId, refreshDrawerDetail])
+
+  useEffect(() => {
+    if (drawerLojista) {
+      setDrawerOperationModeDraft(drawerLojista.operation_mode ?? '')
+    }
+  }, [drawerLojista])
 
   function mergeRowFromApi(raw: Record<string, unknown> | undefined) {
     if (!raw) return
@@ -882,6 +906,42 @@ export function LojistasPageClient() {
     }
   }
 
+  async function saveDrawerOperationMode() {
+    if (!drawerId) return
+    const t = drawerOperationModeDraft.trim()
+    if (
+      t !== '' &&
+      t !== 'delivery' &&
+      t !== 'presencial' &&
+      t !== 'hibrido'
+    ) {
+      setToast({ type: 'err', msg: 'Selecciona um modelo válido ou vazio para legado.' })
+      return
+    }
+    setBusyDrawerOperationMode(true)
+    try {
+      const res = await fetch(`/api/admin/lojistas/${drawerId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          operation_mode: t === '' ? null : t,
+        }),
+      })
+      const data = (await res.json()) as { error?: string; lojista?: Record<string, unknown> }
+      if (!res.ok) {
+        setToast({ type: 'err', msg: data.error || 'Erro ao guardar modelo.' })
+        return
+      }
+      mergeRowFromApi(data.lojista)
+      setToast({ type: 'ok', msg: 'Modelo de operação actualizado.' })
+      void load(true)
+      void refreshDrawerDetail()
+    } finally {
+      setBusyDrawerOperationMode(false)
+    }
+  }
+
   const mrrFmt = metrics
     ? moneyBr.format(metrics.mrr)
     : '—'
@@ -890,10 +950,10 @@ export function LojistasPageClient() {
     notifUnread > 99 ? '99+' : String(notifUnread)
 
   return (
-    <div className="relative mx-auto max-w-[1400px]">
+    <div className="relative mx-auto max-w-[1400px] px-0 sm:px-1">
       {toast ? (
         <div
-          className="fixed bottom-6 left-1/2 z-[70] w-[min(92vw,28rem)] -translate-x-1/2"
+          className="fixed bottom-[max(1rem,env(safe-area-inset-bottom,0px)+0.5rem)] left-1/2 z-[70] w-[min(92vw,28rem)] -translate-x-1/2 sm:bottom-6"
           role="status"
         >
           <div
@@ -919,18 +979,18 @@ export function LojistasPageClient() {
       ) : null}
 
       {/* Bloco 1 — header + notificações */}
-      <header className="flex flex-col gap-4 rounded-2xl border border-[var(--card-border)] bg-white p-4 shadow-sm sm:flex-row sm:items-start sm:justify-between sm:p-5">
+      <header className="flex flex-col gap-3 rounded-2xl border border-[var(--card-border)] bg-white p-3 shadow-sm sm:gap-4 sm:p-5 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-xl font-bold tracking-tight text-[#1a1614] sm:text-2xl">
             Vyria Admin
           </h1>
           <p className="mt-0.5 text-sm text-[#6b7280]">Gestão de lojistas</p>
         </div>
-        <div className="relative shrink-0 self-end sm:self-start" ref={notifWrapRef}>
+        <div className="relative w-full shrink-0 sm:w-auto sm:self-start" ref={notifWrapRef}>
           <button
             type="button"
             onClick={() => setNotifOpen((o) => !o)}
-            className="relative inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[var(--card-border)] bg-[#fafafa] text-[#374151] shadow-sm transition hover:bg-white"
+            className="relative inline-flex h-11 w-11 items-center justify-center self-end rounded-xl border border-[var(--card-border)] bg-[#fafafa] text-[#374151] shadow-sm transition hover:bg-white sm:self-auto"
             aria-expanded={notifOpen}
             aria-haspopup="true"
             aria-label="Notificações"
@@ -944,7 +1004,7 @@ export function LojistasPageClient() {
           </button>
           {notifOpen ? (
             <div
-              className="absolute right-0 z-50 mt-2 w-[min(100vw-1.5rem,22rem)] overflow-hidden rounded-2xl border border-[var(--card-border)] bg-white shadow-xl"
+              className="absolute left-1/2 z-50 mt-2 w-[min(calc(100vw-1.5rem),22rem)] -translate-x-1/2 overflow-hidden rounded-2xl border border-[var(--card-border)] bg-white shadow-xl sm:left-auto sm:right-0 sm:translate-x-0"
               role="menu"
             >
               <div className="flex items-center justify-between border-b border-[var(--card-border)] px-3 py-2">
@@ -1063,7 +1123,7 @@ export function LojistasPageClient() {
           <div className="rounded-2xl border border-[var(--card-border)] bg-white p-4 shadow-sm sm:p-5">
             <h2 className="text-sm font-bold text-[#1a1614]">Novos cadastros (14 dias)</h2>
             <p className="mt-0.5 text-xs text-[#6b7280]">Por dia de criação da loja</p>
-            <div className="mt-4 h-[220px] w-full min-w-0">
+            <div className="mt-4 h-[180px] w-full min-w-0 sm:h-[220px]">
               {charts && charts.cadastros14d.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart
@@ -1108,7 +1168,7 @@ export function LojistasPageClient() {
           <div className="rounded-2xl border border-[var(--card-border)] bg-white p-4 shadow-sm sm:p-5">
             <h2 className="text-sm font-bold text-[#1a1614]">Lojistas por estado</h2>
             <p className="mt-0.5 text-xs text-[#6b7280]">Distribuição global (todos os filtros)</p>
-            <div className="mt-4 h-[220px] w-full min-w-0">
+            <div className="mt-4 h-[180px] w-full min-w-0 sm:h-[220px]">
               {charts && charts.statusDistrib.some((s) => s.value > 0) ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
@@ -1185,55 +1245,64 @@ export function LojistasPageClient() {
         />
       </div>
 
-      <div className="mt-6 overflow-x-auto rounded-2xl border border-[var(--card-border)] bg-white shadow-sm">
-        <table className="w-full min-w-[1120px] text-left text-sm">
-          <thead className="border-b border-[var(--card-border)] bg-[#f9fafb] text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
+      <p className="mb-2 text-xs text-[#6b7280] sm:hidden">
+        Desliza a tabela na horizontal para ver todas as colunas.
+      </p>
+      <div className="mt-2 overflow-x-auto rounded-2xl border border-[var(--card-border)] bg-white shadow-sm [-webkit-overflow-scrolling:touch] sm:mt-6">
+        <table className="w-full min-w-[1200px] text-left text-sm">
+          <thead className="border-b border-[var(--card-border)] bg-[#f9fafb] text-[10px] font-semibold uppercase tracking-wide text-[#6b7280] sm:text-xs">
             <tr>
-              <th className="px-4 py-3">Nome</th>
-              <th className="px-4 py-3">Email</th>
-              <th className="px-4 py-3">Telefone</th>
-              <th className="px-4 py-3">Plano</th>
-              <th className="px-4 py-3">Status</th>
+              <th className="whitespace-nowrap px-2 py-2 sm:px-4 sm:py-3">Nome</th>
+              <th className="whitespace-nowrap px-2 py-2 sm:px-4 sm:py-3">Email</th>
+              <th className="whitespace-nowrap px-2 py-2 sm:px-4 sm:py-3">Telefone</th>
+              <th className="whitespace-nowrap px-2 py-2 sm:px-4 sm:py-3">Plano</th>
               <th
-                className="px-4 py-3 text-right"
+                className="whitespace-nowrap px-2 py-2 sm:px-4 sm:py-3"
+                title="Define o menu do painel do lojista em conjunto com o plano"
+              >
+                Modelo
+              </th>
+              <th className="whitespace-nowrap px-2 py-2 sm:px-4 sm:py-3">Status</th>
+              <th
+                className="whitespace-nowrap px-2 py-2 text-right sm:px-4 sm:py-3"
                 title="Itens no cardápio (tabela products)"
               >
                 Produtos
               </th>
               <th
-                className="px-4 py-3 text-right"
+                className="whitespace-nowrap px-2 py-2 text-right sm:px-4 sm:py-3"
                 title="Soma do total dos pedidos, exceto cancelados"
               >
                 Fat. pedidos
               </th>
-              <th className="px-4 py-3">Vence em</th>
-              <th className="px-4 py-3">Cadastro</th>
-              <th className="px-4 py-3">Ações</th>
+              <th className="whitespace-nowrap px-2 py-2 sm:px-4 sm:py-3">Vence em</th>
+              <th className="whitespace-nowrap px-2 py-2 sm:px-4 sm:py-3">Cadastro</th>
+              <th className="whitespace-nowrap px-2 py-2 sm:px-4 sm:py-3">Ações</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--card-border)]">
             {loading ? (
               <tr>
-                <td colSpan={10} className="px-4 py-8 text-center text-[#6b7280]">
+                <td colSpan={11} className="px-3 py-6 text-center text-[#6b7280] sm:px-4 sm:py-8">
                   A carregar…
                 </td>
               </tr>
             ) : listError ? (
               <tr>
-                <td colSpan={10} className="px-4 py-8 text-center text-red-800">
+                <td colSpan={11} className="px-3 py-6 text-center text-red-800 sm:px-4 sm:py-8">
                   Corrige o erro acima e recarrega a página ou altera o filtro para tentar de novo.
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={10} className="px-4 py-8 text-center text-[#6b7280]">
+                <td colSpan={11} className="px-3 py-6 text-center text-[#6b7280] sm:px-4 sm:py-8">
                   Nenhum resultado.
                 </td>
               </tr>
             ) : (
               rows.map((row) => (
                 <tr key={row.id} className="bg-white">
-                  <td className="px-4 py-3 font-medium text-[#1a1614]">
+                  <td className="px-2 py-2 font-medium text-[#1a1614] sm:px-4 sm:py-3">
                     <button
                       type="button"
                       onClick={() => setDrawerId(row.id)}
@@ -1242,14 +1311,35 @@ export function LojistasPageClient() {
                       {row.nome || '—'}
                     </button>
                   </td>
-                  <td className="max-w-[12rem] truncate px-4 py-3 text-[#374151]">
+                  <td className="max-w-[12rem] truncate px-2 py-2 text-[#374151] sm:px-4 sm:py-3">
                     {row.email ?? '—'}
                   </td>
-                  <td className="px-4 py-3 text-[#374151]">{row.telefone ?? '—'}</td>
-                  <td className="px-4 py-3 font-medium text-[#1a1614]">
+                  <td className="px-2 py-2 text-[#374151] sm:px-4 sm:py-3">{row.telefone ?? '—'}</td>
+                  <td className="px-2 py-2 font-medium text-[#1a1614] sm:px-4 sm:py-3">
                     {planShortLabel(row.plano)}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-2 py-2 sm:px-4 sm:py-3">
+                    <div className="flex flex-col gap-1.5">
+                      <span
+                        className={`inline-flex w-fit max-w-[10rem] rounded-full px-2 py-0.5 text-[11px] font-semibold leading-tight ring-1 ${
+                          row.operation_mode == null
+                            ? 'bg-[#f3f4f6] text-[#4b5563] ring-black/10'
+                            : 'bg-violet-50 text-violet-950 ring-violet-200/90'
+                        }`}
+                        title="Clica no nome do lojista para alterar o modelo no painel lateral"
+                      >
+                        {operationModeBadgeLabel(row.operation_mode)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setDrawerId(row.id)}
+                        className="w-fit text-left text-[11px] font-semibold text-[var(--dash-primary)] hover:underline"
+                      >
+                        Definir / alterar…
+                      </button>
+                    </div>
+                  </td>
+                  <td className="px-2 py-2 sm:px-4 sm:py-3">
                     <div className="flex flex-col gap-1.5">
                       <span
                         className={`inline-flex w-fit rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusBadgeClass(row.status)}`}
@@ -1270,22 +1360,22 @@ export function LojistasPageClient() {
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-right tabular-nums font-medium text-[#1a1614]">
+                  <td className="px-2 py-2 text-right tabular-nums font-medium text-[#1a1614] sm:px-4 sm:py-3">
                     {row.produtos_count}
                   </td>
-                  <td className="px-4 py-3 text-right tabular-nums font-medium text-[#1a1614]">
+                  <td className="px-2 py-2 text-right tabular-nums font-medium text-[#1a1614] sm:px-4 sm:py-3">
                     {moneyBr.format(row.faturamento_pedidos)}
                   </td>
-                  <td className="px-4 py-3 tabular-nums text-[#374151]">
+                  <td className="px-2 py-2 tabular-nums text-[#374151] sm:px-4 sm:py-3">
                     <span className="inline-flex flex-wrap items-center">
                       {fmtDate(row.plano_vence_em)}
                       <VenceUrgenciaBadge plano_vence_em={row.plano_vence_em} />
                     </span>
                   </td>
-                  <td className="px-4 py-3 tabular-nums text-[#6b7280]">
+                  <td className="px-2 py-2 tabular-nums text-[#6b7280] sm:px-4 sm:py-3">
                     {fmtDate(row.cadastrado_em)}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-2 py-2 sm:px-4 sm:py-3">
                     <div className="flex flex-wrap items-center gap-1.5">
                       {(row.status === 'pendente' ||
                         row.status === 'bloqueado' ||
@@ -1554,7 +1644,10 @@ export function LojistasPageClient() {
       </Modal>
 
       {drawerId ? (
-        <div className="fixed inset-0 z-50 flex justify-end" role="presentation">
+        <div
+          className="fixed inset-0 z-[100] flex h-[100dvh] max-h-[100dvh] justify-end"
+          role="presentation"
+        >
           <button
             type="button"
             className="absolute inset-0 bg-black/40"
@@ -1562,7 +1655,7 @@ export function LojistasPageClient() {
             onClick={() => setDrawerId(null)}
           />
           <aside
-            className="relative z-10 flex h-full w-[min(420px,100vw)] flex-col border-l border-[var(--card-border)] bg-white shadow-2xl"
+            className="relative z-10 flex h-full w-full max-w-full flex-col border-l border-[var(--card-border)] bg-white shadow-2xl sm:max-w-[min(420px,100vw)]"
             role="dialog"
             aria-modal="true"
             aria-label="Detalhe do lojista"
@@ -1652,6 +1745,12 @@ export function LojistasPageClient() {
                         <p className="tabular-nums text-[#6b7280]">
                           Cadastro: {fmtDate(drawerLojista.cadastrado_em)}
                         </p>
+                        <p>
+                          <span className="text-[#6b7280]">Modelo de operação:</span>{' '}
+                          <span className="font-medium text-[#1a1614]">
+                            {operationModeBadgeLabel(drawerLojista.operation_mode)}
+                          </span>
+                        </p>
                         <button
                           type="button"
                           onClick={() => setEditingDados(true)}
@@ -1661,6 +1760,38 @@ export function LojistasPageClient() {
                         </button>
                       </div>
                     )}
+                  </section>
+
+                  <section className="rounded-2xl border border-[var(--card-border)] bg-[#fafafa] p-4">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
+                      Modelo de operação
+                    </h3>
+                    <p className="mt-1 text-[11px] leading-snug text-[#9ca3af]">
+                      «Não definido» mantém o menu do painel como antes (só por plano). Com Delivery,
+                      Presencial ou Híbrido activo, o menu segue a matriz plano×modo (ex.: Delivery Pro sem
+                      PDV/garçom no menu; Presencial Growth com PDV e sem Automações).
+                    </p>
+                    <label className="mt-3 block text-sm text-[#374151]">
+                      Modo
+                      <select
+                        className="mt-1 w-full rounded-xl border border-[var(--card-border)] bg-white px-3 py-2 text-sm"
+                        value={drawerOperationModeDraft}
+                        onChange={(e) => setDrawerOperationModeDraft(e.target.value)}
+                      >
+                        <option value="">Não definido (legado — só plano)</option>
+                        <option value="delivery">{operationModeLabel('delivery')}</option>
+                        <option value="presencial">{operationModeLabel('presencial')}</option>
+                        <option value="hibrido">{operationModeLabel('hibrido')}</option>
+                      </select>
+                    </label>
+                    <button
+                      type="button"
+                      disabled={busyDrawerOperationMode}
+                      onClick={() => void saveDrawerOperationMode()}
+                      className="mt-3 rounded-lg bg-[var(--dash-primary)] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                    >
+                      {busyDrawerOperationMode ? 'A guardar…' : 'Guardar modelo'}
+                    </button>
                   </section>
 
                   <section className="rounded-2xl border border-[var(--card-border)] bg-[#fafafa] p-4">

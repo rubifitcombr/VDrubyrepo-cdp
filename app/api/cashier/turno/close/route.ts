@@ -1,8 +1,6 @@
 import { NextResponse } from 'next/server'
-import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
-import { hasFeature } from '@/lib/plan'
+import { gateMerchantMenuKey } from '@/lib/merchant-api-gate.server'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
-import { readStorePlano } from '@/lib/store-columns'
 import { getUser } from '@/services/auth.server'
 import {
   breakdownFromOrderRows,
@@ -34,14 +32,8 @@ export async function POST(request: Request) {
   const gate = await requireLojistaAtivoApi(user.id)
   if (!gate.ok) return gate.response
 
-  const rawPlan = readStorePlano(gate.ctx.store)
-  const plan = effectiveDashboardPlan(user.email ?? null, rawPlan)
-  if (!hasFeature(plan, 'cashier')) {
-    return NextResponse.json(
-      { error: 'Recurso disponível apenas no plano Pro.' },
-      { status: 403 }
-    )
-  }
+  const deny = gateMerchantMenuKey(gate.ctx.store, user.email, 'caixa')
+  if (deny) return deny
 
   let body: {
     turnoId?: unknown

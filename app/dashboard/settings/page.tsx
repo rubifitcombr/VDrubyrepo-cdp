@@ -1,6 +1,7 @@
 'use client'
 
 import { DashboardBusinessHoursCard } from '@/app/dashboard/_components/DashboardBusinessHoursCard'
+import { StorePublicQrPanel } from '@/app/dashboard/_components/StorePublicQrPanel'
 import { StoreOpenSwitch } from '@/app/dashboard/_components/StoreOpenSwitch'
 import { PublicSlugPathPill } from '@/app/_components/PublicSlugPathPill'
 import { planTier, parsePlan, type Plan } from '@/lib/plan'
@@ -13,9 +14,6 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { getUser } from '@/services/auth'
 import { getStoreByUser, updateStore } from '@/services/store'
-import { dashboardFetch } from '@/lib/dashboard-fetch.client'
-import type { EntregadorTipo, StoreEntregadorDTO } from '@/lib/entregas-types'
-
 const inputClass =
   'mt-2 w-full rounded-xl border border-[var(--card-border)] bg-white px-4 py-3 text-sm text-[#1a1614] outline-none transition-all placeholder:text-[#9ca3af] focus:border-[var(--dash-primary)]/40 focus:ring-2 focus:ring-[var(--dash-primary)]/12'
 
@@ -72,27 +70,12 @@ export default function SettingsPage() {
   const [supportsLocationFields, setSupportsLocationFields] = useState(true)
   const [logoUploading, setLogoUploading] = useState(false)
   const [locationEnabled, setLocationEnabled] = useState(false)
-  const [locationAddress, setLocationAddress] = useState('')
   const [locationLabel, setLocationLabel] = useState('')
   const [locationMapsUrl, setLocationMapsUrl] = useState('')
   const [locationLat, setLocationLat] = useState<number | null>(null)
   const [locationLng, setLocationLng] = useState<number | null>(null)
-  const [supportsTableSectors, setSupportsTableSectors] = useState(true)
-  const [tableSectorsText, setTableSectorsText] = useState('Salão\nVaranda')
   const [supportsWaiterExitPin, setSupportsWaiterExitPin] = useState(true)
   const [waiterExitPin, setWaiterExitPin] = useState('')
-
-  const [entregadores, setEntregadores] = useState<StoreEntregadorDTO[]>([])
-  const [entregadoresLoading, setEntregadoresLoading] = useState(false)
-  const [entregadoresMissing, setEntregadoresMissing] = useState(false)
-  const [entFormNome, setEntFormNome] = useState('')
-  const [entFormTel, setEntFormTel] = useState('')
-  const [entFormTipo, setEntFormTipo] = useState<EntregadorTipo>('fixo')
-  const [entSaving, setEntSaving] = useState(false)
-  const [editingEntId, setEditingEntId] = useState<string | null>(null)
-  const [editEntNome, setEditEntNome] = useState('')
-  const [editEntTel, setEditEntTel] = useState('')
-  const [editEntTipo, setEditEntTipo] = useState<EntregadorTipo>('fixo')
 
   useEffect(() => {
     async function load() {
@@ -119,16 +102,7 @@ export default function SettingsPage() {
       setPhone((s.phone as string) || '')
       setAddress(typeof s.address === 'string' ? s.address : '')
       setBusinessHours('business_hours' in s ? s.business_hours : null)
-      setSupportsTableSectors('table_sectors' in s)
       setSupportsWaiterExitPin('waiter_exit_pin' in s)
-      const loadedSectors = Array.isArray(s.table_sectors)
-        ? (s.table_sectors as unknown[])
-            .map((x) => String(x ?? '').trim())
-            .filter(Boolean)
-        : []
-      if (loadedSectors.length > 0) {
-        setTableSectorsText(loadedSectors.join('\n'))
-      }
       setWaiterExitPin(typeof s.waiter_exit_pin === 'string' ? s.waiter_exit_pin.trim().slice(0, 4) : '')
       const hasLocationColumns =
         'location_enabled' in s ||
@@ -138,7 +112,6 @@ export default function SettingsPage() {
         'location_label' in s
       setSupportsLocationFields(hasLocationColumns)
       setLocationEnabled(Boolean(s.location_enabled))
-      setLocationAddress(typeof s.location_address === 'string' ? s.location_address : '')
       setLocationLabel(typeof s.location_label === 'string' ? s.location_label : '')
       const lat = typeof s.location_lat === 'number' ? s.location_lat : Number(s.location_lat)
       const lng = typeof s.location_lng === 'number' ? s.location_lng : Number(s.location_lng)
@@ -160,96 +133,19 @@ export default function SettingsPage() {
     load()
   }, [])
 
-  useEffect(() => {
-    if (!storeId) return
-    let cancelled = false
-    setEntregadoresLoading(true)
-    void (async () => {
-      try {
-        const res = await dashboardFetch('/api/store/entregadores')
-        const json = (await res.json().catch(() => ({}))) as {
-          entregadores?: StoreEntregadorDTO[]
-          missingTable?: boolean
-        }
-        if (cancelled) return
-        if (json.missingTable) setEntregadoresMissing(true)
-        setEntregadores(Array.isArray(json.entregadores) ? json.entregadores : [])
-      } catch {
-        if (!cancelled) setEntregadores([])
-      } finally {
-        if (!cancelled) setEntregadoresLoading(false)
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [storeId])
-
-  async function refreshEntregadores() {
-    if (!storeId) return
-    const res = await dashboardFetch('/api/store/entregadores')
-    const json = (await res.json().catch(() => ({}))) as {
-      entregadores?: StoreEntregadorDTO[]
-      missingTable?: boolean
-    }
-    if (json.missingTable) setEntregadoresMissing(true)
-    setEntregadores(Array.isArray(json.entregadores) ? json.entregadores : [])
-  }
-
-  async function addEntregador() {
-    if (!storeId) return
-    const nome = entFormNome.trim()
-    if (!nome) {
-      alert('Indica o nome do entregador.')
-      return
-    }
-    setEntSaving(true)
-    try {
-      const res = await dashboardFetch('/api/store/entregadores', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nome,
-          telefone: entFormTel.trim() || null,
-          tipo: entFormTipo,
-        }),
-      })
-      const json = (await res.json().catch(() => ({}))) as { error?: string }
-      if (!res.ok) {
-        alert(json.error || 'Não foi possível adicionar.')
-        return
-      }
-      setEntFormNome('')
-      setEntFormTel('')
-      setEntFormTipo('fixo')
-      await refreshEntregadores()
-    } finally {
-      setEntSaving(false)
-    }
-  }
-
-  async function patchEntregador(
-    id: string,
-    patch: Partial<{ nome: string; telefone: string | null; tipo: EntregadorTipo; ativo: boolean }>
-  ) {
-    const res = await dashboardFetch('/api/store/entregadores', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, ...patch }),
-    })
-    const json = (await res.json().catch(() => ({}))) as { error?: string }
-    if (!res.ok) {
-      alert(json.error || 'Não foi possível atualizar.')
-      return
-    }
-    setEditingEntId(null)
-    await refreshEntregadores()
-  }
-
   const publicUrl =
     typeof window !== 'undefined' && slug
       ? `${window.location.origin}/${slug}`
       : ''
+  const slugParaQr = slugifyStoreSlug(slug)
+  const qrPublicUrl =
+    typeof window !== 'undefined' && slugParaQr
+      ? `${window.location.origin}/${slugParaQr}`
+      : null
+  const qrMesaAutoUrl =
+    typeof window !== 'undefined' && slugParaQr
+      ? `${window.location.origin}/${slugParaQr}?auto=1`
+      : null
   const hasGrowthLocation = planTier(storePlan) >= planTier('GROWTH')
 
   async function handleSave() {
@@ -277,9 +173,9 @@ export default function SettingsPage() {
     patch.location_label = canPersistLocation
       ? locationLabel.trim() || 'Nossa localização'
       : null
-    patch.location_address = canPersistLocation ? locationAddress.trim() || null : null
     patch.location_lat = canPersistLocation ? locationLat : null
     patch.location_lng = canPersistLocation ? locationLng : null
+    patch.location_address = null
 
     if (canPersistLocation) {
       const mapUrl = locationMapsUrl.trim()
@@ -288,23 +184,13 @@ export default function SettingsPage() {
         if (coords) {
           patch.location_lat = coords.lat
           patch.location_lng = coords.lng
+          patch.location_address = null
         } else {
           patch.location_lat = null
           patch.location_lng = null
           patch.location_address = mapUrl
         }
       }
-    }
-    if (supportsTableSectors) {
-      const unique = Array.from(
-        new Set(
-          tableSectorsText
-            .split('\n')
-            .map((x) => x.trim())
-            .filter(Boolean)
-        )
-      )
-      patch.table_sectors = unique.length > 0 ? unique : ['Salão', 'Varanda']
     }
     if (supportsWaiterExitPin) {
       const pin = waiterExitPin.replace(/\D/g, '').slice(0, 4)
@@ -361,14 +247,6 @@ export default function SettingsPage() {
         delete attemptedPatch.location_label
         droppedFields.push('location')
         setSupportsLocationFields(false)
-        continue
-      }
-      const canDropTableSectors =
-        'table_sectors' in attemptedPatch && msg.includes('table_sectors')
-      if (canDropTableSectors) {
-        delete attemptedPatch.table_sectors
-        droppedFields.push('table_sectors')
-        setSupportsTableSectors(false)
         continue
       }
       const canDropWaiterPin =
@@ -610,6 +488,14 @@ export default function SettingsPage() {
             <p className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
               Link público
             </p>
+            <p className="mt-2 text-xs leading-relaxed text-[#6b7280]">
+              Este bloco é o link (e QR) para clientes pedirem com <strong>entrega</strong> ou{' '}
+              <strong>retirada</strong>. O QR de <strong>pedido na mesa</strong> está em{' '}
+              <Link href="/dashboard/garcom" className="font-semibold text-[var(--dash-primary)] underline">
+                Garçom
+              </Link>{' '}
+              e codifica o mesmo slug com <code className="rounded bg-white px-1">?auto=1</code>.
+            </p>
             <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0 flex-1" title={publicUrl || undefined}>
                 <div className="flex justify-start">
@@ -636,6 +522,12 @@ export default function SettingsPage() {
                 {copied ? 'Copiado' : 'Copiar URL'}
               </button>
             </div>
+            <StorePublicQrPanel
+              publicUrl={qrPublicUrl}
+              storeSlug={slugParaQr || null}
+              compact
+              qrCheckoutMode="delivery_pickup"
+            />
           </div>
         </section>
 
@@ -673,17 +565,6 @@ export default function SettingsPage() {
             }`}
           >
             <label className="block text-sm font-medium text-[#374151]">
-              Endereço completo
-              <textarea
-                className={`${inputClass} min-h-[92px] resize-y`}
-                value={locationAddress}
-                onChange={(e) => setLocationAddress(e.target.value)}
-                placeholder="Ex: Rua das Flores, 123 — Setor Central, Goiânia - GO"
-                disabled={!locationEnabled || !hasGrowthLocation || !supportsLocationFields}
-              />
-            </label>
-
-            <label className="block text-sm font-medium text-[#374151]">
               Label personalizado <span className="font-normal text-[#9ca3af]">(opcional)</span>
               <input
                 className={inputClass}
@@ -710,272 +591,48 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        <section
-          id="entregadores"
-          className="rounded-2xl border border-[var(--card-border)] bg-white p-6 shadow-sm shadow-black/[0.04] md:p-8"
-        >
-          <h2 className="text-base font-bold text-[#1a1614]">Entregadores</h2>
-          <p className="mt-1 text-sm text-[#6b7280]">
-            Cadastro usado ao confirmar entregas e no acerto do caixa. Inativos mantêm histórico e
-            aparecem no fim da lista.
-          </p>
-          {entregadoresMissing ? (
-            <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-              Tabelas de entregadores ainda não criadas. Executa o script SQL de entregadores no
-              Supabase.
-            </p>
-          ) : null}
-
-          <div className="mt-5 flex flex-wrap items-end gap-3 rounded-xl border border-[var(--card-border)] bg-[#fafafa] p-4">
-            <label className="min-w-[140px] flex-1 text-xs font-medium text-[#6b7280]">
-              Nome <span className="text-red-600">*</span>
-              <input
-                className={inputClass}
-                value={entFormNome}
-                onChange={(e) => setEntFormNome(e.target.value)}
-                placeholder="Nome completo"
-                disabled={!storeId || entregadoresLoading}
-              />
-            </label>
-            <label className="min-w-[120px] flex-1 text-xs font-medium text-[#6b7280]">
-              Telefone <span className="font-normal text-[#9ca3af]">(opcional)</span>
-              <input
-                className={inputClass}
-                value={entFormTel}
-                onChange={(e) => setEntFormTel(e.target.value)}
-                placeholder="Telefone"
-                disabled={!storeId || entregadoresLoading}
-              />
-            </label>
-            <div className="shrink-0">
-              <p className="text-xs font-medium text-[#6b7280]">Tipo</p>
-              <div className="mt-2 flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setEntFormTipo('fixo')}
-                  className={`rounded-lg px-3 py-2 text-xs font-semibold ${
-                    entFormTipo === 'fixo'
-                      ? 'bg-[var(--dash-primary)] text-white'
-                      : 'border border-[var(--card-border)] bg-white text-[#374151]'
-                  }`}
-                >
-                  Fixo
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setEntFormTipo('autonomo')}
-                  className={`rounded-lg px-3 py-2 text-xs font-semibold ${
-                    entFormTipo === 'autonomo'
-                      ? 'bg-[var(--dash-primary)] text-white'
-                      : 'border border-[var(--card-border)] bg-white text-[#374151]'
-                  }`}
-                >
-                  Autônomo
-                </button>
-              </div>
-            </div>
-            <button
-              type="button"
-              disabled={!storeId || entSaving || entregadoresLoading}
-              onClick={() => void addEntregador()}
-              className="shrink-0 rounded-xl bg-[var(--dash-primary)] px-5 py-2.5 text-sm font-semibold text-white shadow-sm disabled:opacity-50"
-            >
-              Adicionar
-            </button>
-          </div>
-
-          <div className="mt-6 overflow-x-auto">
-            {entregadoresLoading ? (
-              <p className="text-sm text-[#6b7280]">A carregar…</p>
-            ) : entregadores.length === 0 ? (
-              <p className="text-sm text-[#6b7280]">Ainda não há entregadores cadastrados.</p>
-            ) : (
-              <table className="w-full min-w-[520px] border-collapse text-left text-sm">
-                <thead>
-                  <tr className="border-b border-[var(--card-border)] text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
-                    <th className="py-2 pr-3">Nome</th>
-                    <th className="py-2 pr-3">Tipo</th>
-                    <th className="py-2 pr-3">Telefone</th>
-                    <th className="py-2 pr-3">Estado</th>
-                    <th className="py-2">Ações</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...entregadores].sort((a, b) => {
-                    if (a.ativo !== b.ativo) return a.ativo ? -1 : 1
-                    return a.nome.localeCompare(b.nome, 'pt')
-                  }).map((e) => {
-                    const rowMuted = !e.ativo
-                    return (
-                      <tr
-                        key={e.id}
-                        className={`border-b border-[var(--card-border)]/80 ${rowMuted ? 'opacity-55' : ''}`}
-                      >
-                        <td className="py-3 pr-3 font-medium text-[#1a1614]">
-                          {editingEntId === e.id ? (
-                            <input
-                              className="w-full rounded-lg border border-[var(--card-border)] px-2 py-1.5 text-sm"
-                              value={editEntNome}
-                              onChange={(ev) => setEditEntNome(ev.target.value)}
-                            />
-                          ) : (
-                            e.nome
-                          )}
-                        </td>
-                        <td className="py-3 pr-3 text-[#374151]">
-                          {editingEntId === e.id ? (
-                            <select
-                              value={editEntTipo}
-                              onChange={(ev) =>
-                                setEditEntTipo(ev.target.value === 'autonomo' ? 'autonomo' : 'fixo')
-                              }
-                              className="rounded-lg border border-[var(--card-border)] px-2 py-1.5 text-xs font-semibold"
-                            >
-                              <option value="fixo">Fixo</option>
-                              <option value="autonomo">Autônomo</option>
-                            </select>
-                          ) : e.tipo === 'autonomo' ? (
-                            'Autônomo'
-                          ) : (
-                            'Fixo'
-                          )}
-                        </td>
-                        <td className="py-3 pr-3 text-[#374151]">
-                          {editingEntId === e.id ? (
-                            <input
-                              className="w-full rounded-lg border border-[var(--card-border)] px-2 py-1.5 text-sm"
-                              value={editEntTel}
-                              onChange={(ev) => setEditEntTel(ev.target.value)}
-                              placeholder="Telefone"
-                            />
-                          ) : (
-                            e.telefone || '—'
-                          )}
-                        </td>
-                        <td className="py-3 pr-3">
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
-                              e.ativo
-                                ? 'bg-emerald-50 text-emerald-900 ring-1 ring-emerald-200'
-                                : 'bg-[#f3f4f6] text-[#6b7280] ring-1 ring-[var(--card-border)]'
-                            }`}
-                          >
-                            {e.ativo ? 'Ativo' : 'Inativo'}
-                          </span>
-                        </td>
-                        <td className="py-3">
-                          {editingEntId === e.id ? (
-                            <div className="flex flex-wrap gap-2">
-                              <button
-                                type="button"
-                                className="text-xs font-semibold text-[var(--dash-primary)] hover:underline"
-                                onClick={() => {
-                                  if (!editEntNome.trim()) {
-                                    alert('Nome obrigatório.')
-                                    return
-                                  }
-                                  void patchEntregador(e.id, {
-                                    nome: editEntNome.trim(),
-                                    telefone: editEntTel.trim() || null,
-                                    tipo: editEntTipo,
-                                  })
-                                }}
-                              >
-                                Guardar
-                              </button>
-                              <button
-                                type="button"
-                                className="text-xs font-semibold text-[#6b7280] hover:underline"
-                                onClick={() => setEditingEntId(null)}
-                              >
-                                Cancelar
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="flex flex-wrap gap-2">
-                              <button
-                                type="button"
-                                className="text-xs font-semibold text-[var(--dash-primary)] hover:underline"
-                                onClick={() => {
-                                  setEditingEntId(e.id)
-                                  setEditEntNome(e.nome)
-                                  setEditEntTel(e.telefone ?? '')
-                                  setEditEntTipo(e.tipo)
-                                }}
-                              >
-                                Editar
-                              </button>
-                              {e.ativo ? (
-                                <button
-                                  type="button"
-                                  className="text-xs font-semibold text-amber-800 hover:underline"
-                                  onClick={() => {
-                                    if (!confirm('Desativar este entregador?')) return
-                                    void patchEntregador(e.id, { ativo: false })
-                                  }}
-                                >
-                                  Desativar
-                                </button>
-                              ) : (
-                                <button
-                                  type="button"
-                                  className="text-xs font-semibold text-emerald-800 hover:underline"
-                                  onClick={() => void patchEntregador(e.id, { ativo: true })}
-                                >
-                                  Reativar
-                                </button>
-                              )}
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </section>
-
         <section className="rounded-2xl border border-[var(--card-border)] bg-white p-6 shadow-sm shadow-black/[0.04] md:p-8">
-          <h2 className="text-base font-bold text-[#1a1614]">Setores de mesa (Garçom)</h2>
+          <h2 className="text-base font-bold text-[#1a1614]">
+            Garçom: PIN do ecrã e QR de autoatendimento (mesa)
+          </h2>
           <p className="mt-1 text-sm text-[#6b7280]">
-            Configure os setores usados na tela de Garçom. Informe um setor por linha.
+            Os <strong>setores de mesa</strong> passam a ser editados em{' '}
+            <Link href="/dashboard/garcom" className="font-semibold text-[var(--dash-primary)] underline">
+              Garçom
+            </Link>
+            , em «Configurar mesas».
           </p>
-          <label className="mt-4 block text-sm font-medium text-[#374151]">
-            Lista de setores
-            <textarea
-              className={`${inputClass} min-h-[110px] resize-y`}
-              value={tableSectorsText}
-              onChange={(e) => setTableSectorsText(e.target.value)}
-              placeholder={'Salão\nVaranda'}
-              disabled={!supportsTableSectors}
-            />
-          </label>
-          {!supportsTableSectors ? (
-            <p className="mt-2 text-xs text-amber-700">
-              A coluna table_sectors ainda não existe no teu Supabase.
-            </p>
-          ) : null}
-
-          <label className="mt-5 block text-sm font-medium text-[#374151]">
-            PIN de saída do ecrã (Garçom)
-            <input
-              className={inputClass}
-              value={waiterExitPin}
-              onChange={(e) => {
-                const digits = e.target.value.replace(/\D/g, '').slice(0, 4)
-                setWaiterExitPin(digits)
-              }}
-              placeholder="0000"
-              inputMode="numeric"
-              maxLength={4}
-              disabled={!supportsWaiterExitPin}
-            />
-            <p className="mt-2 text-xs text-[#6b7280]">
-              Defina 4 dígitos. Quando o modo ecrã estiver aberto no Garçom, esse PIN será exigido para sair.
-            </p>
-          </label>
+          <div className="mt-5 grid gap-8 lg:grid-cols-2 lg:items-start">
+            <div>
+              <label className="block text-sm font-medium text-[#374151]">
+                PIN (4 dígitos)
+                <input
+                  className={inputClass}
+                  value={waiterExitPin}
+                  onChange={(e) => {
+                    const digits = e.target.value.replace(/\D/g, '').slice(0, 4)
+                    setWaiterExitPin(digits)
+                  }}
+                  placeholder="0000"
+                  inputMode="numeric"
+                  maxLength={4}
+                  disabled={!supportsWaiterExitPin}
+                />
+                <p className="mt-2 text-xs text-[#6b7280]">
+                  Quando o modo ecrã estiver aberto no Garçom, este PIN é exigido para sair.
+                </p>
+              </label>
+            </div>
+            <div className="min-w-0">
+              <StorePublicQrPanel
+                publicUrl={qrMesaAutoUrl}
+                storeSlug={slugParaQr || null}
+                compact
+                qrCheckoutMode="dine_in"
+                showSlugUniquenessNote={false}
+              />
+            </div>
+          </div>
         </section>
 
         {storeId ? (
@@ -989,9 +646,9 @@ export default function SettingsPage() {
               </h2>
             </div>
             <p className="mt-2 text-sm text-[#6b7280]">
-              Define dia a dia no calendário abaixo. O resumo curto (ex.: 18h–23h) e a taxa de
-              entrega ficam no <span className="font-medium text-[#374151]">Dashboard</span>, em
-              Funcionamento.
+              Define o horário semanal no calendário abaixo. O cardápio público mostra{' '}
+              <strong>Aberto</strong> ou <strong>Fechado</strong> com base nestes períodos (hora de
+              Brasília) e no interruptor «Loja aberta» em Funcionamento no painel principal.
             </p>
             <div className="mt-4">
               <DashboardBusinessHoursCard

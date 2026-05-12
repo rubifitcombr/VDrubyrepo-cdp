@@ -234,3 +234,16 @@ export function IconKds({ className }: { className?: string }) {
     </svg>
   )
 }
+
+/** Entregadores / logística */
+export function IconTruck({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M8.25 18a.75.75 0 01-.75-.75V9c0-.414.336-.75.75-.75h6.75V5.25A2.25 2.25 0 0117.25 3h2.096c.579 0 1.134.204 1.581.578l3.157 2.63A2.25 2.25 0 0124 7.72V16.5a2.25 2.25 0 01-2.25 2.25h-1.372m-15.878 0A2.251 2.251 0 014.5 16.5v-1.125c0-1.036.84-1.875 1.875-1.875h.375m12 0h.375c1.035 0 1.875.84 1.875 1.875v1.125c0 1.036-.84 1.875-1.875 1.875M15 18a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm9 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z"
+      />
+    </svg>
+  )
+}

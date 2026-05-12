@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { gateMerchantDeliveryPipeline } from '@/lib/merchant-api-gate.server'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
 import { getUser } from '@/services/auth.server'
 import {
@@ -15,6 +16,9 @@ export async function GET() {
 
   const gate = await requireLojistaAtivoApi(user.id)
   if (!gate.ok) return gate.response
+
+  const deny = gateMerchantDeliveryPipeline(gate.ctx.store, user.email)
+  if (deny) return deny
 
   const supabase = await createClient()
   try {
@@ -39,6 +43,9 @@ export async function POST(req: NextRequest) {
 
   const gate = await requireLojistaAtivoApi(user.id)
   if (!gate.ok) return gate.response
+
+  const deny = gateMerchantDeliveryPipeline(gate.ctx.store, user.email)
+  if (deny) return deny
 
   let body: { nome?: unknown; telefone?: unknown; tipo?: unknown }
   try {
@@ -78,6 +85,9 @@ export async function PATCH(req: NextRequest) {
 
   const gate = await requireLojistaAtivoApi(user.id)
   if (!gate.ok) return gate.response
+
+  const deny = gateMerchantDeliveryPipeline(gate.ctx.store, user.email)
+  if (deny) return deny
 
   let body: {
     id?: unknown

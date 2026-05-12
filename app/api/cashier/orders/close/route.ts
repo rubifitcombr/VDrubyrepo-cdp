@@ -1,18 +1,15 @@
 import { NextResponse } from 'next/server'
-import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
-import { hasFeature } from '@/lib/plan'
+import { gateMerchantMenuKey } from '@/lib/merchant-api-gate.server'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
-import { readStorePlano } from '@/lib/store-columns'
 import { getUser } from '@/services/auth.server'
 import { createClient } from '@/lib/supabase/server'
 import { getOpenCaixaTurno } from '@/services/caixa-turnos.server'
 
-type PaymentMethod = 'cash' | 'pix' | 'card' | 'credit'
+type PaymentMethod = 'cash' | 'pix' | 'card'
 
 function normalizePayment(v: unknown): PaymentMethod | null {
   const t = String(v ?? '').trim().toLowerCase()
-  if (t === 'cash' || t === 'pix' || t === 'card' || t === 'credit') return t
-  if (t === 'credito' || t === 'crédito' || t === 'fiado') return 'credit'
+  if (t === 'cash' || t === 'pix' || t === 'card') return t
   return null
 }
 
@@ -25,14 +22,8 @@ export async function POST(request: Request) {
   const gate = await requireLojistaAtivoApi(user.id)
   if (!gate.ok) return gate.response
 
-  const rawPlan = readStorePlano(gate.ctx.store)
-  const plan = effectiveDashboardPlan(user.email ?? null, rawPlan)
-  if (!hasFeature(plan, 'cashier')) {
-    return NextResponse.json(
-      { error: 'Recurso disponível apenas no plano Pro.' },
-      { status: 403 }
-    )
-  }
+  const deny = gateMerchantMenuKey(gate.ctx.store, user.email, 'caixa')
+  if (deny) return deny
 
   let body: { orderId?: string; paymentMethod?: string }
   try {

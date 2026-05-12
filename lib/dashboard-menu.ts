@@ -1,21 +1,14 @@
+import type { DashboardMenuKey } from '@/lib/dashboard-menu-types'
+export type { DashboardMenuKey } from '@/lib/dashboard-menu-types'
 import { hasFeature, type Plan } from '@/lib/plan'
+import type { MerchantOperationMode } from '@/lib/merchant-operation-mode'
+import { menuKeysForOperationAndPlan } from '@/lib/merchant-menu-matrix'
 
-/** Chaves alinhadas ao menu comercial (filtro do sidebar). */
-export type DashboardMenuKey =
-  | 'dashboard'
-  | 'produtos'
-  | 'pedidos'
-  | 'caixa'
-  | 'configuracoes'
-  | 'assinatura'
-  | 'promocoes'
-  | 'relatorios'
-  | 'aparencia'
-  | 'impressao'
-  | 'kds'
-  | 'pdv'
-  | 'garcom'
-  | 'automacoes'
+/** Com pedidos e canal com entregas (exclui modo «só presencial»). */
+function entregadoresMenuContext(operationMode: MerchantOperationMode | null): boolean {
+  if (operationMode == null) return true
+  return operationMode === 'delivery' || operationMode === 'hibrido'
+}
 
 export const MENU_POR_PLANO: Record<
   'start' | 'growth' | 'pro',
@@ -61,6 +54,7 @@ const MENU_KEY_TO_PATH_PREFIX: Record<DashboardMenuKey, string> = {
   dashboard: '/dashboard',
   produtos: '/dashboard/menu',
   pedidos: '/dashboard/orders',
+  entregadores: '/dashboard/entregadores',
   caixa: '/dashboard/caixa',
   configuracoes: '/dashboard/settings',
   assinatura: '/dashboard/assinatura',
@@ -83,11 +77,28 @@ export function menuKeysForPlan(plan: Plan): ReadonlySet<DashboardMenuKey> {
 }
 
 /**
- * Indica se a rota do painel é permitida para o plano (URL manual sem permissão).
+ * Chaves de menu efetivas para plano × modo de operação.
+ * Com `operationMode === null` (legado), equivale a `menuKeysForPlan(plan)`.
  */
-export function isPathAllowedForMerchantPlan(
+export function menuKeysForMerchant(
+  plan: Plan,
+  operationMode: MerchantOperationMode | null
+): ReadonlySet<DashboardMenuKey> {
+  const base =
+    operationMode == null
+      ? menuKeysForPlan(plan)
+      : menuKeysForOperationAndPlan(plan, operationMode)
+  const set = new Set(base)
+  if (set.has('pedidos') && entregadoresMenuContext(operationMode)) {
+    set.add('entregadores')
+  }
+  return set
+}
+
+function pathAllowedWithMenuKeys(
   pathname: string,
-  plan: Plan
+  plan: Plan,
+  keys: ReadonlySet<DashboardMenuKey>
 ): boolean {
   let raw = pathname.split('?')[0] || '/'
   if (raw.length > 1 && raw.endsWith('/')) raw = raw.slice(0, -1)
@@ -96,8 +107,6 @@ export function isPathAllowedForMerchantPlan(
   if (n === '/planos' || n.startsWith('/planos/')) return true
   if (n.startsWith('/dashboard/planos')) return true
   if (n.startsWith('/dashboard/upgrade')) return true
-
-  const keys = menuKeysForPlan(plan)
 
   if (n.startsWith('/dashboard/products')) {
     return keys.has('produtos')
@@ -119,4 +128,29 @@ export function isPathAllowedForMerchantPlan(
   }
 
   return false
+}
+
+/**
+ * Indica se a rota do painel é permitida para o plano (URL manual sem permissão).
+ */
+export function isPathAllowedForMerchantPlan(
+  pathname: string,
+  plan: Plan
+): boolean {
+  return pathAllowedWithMenuKeys(pathname, plan, menuKeysForPlan(plan))
+}
+
+/**
+ * Plano + modo de operação (null = legado, só plano).
+ */
+export function isPathAllowedForMerchant(
+  pathname: string,
+  plan: Plan,
+  operationMode: MerchantOperationMode | null
+): boolean {
+  return pathAllowedWithMenuKeys(
+    pathname,
+    plan,
+    menuKeysForMerchant(plan, operationMode)
+  )
 }

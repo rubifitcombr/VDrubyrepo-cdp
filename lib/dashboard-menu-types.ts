@@ -1,0 +1,17 @@
+/** Chaves alinhadas ao menu comercial (filtro do sidebar). */
+export type DashboardMenuKey =
+  | 'dashboard'
+  | 'produtos'
+  | 'pedidos'
+  | 'entregadores'
+  | 'caixa'
+  | 'configuracoes'
+  | 'assinatura'
+  | 'promocoes'
+  | 'relatorios'
+  | 'aparencia'
+  | 'impressao'
+  | 'kds'
+  | 'pdv'
+  | 'garcom'
+  | 'automacoes'

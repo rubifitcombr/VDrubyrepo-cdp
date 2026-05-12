@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server'
-import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
-import { hasFeature } from '@/lib/plan'
+import { gateMerchantMenuKey } from '@/lib/merchant-api-gate.server'
+import { denyStaffWaiterPanelWrites } from '@/lib/waiter-staff-gate.server'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
-import { readStorePlano } from '@/lib/store-columns'
 import { getUser } from '@/services/auth.server'
 import { ORDER_SELECT, mapStoreOrderRow } from '@/lib/store-order'
 import { buildWaiterNotes } from '@/lib/waiter-order-notes'
@@ -42,14 +41,11 @@ export async function POST(request: Request) {
   const gate = await requireLojistaAtivoApi(user.id)
   if (!gate.ok) return gate.response
 
-  const rawPlan = readStorePlano(gate.ctx.store)
-  const plan = effectiveDashboardPlan(user.email ?? null, rawPlan)
-  if (!hasFeature(plan, 'waiter')) {
-    return NextResponse.json(
-      { error: 'Recurso disponível apenas no plano Pro.' },
-      { status: 403 }
-    )
-  }
+  const deny = gateMerchantMenuKey(gate.ctx.store, user.email, 'garcom')
+  if (deny) return deny
+
+  const denyStaff = denyStaffWaiterPanelWrites(gate.ctx.store, user.email)
+  if (denyStaff) return denyStaff
 
   let body: {
     table?: string

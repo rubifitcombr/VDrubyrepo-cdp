@@ -8,10 +8,12 @@ import {
 } from '@/lib/delivery-zone.server'
 import { hasOrderPipelineAutomations, parsePlan } from '@/lib/plan'
 import { readStorePlano } from '@/lib/store-columns'
+import { publicDineInCheckoutAllowed } from '@/lib/salao-attendance'
 import { getStoreOpenState } from '@/lib/business-hours'
 import { parseAutomationsFromStore } from '@/lib/store-automations'
 import { maybeSendOrderAcceptedWhatsApp } from '@/services/order-accepted-whatsapp.server'
 import { sendWebPushNewOrder } from '@/services/web-push.server'
+import { buildWaiterNotes } from '@/lib/waiter-order-notes'
 
 type CheckoutLine = {
   productId: string
@@ -94,11 +96,20 @@ export async function POST(req: NextRequest) {
 
     const paymentMethod = toText(raw.paymentMethod) || null
     const notes = toText(raw.notes) || null
-    const fulfillment = toText(raw.fulfillment).toLowerCase() === 'pickup' ? 'pickup' : 'delivery'
+    const fulfillmentRaw = toText(raw.fulfillment).toLowerCase()
+    const fulfillment: 'delivery' | 'pickup' | 'dine_in' =
+      fulfillmentRaw === 'pickup'
+        ? 'pickup'
+        : fulfillmentRaw === 'dine_in'
+          ? 'dine_in'
+          : 'delivery'
+    const tableMesa = toText(raw.table) || toText(raw.mesa)
     const normalizedDeliveryAddress =
       fulfillment === 'delivery'
         ? deliveryAddress
-        : 'Retirada na loja'
+        : fulfillment === 'dine_in'
+          ? 'Consumo no local (mesa)'
+          : 'Retirada na loja'
 
     const itemsRaw = Array.isArray(raw.items) ? raw.items : []
 
@@ -154,6 +165,22 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    if (fulfillment === 'dine_in') {
+      const tableOk = tableMesa.trim().slice(0, 42)
+      if (!tableOk) {
+        return NextResponse.json(
+          { error: 'Indica o número ou nome da mesa.' },
+          { status: 400 }
+        )
+      }
+      if (!toText(raw.customerName)) {
+        return NextResponse.json(
+          { error: 'Indica o teu nome para o pedido.' },
+          { status: 400 }
+        )
+      }
+    }
+
     const customerPhone = customerPhoneRaw || null
 
     const supabase =
@@ -161,7 +188,7 @@ export async function POST(req: NextRequest) {
     const { data: store, error: storeErr } = await fetchStoreByPublicSlug(
       supabase,
       slug,
-      'id, name, plan, plano, address, delivery_fee, delivery_free_above, delivery_max_km, store_geo_lat, store_geo_lng, auto_accept_orders, manual_closed, business_hours, auto_whatsapp_confirm, auto_notify_new_order'
+      'id, name, plan, plano, address, delivery_fee, delivery_free_above, delivery_max_km, store_geo_lat, store_geo_lng, auto_accept_orders, manual_closed, business_hours, auto_whatsapp_confirm, auto_notify_new_order, salao_attendance_mode'
     )
 
     if (storeErr || !store) {
@@ -221,10 +248,41 @@ export async function POST(req: NextRequest) {
     }
 
     const plan = parsePlan(readStorePlano(storeRow as Record<string, unknown>))
+    if (fulfillment === 'dine_in') {
+      if (!publicDineInCheckoutAllowed(plan, storeRow as Record<string, unknown>)) {
+        return NextResponse.json(
+          {
+            error:
+              'Pedidos por QR de mesa não estão disponíveis. A loja pode estar em modo garçom ou o plano não inclui esta função.',
+          },
+          { status: 403 }
+        )
+      }
+    }
+
     const orderStatus = 'pending'
     const orderSource = plan === 'START' ? 'site_start' : 'site_live'
     const total = Math.round((subtotal + deliveryCharge) * 100) / 100
     const itemsSummary = items.map((l) => `${l.quantity}x ${l.name}`).join(', ')
+
+    const orderNotes =
+      fulfillment === 'dine_in'
+        ? buildWaiterNotes(
+            tableMesa.trim().slice(0, 42),
+            'Salão',
+            [String(notes ?? '').trim(), 'Pedido via QR (autoatendimento).'].filter(Boolean).join('\n'),
+            0
+          )
+        : notes
+
+    const insertSource =
+      fulfillment === 'dine_in'
+        ? 'waiter'
+        : fulfillment === 'pickup'
+          ? 'site_pickup'
+          : orderSource
+
+    const deliveryFeeRow = fulfillment === 'delivery' ? deliveryCharge : 0
 
     const { data: order, error: orderErr } = await supabase
       .from('orders')
@@ -233,13 +291,13 @@ export async function POST(req: NextRequest) {
         customer_name: customerName,
         customer_phone: customerPhone,
         delivery_address: normalizedDeliveryAddress,
-        delivery_fee: fulfillment === 'pickup' ? 0 : deliveryCharge,
+        delivery_fee: deliveryFeeRow,
         payment_method: paymentMethod,
-        notes,
+        notes: orderNotes,
         total,
         items_summary: itemsSummary,
         status: orderStatus,
-        source: fulfillment === 'pickup' ? 'site_pickup' : orderSource,
+        source: insertSource,
       })
       .select('id')
       .single()

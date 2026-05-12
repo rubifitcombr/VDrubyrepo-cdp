@@ -1,6 +1,7 @@
 'use client'
 
 import { PublicSlugPathPill } from '@/app/_components/PublicSlugPathPill'
+import { StorePublicQrPanel } from '@/app/dashboard/_components/StorePublicQrPanel'
 import { useState } from 'react'
 
 export function DashboardStoreControls({
@@ -32,27 +33,26 @@ export function DashboardStoreControls({
     <div className="space-y-3 rounded-xl border border-[var(--card-border)] bg-white p-4 md:p-5">
       <div>
         <p className="text-sm font-semibold text-[#1a1614]">Link público</p>
-        <p className="mt-1 text-xs text-[#6b7280]">
-          Partilha o teu cardápio. Abre e fecha a loja em{' '}
-          <span className="font-medium text-[#374151]">Funcionamento</span> ao lado.
-        </p>
       </div>
       {storeSlug && publicUrl ? (
-        <div className="flex flex-col gap-3 border-t border-[var(--card-border)] pt-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0 flex-1">
-            <div className="mt-1 flex justify-start" title={publicUrl}>
-              <PublicSlugPathPill slug={storeSlug} />
+        <>
+          <div className="flex flex-col gap-3 border-t border-[var(--card-border)] pt-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0 flex-1">
+              <div className="mt-1 flex justify-start" title={publicUrl}>
+                <PublicSlugPathPill slug={storeSlug} />
+              </div>
+              <p className="mt-1.5 truncate text-[11px] text-[#6b7280]">{publicUrl}</p>
             </div>
-            <p className="mt-1.5 truncate text-[11px] text-[#6b7280]">{publicUrl}</p>
+            <button
+              type="button"
+              onClick={copyLink}
+              className="shrink-0 rounded-lg bg-[var(--dash-primary)] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:brightness-105"
+            >
+              {copied ? 'Copiado' : 'Copiar link'}
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={copyLink}
-            className="shrink-0 rounded-lg bg-[var(--dash-primary)] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:brightness-105"
-          >
-            {copied ? 'Copiado' : 'Copiar link'}
-          </button>
-        </div>
+          <StorePublicQrPanel publicUrl={publicUrl} storeSlug={storeSlug} qrCheckoutMode="delivery_pickup" />
+        </>
       ) : (
         <p className="text-sm text-[#9ca3af]">Define o slug em Configurações.</p>
       )}

@@ -5,6 +5,10 @@ import type { MerchantStatus } from '@/lib/merchant-status'
 import { parseMerchantStatus } from '@/lib/merchant-status'
 import type { Plan } from '@/lib/plan'
 import { parsePlan } from '@/lib/plan'
+import {
+  parseOperationModeFromStore,
+  type MerchantOperationMode,
+} from '@/lib/merchant-operation-mode'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { readStorePlano, readStoreStatus } from '@/lib/store-columns'
 
@@ -22,6 +26,8 @@ export type LojistaListRow = {
   email: string | null
   telefone: string | null
   plano: Plan
+  /** `null` = legado (regras só por plano no painel). */
+  operation_mode: MerchantOperationMode | null
   status: MerchantStatus
   plano_vence_em: string | null
   cadastrado_em: string | null
@@ -64,6 +70,7 @@ function rowToLojista(
         ? store.phone.trim()
         : null,
     plano: parsePlan(readStorePlano(store)),
+    operation_mode: parseOperationModeFromStore(store),
     status: parseMerchantStatus(readStoreStatus(store)),
     plano_vence_em:
       typeof store.plano_vence_em === 'string'

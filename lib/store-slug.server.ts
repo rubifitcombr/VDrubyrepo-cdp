@@ -24,6 +24,7 @@ function normalizeTaken(rows: StoreSlugRow[], excludeStoreId?: string): Set<stri
   return taken
 }
 
+// Evita colisão com outra loja; em produção use índice único em lower(btrim(slug)) — scripts/supabase-stores-slug-unique.sql
 export async function resolveUniqueStoreSlug(
   supabase: SupabaseClient,
   preferredSlug: string,

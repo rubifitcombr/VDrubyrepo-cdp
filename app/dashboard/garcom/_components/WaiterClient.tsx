@@ -4,6 +4,12 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { MenuProductRow } from '@/lib/menu-product'
+import type { Plan } from '@/lib/plan'
+import {
+  planAllowsSalonSelfServiceQr,
+  planAllowsSalonStaffGarcom,
+  type SalaoAttendanceMode,
+} from '@/lib/salao-attendance'
 import { effectiveProductPrice } from '@/lib/product-pricing'
 import type { StoreOrderRow } from '@/lib/store-order'
 import {
@@ -13,6 +19,8 @@ import {
   parseTableFromNotes,
 } from '@/lib/waiter-order-notes'
 import { dashboardFetch } from '@/lib/dashboard-fetch.client'
+import { StorePublicQrPanel } from '@/app/dashboard/_components/StorePublicQrPanel'
+import { updateStore } from '@/services/store'
 import { updateOrderStatus } from '@/services/orders'
 
 type CartLine = {
@@ -42,6 +50,14 @@ const money = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
   currency: 'BRL',
 })
+
+type WaiterPaymentMethod = 'cash' | 'pix' | 'card'
+
+function waiterPaymentLabel(pm: WaiterPaymentMethod): string {
+  if (pm === 'pix') return 'PIX'
+  if (pm === 'card') return 'Cartão'
+  return 'Dinheiro'
+}
 
 function escapeHtml(raw: string): string {
   return raw
@@ -110,38 +126,76 @@ function sectorBadgeClass(amb: string): string {
   return 'bg-violet-100 text-violet-900 ring-violet-200'
 }
 
+function mergedSectorList(
+  sectorsEditText: string,
+  tables: { ambiente?: string | null }[]
+): string[] {
+  const fromText = sectorsEditText
+    .split('\n')
+    .map((x) => x.trim())
+    .filter(Boolean)
+  const fromTables = tables.map((t) => (t.ambiente || '').trim()).filter(Boolean)
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const x of [...fromText, ...fromTables]) {
+    if (!x || seen.has(x)) continue
+    seen.add(x)
+    out.push(x)
+  }
+  return out.length > 0 ? out : ['Salão', 'Varanda']
+}
+
 export function WaiterClient({
+  storeId,
+  storeSlug,
+  origin,
+  plan,
+  initialSalaoAttendanceMode,
   initialProducts,
   initialOpenOrders,
   initialSectors,
+  supportsTableSectors,
   initialTables,
   stockQuantityByProductId,
   waiterExitPin,
 }: {
+  storeId: string
+  storeSlug: string
+  origin: string
+  plan: Plan
+  initialSalaoAttendanceMode: SalaoAttendanceMode
   initialProducts: MenuProductRow[]
   initialOpenOrders: StoreOrderRow[]
   initialSectors: string[]
+  supportsTableSectors: boolean
   initialTables: StoreTableDTO[]
   stockQuantityByProductId: Record<string, number>
   waiterExitPin: string
 }) {
-  const sectors = useMemo(() => {
-    const fromTables = initialTables.map((t) => t.ambiente.trim()).filter(Boolean)
-    const merged = [...initialSectors, ...fromTables]
-    const unique = Array.from(new Set(merged.map((x) => x.trim()).filter(Boolean)))
-    return unique.length > 0 ? unique : ['Salão', 'Varanda']
-  }, [initialSectors, initialTables])
-
   const [tables, setTables] = useState(initialTables)
+  const [sectorsEditText, setSectorsEditText] = useState(() => initialSectors.join('\n'))
+
+  useEffect(() => {
+    setSectorsEditText(initialSectors.join('\n'))
+  }, [initialSectors])
+
+  const sectors = useMemo(
+    () => mergedSectorList(sectorsEditText, tables),
+    [sectorsEditText, tables]
+  )
+
   const [openOrders, setOpenOrders] = useState(initialOpenOrders)
   const [query, setQuery] = useState('')
   const [categoryTab, setCategoryTab] = useState<string>('Todos')
   const [centerTab, setCenterTab] = useState<'map' | 'order'>('map')
   const [table, setTable] = useState('')
   const [sector, setSector] = useState<string>(() => sectors[0] || 'Salão')
+  useEffect(() => {
+    setSector((prev) => (sectors.includes(prev) ? prev : sectors[0] || 'Salão'))
+  }, [sectors])
   const [customerName, setCustomerName] = useState('')
   const [notes, setNotes] = useState('')
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'pix' | 'card'>('cash')
+  const [paymentMethod, setPaymentMethod] = useState<WaiterPaymentMethod>('cash')
   const [cart, setCart] = useState<CartLine[]>([])
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null)
   const [discountBrl, setDiscountBrl] = useState(0)
@@ -164,6 +218,9 @@ export function WaiterClient({
   const [avulsaOpen, setAvulsaOpen] = useState(false)
   const [avulsaName, setAvulsaName] = useState('')
   const [confirmCloseOpen, setConfirmCloseOpen] = useState(false)
+  const [mesaCloseMode, setMesaCloseMode] = useState<'cashier' | 'immediate'>(
+    'cashier'
+  )
   const [loadingOrder, setLoadingOrder] = useState(false)
   const [menuSheetOpen, setMenuSheetOpen] = useState(false)
   const [orderDrawerOpen, setOrderDrawerOpen] = useState(false)
@@ -173,6 +230,33 @@ export function WaiterClient({
   const [pinAttempt, setPinAttempt] = useState('')
   const [pinError, setPinError] = useState<string | null>(null)
   const router = useRouter()
+  const [salaoMode, setSalaoMode] = useState<SalaoAttendanceMode>(initialSalaoAttendanceMode)
+  const [salaoSaving, setSalaoSaving] = useState(false)
+
+  useEffect(() => {
+    setSalaoMode(initialSalaoAttendanceMode)
+  }, [initialSalaoAttendanceMode])
+
+  const staffSalonUi = planAllowsSalonStaffGarcom(plan) && salaoMode === 'waiter'
+  const selfServiceSalonUi =
+    planAllowsSalonSelfServiceQr(plan) &&
+    (!planAllowsSalonStaffGarcom(plan) || salaoMode === 'self_service')
+
+  async function persistSalaoMode(next: SalaoAttendanceMode) {
+    setSalaoSaving(true)
+    try {
+      const { error } = await updateStore(storeId, { salao_attendance_mode: next })
+      if (error) {
+        alert(typeof error.message === 'string' ? error.message : 'Não foi possível guardar.')
+        return
+      }
+      setSalaoMode(next)
+      router.refresh()
+    } finally {
+      setSalaoSaving(false)
+    }
+  }
+
   const avulsaToggleRef = useRef<HTMLButtonElement>(null)
   const avulsaPopoverRef = useRef<HTMLDivElement>(null)
 
@@ -286,7 +370,9 @@ export function WaiterClient({
       setCustomerName(o.customer_name?.trim() || '')
       setNotes(extractUserNotes(o.notes))
       const pm = String(o.payment_method || 'cash').toLowerCase()
-      setPaymentMethod(pm === 'pix' ? 'pix' : pm === 'card' ? 'card' : 'cash')
+      setPaymentMethod(
+        pm === 'pix' ? 'pix' : pm === 'card' ? 'card' : 'cash'
+      )
       setCart(lines)
       setDiscountBrl(parseDiscountFromNotes(o.notes))
       setDiscountOpen(false)
@@ -560,21 +646,42 @@ export function WaiterClient({
     setOpenOrders((prev) => prev.map((x) => (x.id === order.id ? { ...x, status: 'confirmed' } : x)))
   }
 
-  async function closeOrderDelivered(order: StoreOrderRow) {
+  async function submitWaiterCheckout(order: StoreOrderRow) {
     setBusyOrderId(order.id)
-    const { error: upError } = await updateOrderStatus(order.id, 'delivered')
-    setBusyOrderId(null)
-    if (upError) {
-      setError(upError.message)
-      return
+    setError(null)
+    try {
+      const res = await dashboardFetch('/api/waiter/orders/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId: order.id,
+          mode: mesaCloseMode,
+          paymentMethod,
+        }),
+      })
+      const json = (await res.json().catch(() => ({}))) as {
+        error?: string
+        ok?: boolean
+      }
+      if (!res.ok) {
+        setError(json.error || 'Não foi possível concluir.')
+        return
+      }
+      setOpenOrders((prev) => prev.filter((x) => x.id !== order.id))
+      if (activeOrderId === order.id) {
+        setActiveOrderId(null)
+        setCart([])
+        setConfirmCloseOpen(false)
+      }
+      setSuccess(
+        mesaCloseMode === 'immediate'
+          ? 'Pagamento registado no turno de caixa. Mesa fechada.'
+          : 'Conta enviada ao Caixa. A mesa fica livre no mapa.'
+      )
+      router.refresh()
+    } finally {
+      setBusyOrderId(null)
     }
-    setOpenOrders((prev) => prev.filter((x) => x.id !== order.id))
-    if (activeOrderId === order.id) {
-      setActiveOrderId(null)
-      setCart([])
-      setConfirmCloseOpen(false)
-    }
-    setSuccess('Mesa recebida e pedido fechado.')
   }
 
   async function toggleFullscreen() {
@@ -658,11 +765,26 @@ export function WaiterClient({
         setTablesSaveError(json.error || 'Erro ao guardar mesas.')
         return
       }
-      setTables(json.tables ?? [])
+      const nextTables = json.tables ?? tables
+      setTables(nextTables)
+
+      if (supportsTableSectors) {
+        const finalSectors = mergedSectorList(sectorsEditText, nextTables)
+        const { error: storeErr } = await updateStore(storeId, { table_sectors: finalSectors })
+        if (storeErr) {
+          setTablesSaveError(
+            typeof storeErr.message === 'string'
+              ? storeErr.message
+              : 'Erro ao guardar setores de mesa.'
+          )
+          return
+        }
+      }
+
       setConfigOpen(false)
       setTablesSaveError(null)
       setError(null)
-      setSuccess('Mesas atualizadas.')
+      setSuccess(supportsTableSectors ? 'Mesas e setores guardados.' : 'Mesas atualizadas.')
       router.refresh()
     } finally {
       setSavingTables(false)
@@ -761,6 +883,49 @@ export function WaiterClient({
         <span className="font-medium text-[#1a1614]">Garçom</span>
       </nav>
 
+      {planAllowsSalonStaffGarcom(plan) ? (
+        <div className="mb-3 rounded-xl border border-[var(--card-border)] bg-white p-3 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
+            Modo do salão
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={salaoSaving}
+              onClick={() => void persistSalaoMode('waiter')}
+              className={`rounded-lg px-4 py-2 text-xs font-semibold transition ${
+                salaoMode === 'waiter'
+                  ? 'bg-[var(--dash-primary)] text-white shadow-sm'
+                  : 'border border-[var(--card-border)] bg-white text-[#374151] hover:bg-[#f9fafb]'
+              }`}
+            >
+              Garçom (painel)
+            </button>
+            <button
+              type="button"
+              disabled={salaoSaving}
+              onClick={() => void persistSalaoMode('self_service')}
+              className={`rounded-lg px-4 py-2 text-xs font-semibold transition ${
+                salaoMode === 'self_service'
+                  ? 'bg-[var(--dash-primary)] text-white shadow-sm'
+                  : 'border border-[var(--card-border)] bg-white text-[#374151] hover:bg-[#f9fafb]'
+              }`}
+            >
+              Autoatendimento (QR)
+            </button>
+          </div>
+          {salaoSaving ? (
+            <p className="mt-2 text-[11px] text-[#6b7280]">A guardar…</p>
+          ) : null}
+        </div>
+      ) : planAllowsSalonSelfServiceQr(plan) ? (
+        <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50/90 p-3 text-xs leading-relaxed text-amber-950">
+          <strong>Plano Growth:</strong> QR de autoatendimento para o salão (mesa, URL com{' '}
+          <code className="text-[10px]">?auto=1</code>), distinto do QR de entrega/retirada nas
+          Configurações. O mapa de garçom no painel está disponível no plano Pro.
+        </div>
+      ) : null}
+
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 pb-2">
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold text-[#1a1614]">Operação salão</span>
@@ -781,6 +946,8 @@ export function WaiterClient({
         </div>
       </div>
 
+      {staffSalonUi ? (
+        <>
       {/* Mobile toggles */}
       <div className="mb-2 flex shrink-0 gap-2 md:hidden">
         <button
@@ -1087,11 +1254,28 @@ export function WaiterClient({
             onSubmitNew={submitNewOrder}
             onSaveExisting={saveExistingOrder}
             onPrint={printComanda}
-            onConfirmClose={() => setConfirmCloseOpen(true)}
+            onConfirmClose={() => {
+              setMesaCloseMode('cashier')
+              setConfirmCloseOpen(true)
+            }}
             sticky
           />
         </aside>
       </div>
+      </>
+      ) : selfServiceSalonUi ? (
+        <div className="space-y-4 pb-2">
+          <div className="rounded-xl border border-[var(--card-border)] bg-white p-4 shadow-sm md:p-5">
+            <h2 className="text-base font-bold text-[#1a1614]">QR de autoatendimento</h2>
+            <StorePublicQrPanel
+              publicUrl={`${origin.replace(/\/$/, '')}/${storeSlug}?auto=1`}
+              storeSlug={storeSlug}
+              qrCheckoutMode="dine_in"
+              hideExplanatoryCopy
+            />
+          </div>
+        </div>
+      ) : null}
 
       {/* Bottom: pedidos abertos */}
       <section className="mt-4 shrink-0 rounded-xl border border-[var(--card-border)] bg-white p-4 shadow-sm">
@@ -1182,6 +1366,27 @@ export function WaiterClient({
           />
           <div className="relative z-10 max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-xl">
             <h3 className="text-lg font-bold text-[#1a1614]">Configurar mesas</h3>
+            {supportsTableSectors ? (
+              <label className="mt-4 block">
+                <span className="text-sm font-medium text-[#374151]">Setores de mesa (um por linha)</span>
+                <textarea
+                  value={sectorsEditText}
+                  onChange={(e) => setSectorsEditText(e.target.value)}
+                  className="mt-2 w-full min-h-[96px] resize-y rounded-xl border border-[var(--card-border)] bg-white px-3 py-2 text-sm text-[#1a1614] outline-none focus:border-[var(--dash-primary)]/40"
+                  placeholder={'Salão\nVaranda'}
+                  spellCheck={false}
+                />
+                <p className="mt-1.5 text-[11px] leading-relaxed text-[#6b7280]">
+                  Nomes usados nas abas e no pedido. Os ambientes das mesas abaixo são incluídos ao
+                  guardar.
+                </p>
+              </label>
+            ) : (
+              <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                A coluna <code>table_sectors</code> ainda não existe no Supabase — usa apenas os
+                nomes de ambiente em cada mesa.
+              </p>
+            )}
             {tablesSaveError ? (
               <p className="mt-2 rounded-lg bg-red-50 px-2 py-1.5 text-xs text-red-800">{tablesSaveError}</p>
             ) : null}
@@ -1263,33 +1468,115 @@ export function WaiterClient({
       {/* Confirmar recebimento */}
       {confirmCloseOpen && activeOrder ? (
         <div className="fixed inset-0 z-[95] flex items-center justify-center p-4" role="dialog">
-          <button type="button" className="absolute inset-0 bg-black/50" onClick={() => setConfirmCloseOpen(false)} />
-          <div className="relative z-10 w-full max-w-sm rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-xl">
-            <p className="text-sm font-bold text-[#1a1614]">Confirmar recebimento</p>
-            <p className="mt-2 text-sm text-[#4b5563]">
-              {money.format(Number(activeOrder.total) || 0)} via{' '}
-              {paymentMethod === 'pix' ? 'PIX' : paymentMethod === 'card' ? 'Cartão' : 'Dinheiro'}
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setConfirmCloseOpen(false)}
+          />
+          <div className="relative z-10 max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-xl">
+            <p className="text-sm font-bold text-[#1a1614]">Fechar mesa</p>
+            <p className="mt-1 text-xs text-[#6b7280]">
+              Total {money.format(Number(activeOrder.total) || 0)} · preferência de pagamento:{' '}
+              {waiterPaymentLabel(paymentMethod)}
             </p>
             {Math.abs(total - (Number(activeOrder.total) || 0)) > 0.01 ? (
-              <p className="mt-1 text-xs text-amber-800">
-                Há alterações por guardar no painel — confirma «Salvar alterações» antes para alinhar o total.
+              <p className="mt-2 text-xs text-amber-800">
+                Há alterações por guardar no painel — confirma «Salvar alterações» antes para alinhar o
+                total.
               </p>
             ) : null}
-            <div className="mt-4 flex gap-2">
+
+            <div className="mt-4">
+              <span className="mb-1.5 block text-[11px] font-medium text-[#6b7280]">Como fechar</span>
+              <div className="flex rounded-xl border border-[var(--card-border)] bg-zinc-100 p-1">
+                <button
+                  type="button"
+                  onClick={() => setMesaCloseMode('cashier')}
+                  className={`flex-1 rounded-lg px-2 py-2 text-xs font-semibold transition ${
+                    mesaCloseMode === 'cashier'
+                      ? 'bg-white text-[#1a1614] shadow-sm'
+                      : 'text-[#6b7280]'
+                  }`}
+                >
+                  Enviar ao Caixa
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMesaCloseMode('immediate')}
+                  className={`flex-1 rounded-lg px-2 py-2 text-xs font-semibold transition ${
+                    mesaCloseMode === 'immediate'
+                      ? 'bg-white text-[#1a1614] shadow-sm'
+                      : 'text-[#6b7280]'
+                  }`}
+                >
+                  Receber agora
+                </button>
+              </div>
+            </div>
+
+            {mesaCloseMode === 'immediate' ? (
+              <div className="mt-3">
+                <p className="text-xs text-[#6b7280]">
+                  Regista no{' '}
+                  <Link
+                    href="/dashboard/caixa"
+                    className="font-semibold text-[var(--dash-primary)] underline"
+                  >
+                    turno de caixa
+                  </Link>{' '}
+                  aberto (exige permissão de Caixa). A comanda fica paga e fechada.
+                </p>
+                <span className="mb-1.5 mt-3 block text-[11px] font-medium text-[#6b7280]">
+                  Método de pagamento
+                </span>
+                <div className="grid grid-cols-3 gap-2">
+                  {(
+                    [
+                      { id: 'cash' as const, label: 'Dinheiro' },
+                      { id: 'pix' as const, label: 'PIX' },
+                      { id: 'card' as const, label: 'Cartão' },
+                    ] as const
+                  ).map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setPaymentMethod(opt.id)}
+                      className={`rounded-lg border px-2 py-2 text-[11px] font-semibold ${
+                        paymentMethod === opt.id
+                          ? 'border-[var(--dash-primary)] bg-[var(--dash-primary)]/10 text-[#1a1614] ring-2 ring-[var(--dash-primary)]/25'
+                          : 'border-[var(--card-border)] bg-white text-[#374151]'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <p className="mt-3 text-xs text-[#6b7280]">
+                A mesa fica livre no mapa do Garçom. A conta continua em aberto no Caixa até o pagamento.
+              </p>
+            )}
+
+            <div className="mt-5 flex gap-2">
               <button
                 type="button"
                 onClick={() => setConfirmCloseOpen(false)}
-                className="flex-1 rounded-xl border border-[var(--card-border)] py-2 text-sm font-semibold"
+                className="flex-1 rounded-xl border border-[var(--card-border)] py-2.5 text-sm font-semibold"
               >
                 Voltar
               </button>
               <button
                 type="button"
                 disabled={busyOrderId === activeOrder.id}
-                onClick={() => void closeOrderDelivered(activeOrder)}
-                className="flex-1 rounded-xl bg-emerald-600 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                onClick={() => void submitWaiterCheckout(activeOrder)}
+                className="flex-1 rounded-xl bg-emerald-600 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
               >
-                Confirmar
+                {busyOrderId === activeOrder.id
+                  ? 'A processar…'
+                  : mesaCloseMode === 'immediate'
+                    ? 'Receber e fechar'
+                    : 'Encaminhar ao Caixa'}
               </button>
             </div>
           </div>
@@ -1378,7 +1665,10 @@ export function WaiterClient({
                 onSubmitNew={submitNewOrder}
                 onSaveExisting={saveExistingOrder}
                 onPrint={printComanda}
-                onConfirmClose={() => setConfirmCloseOpen(true)}
+                onConfirmClose={() => {
+              setMesaCloseMode('cashier')
+              setConfirmCloseOpen(true)
+            }}
                 sticky={false}
               />
             </div>
@@ -1517,8 +1807,8 @@ function OrderPanelContent({
   setCustomerName: (v: string) => void
   notes: string
   setNotes: (v: string) => void
-  paymentMethod: 'cash' | 'pix' | 'card'
-  setPaymentMethod: (v: 'cash' | 'pix' | 'card') => void
+  paymentMethod: WaiterPaymentMethod
+  setPaymentMethod: (v: WaiterPaymentMethod) => void
   cart: CartLine[]
   setLineQty: (id: string, q: number) => void
   subtotal: number
@@ -1750,7 +2040,7 @@ function OrderPanelContent({
                   onClick={onConfirmClose}
                   className="mt-2 w-full rounded-xl border border-emerald-600 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-50"
                 >
-                  Receber e fechar mesa
+                  Receber e fechar mesa / conta
                 </button>
                 <button
                   type="button"

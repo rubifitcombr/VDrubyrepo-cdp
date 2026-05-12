@@ -12,7 +12,7 @@ import type { StoreOrderRow } from '@/lib/store-order'
 import { createClient } from '@/lib/supabase/client'
 
 type SourceKey = 'waiter' | 'pdv' | 'menu_link'
-type PaymentDraft = 'cash' | 'pix' | 'card' | 'credit'
+type PaymentDraft = 'cash' | 'pix' | 'card'
 
 const money = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
@@ -403,7 +403,6 @@ export function CashierClient({
     const current = String(order.payment_method ?? '').trim().toLowerCase()
     if (current === 'pix') return 'pix'
     if (current === 'card') return 'card'
-    if (current === 'credit' || current === 'credito' || current === 'crédito') return 'credit'
     return 'cash'
   }
 
@@ -923,7 +922,6 @@ export function CashierClient({
                           <option value="cash">Dinheiro</option>
                           <option value="pix">PIX</option>
                           <option value="card">Cartão</option>
-                          <option value="credit">Crédito</option>
                         </select>
                         <button
                           type="button"
@@ -958,7 +956,7 @@ export function CashierClient({
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Link
-              href="/dashboard/settings#entregadores"
+              href="/dashboard/entregadores"
               className="text-xs font-semibold text-[var(--dash-primary)] hover:underline"
             >
               Gerenciar entregadores

@@ -49,7 +49,7 @@ const ROWS: Array<{
     key: 'print_auto_on_confirm',
     title: 'Impressão automática',
     description:
-      'Ao aceitar um pedido (Preparando), imprimir o cupom na cozinha — Pedidos e KDS.',
+      'Ao entrar em «Preparando», imprimir o cupom (cardápio online, checkout, Garçom ou outro fluxo) — com o painel aberto em qualquer página.',
   },
   {
     key: 'print_include_customer_details',

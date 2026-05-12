@@ -1,10 +1,9 @@
 import { NextResponse } from 'next/server'
-import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
-import { hasFeature } from '@/lib/plan'
+import { gateMerchantMenuKey } from '@/lib/merchant-api-gate.server'
+import { denyStaffWaiterPanelWrites } from '@/lib/waiter-staff-gate.server'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
-import { readStorePlano } from '@/lib/store-columns'
 import { ORDER_SELECT, mapStoreOrderRow } from '@/lib/store-order'
-import { buildWaiterNotes, extractUserNotes, parseSectorFromNotes, parseTableFromNotes } from '@/lib/waiter-order-notes'
+import { buildWaiterNotes, extractUserNotes, notesIndicateWaiterReleasedToCaixa, parseSectorFromNotes, parseTableFromNotes } from '@/lib/waiter-order-notes'
 import { getUser } from '@/services/auth.server'
 import { createClient } from '@/lib/supabase/server'
 
@@ -31,11 +30,8 @@ export async function GET(
   const gate = await requireLojistaAtivoApi(user.id)
   if (!gate.ok) return gate.response
 
-  const rawPlan = readStorePlano(gate.ctx.store)
-  const plan = effectiveDashboardPlan(user.email ?? null, rawPlan)
-  if (!hasFeature(plan, 'waiter')) {
-    return NextResponse.json({ error: 'Recurso disponível apenas no plano Pro.' }, { status: 403 })
-  }
+  const deny = gateMerchantMenuKey(gate.ctx.store, user.email, 'garcom')
+  if (deny) return deny
 
   const { orderId } = await ctx.params
   const id = String(orderId ?? '').trim()
@@ -79,11 +75,11 @@ export async function PATCH(
   const gate = await requireLojistaAtivoApi(user.id)
   if (!gate.ok) return gate.response
 
-  const rawPlan = readStorePlano(gate.ctx.store)
-  const plan = effectiveDashboardPlan(user.email ?? null, rawPlan)
-  if (!hasFeature(plan, 'waiter')) {
-    return NextResponse.json({ error: 'Recurso disponível apenas no plano Pro.' }, { status: 403 })
-  }
+  const deny = gateMerchantMenuKey(gate.ctx.store, user.email, 'garcom')
+  if (deny) return deny
+
+  const denyStaff = denyStaffWaiterPanelWrites(gate.ctx.store, user.email)
+  if (denyStaff) return denyStaff
 
   const { orderId } = await ctx.params
   const id = String(orderId ?? '').trim()
@@ -117,6 +113,16 @@ export async function PATCH(
 
   if (fErr || !existing) {
     return NextResponse.json({ error: 'Pedido não encontrado.' }, { status: 404 })
+  }
+
+  if (notesIndicateWaiterReleasedToCaixa(existing.notes as string | null)) {
+    return NextResponse.json(
+      {
+        error:
+          'Esta comanda está no Caixa para pagamento e não pode ser editada pelo Garçom.',
+      },
+      { status: 409 }
+    )
   }
 
   const st = String(existing.status ?? '').trim().toLowerCase()

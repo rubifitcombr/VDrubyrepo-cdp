@@ -1,7 +1,8 @@
 'use client'
 
 import type { Plan } from '@/lib/plan'
-import { isPathAllowedForMerchantPlan } from '@/lib/dashboard-menu'
+import { isPathAllowedForMerchant } from '@/lib/dashboard-menu'
+import type { MerchantOperationMode } from '@/lib/merchant-operation-mode'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
@@ -15,7 +16,6 @@ function PlanRestrictedNotice() {
     if (pathname !== '/planos' && !pathname.startsWith('/dashboard/planos')) {
       const t = window.setTimeout(() => setVisible(false), 0)
       return () => window.clearTimeout(t)
-      return
     }
     const sp = new URLSearchParams(
       typeof window !== 'undefined' ? window.location.search : ''
@@ -23,7 +23,6 @@ function PlanRestrictedNotice() {
     if (sp.get('planRestricted') !== '1') {
       const t = window.setTimeout(() => setVisible(false), 0)
       return () => window.clearTimeout(t)
-      return
     }
     const openT = window.setTimeout(() => setVisible(true), 0)
     const t = window.setTimeout(() => {
@@ -45,7 +44,7 @@ function PlanRestrictedNotice() {
     >
       <div className="pointer-events-auto rounded-2xl border border-[var(--card-border)] bg-[#1a1614] px-4 py-3 text-center shadow-lg shadow-black/25">
         <p className="text-sm font-medium text-white">
-          Esse recurso não está disponível no seu plano atual.
+          Esse destino não faz parte do teu plano e modelo de operação actuais.
         </p>
         <Link
           href="/planos"
@@ -60,9 +59,12 @@ function PlanRestrictedNotice() {
 
 export function DashboardPlanGuard({
   plan,
+  operationMode = null,
   children,
 }: {
   plan: Plan
+  /** `null` = legado (só plano). */
+  operationMode?: MerchantOperationMode | null
   children: React.ReactNode
 }) {
   const pathname = usePathname()
@@ -71,10 +73,10 @@ export function DashboardPlanGuard({
 
   useEffect(() => {
     if (!pathname || redirecting.current) return
-    if (isPathAllowedForMerchantPlan(pathname, plan)) return
+    if (isPathAllowedForMerchant(pathname, plan, operationMode ?? null)) return
     redirecting.current = true
     router.replace('/planos?planRestricted=1')
-  }, [pathname, plan, router])
+  }, [pathname, plan, operationMode, router])
 
   return (
     <>

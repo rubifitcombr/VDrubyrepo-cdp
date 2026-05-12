@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/client'
 import { slugifyStoreSlug } from '@/lib/store-slug'
+import type { MerchantOperationMode } from '@/lib/merchant-operation-mode'
 
 const STORE_ALLOWED_FIELDS = new Set([
   'name',
@@ -33,6 +34,7 @@ const STORE_ALLOWED_FIELDS = new Set([
   'location_label',
   'table_sectors',
   'waiter_exit_pin',
+  'salao_attendance_mode',
 ])
 
 export async function getStoreByUser(userId: string) {
@@ -49,16 +51,18 @@ export async function getStoreByUser(userId: string) {
 export async function createStore(
   userId: string,
   name: string,
-  phone?: string
+  opts: { phone?: string; operationMode: MerchantOperationMode }
 ) {
   void userId
+  const phone = opts.phone?.trim() ? opts.phone.trim() : undefined
   try {
     const res = await fetch('/api/stores/create', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: name.trim(),
-        ...(phone?.trim() ? { phone: phone.trim() } : {}),
+        operation_mode: opts.operationMode,
+        ...(phone ? { phone } : {}),
       }),
     })
     const body = (await res.json()) as {

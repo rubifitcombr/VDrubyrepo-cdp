@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { gateMerchantMenuKey } from '@/lib/merchant-api-gate.server'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
 import {
   deleteEvolutionInstance,
@@ -60,7 +61,12 @@ async function ensureMerchantStore(reqStoreId: string) {
     }
   }
 
-  return { ok: true as const, storeId: gate.ctx.storeId }
+  return {
+    ok: true as const,
+    storeId: gate.ctx.storeId,
+    store: gate.ctx.store,
+    userEmail: user.email,
+  }
 }
 
 export async function GET(req: NextRequest) {
@@ -73,6 +79,9 @@ export async function GET(req: NextRequest) {
 
     const owned = await ensureMerchantStore(storeId)
     if (!owned.ok) return owned.response
+
+    const menuDeny = gateMerchantMenuKey(owned.store, owned.userEmail, 'automacoes')
+    if (menuDeny) return menuDeny
 
     const instanceName = getStoreEvolutionInstanceName(owned.storeId)
     await ensureEvolutionInstance(instanceName)
@@ -109,6 +118,9 @@ export async function POST(req: NextRequest) {
 
     const owned = await ensureMerchantStore(storeId)
     if (!owned.ok) return owned.response
+
+    const menuDeny = gateMerchantMenuKey(owned.store, owned.userEmail, 'automacoes')
+    if (menuDeny) return menuDeny
 
     const instanceName = getStoreEvolutionInstanceName(owned.storeId)
 

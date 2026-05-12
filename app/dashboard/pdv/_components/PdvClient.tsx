@@ -18,6 +18,8 @@ import {
 } from '@/lib/product-pricing'
 import {
   submitPdvSale,
+  type PdvCloseMode,
+  type PdvImmediatePaymentMethod,
 } from '@/services/pdv'
 
 const money = new Intl.NumberFormat('pt-BR', {
@@ -51,7 +53,12 @@ export function PdvClient({
   const [customerName, setCustomerName] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState(false)
+  const [successKind, setSuccessKind] = useState<
+    null | 'cashier' | 'immediate'
+  >(null)
+  const [closeMode, setCloseMode] = useState<PdvCloseMode>('cashier')
+  const [immediatePayment, setImmediatePayment] =
+    useState<PdvImmediatePaymentMethod>('cash')
   const [searchQuery, setSearchQuery] = useState('')
   const deferredSearch = useDeferredValue(searchQuery)
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
@@ -126,10 +133,10 @@ export function PdvClient({
   )
 
   useEffect(() => {
-    if (!success) return
-    const t = window.setTimeout(() => setSuccess(false), 4500)
+    if (!successKind) return
+    const t = window.setTimeout(() => setSuccessKind(null), 4500)
     return () => window.clearTimeout(t)
-  }, [success])
+  }, [successKind])
 
   useEffect(() => {
     const hasApi = typeof document !== 'undefined' && !!document.documentElement.requestFullscreen
@@ -192,7 +199,7 @@ export function PdvClient({
 
   const addProduct = useCallback((p: MenuProductRow) => {
     setError(null)
-    setSuccess(false)
+    setSuccessKind(null)
     const price = effectiveProductPrice(p)
     const id = p.id
     setCart((prev) => {
@@ -217,7 +224,7 @@ export function PdvClient({
 
   const setQty = useCallback((productId: string, quantity: number) => {
     setError(null)
-    setSuccess(false)
+    setSuccessKind(null)
     if (quantity < 1) {
       setCart((prev) => prev.filter((l) => l.productId !== productId))
       return
@@ -231,7 +238,7 @@ export function PdvClient({
 
   const removeLine = useCallback((productId: string) => {
     setError(null)
-    setSuccess(false)
+    setSuccessKind(null)
     setCart((prev) => prev.filter((l) => l.productId !== productId))
   }, [])
 
@@ -239,7 +246,7 @@ export function PdvClient({
     if (!cart.length) return
     if (!confirm('Limpar todo o carrinho?')) return
     setError(null)
-    setSuccess(false)
+    setSuccessKind(null)
     setCart([])
     setInternalNotes('')
     setDiscountInput('')
@@ -249,7 +256,7 @@ export function PdvClient({
     e.preventDefault()
     if (!cart.length || submitting) return
     setError(null)
-    setSuccess(false)
+    setSuccessKind(null)
     setSubmitting(true)
     try {
       const result = await submitPdvSale({
@@ -263,6 +270,9 @@ export function PdvClient({
         })),
         discountBrl: discountApplied,
         internalNotes: internalNotes.trim() || null,
+        closeMode,
+        immediatePaymentMethod:
+          closeMode === 'immediate' ? immediatePayment : null,
       })
       if (!result.ok) {
         setError(result.message)
@@ -272,7 +282,7 @@ export function PdvClient({
       setCustomerName('')
       setInternalNotes('')
       setDiscountInput('')
-      setSuccess(true)
+      setSuccessKind(result.closedImmediately ? 'immediate' : 'cashier')
       searchInputRef.current?.focus()
     } finally {
       setSubmitting(false)
@@ -308,14 +318,16 @@ export function PdvClient({
           ×
         </button>
       ) : null}
-      {success ? (
+      {successKind ? (
         <div
           className="fixed inset-x-0 top-14 z-40 mx-auto max-w-lg px-3 md:top-4 md:max-w-md"
           role="status"
           aria-live="polite"
         >
           <div className="rounded-xl border border-emerald-500/40 bg-emerald-600 px-4 py-3 text-center text-sm font-semibold text-white shadow-lg shadow-emerald-900/20">
-            Pedido lançado no PDV. Feche a comanda no Caixa.
+            {successKind === 'immediate'
+              ? 'Pagamento registado no turno de caixa. Comanda fechada.'
+              : 'Comanda enviada ao Caixa para fecho e pagamento.'}
           </div>
         </div>
       ) : null}
@@ -635,7 +647,7 @@ export function PdvClient({
               value={customerName}
               onChange={(e) => {
                 setCustomerName(e.target.value)
-                setSuccess(false)
+                setSuccessKind(null)
               }}
               className="w-full rounded-xl border border-[var(--card-border)] px-3 py-3 text-base outline-none ring-[var(--dash-primary)] focus:ring-2"
               placeholder="Nome para o cupom"
@@ -655,12 +667,100 @@ export function PdvClient({
               value={internalNotes}
               onChange={(e) => {
                 setInternalNotes(e.target.value)
-                setSuccess(false)
+                setSuccessKind(null)
               }}
               className="w-full resize-y rounded-xl border border-[var(--card-border)] px-3 py-2 text-sm outline-none ring-[var(--dash-primary)] focus:ring-2"
               placeholder="Só visível na equipa (ex.: troco, observações)"
             />
           </div>
+
+          <div>
+            <span className="mb-1.5 block text-xs font-medium text-vyria-navy-muted">
+              Destino
+            </span>
+            <div className="flex rounded-xl border border-[var(--card-border)] bg-zinc-100 p-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setCloseMode('cashier')
+                  setError(null)
+                  setSuccessKind(null)
+                }}
+                className={`flex-1 rounded-lg px-2 py-2.5 text-xs font-semibold transition sm:text-sm ${
+                  closeMode === 'cashier'
+                    ? 'bg-white text-vyria-navy shadow-sm'
+                    : 'text-vyria-navy-muted hover:text-vyria-navy'
+                }`}
+              >
+                Enviar para o Caixa
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCloseMode('immediate')
+                  setError(null)
+                  setSuccessKind(null)
+                }}
+                className={`flex-1 rounded-lg px-2 py-2.5 text-xs font-semibold transition sm:text-sm ${
+                  closeMode === 'immediate'
+                    ? 'bg-white text-vyria-navy shadow-sm'
+                    : 'text-vyria-navy-muted hover:text-vyria-navy'
+                }`}
+              >
+                Receber agora
+              </button>
+            </div>
+            {closeMode === 'immediate' ? (
+              <p className="mt-1.5 text-xs text-vyria-navy-muted">
+                Exige{' '}
+                <Link
+                  href="/dashboard/caixa"
+                  className="font-semibold text-[var(--dash-primary)] underline"
+                >
+                  turno de caixa aberto
+                </Link>{' '}
+                e permissão de Caixa. O pedido fica fechado e pago.
+              </p>
+            ) : (
+              <p className="mt-1.5 text-xs text-vyria-navy-muted">
+                O pedido fica pendente até alguém fechar no módulo Caixa.
+              </p>
+            )}
+          </div>
+
+          {closeMode === 'immediate' ? (
+            <div>
+              <span className="mb-1.5 block text-xs font-medium text-vyria-navy-muted">
+                Pagamento
+              </span>
+              <div className="grid grid-cols-3 gap-2">
+                {(
+                  [
+                    { id: 'cash' as const, label: 'Dinheiro' },
+                    { id: 'pix' as const, label: 'PIX' },
+                    { id: 'card' as const, label: 'Cartão' },
+                  ] as const
+                ).map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => {
+                      setImmediatePayment(opt.id)
+                      setSuccessKind(null)
+                      setError(null)
+                    }}
+                    className={`rounded-xl border px-2 py-2.5 text-xs font-semibold transition sm:text-sm ${
+                      immediatePayment === opt.id
+                        ? 'border-[var(--dash-primary)] bg-[var(--dash-primary)]/10 text-vyria-navy ring-2 ring-[var(--dash-primary)]/30'
+                        : 'border-[var(--card-border)] bg-white text-vyria-navy hover:bg-zinc-50'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           <div>
             <label
@@ -677,7 +777,7 @@ export function PdvClient({
               value={discountInput}
               onChange={(e) => {
                 setDiscountInput(e.target.value)
-                setSuccess(false)
+                setSuccessKind(null)
               }}
               className="w-full max-w-[12rem] rounded-xl border border-[var(--card-border)] px-3 py-3 text-base tabular-nums outline-none ring-[var(--dash-primary)] focus:ring-2"
               placeholder="0,00"
@@ -717,7 +817,11 @@ export function PdvClient({
               disabled={!cart.length || submitting}
               className="min-h-[52px] min-w-[160px] rounded-2xl bg-[var(--dash-primary)] px-6 text-base font-bold text-white shadow-md shadow-[var(--dash-primary)]/30 transition enabled:hover:opacity-95 enabled:active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
             >
-              {submitting ? 'A lançar…' : 'Lançar pedido'}
+              {submitting
+                ? 'A lançar…'
+                : closeMode === 'immediate'
+                  ? 'Receber e fechar'
+                  : 'Lançar pedido'}
             </button>
           </div>
         </form>

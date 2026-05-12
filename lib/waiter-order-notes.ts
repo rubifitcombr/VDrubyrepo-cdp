@@ -1,5 +1,15 @@
 /** Linhas fixas no início de `orders.notes` para pedidos do Garçom. */
 
+/** Quando presente em `orders.notes`, o pedido deixa de aparecer no mapa do Garçom mas continua aberto no Caixa. */
+export const WAITER_PENDING_CAIXA_MARKER =
+  '[Caixa pendente] Aguarda fecho pelo caixa.'
+
+export function notesIndicateWaiterReleasedToCaixa(
+  notes: string | null | undefined
+): boolean {
+  return String(notes ?? '').includes(WAITER_PENDING_CAIXA_MARKER)
+}
+
 export function parseTableFromNotes(notes: string | null | undefined): string | null {
   const t = notes?.trim()
   if (!t) return null
@@ -23,6 +33,9 @@ export function extractUserNotes(notes: string | null | undefined): string {
       if (/^\[Mesa\s+/i.test(l)) return false
       if (/^\[Setor\s+/i.test(l)) return false
       if (/^Desconto( manual)?:/i.test(l)) return false
+      if (l.startsWith(WAITER_PENDING_CAIXA_MARKER)) return false
+      if (/^\[Garçom\] Recebido em /i.test(l)) return false
+      if (/^\[Caixa pendente\]/i.test(l)) return false
       return true
     })
     .join('\n')

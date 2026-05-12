@@ -6,6 +6,8 @@ import { useState } from 'react'
 import { signUp } from '@/services/auth'
 import { createStore } from '@/services/store'
 import { upsertUsuarioMirror } from '@/services/usuarios'
+import type { MerchantOperationMode } from '@/lib/merchant-operation-mode'
+import { operationModeLabel } from '@/lib/merchant-operation-mode'
 import { useRouter } from 'next/navigation'
 
 const inputClass =
@@ -16,6 +18,7 @@ export default function Register() {
   const [password, setPassword] = useState('')
   const [storeName, setStoreName] = useState('')
   const [phone, setPhone] = useState('')
+  const [operationMode, setOperationMode] = useState<MerchantOperationMode | ''>('')
   const [showPassword, setShowPassword] = useState(false)
   const [isRegistering, setIsRegistering] = useState(false)
   const beginNavigation = useBeginNavigation()
@@ -26,6 +29,10 @@ export default function Register() {
     const mail = email.trim()
     if (!name || !mail || password.length < 6) {
       alert('Preenche o nome da loja, email válido e senha com pelo menos 6 caracteres.')
+      return
+    }
+    if (!operationMode) {
+      alert('Escolhe o modelo de operação da loja (Delivery, Presencial ou Híbrido).')
       return
     }
 
@@ -83,7 +90,10 @@ export default function Register() {
         }
       }
 
-      const { error: storeErr } = await createStore(userId, name, phone.trim() || undefined)
+      const { error: storeErr } = await createStore(userId, name, {
+        phone: phone.trim() || undefined,
+        operationMode,
+      })
       if (storeErr) {
         alert(storeErr.message || 'Erro ao criar loja.')
         setIsRegistering(false)
@@ -143,6 +153,32 @@ export default function Register() {
               onChange={(e) => setPhone(e.target.value)}
             />
           </label>
+
+          <div>
+            <label className="block text-sm font-medium text-vyria-navy">
+              Modelo de operação
+              <select
+                className={inputClass}
+                value={operationMode}
+                onChange={(e) => {
+                  const v = e.target.value
+                  setOperationMode(
+                    v === '' ? '' : (v as MerchantOperationMode)
+                  )
+                }}
+                aria-required
+              >
+                <option value="">Seleciona como a loja opera…</option>
+                <option value="delivery">{operationModeLabel('delivery')}</option>
+                <option value="presencial">{operationModeLabel('presencial')}</option>
+                <option value="hibrido">{operationModeLabel('hibrido')}</option>
+              </select>
+            </label>
+            <p className="mt-1.5 text-xs leading-snug text-vyria-navy-muted">
+              Isto ajusta o menu do painel (ex.: Delivery sem PDV no menu; Presencial com
+              PDV). Podes alterar depois com o suporte se precisares.
+            </p>
+          </div>
 
           <label className="block text-sm font-medium text-vyria-navy">
             Email

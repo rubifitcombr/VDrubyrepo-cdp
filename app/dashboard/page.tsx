@@ -161,18 +161,6 @@ export default async function Dashboard() {
     ?.manual_closed
   const initialManualClosed = manualClosedRaw === true
 
-  const operatingHoursNote =
-    store &&
-    typeof store === 'object' &&
-    'operating_hours_note' in store &&
-    typeof (store as { operating_hours_note?: string | null }).operating_hours_note ===
-      'string'
-      ? String(
-          (store as { operating_hours_note?: string | null }).operating_hours_note ||
-            ''
-        )
-      : ''
-
   const st = store as Record<string, unknown> | null
 
   function moneyInput(v: unknown): string {
@@ -461,17 +449,17 @@ export default async function Dashboard() {
         <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
           <DashboardStoreControls storeSlug={storeSlug} origin={origin} />
           <DashboardOperationCard
+            key={`${storeId}-${initialManualClosed}-${deliveryFeeInitial}-${deliveryFreeAboveInitial}`}
             storeId={storeId}
             initialManualClosed={initialManualClosed}
-            initialOperatingHoursNote={operatingHoursNote}
             initialDeliveryFee={deliveryFeeInitial}
             initialDeliveryFreeAbove={deliveryFreeAboveInitial}
           />
         </div>
       ) : (
         <div className="rounded-2xl border border-dashed border-[var(--card-border)] bg-white p-5 text-sm text-[#6b7280] shadow-sm">
-          Associa uma loja à conta para configurares funcionamento, link público e loja
-          aberta/fechada.
+          Associa uma loja à conta para veres métricas, link público e funcionamento (loja aberta e
+          taxas de entrega).
         </div>
       )}
     </div>

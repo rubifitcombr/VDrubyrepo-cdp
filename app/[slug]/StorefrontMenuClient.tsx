@@ -307,6 +307,8 @@ export function StorefrontMenuClient({
   locationLng,
   locationAddress,
   locationLabel,
+  selfServiceFromQr = false,
+  salaoAutoUnavailable = false,
 }: {
   storeName: string
   storeSlug: string
@@ -328,6 +330,10 @@ export function StorefrontMenuClient({
   locationLng?: number | null
   locationAddress?: string | null
   locationLabel?: string | null
+  /** Cardápio com `?auto=1` e loja a aceitar pedidos de mesa. */
+  selfServiceFromQr?: boolean
+  /** `?auto=1` mas a loja não aceita (ex.: Pro em modo garçom). */
+  salaoAutoUnavailable?: boolean
 }) {
   const { items, itemCount, subtotal, removeItem, setQuantity } = useCart()
   const searchRef = useRef<HTMLInputElement>(null)
@@ -468,6 +474,18 @@ export function StorefrontMenuClient({
       }
     >
       <div className="mx-auto max-w-3xl overflow-visible bg-neutral-100">
+        {salaoAutoUnavailable ? (
+          <div className="mx-3 mt-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 sm:mx-4">
+            O link de mesa não está activo neste momento (a loja pode estar em modo garçom).
+            Podes usar o cardápio normal abaixo.
+          </div>
+        ) : null}
+        {selfServiceFromQr ? (
+          <div className="mx-3 mt-3 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-950 sm:mx-4">
+            <strong>Pedido na mesa:</strong> adiciona produtos ao carrinho e finaliza com mesa,
+            nome e telefone.
+          </div>
+        ) : null}
         {/* Só o bloco da imagem usa overflow-hidden + cantos — a logo fica fora para não ser cortada */}
         <div className="relative z-0 overflow-hidden rounded-t-3xl">
           <div
@@ -1043,6 +1061,7 @@ export function StorefrontMenuClient({
             locationAddress={locationAddress ?? null}
             locationLabel={locationLabel ?? null}
             openSignal={checkoutOpenSignal}
+            dineInSelfService={selfServiceFromQr}
           />
         </div>
         <nav

@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
+import { gateMerchantMenuKey } from '@/lib/merchant-api-gate.server'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
 import { readStorePlano } from '@/lib/store-columns'
 import { currentYearMonthUtc, getMenuImportMonthlyLimit } from '@/lib/menu-import-quota'
@@ -28,6 +29,9 @@ export async function POST(req: NextRequest) {
 
     const gate = await requireLojistaAtivoApi(user.id)
     if (!gate.ok) return gate.response
+
+    const menuDeny = gateMerchantMenuKey(gate.ctx.store, user.email, 'produtos')
+    if (menuDeny) return menuDeny
 
     const plan = effectiveDashboardPlan(
       user.email,

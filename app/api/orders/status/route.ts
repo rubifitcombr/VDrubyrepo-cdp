@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { gateMerchantMenuKey } from '@/lib/merchant-api-gate.server'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
 import { readStorePlano } from '@/lib/store-columns'
 import { hasOrderPipelineAutomations, parsePlan } from '@/lib/plan'
@@ -69,6 +70,13 @@ export async function POST(req: NextRequest) {
 
     const gate = await requireLojistaAtivoApi(user.id)
     if (!gate.ok) return gate.response
+
+    const deny = gateMerchantMenuKey(
+      gate.ctx.store,
+      user.email ?? undefined,
+      'pedidos'
+    )
+    if (deny) return deny
 
     const storeId = gate.ctx.storeId
 

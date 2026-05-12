@@ -2,6 +2,7 @@ import 'server-only'
 
 import type { StoreOrderRow } from '@/lib/store-order'
 import { mapStoreOrderRow, ORDER_SELECT } from '@/lib/store-order'
+import { notesIndicateWaiterReleasedToCaixa } from '@/lib/waiter-order-notes'
 import { createClient } from '@/lib/supabase/server'
 
 const OPEN_STATUSES = ['pending', 'preparing', 'ready', 'confirmed']
@@ -22,6 +23,8 @@ export async function getWaiterOpenOrdersForStore(
     console.error('[waiter] list open orders:', error.message)
     return []
   }
-  return (data ?? []).map((row) => mapStoreOrderRow(row as Record<string, unknown>))
+  return (data ?? [])
+    .map((row) => mapStoreOrderRow(row as Record<string, unknown>))
+    .filter((o) => !notesIndicateWaiterReleasedToCaixa(o.notes))
 }
 
