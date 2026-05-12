@@ -68,6 +68,19 @@ function escapeHtml(raw: string): string {
     .replaceAll("'", '&#39;')
 }
 
+/** Mesmo critério da janela térmica: impressão automática ao abrir falha muito em Android + Bluetooth. */
+function isMobilePrintHost(): boolean {
+  if (typeof window === 'undefined') return false
+  const ua = navigator.userAgent || ''
+  const narrow =
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(max-width: 768px)').matches
+  return (
+    narrow ||
+    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i.test(ua)
+  )
+}
+
 function statusLabel(status: string | null): string {
   switch (status) {
     case 'pending':
@@ -457,39 +470,49 @@ export function WaiterClient({
       setError('Não foi possível abrir a janela de impressão.')
       return
     }
+    const mobile = isMobilePrintHost()
     const rows = cart
       .map(
         (line) =>
           `<tr><td>${line.quantity}x</td><td>${escapeHtml(line.name)}</td><td style="text-align:right">${money.format(line.unitPrice * line.quantity)}</td></tr>`
       )
       .join('')
-    const html = `<!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Comanda</title>
+    const mobileBar = mobile
+      ? `<div class="noprint" style="position:sticky;top:0;background:#fffbeb;border-bottom:1px solid #fcd34d;padding:10px 12px;margin:0 0 12px 0;z-index:5">
+  <p style="margin:0 0 8px;font-size:12px;line-height:1.45;color:#92400e">Telemóvel / Bluetooth: toca em <strong>Imprimir comanda</strong> quando a pré-visualização estiver visível (a impressão automática ao abrir fica desligada para evitar o erro do sistema).</p>
+  <button type="button" id="vyria-waiter-print" style="width:100%;padding:12px;font-size:15px;font-weight:700;border-radius:10px;border:none;background:#ea580c;color:#fff;cursor:pointer">Imprimir comanda</button>
+</div>`
+      : ''
+    const html = `<!doctype html><html lang="pt"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Comanda</title>
 <style>
-  @page { size: 80mm auto; margin: 4mm; }
+  @page { margin: 4mm; }
   html, body {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
   }
   body {
-    font-family: Arial, Helvetica, sans-serif;
+    font-family: ui-monospace, Consolas, "Courier New", monospace;
     padding: 12px;
     padding-bottom: 20px;
-    font-size: 14px;
-    width: 72mm;
-    max-width: 100%;
+    font-size: 12px;
+    line-height: 1.45;
+    max-width: 80mm;
+    width: 100%;
     min-height: 0;
     overflow-x: hidden;
     overflow-y: auto;
+    color: #111;
   }
   @media print {
+    .noprint { display: none !important; }
     html, body { overflow: visible !important; }
     body { padding: 8px; padding-bottom: 12px; }
   }
   table { width: 100%; border-collapse: collapse; }
-</style></head><body><h2 style="margin:0 0 8px;font-size:18px">Comanda ${escapeHtml(
+</style></head><body>${mobileBar}<h2 style="margin:0 0 8px;font-size:15px">Comanda ${escapeHtml(
       table.trim()
-    )}</h2><p style="margin:0 0 8px">Ambiente: ${escapeHtml(sector)}</p><table>${rows}</table><hr style="border:none;border-top:1px solid #ccc;margin:10px 0"/><table style="width:100%;border-collapse:collapse;font-size:14px"><tr><td style="padding:2px 0">Subtotal</td><td style="padding:2px 0;text-align:right">${money.format(
+    )}</h2><p style="margin:0 0 8px;font-size:12px">Ambiente: ${escapeHtml(sector)}</p><table>${rows}</table><hr style="border:none;border-top:1px solid #ccc;margin:10px 0"/><table style="width:100%;border-collapse:collapse;font-size:12px"><tr><td style="padding:2px 0">Subtotal</td><td style="padding:2px 0;text-align:right">${money.format(
       subtotal
     )}</td></tr>${
       discountBrl > 0
@@ -499,19 +522,28 @@ export function WaiterClient({
         : ''
     }<tr><td style="padding:4px 0 0;font-weight:bold;border-top:1px solid #ddd">Total</td><td style="padding:4px 0 0;text-align:right;font-weight:bold;border-top:1px solid #ddd">${money.format(
       total
-    )}</td></tr></table></body></html>`
+    )}</td></tr></table>
+<script>
+(function(){
+  var mobile = ${mobile ? 'true' : 'false'};
+  function runPrint() {
+    try {
+      window.focus();
+      window.print();
+    } catch (e) {}
+  }
+  if (mobile) {
+    var b = document.getElementById('vyria-waiter-print');
+    if (b) b.addEventListener('click', runPrint);
+  } else {
+    setTimeout(runPrint, 340);
+  }
+})();
+</script>
+</body></html>`
     win.document.open()
     win.document.write(html)
     win.document.close()
-
-    const runPrint = () => {
-      try {
-        win.focus()
-        win.print()
-      } catch {
-        /* ignore */
-      }
-    }
 
     const closeAfterPrint = () => {
       try {
@@ -525,7 +557,7 @@ export function WaiterClient({
         } catch {
           /* ignore */
         }
-      }, 150)
+      }, 200)
     }
 
     try {
@@ -534,8 +566,13 @@ export function WaiterClient({
       /* ignore */
     }
 
-    /* Layout estável antes de imprimir — reduz papel em branco / alimentação infinita em algumas térmicas */
-    window.setTimeout(runPrint, 120)
+    if (!mobile) {
+      try {
+        win.focus()
+      } catch {
+        /* ignore */
+      }
+    }
   }
 
   async function submitNewOrder() {
