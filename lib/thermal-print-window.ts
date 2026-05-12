@@ -11,6 +11,34 @@ function escapeHtml(s: string): string {
     .replace(/"/g, '&quot;')
 }
 
+/** Payload ESC/POS em sessionStorage — não embutir base64 enorme no HTML (mobile/Bluetooth). */
+const ESC_POS_JOB_KEY_PREFIX = 'vyria-esc-pos-job:'
+const ASCII_PREVIEW_HTML_MAX = 10_000
+
+type EscPosHtmlPayload =
+  | { kind: 'storageKey'; storageKey: string }
+  | { kind: 'inlineB64'; b64: string }
+  | { kind: 'downloadOnly' }
+
+function prepareEscPosHtmlPayload(
+  b64: string,
+  filename: string,
+  baud: number
+): EscPosHtmlPayload {
+  const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`
+  const storageKey = ESC_POS_JOB_KEY_PREFIX + id
+  try {
+    sessionStorage.setItem(storageKey, JSON.stringify({ b64, filename, baud }))
+    return { kind: 'storageKey', storageKey }
+  } catch {
+    /* quota, modo privado */
+  }
+  if (b64.length <= 14_000) {
+    return { kind: 'inlineB64', b64 }
+  }
+  return { kind: 'downloadOnly' }
+}
+
 export type ThermalEscPosWindowOpts = {
   documentTitle: string
   safeFilenameStem: string
@@ -128,13 +156,45 @@ function buildThermalTicketHtml(opts: {
   filename: string
   baud: number
   asciiPreview: string
-  b64: string
+  payload: EscPosHtmlPayload
 }): string {
-  const script = `
-(function(){
-  var b64 = ${JSON.stringify(opts.b64)};
+  const storageKeyJson =
+    opts.payload.kind === 'storageKey'
+      ? JSON.stringify(opts.payload.storageKey)
+      : 'null'
+  const inlineB64Json =
+    opts.payload.kind === 'inlineB64' ? JSON.stringify(opts.payload.b64) : 'null'
+
+  const loadB64Block =
+    opts.payload.kind === 'storageKey'
+      ? `
+  var storageKey = ${storageKeyJson};
+  var raw = null;
+  try { raw = sessionStorage.getItem(storageKey); } catch (e1) {}
+  try { if (storageKey) sessionStorage.removeItem(storageKey); } catch (e2) {}
+  if (!raw) {
+    var h = document.querySelector('.hint');
+    if (h) h.textContent = 'Não foi possível carregar o cupom. Fecha e tenta «Baixar .prn» no painel.';
+    return;
+  }
+  var data;
+  try {
+    data = JSON.parse(raw);
+  } catch (e3) {
+    var h2 = document.querySelector('.hint');
+    if (h2) h2.textContent = 'Dados inválidos. Fecha e gera o cupom outra vez.';
+    return;
+  }
+  var b64 = data.b64;
+  var filename = data.filename || ${JSON.stringify(opts.filename)};
+  var baud = data.baud != null ? data.baud : ${JSON.stringify(opts.baud)};`
+      : `
+  var b64 = ${inlineB64Json};
   var filename = ${JSON.stringify(opts.filename)};
-  var baud = ${JSON.stringify(opts.baud)};
+  var baud = ${JSON.stringify(opts.baud)};`
+
+  const script = `
+(function(){${loadB64Block}
   function binAtob(b) {
     var bin = atob(b);
     var buf = new Uint8Array(bin.length);
@@ -173,11 +233,26 @@ function buildThermalTicketHtml(opts: {
   var pr = document.getElementById('pr');
   if (dl) dl.onclick = download;
   if (se) se.onclick = function() { void serial(); };
-  if (pr) pr.onclick = function() { window.print(); };
-  setTimeout(function() {
-    try { window.print(); } catch (e) {}
-  }, 220);
+  if (pr) pr.onclick = function() { try { window.print(); } catch (e) {} };
+  var mobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i.test(navigator.userAgent || '') || (typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 768px)').matches);
+  var hint = document.querySelector('.hint');
+  if (mobile) {
+    if (hint) {
+      hint.innerHTML = 'Telemóvel / Bluetooth: toque em <strong>Imprimir pré-visualização</strong> quando estiver pronto (a impressão automática ao abrir fica desligada para evitar erro do sistema). Para RAW na app da térmica use <strong>Baixar .prn</strong>.';
+    }
+  } else {
+    window.setTimeout(function() {
+      try { window.print(); } catch (e) {}
+    }, 320);
+  }
 })();`
+
+  const previewRaw = opts.asciiPreview
+  const previewHtml = escapeHtml(
+    previewRaw.length > ASCII_PREVIEW_HTML_MAX
+      ? `${previewRaw.slice(0, ASCII_PREVIEW_HTML_MAX)}\n\n[... pré-visualização cortada; o ficheiro .prn tem o cupom completo.]`
+      : previewRaw
+  )
 
   return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
@@ -195,13 +270,27 @@ function buildThermalTicketHtml(opts: {
   }
 </style></head><body>
 <p class="hint no-print">Pré-visualização só ASCII para impressão pelo browser. Para RAW ESC/POS (CP850), use «Baixar .prn» ou porta série (${opts.baud} baud).</p>
-<pre id="preview">${escapeHtml(opts.asciiPreview)}</pre>
+<pre id="preview">${previewHtml}</pre>
 <div class="actions no-print">
   <button type="button" id="dl">Baixar ESC/POS (.prn)</button>
   <button type="button" id="se">Enviar porta série…</button>
   <button type="button" id="pr">Imprimir pré-visualização</button>
 </div>
 <script>${script}</script>
+</body></html>`
+}
+
+function buildThermalDownloadOnlyHtml(documentTitle: string, filename: string): string {
+  return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>${escapeHtml(documentTitle)}</title>
+<style>
+  body { font-family: system-ui, sans-serif; font-size: 14px; padding: 16px; color: #111; line-height: 1.45; }
+  code { font-size: 12px; word-break: break-all; }
+</style></head><body>
+<p>O cupom térmico é grande para este telemóvel guardar na memória do navegador.</p>
+<p>O ficheiro <code>${escapeHtml(filename)}</code> deve ter sido enviado para as <strong>transferências</strong>. Abre-o na app da tua impressora Bluetooth (RAW / ESC-POS).</p>
+<p>Se não apareceu, volta ao painel e usa <strong>Baixar .prn</strong> na janela do cupom.</p>
 </body></html>`
 }
 
@@ -241,6 +330,8 @@ export function reopenQueuedThermalPrint(row: PendingThermalPrintRow): ThermalOp
   if (typeof window === 'undefined') return 'failed'
   const bytes = base64ToUint8Array(row.b64)
   const filename = `${row.safeFilenameStem}.prn`
+  const payload = prepareEscPosHtmlPayload(row.b64, filename, row.serialBaud)
+
   const win = window.open('', '_blank', 'width=420,height=720')
   if (!win) {
     tryDownloadPrnInParent(bytes, filename)
@@ -251,12 +342,19 @@ export function reopenQueuedThermalPrint(row: PendingThermalPrintRow): ThermalOp
     orderId: row.orderId,
     bytesLength: bytes.length,
   })
+
+  if (payload.kind === 'downloadOnly') {
+    tryDownloadPrnInParent(bytes, filename)
+    writeThermalDoc(win, buildThermalDownloadOnlyHtml(row.documentTitle, filename))
+    return 'opened'
+  }
+
   const html = buildThermalTicketHtml({
     documentTitle: row.documentTitle,
     filename,
     baud: row.serialBaud,
     asciiPreview: row.asciiPreview,
-    b64: row.b64,
+    payload,
   })
   writeThermalDoc(win, html)
   return 'opened'
@@ -273,6 +371,7 @@ export function openThermalEscPosWindow(opts: ThermalEscPosWindowOpts): ThermalO
   const b64 = uint8ToBase64(opts.escPosBytes)
   const baud = Number.isFinite(opts.serialBaud) && opts.serialBaud > 0 ? opts.serialBaud : 9600
   const filename = `${opts.safeFilenameStem}.prn`
+  const payload = prepareEscPosHtmlPayload(b64, filename, baud)
 
   const win = window.open('', '_blank', 'width=420,height=720')
   if (!win) {
@@ -292,12 +391,21 @@ export function openThermalEscPosWindow(opts: ThermalEscPosWindowOpts): ThermalO
     bytesLength: opts.escPosBytes.length,
   })
 
+  if (payload.kind === 'downloadOnly') {
+    tryDownloadPrnInParent(opts.escPosBytes, filename)
+    writeThermalDoc(
+      win,
+      buildThermalDownloadOnlyHtml(opts.documentTitle, filename)
+    )
+    return 'opened'
+  }
+
   const html = buildThermalTicketHtml({
     documentTitle: opts.documentTitle,
     filename,
     baud,
     asciiPreview: opts.asciiPreview,
-    b64,
+    payload,
   })
   writeThermalDoc(win, html)
 
