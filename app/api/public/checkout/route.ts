@@ -9,7 +9,6 @@ import {
 import { hasOrderPipelineAutomations, parsePlan } from '@/lib/plan'
 import { readStorePlano } from '@/lib/store-columns'
 import { publicDineInCheckoutAllowed } from '@/lib/salao-attendance'
-import { getStoreOpenState } from '@/lib/business-hours'
 import { parseAutomationsFromStore } from '@/lib/store-automations'
 import { maybeSendOrderAcceptedWhatsApp } from '@/services/order-accepted-whatsapp.server'
 import { sendWebPushNewOrder } from '@/services/web-push.server'
@@ -358,10 +357,8 @@ export async function POST(req: NextRequest) {
       checkoutAutomations.auto_accept_orders &&
       hasOrderPipelineAutomations(checkoutPlan)
     ) {
-      const { open } = getStoreOpenState(storeMeta.business_hours, {
-        manualClosed: storeMeta.manual_closed === true,
-      })
-      if (open) {
+      const manualClosed = storeMeta.manual_closed === true
+      if (!manualClosed) {
         const { error: acceptErr } = await supabase
           .from('orders')
           .update({ status: 'preparing' })

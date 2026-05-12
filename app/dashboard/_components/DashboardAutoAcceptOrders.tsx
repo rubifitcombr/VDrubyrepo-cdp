@@ -23,13 +23,20 @@ function buildDisplayRefById(rows: StoreOrderRow[]): Map<string, string> {
   return m
 }
 
+function isOrderPendingStatus(status: string | null | undefined): boolean {
+  const s = (status ?? '').trim().toLowerCase()
+  return s === 'pending' || s === ''
+}
+
 /**
  * Aceita pedidos em «Pendente» quando a automação está ativa, e dispara impressão térmica se
  * «Impressão automática ao aceitar» estiver ligada — com o painel em **qualquer** rota do
  * dashboard (não só /dashboard/orders): Realtime + polling + catch-up ao voltar à aba.
  *
  * Cobre cardápio/slug, QR de mesa, Garçom e PDV (pendente → preparando), bem como transições
- * feitas no servidor (checkout com aceite automático). O mapa de estados tolera ausência de
+ * feitas no servidor (checkout com aceite automático). Realtime usa INSERT e UPDATE explícitos
+ * para o aceite automático mesmo sem «impressão ao aceitar» (evita depender de `event: '*'`).
+ * O mapa de estados tolera ausência de
  * `payload.old` em UPDATEs (REPLICA IDENTITY).
  */
 export function DashboardAutoAcceptOrders({
@@ -168,7 +175,7 @@ export function DashboardAutoAcceptOrders({
         if (!rows.length) return
 
         const displayById = buildDisplayRefById(rows)
-        const pending = rows.filter((o) => o.status === 'pending')
+        const pending = rows.filter((o) => isOrderPendingStatus(o.status))
 
         for (const order of pending) {
           if (attemptedRef.current.has(order.id)) continue
@@ -217,42 +224,48 @@ export function DashboardAutoAcceptOrders({
     }
 
     function onOrderInsert(payload: { new?: Record<string, unknown> }) {
-      if (!trackPrint || !payload.new) return
-      const raw = payload.new
-      const id = String(raw.id ?? '')
-      if (!id) return
-      const status =
-        typeof raw.status === 'string' && raw.status.trim()
-          ? raw.status.trim()
-          : 'pending'
-      lastOrderStatusRef.current.set(id, status)
-      if (status === 'preparing') {
-        void printOrderPreparing(id, raw)
+      if (!payload.new) return
+      if (trackPrint) {
+        const raw = payload.new
+        const id = String(raw.id ?? '')
+        if (!id) return
+        const status =
+          typeof raw.status === 'string' && raw.status.trim()
+            ? raw.status.trim()
+            : 'pending'
+        lastOrderStatusRef.current.set(id, status)
+        if (status === 'preparing') {
+          void printOrderPreparing(id, raw)
+        }
       }
+      if (autoAcceptOrders) scheduleAccept()
     }
 
     function onOrderUpdate(payload: {
       new?: Record<string, unknown>
       old?: Record<string, unknown>
     }) {
-      if (!trackPrint || !payload.new) return
-      const raw = payload.new
-      const id = String(raw.id ?? '')
-      if (!id) return
-      const newStatus =
-        typeof raw.status === 'string' && raw.status.trim()
-          ? raw.status.trim()
-          : ''
-      const oldRaw = payload.old as { status?: unknown } | undefined
-      const oldFromPayload =
-        typeof oldRaw?.status === 'string' ? oldRaw.status.trim() : undefined
-      const prevFromMap = lastOrderStatusRef.current.get(id)
-      const prev = oldFromPayload ?? prevFromMap
+      if (!payload.new) return
+      if (trackPrint) {
+        const raw = payload.new
+        const id = String(raw.id ?? '')
+        if (!id) return
+        const newStatus =
+          typeof raw.status === 'string' && raw.status.trim()
+            ? raw.status.trim()
+            : ''
+        const oldRaw = payload.old as { status?: unknown } | undefined
+        const oldFromPayload =
+          typeof oldRaw?.status === 'string' ? oldRaw.status.trim() : undefined
+        const prevFromMap = lastOrderStatusRef.current.get(id)
+        const prev = oldFromPayload ?? prevFromMap
 
-      if (newStatus === 'preparing' && prev !== 'preparing') {
-        void printOrderPreparing(id, raw)
+        if (newStatus === 'preparing' && prev !== 'preparing') {
+          void printOrderPreparing(id, raw)
+        }
+        lastOrderStatusRef.current.set(id, newStatus || prev || 'pending')
       }
-      lastOrderStatusRef.current.set(id, newStatus || prev || 'pending')
+      if (autoAcceptOrders) scheduleAccept()
     }
 
     void acceptPending()
@@ -269,7 +282,7 @@ export function DashboardAutoAcceptOrders({
 
     let channel = supabase.channel(`dashboard-order-automation-${storeId}`)
 
-    if (trackPrint) {
+    if (trackPrint || autoAcceptOrders) {
       channel = channel
         .on(
           'postgres_changes',
@@ -300,21 +313,6 @@ export function DashboardAutoAcceptOrders({
             )
           }
         )
-    }
-
-    if (autoAcceptOrders) {
-      channel = channel.on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'orders',
-          filter: `store_id=eq.${storeId}`,
-        },
-        () => {
-          scheduleAccept()
-        }
-      )
     }
 
     channel.subscribe()
