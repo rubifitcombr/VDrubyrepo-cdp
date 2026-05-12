@@ -1,9 +1,11 @@
 import type { StoreOrderRow } from '@/lib/store-order'
 import { buildDeliveryReceiptText } from '@/lib/print/templates/delivery'
 import type { StorePrintingState } from '@/lib/store-printing'
+import { center, separator } from '@/lib/print/formatter'
 import type { PaperMm } from '@/lib/print/layout'
+import { charWidthForPaper } from '@/lib/print/layout'
 
-/** Comanda balcão / PDV — mesmo layout base que entrega, com título explícito. */
+/** Comanda balcão / PDV — título centrado + mesmo layout base que entrega. */
 export function buildBalcaoReceiptText(opts: {
   storeName: string
   order: StoreOrderRow
@@ -14,6 +16,8 @@ export function buildBalcaoReceiptText(opts: {
   >
   paperMm: PaperMm
 }): string {
-  const base = buildDeliveryReceiptText(opts)
-  return `*** BALCAO / PDV ***\n\n${base}`
+  const w = charWidthForPaper(opts.paperMm)
+  const line = (ch: string) => separator(ch, w)
+  const head = [line('='), center('BALCAO / PDV', w), line('='), ''].join('\n')
+  return `${head}${buildDeliveryReceiptText(opts)}`
 }

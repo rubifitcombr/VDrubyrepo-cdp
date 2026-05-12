@@ -1,14 +1,9 @@
 import type { CaixaPaymentBreakdown } from '@/lib/caixa-payments'
 import type { CaixaMovimentacaoDTO, CaixaTurnoDTO } from '@/lib/caixa-types'
-import { center, leftRight, moneyBrl, separator, truncate, wrapText } from '@/lib/print/formatter'
+import { center, centerWrappedBlock, formatDateTimeAscii, leftRight, moneyBrl, separator, truncate, wrapText } from '@/lib/print/formatter'
 import type { PaperMm } from '@/lib/print/layout'
 import { charWidthForPaper } from '@/lib/print/layout'
-import { stringifySafe } from '@/lib/print/sanitize'
-
-const dateTimeFmt = new Intl.DateTimeFormat('pt-BR', {
-  dateStyle: 'short',
-  timeStyle: 'short',
-})
+import { sanitizePrintText, stringifySafe } from '@/lib/print/sanitize'
 
 function movTipoLabel(t: CaixaMovimentacaoDTO['tipo']): string {
   if (t === 'sangria') return 'Sangria'
@@ -26,18 +21,12 @@ export function buildCaixaTurnoResumoText(opts: {
 }): string {
   const w = charWidthForPaper(opts.paperMm)
   const line = (ch: string) => separator(ch, w)
-  const name = stringifySafe(opts.storeName).trim() || 'VYRIA DELIVERY'
-  const aberto = (() => {
-    try {
-      return dateTimeFmt.format(new Date(opts.turno.aberto_em))
-    } catch {
-      return stringifySafe(opts.turno.aberto_em)
-    }
-  })()
+  const name = sanitizePrintText(stringifySafe(opts.storeName).trim().toUpperCase()) || 'VYRIA DELIVERY'
+  const aberto = formatDateTimeAscii(opts.turno.aberto_em)
 
   const lines: string[] = [
     line('='),
-    center(name.toUpperCase(), w),
+    ...centerWrappedBlock(name, w),
     center('RESUMO DE CAIXA', w),
     line('='),
     '',

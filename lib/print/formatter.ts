@@ -1,20 +1,41 @@
-import { sanitizePrintText, stringifySafe } from '@/lib/print/sanitize'
+import { PRINT_PLACEHOLDER, sanitizePrintText, stringifySafe } from '@/lib/print/sanitize'
 
-const moneyFmt = new Intl.NumberFormat('pt-BR', {
-  style: 'currency',
-  currency: 'BRL',
-})
-
+/**
+ * Valor em BRL só com caracteres ASCII.
+ * Evita NBSP (U+202F) e outros símbolos de `Intl` que viram "?" na térmica CP850.
+ */
 export function moneyBrl(n: number): string {
-  if (!Number.isFinite(n)) return moneyFmt.format(0)
-  return moneyFmt.format(Math.round(n * 100) / 100)
+  if (!Number.isFinite(n)) n = 0
+  const sign = n < 0 ? '-' : ''
+  const cents = Math.round(Math.abs(n) * 100)
+  const whole = Math.floor(cents / 100)
+  const frac = String(cents % 100).padStart(2, '0')
+  const intStr = String(whole)
+  const intFmt = intStr.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+  return `${sign}R$ ${intFmt},${frac}`
+}
+
+/** Data/hora local DD/MM/AAAA HH:MM (só ASCII, seguro em CP850). */
+export function formatDateTimeAscii(iso: string): string {
+  try {
+    const d = new Date(iso)
+    if (!Number.isFinite(d.getTime())) return PRINT_PLACEHOLDER
+    const dd = String(d.getDate()).padStart(2, '0')
+    const mm = String(d.getMonth() + 1).padStart(2, '0')
+    const yyyy = String(d.getFullYear())
+    const hh = String(d.getHours()).padStart(2, '0')
+    const mi = String(d.getMinutes()).padStart(2, '0')
+    return `${dd}/${mm}/${yyyy} ${hh}:${mi}`
+  } catch {
+    return PRINT_PLACEHOLDER
+  }
 }
 
 export function truncate(s: string, maxLen: number): string {
   const t = stringifySafe(s)
   if (t.length <= maxLen) return t
-  if (maxLen <= 1) return '…'
-  return `${t.slice(0, maxLen - 1)}…`
+  if (maxLen <= 1) return '.'
+  return `${t.slice(0, maxLen - 1)}.`
 }
 
 /** Linha só com `ch` repetido até `width`. */
@@ -29,6 +50,13 @@ export function center(s: string, width: number): string {
   const pad = width - t.length
   const left = Math.floor(pad / 2)
   return `${' '.repeat(left)}${t}${' '.repeat(pad - left)}`
+}
+
+/** Quebra texto, depois centra cada linha (cabeçalhos de loja longos). */
+export function centerWrappedBlock(text: string, width: number): string[] {
+  const raw = sanitizePrintText(stringifySafe(text)).trim()
+  if (!raw) return [center(PRINT_PLACEHOLDER, width)]
+  return wrapText(raw, width).map((ln) => center(ln.trim() || PRINT_PLACEHOLDER, width))
 }
 
 /** Esquerda + direita na mesma linha; trunca para não rebentar a largura. */
@@ -74,6 +102,43 @@ export function wrapText(text: string, width: number): string[] {
   return lines
 }
 
+/**
+ * Expande `items_summary` (ex.: "1x A, 2x B") em linhas alinhadas:
+ * primeira linha `N x nome`; continuação indentada.
+ */
+export function expandOrderItemLines(summary: string, width: number): string[] {
+  const s = sanitizePrintText(stringifySafe(summary)).trim()
+  if (!s) return [`${PRINT_PLACEHOLDER} (sem itens)`]
+  const segments = s
+    .split(/,(?=\s*\d+\s*x\s)/i)
+    .map((t) => t.trim())
+    .filter(Boolean)
+  if (!segments.length) return wrapText(s, width)
+
+  const out: string[] = []
+  const indent = '  '
+
+  for (const seg of segments) {
+    const m = seg.match(/^(\d+)\s*x\s*(.+)$/i)
+    if (m) {
+      const qty = m[1]!
+      const name = sanitizePrintText(m[2]!.trim())
+      const prefix = `${qty}x `
+      const maxNameW = Math.max(4, width - prefix.length)
+      const nameLines = wrapText(name, maxNameW)
+      const first = (nameLines[0] || PRINT_PLACEHOLDER).trim() || PRINT_PLACEHOLDER
+      out.push(truncate(prefix + first, width))
+      for (let i = 1; i < nameLines.length; i++) {
+        const cont = nameLines[i]!.trim()
+        if (cont) out.push(truncate(indent + cont, width))
+      }
+    } else {
+      out.push(...wrapText(seg, width))
+    }
+  }
+  return out
+}
+
 /** Colunas fixas: `cols` soma pesos; cada célula truncada. */
 export function columns(
   cells: string[],
@@ -91,3 +156,5 @@ export function columns(
   const joined = parts.join(' ')
   return truncate(joined, width)
 }
+
+export { PRINT_PLACEHOLDER } from '@/lib/print/sanitize'

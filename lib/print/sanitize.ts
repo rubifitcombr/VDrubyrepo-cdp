@@ -3,6 +3,9 @@
  * emojis, caracteres invisíveis e conteúdo que corrompe o spooler).
  */
 
+/** Substituto só ASCII (travessão Unicode vira "?" em CP850). */
+export const PRINT_PLACEHOLDER = '-'
+
 const EMOJI_RE = /\p{Extended_Pictographic}|\p{Emoji_Presentation}|\p{Emoji}\uFE0F?/gu
 
 /** Remove bytes de controlo perigosos e sequências ESC/GS vindas do utilizador. */
@@ -41,6 +44,12 @@ export function stringifySafe(v: unknown): string {
   if (typeof v === 'number' && Number.isFinite(v)) return String(v)
   if (typeof v === 'boolean') return v ? 'sim' : 'nao'
   if (typeof v === 'bigint') return String(v)
+  if (Array.isArray(v)) {
+    return v
+      .map((x) => stringifySafe(x).trim())
+      .filter(Boolean)
+      .join(', ')
+  }
   return ''
 }
 
