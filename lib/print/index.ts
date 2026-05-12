@@ -54,6 +54,17 @@ export function buildOrderTicketEscPos(opts: {
   return buildEscPosTicket(text)
 }
 
+/**
+ * Linha ASCII para pré-visualização: não truncar pelo início se houver valor `R$` no fim
+ * (evita cortar preços alinhados à direita no ecrã).
+ */
+function trimAsciiPreviewLine(ln: string, w: number): string {
+  const t = toAsciiPreviewLine(ln)
+  if (t.length <= w) return t
+  if (/\bR\$\s*[\d.,]+\s*$/.test(t)) return t.slice(-w)
+  return t.slice(0, w)
+}
+
 export function buildAsciiPreviewForPrint(
   opts: Parameters<typeof buildOrderTicketEscPos>[0]
 ): string {
@@ -84,10 +95,7 @@ export function buildAsciiPreviewForPrint(
       paperMm: paper,
     })
   }
-  return text
-    .split('\n')
-    .map((ln) => toAsciiPreviewLine(ln).slice(0, w))
-    .join('\n')
+  return text.split('\n').map((ln) => trimAsciiPreviewLine(ln, w)).join('\n')
 }
 
 export { buildEscPosTicket, uint8ToBase64 } from '@/lib/print/escpos'

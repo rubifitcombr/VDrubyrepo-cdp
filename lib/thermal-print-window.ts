@@ -14,7 +14,7 @@ function escapeHtml(s: string): string {
 
 /** Payload ESC/POS em sessionStorage — não embutir base64 enorme no HTML (mobile/Bluetooth). */
 const ESC_POS_JOB_KEY_PREFIX = 'vyria-esc-pos-job:'
-const ASCII_PREVIEW_HTML_MAX = 10_000
+const ASCII_PREVIEW_HTML_MAX = 28_000
 
 type EscPosHtmlPayload =
   | { kind: 'storageKey'; storageKey: string }
@@ -112,8 +112,8 @@ function stripIllFormedPreviewChars(s: string): string {
  * Mantém sempre o bloco final (Subtotal / taxa / TOTAL / pagamento) visível.
  */
 function clampAsciiPreviewForEmbeddedHost(raw: string): string {
-  const MAX_BODY_LINES = 180
-  const MAX_BODY_CHARS = 6200
+  const MAX_BODY_LINES = 420
+  const MAX_BODY_CHARS = 14_000
 
   let footIdx = raw.lastIndexOf('\nSubtotal')
   if (footIdx < 0) footIdx = raw.lastIndexOf('\nTOTAL')
@@ -131,7 +131,7 @@ function clampAsciiPreviewForEmbeddedHost(raw: string): string {
     const slice = b.slice(0, MAX_BODY_CHARS)
     const cut = slice.lastIndexOf('\n')
     b =
-      (cut > 2800 ? slice.slice(0, cut) : slice) +
+      (cut > 4000 ? slice.slice(0, cut) : slice) +
       '\n[... texto cortado — use «Baixar .prn» p/ cupom completo.]'
   }
   const head = b.trimEnd()
@@ -340,6 +340,7 @@ ${loadB64Block}
   const paper = opts.paperMm === 58 ? 58 : 80
   const pageSize = paper === 58 ? '58mm auto' : '80mm auto'
   const bodyMax = paper === 58 ? '54mm' : '72mm'
+  const cols = paper === 58 ? 32 : 48
 
   let previewSource = stripIllFormedPreviewChars(opts.asciiPreview)
   if (opts.thermalHost === 'embedded') {
@@ -357,14 +358,42 @@ ${loadB64Block}
 <style>
   @page { size: ${pageSize}; margin: 2mm; }
   html, body { height: auto !important; min-height: 0 !important; }
-  body { font-family: ui-monospace, Consolas, "Courier New", monospace; font-size: 11px; line-height: 1.55; margin: 0; padding: 10px; color: #111; box-sizing: border-box; max-width: ${bodyMax}; }
-  pre { white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; margin: 0 0 12px; line-height: 1.55; font-size: 11px; overflow-x: hidden; }
+  body {
+    font-family: ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace;
+    font-size: clamp(7.5px, 2.35vw, 10.5px);
+    line-height: 1.38;
+    margin: 0;
+    padding: 8px;
+    color: #111;
+    box-sizing: border-box;
+    max-width: min(${bodyMax}, 100%);
+    -webkit-text-size-adjust: 100%;
+  }
+  #preview {
+    box-sizing: border-box;
+    display: block;
+    width: ${cols}ch;
+    max-width: 100%;
+    margin: 0 auto 12px;
+    padding: 0;
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    white-space: pre;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    tab-size: 8;
+    font-variant-numeric: tabular-nums;
+    word-break: keep-all;
+    overflow-wrap: normal;
+  }
   .hint { font-size: 10px; line-height: 1.45; color: #555; margin-bottom: 8px; }
   .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
   button { cursor: pointer; padding: 8px 12px; font-size: 12px; border-radius: 8px; border: 1px solid #bbb; background: #f4f4f4; }
   @media print {
     .no-print { display: none !important; }
-    body { padding: 4px; max-width: 100%; }
+    body { padding: 3px; max-width: 100%; font-size: 9.5pt; }
+    #preview { overflow-x: visible; white-space: pre; max-width: none; width: ${cols}ch; }
   }
 </style></head><body>
 <p class="hint no-print">Pré-visualização só ASCII para impressão pelo browser. Para RAW ESC/POS (CP850), use «Baixar .prn» ou porta série (${opts.baud} baud).</p>
