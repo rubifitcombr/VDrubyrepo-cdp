@@ -4,6 +4,7 @@ export type PrintLogPhase =
   | 'sanitize'
   | 'encode_cp850'
   | 'window_open'
+  | 'iframe_host_print'
   | 'popup_blocked'
   | 'download'
   | 'serial_error'

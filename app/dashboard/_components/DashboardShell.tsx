@@ -16,7 +16,6 @@ import { DashboardTopBar } from './DashboardTopBar'
 import { InstallAppBanner } from './InstallAppBanner'
 import { DashboardOrderRealtimeNotifier } from './DashboardOrderRealtimeNotifier'
 import { DashboardAutoAcceptOrders } from './DashboardAutoAcceptOrders'
-import { DashboardPrintFallbackBar } from './DashboardPrintFallbackBar'
 import type { StorePrintingState } from '@/lib/store-printing'
 import {
   IconBag,
@@ -424,7 +423,6 @@ export function DashboardShell({
             printing={autoAcceptPrinting}
           />
         ) : null}
-        {isAuthenticated ? <DashboardPrintFallbackBar /> : null}
         {billingBanner && isAuthenticated ? (
           <div className="shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-3 sm:px-5 md:px-6 lg:px-8 xl:px-10">
             <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-3 sm:flex-row sm:items-center sm:justify-between xl:max-w-[1400px]">

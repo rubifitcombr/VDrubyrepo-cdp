@@ -67,24 +67,39 @@ export function openOrderTicketPrint(opts: OrderTicketPrintOpts): ThermalOpenRes
   })
 }
 
-/** Após o lojista abrir o cupom a partir da fila (mobile). */
-export function markOrderTicketPrintDelivered(orderId: string): void {
-  if (typeof window === 'undefined') return
-  const w = window as Window & {
-    __vyriaTicketPrinted?: Set<string>
-    __vyriaTicketPrintQueued?: Set<string>
-  }
-  w.__vyriaTicketPrinted ??= new Set()
-  w.__vyriaTicketPrintQueued ??= new Set()
-  w.__vyriaTicketPrinted.add(orderId)
-  w.__vyriaTicketPrintQueued.delete(orderId)
+function deliveryFeePositive(
+  fee: number | string | null | undefined
+): boolean {
+  if (fee == null) return false
+  if (typeof fee === 'number' && Number.isFinite(fee)) return fee > 0
+  const n = Number.parseFloat(String(fee).replace(',', '.'))
+  return Number.isFinite(n) && n > 0
 }
 
+/** Pedido «pelo link» com envio: mantém variante delivery (2ª via entregador, etc.). */
+function slugOrderUsesFullDeliveryTicket(
+  order: Pick<StoreOrderRow, 'delivery_address' | 'delivery_fee'> | null | undefined
+): boolean {
+  if (!order) return false
+  if (!String(order.delivery_address ?? '').trim()) return false
+  return deliveryFeePositive(order.delivery_fee)
+}
+
+/**
+ * Cupom térmico «balcão» (preset counter, mesmo bloco que garçom/PDV): pedidos pelo link
+ * (`site_live` / `site_start` / `menu_link`), retirada e balcão. Só usa o layout «entrega
+ * completa» (2ª via entregador, etc.) quando o pedido pelo link tiver morada e taxa de entrega.
+ */
 export function orderTicketVariantFromSource(
-  source: string | null | undefined
+  source: string | null | undefined,
+  order?: Pick<StoreOrderRow, 'delivery_address' | 'delivery_fee'> | null
 ): OrderTicketVariant {
   const s = (source ?? '').trim().toLowerCase()
-  if (s === 'pdv' || s === 'waiter') return 'balcao'
+  if (s === 'pdv' || s === 'waiter' || s === 'site_pickup') return 'balcao'
+  if (s === 'site_live' || s === 'site_start' || s === 'menu_link') {
+    if (slugOrderUsesFullDeliveryTicket(order)) return 'delivery'
+    return 'balcao'
+  }
   return 'delivery'
 }
 
@@ -95,21 +110,13 @@ export function openOrderTicketPrintDeduped(
   if (typeof window === 'undefined') return false
   const w = window as Window & {
     __vyriaTicketPrinted?: Set<string>
-    __vyriaTicketPrintQueued?: Set<string>
   }
   w.__vyriaTicketPrinted ??= new Set()
-  w.__vyriaTicketPrintQueued ??= new Set()
   if (w.__vyriaTicketPrinted.has(orderId)) return true
-  if (w.__vyriaTicketPrintQueued.has(orderId)) return true
 
   const r = openOrderTicketPrint(opts)
   if (r === 'opened') {
     w.__vyriaTicketPrinted.add(orderId)
-    w.__vyriaTicketPrintQueued.delete(orderId)
-    return true
-  }
-  if (r === 'queued_no_popup') {
-    w.__vyriaTicketPrintQueued.add(orderId)
     return true
   }
   return false

@@ -9,7 +9,11 @@ import {
   type StoreOrderRow,
 } from '@/lib/store-order'
 import type { StorePrintingState } from '@/lib/store-printing'
-import { openOrderTicketPrintDeduped, openOrderTicketPrint, orderTicketVariantFromSource } from '@/lib/order-print-window'
+import {
+  openOrderTicketPrint,
+  openOrderTicketPrintDeduped,
+  orderTicketVariantFromSource,
+} from '@/lib/order-print-window'
 import { updateOrderStatus } from '@/services/orders'
 import { dashboardFetch } from '@/lib/dashboard-fetch.client'
 import type { Plan } from '@/lib/plan'
@@ -527,7 +531,7 @@ export function OrdersClient({
         print_delivery_copy: printing.print_delivery_copy,
         print_paper_mm: printing.print_paper_mm,
       },
-      variant: orderTicketVariantFromSource(o.source),
+      variant: orderTicketVariantFromSource(o.source, o),
     })
     if (r === 'failed') {
       flashWaNotice(
@@ -575,7 +579,7 @@ export function OrdersClient({
           print_delivery_copy: printing.print_delivery_copy,
           print_paper_mm: printing.print_paper_mm,
         },
-        variant: orderTicketVariantFromSource(orderBefore.source),
+        variant: orderTicketVariantFromSource(orderBefore.source, orderBefore),
       })
       if (!ok) {
         flashWaNotice(

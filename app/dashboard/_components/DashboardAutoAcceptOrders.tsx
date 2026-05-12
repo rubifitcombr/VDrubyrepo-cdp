@@ -95,7 +95,40 @@ export function DashboardAutoAcceptOrders({
       orderId: string,
       newRowHint?: Record<string, unknown>
     ) {
-      const delaysMs = [0, 80, 200, 500, 1200, 2500]
+      /** Realtime já traz a linha em «preparando»: imprime de imediato sem esperar replicação. */
+      if (trackPrint && newRowHint) {
+        const hinted = mapStoreOrderRow(newRowHint)
+        if (hinted.id === orderId && hinted.status === 'preparing') {
+          const rows = await fetchOrdersSnapshot()
+          const fromDb = rows.find((o) => o.id === orderId)
+          const order =
+            fromDb?.status === 'preparing' ? fromDb : hinted
+          if (order.status === 'preparing') {
+            const displayRows = rows.some((r) => r.id === orderId)
+              ? rows
+              : [...rows, order]
+            const displayById = buildDisplayRefById(displayRows)
+            const ref =
+              displayById.get(orderId) ??
+              orderId.replace(/-/g, '').slice(0, 8)
+            const opened = openOrderTicketPrintDeduped(orderId, {
+              storeName,
+              order,
+              orderDisplayRef: ref,
+              printing: {
+                print_include_customer_details:
+                  printing.print_include_customer_details,
+                print_delivery_copy: printing.print_delivery_copy,
+                print_paper_mm: printing.print_paper_mm,
+              },
+              variant: orderTicketVariantFromSource(order.source, order),
+            })
+            if (opened) return
+          }
+        }
+      }
+
+      const delaysMs = [0, 40, 100, 240, 600, 1400]
       for (let i = 0; i < delaysMs.length; i++) {
         const wait = delaysMs[i]!
         if (wait > 0) {
@@ -132,7 +165,7 @@ export function DashboardAutoAcceptOrders({
             print_delivery_copy: printing.print_delivery_copy,
             print_paper_mm: printing.print_paper_mm,
           },
-          variant: orderTicketVariantFromSource(order.source),
+          variant: orderTicketVariantFromSource(order.source, order),
         })
         return
       }
@@ -206,7 +239,7 @@ export function DashboardAutoAcceptOrders({
                 print_delivery_copy: printing.print_delivery_copy,
                 print_paper_mm: printing.print_paper_mm,
               },
-              variant: orderTicketVariantFromSource(order.source),
+              variant: orderTicketVariantFromSource(order.source, order),
             })
           }
         }
@@ -220,7 +253,7 @@ export function DashboardAutoAcceptOrders({
       debounceRef.current = setTimeout(() => {
         debounceRef.current = null
         void acceptPending()
-      }, 450)
+      }, 220)
     }
 
     function onOrderInsert(payload: { new?: Record<string, unknown> }) {

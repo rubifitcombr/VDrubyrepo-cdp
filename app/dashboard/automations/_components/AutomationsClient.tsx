@@ -104,7 +104,7 @@ const ROWS: Array<{
     key: 'auto_accept_orders',
     title: 'Aceitar pedidos automaticamente',
     description:
-      'Aceitar novos pedidos automaticamente dentro do horário de funcionamento.',
+      'Colocar novos pedidos em «Preparando» automaticamente (cardápio/slug, QR e autoatendimento, garçom e PDV «Enviar para o Caixa»), com o painel aberto.',
     Icon: IconBolt,
   },
   {
@@ -363,9 +363,9 @@ export function AutomationsClient({
             </>
           ) : (
             <>
-              No plano Growth, configura aqui a instância WhatsApp e a resposta automática com o
-              link do cardápio. As automações de pedidos (confirmação, aceitar automaticamente,
-              notificações, horário…) estão disponíveis a partir do plano Pro.
+              Configura aqui a instância WhatsApp e a resposta automática com o link do
+              cardápio. As automações de pedido (aceite automático, notificações, confirmação por
+              WhatsApp, etc.) estão disponíveis a partir do plano Growth.
             </>
           )}
         </p>
@@ -374,7 +374,7 @@ export function AutomationsClient({
       {!canUseOrderAutomations ? (
         <div className="mt-4 rounded-xl border border-amber-100 bg-amber-50/90 px-4 py-3 text-sm text-amber-950">
           <span className="font-semibold">Queres mais automações?</span>{' '}
-          Faz upgrade para Pro para ativar confirmação de pedido, aceitar pedidos,
+          Faz upgrade para Growth ou Pro para ativar confirmação de pedido, aceitar pedidos,
           notificações e mais.{' '}
           <Link
             href="/dashboard/planos"

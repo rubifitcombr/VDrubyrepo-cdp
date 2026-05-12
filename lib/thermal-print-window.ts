@@ -48,107 +48,144 @@ export type ThermalEscPosWindowOpts = {
   logOrderId?: string
 }
 
-/** `window.open` falhou (típico em mobile com impressão assíncrona); fila + barra «Abrir cupom». */
-export type ThermalOpenResult = 'opened' | 'queued_no_popup' | 'failed'
+export type ThermalOpenResult = 'opened' | 'failed'
 
-export const PENDING_THERMAL_PRINT_STORAGE_KEY = 'vyria-pending-print-v1'
+const THERMAL_HOST_IFRAME_ID = 'vyria-thermal-print-host'
 
-export type PendingThermalPrintRow = {
-  orderId?: string
-  documentTitle: string
-  safeFilenameStem: string
-  asciiPreview: string
-  b64: string
-  serialBaud: number
-  ts: number
+function isAppleMobileOrTabletUa(): boolean {
+  if (typeof navigator === 'undefined') return false
+  const ua = navigator.userAgent || ''
+  if (/iPhone|iPod|iPad/i.test(ua)) return true
+  if (/\biPad\b/i.test(ua)) return true
+  if (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) return true
+  return false
 }
 
-function base64ToUint8Array(b64: string): Uint8Array {
-  const bin = atob(b64)
-  const buf = new Uint8Array(bin.length)
-  for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i) & 255
-  return buf
-}
-
-function readQueueRaw(): PendingThermalPrintRow[] {
-  try {
-    const raw = sessionStorage.getItem(PENDING_THERMAL_PRINT_STORAGE_KEY)
-    if (!raw) return []
-    const arr = JSON.parse(raw) as unknown
-    if (!Array.isArray(arr)) return []
-    return arr.filter(
-      (x): x is PendingThermalPrintRow =>
-        x &&
-        typeof x === 'object' &&
-        typeof (x as PendingThermalPrintRow).b64 === 'string' &&
-        typeof (x as PendingThermalPrintRow).safeFilenameStem === 'string'
-    )
-  } catch {
-    return []
-  }
-}
-
-export function readPendingThermalPrintQueue(): PendingThermalPrintRow[] {
-  return readQueueRaw().sort((a, b) => a.ts - b.ts)
-}
-
-export function removePendingThermalPrint(safeFilenameStem: string): void {
-  try {
-    const next = readQueueRaw().filter((r) => r.safeFilenameStem !== safeFilenameStem)
-    if (next.length) {
-      sessionStorage.setItem(PENDING_THERMAL_PRINT_STORAGE_KEY, JSON.stringify(next))
-    } else {
-      sessionStorage.removeItem(PENDING_THERMAL_PRINT_STORAGE_KEY)
+function armThermalIframeCleanup(iframe: HTMLIFrameElement, childWin: Window): void {
+  const cleanup = () => {
+    try {
+      iframe.remove()
+    } catch {
+      /* ignore */
     }
-    window.dispatchEvent(new CustomEvent('vyria-pending-print'))
+  }
+  try {
+    childWin.addEventListener('afterprint', () => window.setTimeout(cleanup, 320))
   } catch {
     /* ignore */
   }
+  window.setTimeout(cleanup, 45_000)
 }
 
-function enqueuePendingThermal(
-  opts: ThermalEscPosWindowOpts & { b64: string }
-): void {
-  try {
-    const list = readQueueRaw()
-    const row: PendingThermalPrintRow = {
-      orderId: opts.logOrderId,
-      documentTitle: opts.documentTitle,
-      safeFilenameStem: opts.safeFilenameStem,
-      asciiPreview: opts.asciiPreview,
-      b64: opts.b64,
-      serialBaud: opts.serialBaud,
-      ts: Date.now(),
+/** Telemóvel / tablet: impressão automática fora de gesto — pop-up é bloqueado; iframe na mesma página evita isso. */
+export function isMobileThermalHost(): boolean {
+  if (typeof window === 'undefined') return false
+  const ua = navigator.userAgent || ''
+  if (/iPhone|iPod|Android.*Mobile|IEMobile|Opera Mini/i.test(ua)) return true
+  if (/\biPad\b/i.test(ua)) return true
+  if (
+    typeof navigator !== 'undefined' &&
+    /Macintosh/.test(ua) &&
+    navigator.maxTouchPoints > 1
+  ) {
+    return true
+  }
+  if (
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(max-width: 768px)').matches
+  ) {
+    return true
+  }
+  return /Android|webOS|BlackBerry|Mobile/i.test(ua)
+}
+
+/**
+ * Abre o HTML do cupom num iframe same-origin (sem `window.open`) e deixa o script interno
+ * disparar `print()` — contorna bloqueio de pop-up na automação iOS/Android.
+ * Safari/iPhone: `document.write` por vezes falha; usa `src` com blob URL como fallback.
+ */
+function writeThermalToHiddenIframe(html: string): boolean {
+  const mountIframe = (): HTMLIFrameElement => {
+    const prev = document.getElementById(THERMAL_HOST_IFRAME_ID)
+    if (prev) prev.remove()
+    const iframe = document.createElement('iframe')
+    iframe.id = THERMAL_HOST_IFRAME_ID
+    iframe.setAttribute('aria-hidden', 'true')
+    iframe.title = 'Vyria — impressão'
+    iframe.style.cssText =
+      'position:fixed;inset:0;width:100%;height:100%;margin:0;border:0;opacity:0.02;pointer-events:none;z-index:2147483646;clip-path:inset(50%)'
+    document.body.appendChild(iframe)
+    return iframe
+  }
+
+  const tryDocumentWrite = (): boolean => {
+    try {
+      const iframe = mountIframe()
+      const w = iframe.contentWindow
+      if (!w) {
+        iframe.remove()
+        return false
+      }
+      w.document.open()
+      w.document.write(html)
+      w.document.close()
+      armThermalIframeCleanup(iframe, w)
+      return true
+    } catch {
+      return false
     }
-    const withoutDup = list.filter(
-      (r) =>
-        r.safeFilenameStem !== opts.safeFilenameStem &&
-        (opts.logOrderId ? r.orderId !== opts.logOrderId : true)
-    )
-    const next = [...withoutDup, row].slice(-12)
-    sessionStorage.setItem(PENDING_THERMAL_PRINT_STORAGE_KEY, JSON.stringify(next))
-    window.dispatchEvent(new CustomEvent('vyria-pending-print'))
-  } catch {
-    /* ignore */
   }
-}
 
-function tryDownloadPrnInParent(bytes: Uint8Array, filename: string): void {
-  try {
-    const copy = Uint8Array.from(bytes)
-    const blob = new Blob([copy], { type: 'application/octet-stream' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = filename
-    a.rel = 'noopener'
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
-  } catch {
-    /* ignore */
+  const tryBlobSrc = (): boolean => {
+    let url: string | null = null
+    try {
+      const iframe = mountIframe()
+      const w = iframe.contentWindow
+      if (!w) {
+        iframe.remove()
+        return false
+      }
+      const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
+      url = URL.createObjectURL(blob)
+      iframe.addEventListener(
+        'load',
+        () => {
+          try {
+            URL.revokeObjectURL(url!)
+          } catch {
+            /* ignore */
+          }
+          try {
+            armThermalIframeCleanup(iframe, w)
+          } catch {
+            /* ignore */
+          }
+        },
+        { once: true }
+      )
+      iframe.src = url
+      return true
+    } catch {
+      if (url) {
+        try {
+          URL.revokeObjectURL(url)
+        } catch {
+          /* ignore */
+        }
+      }
+      return false
+    }
   }
+
+  if (isAppleMobileOrTabletUa()) {
+    if (tryBlobSrc()) return true
+    return tryDocumentWrite()
+  }
+  if (tryDocumentWrite()) return true
+  if (isMobileThermalHost()) {
+    return tryBlobSrc()
+  }
+  return false
 }
 
 function buildThermalTicketHtml(opts: {
@@ -157,6 +194,8 @@ function buildThermalTicketHtml(opts: {
   baud: number
   asciiPreview: string
   payload: EscPosHtmlPayload
+  /** `embedded` = iframe na mesma página: permite impressão automática no telemóvel. */
+  thermalHost: 'popup' | 'embedded'
 }): string {
   const storageKeyJson =
     opts.payload.kind === 'storageKey'
@@ -168,10 +207,10 @@ function buildThermalTicketHtml(opts: {
   const loadB64Block =
     opts.payload.kind === 'storageKey'
       ? `
-  var storageKey = ${storageKeyJson};
+  var sk = ${storageKeyJson};
   var raw = null;
-  try { raw = sessionStorage.getItem(storageKey); } catch (e1) {}
-  try { if (storageKey) sessionStorage.removeItem(storageKey); } catch (e2) {}
+  try { raw = rootWin.sessionStorage.getItem(sk); } catch (e1) {}
+  try { if (sk) rootWin.sessionStorage.removeItem(sk); } catch (e2) {}
   if (!raw) {
     var h = document.querySelector('.hint');
     if (h) h.textContent = 'Não foi possível carregar o cupom. Fecha e tenta «Baixar .prn» no painel.';
@@ -194,7 +233,10 @@ function buildThermalTicketHtml(opts: {
   var baud = ${JSON.stringify(opts.baud)};`
 
   const script = `
-(function(){${loadB64Block}
+(function(){
+  var rootWin = window;
+  try { if (window.parent && window.parent !== window) rootWin = window.parent; } catch (e0) {}
+${loadB64Block}
   function binAtob(b) {
     var bin = atob(b);
     var buf = new Uint8Array(bin.length);
@@ -234,11 +276,21 @@ function buildThermalTicketHtml(opts: {
   if (dl) dl.onclick = download;
   if (se) se.onclick = function() { void serial(); };
   if (pr) pr.onclick = function() { try { window.print(); } catch (e) {} };
+  var host = ${JSON.stringify(opts.thermalHost)};
   var mobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i.test(navigator.userAgent || '') || (typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 768px)').matches);
   var hint = document.querySelector('.hint');
-  if (mobile) {
+  if (host === 'embedded') {
     if (hint) {
-      hint.innerHTML = 'Telemóvel / Bluetooth: toque em <strong>Imprimir pré-visualização</strong> quando estiver pronto (a impressão automática ao abrir fica desligada para evitar erro do sistema). Para RAW na app da térmica use <strong>Baixar .prn</strong>.';
+      hint.textContent = 'A abrir impressão… Se não abrir, toca em «Imprimir pré-visualização».';
+    }
+    function firePrint() { try { window.print(); } catch (e) {} }
+    firePrint();
+    window.setTimeout(firePrint, 60);
+    window.setTimeout(firePrint, 200);
+    window.setTimeout(firePrint, 480);
+  } else if (mobile) {
+    if (hint) {
+      hint.innerHTML = 'Telemóvel / Bluetooth: toque em <strong>Imprimir pré-visualização</strong> quando estiver pronto. Para RAW na app da térmica use <strong>Baixar .prn</strong>.';
     }
   } else {
     window.setTimeout(function() {
@@ -258,10 +310,10 @@ function buildThermalTicketHtml(opts: {
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>${escapeHtml(opts.documentTitle)}</title>
 <style>
-  @page { size: 80mm auto; margin: 2mm; }
-  body { font-family: ui-monospace, Consolas, "Courier New", monospace; font-size: 11px; margin: 0; padding: 10px; color: #111; }
-  pre { white-space: pre-wrap; word-break: break-word; margin: 0 0 12px; }
-  .hint { font-size: 10px; color: #555; margin-bottom: 8px; }
+  @page { margin: 2mm; }
+  body { font-family: ui-monospace, Consolas, "Courier New", monospace; font-size: 11px; line-height: 1.55; margin: 0; padding: 10px; color: #111; }
+  pre { white-space: pre-wrap; word-break: break-word; margin: 0 0 12px; line-height: 1.55; font-size: 11px; }
+  .hint { font-size: 10px; line-height: 1.45; color: #555; margin-bottom: 8px; }
   .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
   button { cursor: pointer; padding: 8px 12px; font-size: 12px; border-radius: 8px; border: 1px solid #bbb; background: #f4f4f4; }
   @media print {
@@ -280,7 +332,19 @@ function buildThermalTicketHtml(opts: {
 </body></html>`
 }
 
-function buildThermalDownloadOnlyHtml(documentTitle: string, filename: string): string {
+function buildThermalDownloadOnlyHtml(
+  documentTitle: string,
+  filename: string,
+  opts?: { autoFileSent?: boolean }
+): string {
+  const autoSent = opts?.autoFileSent === true
+  const extra = autoSent
+    ? `<p>O ficheiro <code>${escapeHtml(filename)}</code> deve ter sido enviado para as <strong>transferências</strong>. Abre-o na app da tua impressora Bluetooth (RAW / ESC-POS).</p>
+<p>Se não apareceu, volta ao painel e usa <strong>Baixar .prn</strong> na janela do cupom.</p>`
+    : `<p>Neste dispositivo não coube guardar o cupom completo na memória do navegador.</p>
+<p>Abre <strong>Pedidos</strong> e usa «Imprimir» de novo, ou tenta noutro telemóvel / computador. Podes ainda usar «Baixar .prn» na janela do cupom quando a abrires a partir de um gesto (toque).</p>
+<p>Ficheiro sugerido: <code>${escapeHtml(filename)}</code></p>`
+
   return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>${escapeHtml(documentTitle)}</title>
@@ -289,8 +353,7 @@ function buildThermalDownloadOnlyHtml(documentTitle: string, filename: string): 
   code { font-size: 12px; word-break: break-all; }
 </style></head><body>
 <p>O cupom térmico é grande para este telemóvel guardar na memória do navegador.</p>
-<p>O ficheiro <code>${escapeHtml(filename)}</code> deve ter sido enviado para as <strong>transferências</strong>. Abre-o na app da tua impressora Bluetooth (RAW / ESC-POS).</p>
-<p>Se não apareceu, volta ao painel e usa <strong>Baixar .prn</strong> na janela do cupom.</p>
+${extra}
 </body></html>`
 }
 
@@ -324,46 +387,8 @@ function writeThermalDoc(win: Window, html: string): void {
 }
 
 /**
- * Reabre cupom a partir da fila (deve ser chamado dentro de um toque do utilizador no mobile).
- */
-export function reopenQueuedThermalPrint(row: PendingThermalPrintRow): ThermalOpenResult {
-  if (typeof window === 'undefined') return 'failed'
-  const bytes = base64ToUint8Array(row.b64)
-  const filename = `${row.safeFilenameStem}.prn`
-  const payload = prepareEscPosHtmlPayload(row.b64, filename, row.serialBaud)
-
-  const win = window.open('', '_blank', 'width=420,height=720')
-  if (!win) {
-    tryDownloadPrnInParent(bytes, filename)
-    return 'queued_no_popup'
-  }
-  logPrintJob({
-    phase: 'window_open',
-    orderId: row.orderId,
-    bytesLength: bytes.length,
-  })
-
-  if (payload.kind === 'downloadOnly') {
-    tryDownloadPrnInParent(bytes, filename)
-    writeThermalDoc(win, buildThermalDownloadOnlyHtml(row.documentTitle, filename))
-    return 'opened'
-  }
-
-  const html = buildThermalTicketHtml({
-    documentTitle: row.documentTitle,
-    filename,
-    baud: row.serialBaud,
-    asciiPreview: row.asciiPreview,
-    payload,
-  })
-  writeThermalDoc(win, html)
-  return 'opened'
-}
-
-/**
- * Janela com pré-visualização ASCII, download .prn (RAW CP850) e Web Serial.
- * Em mobile, `window.open` fora de gesto do utilizador costuma falhar: nesse caso
- * gravamos na fila, tentamos download do .prn e emitimos `vyria-pending-print`.
+ * Janela ou iframe same-origin com pré-visualização ASCII, .prn manual e Web Serial.
+ * No telemóvel usa iframe + impressão automática para contornar bloqueio de `window.open`.
  */
 export function openThermalEscPosWindow(opts: ThermalEscPosWindowOpts): ThermalOpenResult {
   if (typeof window === 'undefined') return 'failed'
@@ -372,31 +397,34 @@ export function openThermalEscPosWindow(opts: ThermalEscPosWindowOpts): ThermalO
   const baud = Number.isFinite(opts.serialBaud) && opts.serialBaud > 0 ? opts.serialBaud : 9600
   const filename = `${opts.safeFilenameStem}.prn`
   const payload = prepareEscPosHtmlPayload(b64, filename, baud)
+  const mobile = isMobileThermalHost()
+  const thermalHost: 'popup' | 'embedded' = mobile ? 'embedded' : 'popup'
 
-  const win = window.open('', '_blank', 'width=420,height=720')
-  if (!win) {
+  if (payload.kind === 'downloadOnly') {
+    const fallbackHtml = buildThermalDownloadOnlyHtml(opts.documentTitle, filename)
+    if (mobile && writeThermalToHiddenIframe(fallbackHtml)) {
+      logPrintJob({
+        phase: 'iframe_host_print',
+        orderId: opts.logOrderId,
+        bytesLength: opts.escPosBytes.length,
+      })
+      return 'opened'
+    }
+    const winDl = window.open('', '_blank', 'width=420,height=720')
+    if (!winDl) {
+      logPrintJob({
+        phase: 'popup_blocked',
+        orderId: opts.logOrderId,
+        bytesLength: opts.escPosBytes.length,
+      })
+      return 'failed'
+    }
+    writeThermalDoc(winDl, fallbackHtml)
     logPrintJob({
-      phase: 'popup_blocked',
+      phase: 'window_open',
       orderId: opts.logOrderId,
       bytesLength: opts.escPosBytes.length,
     })
-    enqueuePendingThermal({ ...opts, b64 })
-    tryDownloadPrnInParent(opts.escPosBytes, filename)
-    return 'queued_no_popup'
-  }
-
-  logPrintJob({
-    phase: 'window_open',
-    orderId: opts.logOrderId,
-    bytesLength: opts.escPosBytes.length,
-  })
-
-  if (payload.kind === 'downloadOnly') {
-    tryDownloadPrnInParent(opts.escPosBytes, filename)
-    writeThermalDoc(
-      win,
-      buildThermalDownloadOnlyHtml(opts.documentTitle, filename)
-    )
     return 'opened'
   }
 
@@ -406,7 +434,34 @@ export function openThermalEscPosWindow(opts: ThermalEscPosWindowOpts): ThermalO
     baud,
     asciiPreview: opts.asciiPreview,
     payload,
+    thermalHost,
   })
+
+  if (mobile && writeThermalToHiddenIframe(html)) {
+    logPrintJob({
+      phase: 'iframe_host_print',
+      orderId: opts.logOrderId,
+      bytesLength: opts.escPosBytes.length,
+    })
+    return 'opened'
+  }
+
+  const win = window.open('', '_blank', 'width=420,height=720')
+  if (!win) {
+    logPrintJob({
+      phase: 'popup_blocked',
+      orderId: opts.logOrderId,
+      bytesLength: opts.escPosBytes.length,
+    })
+    return 'failed'
+  }
+
+  logPrintJob({
+    phase: 'window_open',
+    orderId: opts.logOrderId,
+    bytesLength: opts.escPosBytes.length,
+  })
+
   writeThermalDoc(win, html)
 
   return 'opened'

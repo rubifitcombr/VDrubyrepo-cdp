@@ -237,8 +237,8 @@ export function hasAutomationAccess(plan: string): boolean {
 
 /**
  * Toggles de pedido/loja (confirmação WhatsApp, aceitar pedido, notificação, fechar fora de horas,
- * mensagem de entrega) — Pro. No Growth só a resposta automática com link do cardápio.
+ * mensagem de entrega, etc.) — Growth em diante (slug, PDV, garçom/QR, autoatendimento).
  */
 export function hasOrderPipelineAutomations(plan: Plan): boolean {
-  return planTier(plan) >= planTier('PRO')
+  return planTier(plan) >= planTier('GROWTH')
 }

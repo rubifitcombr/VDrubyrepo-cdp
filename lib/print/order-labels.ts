@@ -16,7 +16,8 @@ export function sourceLabel(src: string | null | undefined): string {
   if (t === 'waiter') return 'Garcom'
   if (t === 'pdv') return 'Balcao / PDV'
   if (t === 'site_pickup') return 'Retirada'
-  if (t === 'menu_link' || t === '') return 'Cardapio online'
+  if (t === 'site_live' || t === 'site_start' || t === 'menu_link' || t === '')
+    return 'Cardapio online'
   const raw = sanitizePrintText(String(src ?? '').trim())
   return raw || PRINT_PLACEHOLDER
 }

@@ -55,7 +55,7 @@ const ROWS: Array<{
     key: 'print_auto_on_confirm',
     title: 'Impressão automática',
     description:
-      'Ao entrar em «Preparando», imprimir o cupom (cardápio online, checkout, Garçom ou outro fluxo) — com o painel aberto em qualquer página.',
+      'Ao entrar em «Preparando», imprimir o cupom (PDV, garçom/QR, pedido pelo link do cardápio, etc.) com o painel em qualquer página, quando a automação ou esta opção estiver ativa.',
   },
   {
     key: 'print_include_customer_details',

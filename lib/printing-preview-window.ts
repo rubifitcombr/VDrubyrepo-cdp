@@ -41,14 +41,14 @@ export function openPrintingPreviewPopup(opts: {
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Cupom — pré-visualização</title>
 <style>
   *{box-sizing:border-box}
-  body{font-family:ui-monospace,system-ui,monospace;font-size:12px;margin:0;padding:0;color:#111;background:#f3f4f6}
+  body{font-family:ui-monospace,system-ui,monospace;font-size:11px;line-height:1.55;margin:0;padding:0;color:#111;background:#f3f4f6}
   .noprint{background:#fff;border-bottom:1px solid #e5e7eb;padding:10px 12px;position:sticky;top:0;z-index:10;box-shadow:0 1px 3px rgba(0,0,0,.06)}
   .noprint-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:center}
   .btn{border:1px solid #d1d5db;background:#fff;border-radius:10px;padding:10px 14px;font-size:13px;font-weight:600;cursor:pointer;color:#111}
   .btn-primary{background:var(--vyria-primary,#c2410c);border-color:transparent;color:#fff}
   .link{color:#1d4ed8;text-decoration:underline;font-size:13px;font-weight:600}
   .body{padding:12px;max-width:${bodyMax};margin:0 auto}
-  h1{font-size:13px;text-align:center;margin:0 0 8px}
+  h1{font-size:11px;text-align:center;margin:0 0 8px;line-height:1.55}
   .line{border-top:1px dashed #999;margin:8px 0}
   @page{size:80mm auto;margin:4mm}
   html,body{height:auto!important;min-height:0!important}
