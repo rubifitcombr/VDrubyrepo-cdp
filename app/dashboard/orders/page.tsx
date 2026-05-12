@@ -1,7 +1,5 @@
 import Link from 'next/link'
 import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
-import { hasOrderPipelineAutomations } from '@/lib/plan'
-import { parseAutomationsFromStore } from '@/lib/store-automations'
 import { parsePrintingFromStore } from '@/lib/store-printing'
 import { readStorePlano } from '@/lib/store-columns'
 import {
@@ -59,10 +57,6 @@ export default async function OrdersPage() {
   const storeName =
     typeof row.name === 'string' ? row.name : 'Meu estabelecimento'
   const plan = effectiveDashboardPlan(user.email, readStorePlano(row))
-  const autoAcceptOrders = !!(
-    hasOrderPipelineAutomations(plan) &&
-    parseAutomationsFromStore(row).auto_accept_orders
-  )
   const deliveryPipelineEnabled = isDeliveryPipelineEnabled(
     parseOperationModeFromStore(row)
   )
@@ -74,7 +68,6 @@ export default async function OrdersPage() {
       storeName={storeName}
       printing={printing}
       plan={plan}
-      autoAcceptOrders={autoAcceptOrders}
       deliveryPipelineEnabled={deliveryPipelineEnabled}
     />
   )

@@ -16,7 +16,7 @@ import {
 } from '@/lib/order-print-window'
 import { updateOrderStatus } from '@/services/orders'
 import { dashboardFetch } from '@/lib/dashboard-fetch.client'
-import type { Plan } from '@/lib/plan'
+import { type Plan, hasFeature } from '@/lib/plan'
 import type { StoreEntregadorDTO } from '@/lib/entregas-types'
 
 function playNewOrderBeep() {
@@ -306,7 +306,6 @@ export function OrdersClient({
   storeName,
   printing,
   plan,
-  autoAcceptOrders,
   deliveryPipelineEnabled = true,
 }: {
   initialOrders: StoreOrderRow[]
@@ -314,8 +313,6 @@ export function OrdersClient({
   storeName: string
   printing: StorePrintingState
   plan: Plan
-  /** Igual ao painel: Pro com toggle «Aceitar pedidos automaticamente». */
-  autoAcceptOrders: boolean
   /** Slug / entregas / separador «A caminho»: só delivery e híbrido. */
   deliveryPipelineEnabled?: boolean
 }) {
@@ -354,11 +351,8 @@ export function OrdersClient({
     [deliveryPipelineEnabled]
   )
 
-  /** Growth: sempre. Pro: quando não há aceite+impressão automáticos em conjunto. */
-  const showManualComandaPrint =
-    plan === 'GROWTH' ||
-    (plan === 'PRO' &&
-      !(autoAcceptOrders && printing.print_auto_on_confirm))
+  /** Growth+ (módulo Pedidos): comanda manual sempre disponível, com ou sem automações. */
+  const showManualComandaPrint = hasFeature(plan, 'orders')
 
   useEffect(() => {
     return () => {
