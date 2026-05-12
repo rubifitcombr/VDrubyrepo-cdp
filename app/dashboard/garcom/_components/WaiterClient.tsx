@@ -1585,17 +1585,79 @@ export function WaiterClient({
 
       {/* Mobile: bottom sheet cardápio */}
       {menuSheetOpen ? (
-        <div className="fixed inset-0 z-[85] md:hidden" role="dialog">
-          <button type="button" className="absolute inset-0 bg-black/40" onClick={() => setMenuSheetOpen(false)} />
-          <div className="absolute bottom-0 left-0 right-0 max-h-[70vh] overflow-hidden rounded-t-2xl bg-[#f4f5f7] shadow-2xl">
-            <div className="sticky top-0 flex items-center justify-between border-b border-[var(--card-border)] bg-white px-3 py-2">
+        <div className="fixed inset-0 z-[85] md:hidden" role="dialog" aria-modal>
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/40"
+            onClick={() => setMenuSheetOpen(false)}
+            aria-label="Fechar cardápio"
+          />
+          <div className="absolute bottom-0 left-0 right-0 flex max-h-[78vh] flex-col overflow-hidden rounded-t-2xl bg-[#f4f5f7] shadow-2xl">
+            <div className="flex shrink-0 items-center justify-between border-b border-[var(--card-border)] bg-white px-3 py-2">
               <span className="text-sm font-bold">Cardápio</span>
-              <button type="button" onClick={() => setMenuSheetOpen(false)} className="text-lg font-bold">
+              <button
+                type="button"
+                onClick={() => setMenuSheetOpen(false)}
+                className="text-lg font-bold leading-none"
+                aria-label="Fechar"
+              >
                 ×
               </button>
             </div>
-            <div className="max-h-[55vh] overflow-y-auto p-2">
-              {/* duplicate slim product list */}
+            <div className="shrink-0 border-b border-[var(--card-border)] bg-white px-3 py-2">
+              <div className="relative">
+                <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[#9ca3af]">
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z"
+                    />
+                  </svg>
+                </span>
+                <input
+                  type="search"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Buscar produto ou categoria…"
+                  className="w-full rounded-lg border border-[var(--card-border)] bg-white py-2 pl-9 pr-3 text-sm outline-none transition focus:border-[var(--dash-primary)]/40 focus:ring-2 focus:ring-[var(--dash-primary)]/15"
+                />
+              </div>
+            </div>
+            <div className="shrink-0 border-b border-[var(--card-border)] bg-white px-2 py-2">
+              <p className="mb-1.5 px-1 text-[10px] font-semibold uppercase tracking-wide text-[#9ca3af]">
+                Categoria
+              </p>
+              <div className="flex gap-1.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <button
+                  type="button"
+                  onClick={() => setCategoryTab('Todos')}
+                  className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold transition duration-150 ${
+                    categoryTab === 'Todos'
+                      ? 'bg-[var(--dash-primary)] text-white'
+                      : 'bg-[#f4f5f7] text-[#6b7280] ring-1 ring-[var(--card-border)]'
+                  }`}
+                >
+                  Todos
+                </button>
+                {categories.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setCategoryTab(c)}
+                    className={`max-w-[10.5rem] shrink-0 truncate rounded-full px-3 py-1.5 text-xs font-semibold transition duration-150 ${
+                      categoryTab === c
+                        ? 'bg-[var(--dash-primary)] text-white'
+                        : 'bg-[#f4f5f7] text-[#6b7280] ring-1 ring-[var(--card-border)]'
+                    }`}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto p-2">
               <ul className="grid grid-cols-2 gap-2">
                 {filteredProducts.map((p) => {
                   const price = effectiveProductPrice(p)
@@ -1609,17 +1671,36 @@ export function WaiterClient({
                           addProduct(p)
                           setMenuSheetOpen(false)
                         }}
-                        className={`w-full rounded-lg border bg-white p-2 text-left text-[13px] ${
-                          oos ? 'opacity-40' : 'border-[var(--card-border)]'
+                        className={`flex w-full flex-col rounded-lg border bg-white p-2 text-left text-[13px] transition ${
+                          oos
+                            ? 'cursor-not-allowed border-[var(--card-border)] opacity-40'
+                            : 'border-[var(--card-border)] active:scale-[0.98]'
                         }`}
                       >
-                        <span className="line-clamp-2 font-medium">{p.name}</span>
-                        <span className="text-[var(--dash-primary)]">{money.format(price)}</span>
+                        <span className="line-clamp-2 font-medium leading-snug text-[#1a1614]">
+                          {p.name}
+                        </span>
+                        <span className="mt-0.5 line-clamp-1 text-[11px] text-[#6b7280]">
+                          {(p.category || '').trim() || 'Sem categoria'}
+                        </span>
+                        <span className="mt-1 font-semibold text-[var(--dash-primary)]">
+                          {money.format(price)}
+                        </span>
+                        {oos ? (
+                          <span className="mt-1 inline-flex w-fit rounded bg-zinc-200 px-1.5 py-0.5 text-[9px] font-bold uppercase text-zinc-600">
+                            Sem estoque
+                          </span>
+                        ) : null}
                       </button>
                     </li>
                   )
                 })}
               </ul>
+              {filteredProducts.length === 0 ? (
+                <p className="py-6 text-center text-sm text-[#6b7280]">
+                  Nenhum produto nesta categoria ou na busca.
+                </p>
+              ) : null}
             </div>
           </div>
         </div>
