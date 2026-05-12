@@ -1,6 +1,7 @@
 'use client'
 
 import { uint8ToBase64 } from '@/lib/print/escpos'
+import { DEFAULT_PAPER_MM, type PaperMm } from '@/lib/print/layout'
 import { logPrintJob } from '@/lib/print/logger'
 
 function escapeHtml(s: string): string {
@@ -46,6 +47,8 @@ export type ThermalEscPosWindowOpts = {
   escPosBytes: Uint8Array
   serialBaud: number
   logOrderId?: string
+  /** Largura do rolo (58/80 mm) — define @page para impressão pelo sistema no mobile. */
+  paperMm?: PaperMm
 }
 
 export type ThermalOpenResult = 'opened' | 'failed'
@@ -97,6 +100,42 @@ export function isMobileThermalHost(): boolean {
     return true
   }
   return /Android|webOS|BlackBerry|Mobile/i.test(ua)
+}
+
+function stripIllFormedPreviewChars(s: string): string {
+  return s.replace(/\r\n?/g, '\n').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+}
+
+/**
+ * Android/iOS costumam falhar com documentos de impressão muito altos no WebView.
+ * No modo embedded limitamos só a pré-visualização ASCII; o .prn / ESC/POS mantém-se completo.
+ * Mantém sempre o bloco final (Subtotal / taxa / TOTAL / pagamento) visível.
+ */
+function clampAsciiPreviewForEmbeddedHost(raw: string): string {
+  const MAX_BODY_LINES = 180
+  const MAX_BODY_CHARS = 6200
+
+  let footIdx = raw.lastIndexOf('\nSubtotal')
+  if (footIdx < 0) footIdx = raw.lastIndexOf('\nTOTAL')
+  const footer = footIdx >= 0 ? raw.slice(footIdx + 1).trimEnd() : ''
+  const body = footIdx >= 0 ? raw.slice(0, footIdx + 1) : raw
+
+  let b = body
+  const lines = b.split('\n')
+  if (lines.length > MAX_BODY_LINES) {
+    b =
+      lines.slice(0, MAX_BODY_LINES).join('\n') +
+      '\n[... itens cortados — use «Baixar .prn» p/ lista completa.]'
+  }
+  if (b.length > MAX_BODY_CHARS) {
+    const slice = b.slice(0, MAX_BODY_CHARS)
+    const cut = slice.lastIndexOf('\n')
+    b =
+      (cut > 2800 ? slice.slice(0, cut) : slice) +
+      '\n[... texto cortado — use «Baixar .prn» p/ cupom completo.]'
+  }
+  const head = b.trimEnd()
+  return footer ? `${head}\n\n${footer}` : head
 }
 
 /**
@@ -196,6 +235,7 @@ function buildThermalTicketHtml(opts: {
   payload: EscPosHtmlPayload
   /** `embedded` = iframe na mesma página: permite impressão automática no telemóvel. */
   thermalHost: 'popup' | 'embedded'
+  paperMm: PaperMm
 }): string {
   const storageKeyJson =
     opts.payload.kind === 'storageKey'
@@ -281,13 +321,11 @@ ${loadB64Block}
   var hint = document.querySelector('.hint');
   if (host === 'embedded') {
     if (hint) {
-      hint.textContent = 'A abrir impressão… Se não abrir, toca em «Imprimir pré-visualização».';
+      hint.textContent = 'Se o sistema não abrir o diálogo, toca em «Imprimir pré-visualização». Cupom longo: «Baixar .prn» na app da térmica (RAW).';
     }
     function firePrint() { try { window.print(); } catch (e) {} }
-    firePrint();
-    window.setTimeout(firePrint, 60);
     window.setTimeout(firePrint, 200);
-    window.setTimeout(firePrint, 480);
+    window.setTimeout(firePrint, 800);
   } else if (mobile) {
     if (hint) {
       hint.innerHTML = 'Telemóvel / Bluetooth: toque em <strong>Imprimir pré-visualização</strong> quando estiver pronto. Para RAW na app da térmica use <strong>Baixar .prn</strong>.';
@@ -299,26 +337,34 @@ ${loadB64Block}
   }
 })();`
 
-  const previewRaw = opts.asciiPreview
+  const paper = opts.paperMm === 58 ? 58 : 80
+  const pageSize = paper === 58 ? '58mm auto' : '80mm auto'
+  const bodyMax = paper === 58 ? '54mm' : '72mm'
+
+  let previewSource = stripIllFormedPreviewChars(opts.asciiPreview)
+  if (opts.thermalHost === 'embedded') {
+    previewSource = clampAsciiPreviewForEmbeddedHost(previewSource)
+  }
   const previewHtml = escapeHtml(
-    previewRaw.length > ASCII_PREVIEW_HTML_MAX
-      ? `${previewRaw.slice(0, ASCII_PREVIEW_HTML_MAX)}\n\n[... pré-visualização cortada; o ficheiro .prn tem o cupom completo.]`
-      : previewRaw
+    previewSource.length > ASCII_PREVIEW_HTML_MAX
+      ? `${previewSource.slice(0, ASCII_PREVIEW_HTML_MAX)}\n\n[... pré-visualização cortada; o ficheiro .prn tem o cupom completo.]`
+      : previewSource
   )
 
   return `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>${escapeHtml(opts.documentTitle)}</title>
 <style>
-  @page { margin: 2mm; }
-  body { font-family: ui-monospace, Consolas, "Courier New", monospace; font-size: 11px; line-height: 1.55; margin: 0; padding: 10px; color: #111; }
-  pre { white-space: pre-wrap; word-break: break-word; margin: 0 0 12px; line-height: 1.55; font-size: 11px; }
+  @page { size: ${pageSize}; margin: 2mm; }
+  html, body { height: auto !important; min-height: 0 !important; }
+  body { font-family: ui-monospace, Consolas, "Courier New", monospace; font-size: 11px; line-height: 1.55; margin: 0; padding: 10px; color: #111; box-sizing: border-box; max-width: ${bodyMax}; }
+  pre { white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; margin: 0 0 12px; line-height: 1.55; font-size: 11px; overflow-x: hidden; }
   .hint { font-size: 10px; line-height: 1.45; color: #555; margin-bottom: 8px; }
   .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
   button { cursor: pointer; padding: 8px 12px; font-size: 12px; border-radius: 8px; border: 1px solid #bbb; background: #f4f4f4; }
   @media print {
     .no-print { display: none !important; }
-    body { padding: 4px; }
+    body { padding: 4px; max-width: 100%; }
   }
 </style></head><body>
 <p class="hint no-print">Pré-visualização só ASCII para impressão pelo browser. Para RAW ESC/POS (CP850), use «Baixar .prn» ou porta série (${opts.baud} baud).</p>
@@ -399,6 +445,8 @@ export function openThermalEscPosWindow(opts: ThermalEscPosWindowOpts): ThermalO
   const payload = prepareEscPosHtmlPayload(b64, filename, baud)
   const mobile = isMobileThermalHost()
   const thermalHost: 'popup' | 'embedded' = mobile ? 'embedded' : 'popup'
+  const paper: PaperMm =
+    opts.paperMm === 58 || opts.paperMm === 80 ? opts.paperMm : DEFAULT_PAPER_MM
 
   if (payload.kind === 'downloadOnly') {
     const fallbackHtml = buildThermalDownloadOnlyHtml(opts.documentTitle, filename)
@@ -435,6 +483,7 @@ export function openThermalEscPosWindow(opts: ThermalEscPosWindowOpts): ThermalO
     asciiPreview: opts.asciiPreview,
     payload,
     thermalHost,
+    paperMm: paper,
   })
 
   if (mobile && writeThermalToHiddenIframe(html)) {

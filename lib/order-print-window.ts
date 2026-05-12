@@ -64,6 +64,7 @@ export function openOrderTicketPrint(opts: OrderTicketPrintOpts): ThermalOpenRes
     escPosBytes: bytes,
     serialBaud: baud,
     logOrderId: opts.order.id,
+    paperMm: paper,
   })
 }
 

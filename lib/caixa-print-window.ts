@@ -60,6 +60,7 @@ export function openCaixaTurnoEscPosPrint(opts: CaixaTurnoPrintOpts): boolean {
     escPosBytes: bytes,
     serialBaud: baud,
     logOrderId: opts.turno.id,
+    paperMm: paper,
   })
   return r !== 'failed'
 }

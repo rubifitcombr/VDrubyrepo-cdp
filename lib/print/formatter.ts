@@ -147,7 +147,10 @@ export function wrapText(text: string, width: number): string[] {
  * - Legado: `1x A, 2x B` ou `x A, x B` (qty 1 implícita; sem preço à direita)
  */
 export function expandOrderItemLines(summary: string, width: number): string[] {
-  const s = sanitizePrintText(stringifySafe(summary)).trim()
+  const s = sanitizePrintText(stringifySafe(summary))
+    .trim()
+    .replace(/\u00D7/g, 'x')
+    .replace(/×/g, 'x')
   if (!s) return [`${PRINT_PLACEHOLDER} (sem itens)`]
 
   const segments = (s.includes(';') ? s.split(';') : s.split(/,(?=\s*(\d+\s*)?x\s)/i))
@@ -157,10 +160,9 @@ export function expandOrderItemLines(summary: string, width: number): string[] {
 
   const out: string[] = []
   const indent = '  '
-  const priceColMin = 10
 
   for (const seg of segments) {
-    const trimmed = seg.trim()
+    const trimmed = seg.trim().replace(/\u00D7/g, 'x').replace(/×/g, 'x')
     const eq = trimmed.lastIndexOf('=')
     if (eq > 0) {
       const head = trimmed.slice(0, eq).trim()
@@ -169,15 +171,25 @@ export function expandOrderItemLines(summary: string, width: number): string[] {
       if (headQty) {
         const qty = headQty[1]!
         const rawName = headQty[2]!.trim()
-        const lineTotal = parseBrlMoneyCell(tail)
+        let lineTotal = parseBrlMoneyCell(tail)
+        if (lineTotal == null && tail) {
+          const tailMoney = tail.match(
+            /([\d]{1,3}(?:\.\d{3})*,\d{2}|\d+,\d{2}|\d+\.\d{2}|\d+)\s*$/
+          )
+          if (tailMoney) lineTotal = parseBrlMoneyCell(tailMoney[1]!)
+        }
         if (lineTotal != null) {
           const name = sanitizePrintText(rawName)
           const priceStr = moneyBrl(lineTotal)
+          const priceCol = Math.min(
+            Math.max(priceStr.length + 2, 14),
+            Math.max(14, Math.floor(width * 0.44))
+          )
           const prefix = `${qty}x `
-          const maxNameW = Math.max(6, width - prefix.length - priceColMin)
+          const maxNameW = Math.max(6, width - prefix.length - priceCol)
           const nameLines = wrapText(name, maxNameW)
           const first = (nameLines[0] || PRINT_PLACEHOLDER).trim() || PRINT_PLACEHOLDER
-          out.push(leftRight(truncate(prefix + first, width - priceColMin), priceStr, width))
+          out.push(leftRight(truncate(prefix + first, width - priceCol), priceStr, width))
           for (let i = 1; i < nameLines.length; i++) {
             const cont = nameLines[i]!.trim()
             if (cont) out.push(truncate(indent + cont, width))
@@ -187,11 +199,15 @@ export function expandOrderItemLines(summary: string, width: number): string[] {
         if (!tail) {
           const name = sanitizePrintText(rawName)
           const priceStr = moneyBrl(0)
+          const priceCol = Math.min(
+            Math.max(priceStr.length + 2, 14),
+            Math.max(14, Math.floor(width * 0.44))
+          )
           const prefix = `${qty}x `
-          const maxNameW = Math.max(6, width - prefix.length - priceColMin)
+          const maxNameW = Math.max(6, width - prefix.length - priceCol)
           const nameLines = wrapText(name, maxNameW)
           const first = (nameLines[0] || PRINT_PLACEHOLDER).trim() || PRINT_PLACEHOLDER
-          out.push(leftRight(truncate(prefix + first, width - priceColMin), priceStr, width))
+          out.push(leftRight(truncate(prefix + first, width - priceCol), priceStr, width))
           for (let i = 1; i < nameLines.length; i++) {
             const cont = nameLines[i]!.trim()
             if (cont) out.push(truncate(indent + cont, width))
