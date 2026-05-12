@@ -196,7 +196,9 @@ export function KdsClient({
           print_include_customer_details:
             printing.print_include_customer_details,
           print_delivery_copy: printing.print_delivery_copy,
+          print_paper_mm: printing.print_paper_mm,
         },
+        variant: 'kitchen',
       })
       if (!ok) {
         flashWaNotice(

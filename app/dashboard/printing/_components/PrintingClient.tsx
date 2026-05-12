@@ -3,6 +3,12 @@
 import Link from 'next/link'
 import { useCallback, useMemo, useState } from 'react'
 import type { StorePrintingKey, StorePrintingState } from '@/lib/store-printing'
+import {
+  getPrintSerialBaud,
+  PRINT_SERIAL_BAUD_OPTIONS,
+  setPrintSerialBaud,
+} from '@/lib/print/device-prefs'
+import type { PaperMm } from '@/lib/print/layout'
 import { openPrintingPreviewPopup } from '@/lib/printing-preview-window'
 import { updateStore } from '@/services/store'
 import { IconPrinter } from '@/app/dashboard/_components/NavIcons'
@@ -77,6 +83,8 @@ export function PrintingClient({
 }) {
   const [values, setValues] = useState<StorePrintingState>(initial)
   const [savingKey, setSavingKey] = useState<StorePrintingKey | null>(null)
+  const [savingPaper, setSavingPaper] = useState(false)
+  const [serialBaud, setSerialBaud] = useState(() => getPrintSerialBaud())
   const [error, setError] = useState<string | null>(null)
 
   const fee = useMemo(
@@ -91,13 +99,14 @@ export function PrintingClient({
       values: {
         print_include_customer_details: values.print_include_customer_details,
         print_delivery_copy: values.print_delivery_copy,
+        print_paper_mm: values.print_paper_mm,
       },
       returnPath: '/dashboard/printing',
     })
     if (!ok) {
       alert('Permite pop-ups para testar a impressão.')
     }
-  }, [fee, storeName, values.print_delivery_copy, values.print_include_customer_details])
+  }, [fee, storeName, values.print_delivery_copy, values.print_include_customer_details, values.print_paper_mm])
 
   async function toggle(key: StorePrintingKey) {
     const next = !values[key]
@@ -111,9 +120,28 @@ export function PrintingClient({
       setValues((v) => ({ ...v, [key]: prev }))
       const msg = upErr.message || ''
       setError(
-        /print_auto|print_include|print_delivery|column/i.test(msg) ||
+        /print_auto|print_include|print_delivery|print_paper|column/i.test(msg) ||
           upErr.code === 'PGRST204'
           ? 'Executa o script scripts/supabase-store-printing.sql no Supabase.'
+          : msg || 'Não foi possível guardar.'
+      )
+    }
+  }
+
+  async function savePaperMm(mm: PaperMm) {
+    if (mm === values.print_paper_mm) return
+    const prev = values.print_paper_mm
+    setValues((v) => ({ ...v, print_paper_mm: mm }))
+    setError(null)
+    setSavingPaper(true)
+    const { error: upErr } = await updateStore(storeId, { print_paper_mm: mm })
+    setSavingPaper(false)
+    if (upErr) {
+      setValues((v) => ({ ...v, print_paper_mm: prev }))
+      const msg = upErr.message || ''
+      setError(
+        /print_paper|column/i.test(msg) || upErr.code === 'PGRST204'
+          ? 'Executa o script scripts/supabase-store-print-paper.sql no Supabase.'
           : msg || 'Não foi possível guardar.'
       )
     }
@@ -175,13 +203,57 @@ export function PrintingClient({
               </div>
               <PrintSwitch
                 on={values[key]}
-                disabled={savingKey !== null}
+                disabled={savingKey !== null || savingPaper}
                 onToggle={() => toggle(key)}
                 label={title}
               />
             </li>
           ))}
         </ul>
+
+        <div className="mt-6 border-t border-vyria-navy/10 pt-6">
+          <h3 className="font-semibold text-vyria-navy">Largura do papel e porta série</h3>
+          <p className="mt-1 text-sm text-vyria-navy-muted">
+            A largura sincroniza com a loja (cupons pedido e caixa). A velocidade em baud fica só neste
+            browser, para «Enviar porta série» no pop-up de impressão ESC/POS.
+          </p>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <label className="block text-xs font-medium text-vyria-navy-muted">
+              Largura do rolo
+              <select
+                className="mt-1 block w-full rounded-xl border border-[var(--card-border)] bg-white px-3 py-2.5 text-sm font-medium text-vyria-navy"
+                value={values.print_paper_mm}
+                disabled={savingKey !== null || savingPaper}
+                onChange={(e) => {
+                  const v = Number(e.target.value)
+                  void savePaperMm(v === 58 ? 58 : 80)
+                }}
+              >
+                <option value={80}>80 mm (48 colunas)</option>
+                <option value={58}>58 mm (32 colunas)</option>
+              </select>
+            </label>
+            <label className="block text-xs font-medium text-vyria-navy-muted">
+              Velocidade série (Web Serial)
+              <select
+                className="mt-1 block w-full rounded-xl border border-[var(--card-border)] bg-white px-3 py-2.5 text-sm font-medium text-vyria-navy"
+                value={serialBaud}
+                disabled={savingKey !== null}
+                onChange={(e) => {
+                  const n = Number(e.target.value)
+                  setSerialBaud(n)
+                  setPrintSerialBaud(n)
+                }}
+              >
+                {PRINT_SERIAL_BAUD_OPTIONS.map((b) => (
+                  <option key={b} value={b}>
+                    {b} baud
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </div>
       </div>
 
       <div className="mt-10">
@@ -216,11 +288,12 @@ export function PrintingClient({
             includeCustomer={values.print_include_customer_details}
             deliveryCopy={values.print_delivery_copy}
             deliveryFee={fee}
+            paperMm={values.print_paper_mm}
           />
         </div>
       </div>
 
-      {savingKey ? (
+      {savingKey || savingPaper ? (
         <p className="mt-6 text-center text-xs text-vyria-navy-muted">
           A guardar…
         </p>

@@ -25,6 +25,7 @@ export function PrintingPreviewClient({
       values: {
         print_include_customer_details: initial.print_include_customer_details,
         print_delivery_copy: initial.print_delivery_copy,
+        print_paper_mm: initial.print_paper_mm,
       },
       returnPath: '/dashboard/printing/preview',
     })
@@ -60,6 +61,7 @@ export function PrintingPreviewClient({
             includeCustomer={initial.print_include_customer_details}
             deliveryCopy={initial.print_delivery_copy}
             deliveryFee={fee}
+            paperMm={initial.print_paper_mm}
           />
         </div>
         <div className="flex justify-center">

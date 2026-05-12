@@ -12,7 +12,12 @@ const moneyFmt = new Intl.NumberFormat('pt-BR', {
 export function openPrintingPreviewPopup(opts: {
   storeName: string
   fee: number
-  values: Pick<StorePrintingState, 'print_include_customer_details' | 'print_delivery_copy'>
+  values: Pick<
+    StorePrintingState,
+    | 'print_include_customer_details'
+    | 'print_delivery_copy'
+    | 'print_paper_mm'
+  >
   /** Caminho absoluto no site (ex.: /dashboard/printing) para o link «Voltar ao painel». */
   returnPath?: string
 }): boolean {
@@ -27,6 +32,9 @@ export function openPrintingPreviewPopup(opts: {
     s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   const header = esc(opts.storeName.trim().toUpperCase() || 'A TUA LOJA')
 
+  const paper = opts.values.print_paper_mm === 58 ? 58 : 80
+  const bodyMax = paper === 58 ? '200px' : '280px'
+
   const w = window.open('', 'vyria_print_preview', 'width=380,height=720')
   if (!w) return false
 
@@ -39,7 +47,7 @@ export function openPrintingPreviewPopup(opts: {
   .btn{border:1px solid #d1d5db;background:#fff;border-radius:10px;padding:10px 14px;font-size:13px;font-weight:600;cursor:pointer;color:#111}
   .btn-primary{background:var(--vyria-primary,#c2410c);border-color:transparent;color:#fff}
   .link{color:#1d4ed8;text-decoration:underline;font-size:13px;font-weight:600}
-  .body{padding:12px;max-width:240px;margin:0 auto}
+  .body{padding:12px;max-width:${bodyMax};margin:0 auto}
   h1{font-size:13px;text-align:center;margin:0 0 8px}
   .line{border-top:1px dashed #999;margin:8px 0}
   @page{size:80mm auto;margin:4mm}

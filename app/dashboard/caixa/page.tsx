@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getUser } from '@/services/auth.server'
 import { getCashierOrdersForStore } from '@/services/cashier.server'
+import { parsePrintingFromStore } from '@/lib/store-printing'
 import {
   getCaixaTurnosHistorico,
   getMovimentacoesForTurnos,
@@ -53,6 +54,12 @@ export default async function CaixaPage() {
   }
 
   const storeId = String(store.id)
+  const storeRow = store as Record<string, unknown>
+  const storeName =
+    typeof storeRow.name === 'string' && storeRow.name.trim()
+      ? storeRow.name.trim()
+      : 'Meu estabelecimento'
+  const printPaperMm = parsePrintingFromStore(storeRow).print_paper_mm
   const supabase = await createClient()
   const [orders, turnoAberto, historico] = await Promise.all([
     getCashierOrdersForStore(storeId),
@@ -90,6 +97,8 @@ export default async function CaixaPage() {
   return (
     <CashierClient
       storeId={storeId}
+      storeName={storeName}
+      printPaperMm={printPaperMm}
       initialOrders={orders}
       operatorLabel={operatorLabel}
       initialTurno={turnoAberto as CaixaTurnoDTO | null}

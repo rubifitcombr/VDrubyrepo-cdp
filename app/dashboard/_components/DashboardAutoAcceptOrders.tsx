@@ -9,7 +9,7 @@ import {
   type StoreOrderRow,
 } from '@/lib/store-order'
 import type { StorePrintingState } from '@/lib/store-printing'
-import { openOrderTicketPrintDeduped } from '@/lib/order-print-window'
+import { openOrderTicketPrintDeduped, orderTicketVariantFromSource } from '@/lib/order-print-window'
 import { updateOrderStatus } from '@/services/orders'
 
 function buildDisplayRefById(rows: StoreOrderRow[]): Map<string, string> {
@@ -124,7 +124,9 @@ export function DashboardAutoAcceptOrders({
             print_include_customer_details:
               printing.print_include_customer_details,
             print_delivery_copy: printing.print_delivery_copy,
+            print_paper_mm: printing.print_paper_mm,
           },
+          variant: orderTicketVariantFromSource(order.source),
         })
         return
       }
@@ -171,7 +173,9 @@ export function DashboardAutoAcceptOrders({
                 print_include_customer_details:
                   printing.print_include_customer_details,
                 print_delivery_copy: printing.print_delivery_copy,
+                print_paper_mm: printing.print_paper_mm,
               },
+              variant: orderTicketVariantFromSource(order.source),
             })
           }
         }
@@ -313,6 +317,7 @@ export function DashboardAutoAcceptOrders({
     printing.print_auto_on_confirm,
     printing.print_include_customer_details,
     printing.print_delivery_copy,
+    printing.print_paper_mm,
   ])
 
   return null

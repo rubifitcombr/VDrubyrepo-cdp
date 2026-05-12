@@ -27,6 +27,7 @@ const STORE_ALLOWED_FIELDS = new Set([
   'print_auto_on_confirm',
   'print_include_customer_details',
   'print_delivery_copy',
+  'print_paper_mm',
   'location_enabled',
   'location_lat',
   'location_lng',

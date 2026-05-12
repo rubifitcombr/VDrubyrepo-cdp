@@ -8,18 +8,23 @@ export function ReceiptPreview({
   includeCustomer,
   deliveryCopy,
   deliveryFee,
+  paperMm = 80,
 }: {
   storeName: string
   includeCustomer: boolean
   deliveryCopy: boolean
   deliveryFee: number
+  paperMm?: 58 | 80
 }) {
   const header = storeName.trim().toUpperCase() || 'A TUA LOJA'
   const subtotal = 63.8
   const total = subtotal + deliveryFee
+  const widthClass = paperMm === 58 ? 'max-w-[200px]' : 'max-w-[280px]'
 
   return (
-    <div className="mx-auto max-w-[220px] rounded-lg border border-vyria-navy/10 bg-[#ececec] p-4 shadow-inner">
+    <div
+      className={`mx-auto ${widthClass} rounded-lg border border-vyria-navy/10 bg-[#ececec] p-4 shadow-inner`}
+    >
       <div className="bg-white px-3 py-4 font-mono text-[11px] leading-relaxed text-vyria-navy shadow-sm">
         <p className="text-center font-bold tracking-wide">{header}</p>
         <p className="my-2 border-t border-dashed border-vyria-navy/30" />

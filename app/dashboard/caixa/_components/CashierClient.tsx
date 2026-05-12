@@ -5,9 +5,11 @@ import { useRouter } from 'next/navigation'
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { aggregateTurnClosedOrders } from '@/lib/caixa-payments'
 import type { CaixaMovimentacaoDTO, CaixaTurnoDTO } from '@/lib/caixa-types'
+import { openCaixaTurnoEscPosPrint } from '@/lib/caixa-print-window'
 import { dashboardFetch } from '@/lib/dashboard-fetch.client'
 import type { EntregaDTO, StoreEntregadorDTO } from '@/lib/entregas-types'
 import { saldoEntregaLinha } from '@/lib/entregas-types'
+import type { PaperMm } from '@/lib/print/layout'
 import type { StoreOrderRow } from '@/lib/store-order'
 import { createClient } from '@/lib/supabase/client'
 
@@ -85,6 +87,8 @@ function movTipoLabel(t: CaixaMovimentacaoDTO['tipo']): string {
 
 export function CashierClient({
   storeId,
+  storeName,
+  printPaperMm,
   initialOrders,
   operatorLabel,
   initialTurno,
@@ -94,6 +98,8 @@ export function CashierClient({
   initialEntregasTurno = [],
 }: {
   storeId: string
+  storeName: string
+  printPaperMm: PaperMm
   initialOrders: StoreOrderRow[]
   operatorLabel: string
   initialTurno: CaixaTurnoDTO | null
@@ -759,6 +765,23 @@ export function CashierClient({
               </p>
             </div>
             <div className="flex flex-wrap justify-end gap-2 lg:flex-nowrap">
+              <button
+                type="button"
+                onClick={() => {
+                  if (!turno || !shiftBreakdown) return
+                  const ok = openCaixaTurnoEscPosPrint({
+                    storeName,
+                    paperMm: printPaperMm,
+                    turno,
+                    breakdown: shiftBreakdown,
+                    movimentacoes: movimentacoesTurnoAtual,
+                  })
+                  if (!ok) showToast('Permite pop-ups para imprimir.')
+                }}
+                className="rounded-xl border border-white/40 bg-transparent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10"
+              >
+                Imprimir turno (ESC/POS)
+              </button>
               <button
                 type="button"
                 onClick={() => {

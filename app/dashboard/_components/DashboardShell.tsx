@@ -282,6 +282,7 @@ export function DashboardShell({
     print_auto_on_confirm: false,
     print_include_customer_details: false,
     print_delivery_copy: false,
+    print_paper_mm: 80,
   },
   businessHours,
   manualClosed = false,

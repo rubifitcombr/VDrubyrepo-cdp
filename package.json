@@ -12,6 +12,7 @@
   "dependencies": {
     "@supabase/ssr": "^0.10.0",
     "@supabase/supabase-js": "^2.101.1",
+    "iconv-lite": "^0.7.2",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.7",
     "next": "16.2.2",
