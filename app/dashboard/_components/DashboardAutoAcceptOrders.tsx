@@ -25,11 +25,13 @@ function buildDisplayRefById(rows: StoreOrderRow[]): Map<string, string> {
 }
 
 /**
- * Aceita pedidos em «Pendente» quando a automação está ativa (painel aberto),
- * e dispara impressão térmica se «Impressão automática ao aceitar» estiver ligada.
- * Cobre pedidos do cardápio/slug, QR de mesa, Garçom e PDV (pendente → preparando), bem como
- * transições já feitas no servidor (checkout com aceite automático). Realtime INSERT/UPDATE +
- * mapa de estados (não depende de REPLICA IDENTITY FULL em `orders`).
+ * Aceita pedidos em «Pendente» quando a automação está ativa, e dispara impressão térmica se
+ * «Impressão automática ao aceitar» estiver ligada — com o painel em **qualquer** rota do
+ * dashboard (não só /dashboard/orders): Realtime + polling + catch-up ao voltar à aba.
+ *
+ * Cobre cardápio/slug, QR de mesa, Garçom e PDV (pendente → preparando), bem como transições
+ * feitas no servidor (checkout com aceite automático). O mapa de estados tolera ausência de
+ * `payload.old` em UPDATEs (REPLICA IDENTITY).
  */
 export function DashboardAutoAcceptOrders({
   storeId,
@@ -129,6 +131,29 @@ export function DashboardAutoAcceptOrders({
           variant: orderTicketVariantFromSource(order.source),
         })
         return
+      }
+    }
+
+    /**
+     * Garante impressão mesmo se o evento Realtime falhar ou o separador estiver em segundo plano.
+     * Compara com `lastOrderStatusRef` (alimentado pelo seed, INSERT/UPDATE e polls anteriores).
+     */
+    async function pollPrintCatchUp() {
+      if (!trackPrint || !storeId) return
+      try {
+        const rows = await fetchOrdersSnapshot()
+        const m = lastOrderStatusRef.current
+        for (const r of rows.slice(0, 400)) {
+          const id = r.id
+          const st = (r.status || '').trim() || 'pending'
+          const prev = m.get(id)
+          if (st === 'preparing' && prev !== 'preparing') {
+            void printOrderPreparing(id, undefined)
+          }
+          m.set(id, st)
+        }
+      } catch {
+        /* ignore */
       }
     }
 
@@ -232,11 +257,14 @@ export function DashboardAutoAcceptOrders({
     }
 
     void acceptPending()
+    if (trackPrint) void pollPrintCatchUp()
 
     const onVisibility = () => {
-      if (document.visibilityState === 'visible') void acceptPending()
+      if (document.visibilityState !== 'visible') return
+      void acceptPending()
+      if (trackPrint) void pollPrintCatchUp()
     }
-    if (autoAcceptOrders) {
+    if (autoAcceptOrders || trackPrint) {
       document.addEventListener('visibilitychange', onVisibility)
     }
 
@@ -292,19 +320,27 @@ export function DashboardAutoAcceptOrders({
 
     channel.subscribe()
 
-    const poll =
+    const pollAccept =
       autoAcceptOrders ?
         window.setInterval(() => {
           scheduleAccept()
         }, 22000)
       : null
 
+    const pollPrint =
+      trackPrint ?
+        window.setInterval(() => {
+          void pollPrintCatchUp()
+        }, 12000)
+      : null
+
     return () => {
-      if (autoAcceptOrders) {
+      if (autoAcceptOrders || trackPrint) {
         document.removeEventListener('visibilitychange', onVisibility)
       }
       if (debounceRef.current) clearTimeout(debounceRef.current)
-      if (poll != null) window.clearInterval(poll)
+      if (pollAccept != null) window.clearInterval(pollAccept)
+      if (pollPrint != null) window.clearInterval(pollPrint)
       void supabase.removeChannel(channel)
       orderStatusMap.clear()
     }
