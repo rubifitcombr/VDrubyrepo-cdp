@@ -14,6 +14,7 @@ import { parseAutomationsFromStore } from '@/lib/store-automations'
 import { maybeSendOrderAcceptedWhatsApp } from '@/services/order-accepted-whatsapp.server'
 import { sendWebPushNewOrder } from '@/services/web-push.server'
 import { buildWaiterNotes } from '@/lib/waiter-order-notes'
+import { buildItemsSummaryWithLineTotals } from '@/lib/print/items-summary-format'
 
 type CheckoutLine = {
   productId: string
@@ -263,7 +264,13 @@ export async function POST(req: NextRequest) {
     const orderStatus = 'pending'
     const orderSource = plan === 'START' ? 'site_start' : 'site_live'
     const total = Math.round((subtotal + deliveryCharge) * 100) / 100
-    const itemsSummary = items.map((l) => `${l.quantity}x ${l.name}`).join(', ')
+    const itemsSummary = buildItemsSummaryWithLineTotals(
+      items.map((l) => ({
+        quantity: l.quantity,
+        name: l.name,
+        unit_price: l.unitPrice,
+      }))
+    )
 
     const orderNotes =
       fulfillment === 'dine_in'

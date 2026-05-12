@@ -6,6 +6,7 @@ import { ORDER_SELECT, mapStoreOrderRow } from '@/lib/store-order'
 import { buildWaiterNotes, extractUserNotes, notesIndicateWaiterReleasedToCaixa, parseSectorFromNotes, parseTableFromNotes } from '@/lib/waiter-order-notes'
 import { getUser } from '@/services/auth.server'
 import { createClient } from '@/lib/supabase/server'
+import { buildItemsSummaryWithLineTotals } from '@/lib/print/items-summary-format'
 
 type BodyItem = {
   product_id: string
@@ -184,7 +185,7 @@ export async function PATCH(
     cleanItems.reduce((sum, line) => sum + line.unit_price * line.quantity, 0)
   )
   const total = round2(Math.max(0, gross - discountBrl))
-  const itemsSummary = cleanItems.map((i) => `${i.quantity}x ${i.name}`).join(', ')
+  const itemsSummary = buildItemsSummaryWithLineTotals(cleanItems)
 
   const userNotes =
     typeof body.notes === 'string' ? body.notes.trim() : extractUserNotes(existing.notes as string)

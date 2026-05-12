@@ -4,6 +4,10 @@ import { hasOrderPipelineAutomations } from '@/lib/plan'
 import { parseAutomationsFromStore } from '@/lib/store-automations'
 import { parsePrintingFromStore } from '@/lib/store-printing'
 import { readStorePlano } from '@/lib/store-columns'
+import {
+  isDeliveryPipelineEnabled,
+  parseOperationModeFromStore,
+} from '@/lib/merchant-operation-mode'
 import { OrdersClient } from './_components/OrdersClient'
 import { getUser } from '@/services/auth.server'
 import { getStoreOrders } from '@/services/orders.server'
@@ -59,6 +63,9 @@ export default async function OrdersPage() {
     hasOrderPipelineAutomations(plan) &&
     parseAutomationsFromStore(row).auto_accept_orders
   )
+  const deliveryPipelineEnabled = isDeliveryPipelineEnabled(
+    parseOperationModeFromStore(row)
+  )
 
   return (
     <OrdersClient
@@ -68,6 +75,7 @@ export default async function OrdersPage() {
       printing={printing}
       plan={plan}
       autoAcceptOrders={autoAcceptOrders}
+      deliveryPipelineEnabled={deliveryPipelineEnabled}
     />
   )
 }

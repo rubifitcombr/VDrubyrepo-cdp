@@ -5,6 +5,7 @@ import { menuKeysForMerchant } from '@/lib/dashboard-menu'
 import type { DashboardMenuKey } from '@/lib/dashboard-menu-types'
 import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
 import {
+  isDeliveryPipelineEnabled,
   parseOperationModeFromStore,
   type MerchantOperationMode,
 } from '@/lib/merchant-operation-mode'
@@ -49,9 +50,7 @@ export function merchantHasMenuKey(
 export function merchantHasDeliveryContext(
   store: Record<string, unknown>
 ): boolean {
-  const mode = operationModeFromStore(store)
-  if (mode === null) return true
-  return mode === 'delivery' || mode === 'hibrido'
+  return isDeliveryPipelineEnabled(parseOperationModeFromStore(store))
 }
 
 export function merchantHasInventory(

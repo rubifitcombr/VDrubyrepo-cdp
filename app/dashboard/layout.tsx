@@ -15,7 +15,10 @@ import { getDashboardNotificationCount } from '@/services/dashboard.server'
 import { getUser } from '@/services/auth.server'
 import { getStoreByUser } from '@/services/store.server'
 import { hasOrderPipelineAutomations } from '@/lib/plan'
-import { parseOperationModeFromStore } from '@/lib/merchant-operation-mode'
+import {
+  isDeliveryPipelineEnabled,
+  parseOperationModeFromStore,
+} from '@/lib/merchant-operation-mode'
 import { parseAutomationsFromStore } from '@/lib/store-automations'
 import { parsePrintingFromStore } from '@/lib/store-printing'
 import { createClient } from '@/lib/supabase/server'
@@ -114,6 +117,9 @@ export default async function DashboardLayout({
   const operationMode = storeRecord
     ? parseOperationModeFromStore(storeRecord)
     : null
+  const deliveryPipelineEnabled = storeRecord
+    ? isDeliveryPipelineEnabled(operationMode)
+    : true
 
   return (
     <DashboardShell
@@ -128,6 +134,7 @@ export default async function DashboardLayout({
       billingBlock={billingBlock}
       vyriaDualAccount={vyriaDualAccount}
       operationMode={operationMode}
+      deliveryPipelineEnabled={deliveryPipelineEnabled}
       disableAutoAccept={!!billingBlock}
       notifyOnNewOrder={
         !!(

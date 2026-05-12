@@ -5,9 +5,12 @@
  * Resumo alinhado ao produto:
  * - **Delivery:** Growth com pedidos, garçom/QR salão (autoatendimento), promoções, relatórios, aparência, automações (WhatsApp).
  *   Pro acrescenta caixa, impressão, KDS (sem PDV no menu delivery).
- * - **Presencial / Híbrido:** Growth com PDV, pedidos, promoções, relatórios, aparência e automações.
- *   Pro acrescenta garçom, caixa, impressão, KDS.
- * - **Start** (qualquer modo definido): dashboard, produtos, relatórios, configurações, assinatura.
+ * - **Presencial:** Start com PDV; Growth com PDV, garçom (QR mesa / autoatendimento), pedidos, etc.;
+ *   Pro acrescenta caixa, impressão, KDS. Sem canal online (slug público de pedidos, entregas).
+ * - **Híbrido:** Growth com PDV, pedidos, promoções, etc.; Pro com garçom, caixa, impressão, KDS
+ *   (mantém fluxo misto presencial + online).
+ * - **Start** com modo definido: em delivery/híbrido = dashboard, produtos, relatórios, configurações,
+ *   assinatura; em **presencial** inclui também o **PDV**.
  *
  * Estoque (`/dashboard/inventory`) continua a depender só de `hasFeature(plan, 'inventory')` em `dashboard-menu`.
  */
@@ -59,8 +62,44 @@ const DELIVERY_PRO: DashboardMenuKey[] = [
   'assinatura',
 ]
 
-/** Presencial/Híbrido Growth = balcão + pedidos + automações (mesmo mínimo Growth). */
-const PRESENCIAL_HIBRIDO_GROWTH: DashboardMenuKey[] = [
+/** Presencial Start = só painel + PDV (sem pedidos online no menu). */
+const PRESENCIAL_START: DashboardMenuKey[] = [...START_BASE, 'pdv']
+
+/** Presencial Growth = PDV + garçom (QR mesa desde Growth) + pedidos em loja. */
+const PRESENCIAL_GROWTH: DashboardMenuKey[] = [
+  'dashboard',
+  'produtos',
+  'pdv',
+  'garcom',
+  'pedidos',
+  'promocoes',
+  'relatorios',
+  'automacoes',
+  'configuracoes',
+  'aparencia',
+  'assinatura',
+]
+
+/** Presencial Pro = operação local completa. */
+const PRESENCIAL_PRO: DashboardMenuKey[] = [
+  'dashboard',
+  'produtos',
+  'garcom',
+  'pedidos',
+  'pdv',
+  'caixa',
+  'promocoes',
+  'relatorios',
+  'automacoes',
+  'configuracoes',
+  'aparencia',
+  'impressao',
+  'kds',
+  'assinatura',
+]
+
+/** Híbrido Growth = balcão + pedidos + automações (inclui canal online). */
+const HIBRIDO_GROWTH: DashboardMenuKey[] = [
   'dashboard',
   'produtos',
   'pdv',
@@ -73,8 +112,8 @@ const PRESENCIAL_HIBRIDO_GROWTH: DashboardMenuKey[] = [
   'assinatura',
 ]
 
-/** Presencial/Híbrido Pro = operação local completa (incl. PDV, garçom e automações). */
-const PRESENCIAL_HIBRIDO_PRO: DashboardMenuKey[] = [
+/** Híbrido Pro = operação mista completa. */
+const HIBRIDO_PRO: DashboardMenuKey[] = [
   'dashboard',
   'produtos',
   'garcom',
@@ -101,14 +140,14 @@ const MATRIX: Record<
     pro: DELIVERY_PRO,
   },
   presencial: {
-    start: START_BASE,
-    growth: PRESENCIAL_HIBRIDO_GROWTH,
-    pro: PRESENCIAL_HIBRIDO_PRO,
+    start: PRESENCIAL_START,
+    growth: PRESENCIAL_GROWTH,
+    pro: PRESENCIAL_PRO,
   },
   hibrido: {
     start: START_BASE,
-    growth: PRESENCIAL_HIBRIDO_GROWTH,
-    pro: PRESENCIAL_HIBRIDO_PRO,
+    growth: HIBRIDO_GROWTH,
+    pro: HIBRIDO_PRO,
   },
 }
 

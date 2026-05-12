@@ -6,6 +6,7 @@ import { getUser } from '@/services/auth.server'
 import { ORDER_SELECT, mapStoreOrderRow } from '@/lib/store-order'
 import { buildWaiterNotes } from '@/lib/waiter-order-notes'
 import { createClient } from '@/lib/supabase/server'
+import { buildItemsSummaryWithLineTotals } from '@/lib/print/items-summary-format'
 
 type BodyItem = {
   product_id: string
@@ -118,7 +119,7 @@ export async function POST(request: Request) {
   )
   const discountBrl = round2(Math.max(0, Number(body.discount_brl) || 0))
   const total = round2(Math.max(0, gross - discountBrl))
-  const itemsSummary = cleanItems.map((i) => `${i.quantity}x ${i.name}`).join(', ')
+  const itemsSummary = buildItemsSummaryWithLineTotals(cleanItems)
 
   const extraNotes = String(body.notes ?? '').trim()
   const notes = buildWaiterNotes(table, sector, extraNotes, discountBrl)

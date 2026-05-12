@@ -29,11 +29,13 @@ export function DashboardOperationCard({
   initialManualClosed,
   initialDeliveryFee,
   initialDeliveryFreeAbove,
+  showDeliveryFeeSection = true,
 }: {
   storeId: string
   initialManualClosed: boolean
   initialDeliveryFee: string
   initialDeliveryFreeAbove: string
+  showDeliveryFeeSection?: boolean
 }) {
   const router = useRouter()
   const [storeOpen, setStoreOpen] = useState(!initialManualClosed)
@@ -45,14 +47,22 @@ export function DashboardOperationCard({
   async function handleSave() {
     setSaving(true)
     const feeNum = parseMoney(deliveryFee)
-    if (deliveryFee.trim() !== '' && feeNum === null) {
+    if (
+      showDeliveryFeeSection &&
+      deliveryFee.trim() !== '' &&
+      feeNum === null
+    ) {
       setSaving(false)
       alert('Valor da taxa de entrega inválido.')
       return
     }
 
     const freeNum = parseMoney(freeAbove)
-    if (freeAbove.trim() !== '' && freeNum === null) {
+    if (
+      showDeliveryFeeSection &&
+      freeAbove.trim() !== '' &&
+      freeNum === null
+    ) {
       setSaving(false)
       alert('Valor «frete grátis acima de» inválido.')
       return
@@ -60,12 +70,16 @@ export function DashboardOperationCard({
 
     const patch: Record<string, unknown> = {
       manual_closed: !storeOpen,
-      delivery_fee: deliveryFee.trim() === '' ? null : feeNum,
-      delivery_free_above:
-        freeAbove.trim() === '' ? null : freeNum,
-      delivery_max_km: null,
-      store_geo_lat: null,
-      store_geo_lng: null,
+      ...(showDeliveryFeeSection
+        ? {
+            delivery_fee: deliveryFee.trim() === '' ? null : feeNum,
+            delivery_free_above:
+              freeAbove.trim() === '' ? null : freeNum,
+            delivery_max_km: null,
+            store_geo_lat: null,
+            store_geo_lng: null,
+          }
+        : {}),
     }
 
     const attemptedPatch: Record<string, unknown> = { ...patch }
@@ -135,12 +149,24 @@ export function DashboardOperationCard({
         <div>
           <p className="text-sm font-semibold text-[#1a1614]">Loja aberta</p>
           <p className="mt-0.5 text-xs text-[#6b7280]">
-            Ativa para receber pedidos no link público. O horário semanal (aberto/fechado no
-            cardápio) define-se em{' '}
-            <Link href="/dashboard/settings" className="font-medium text-[var(--dash-primary)] underline">
-              Configurações
-            </Link>
-            ; se a loja estiver fechada manualmente aqui, o cardápio fica fechado.
+            {showDeliveryFeeSection ? (
+              <>
+                Ativa para receber pedidos no link público. O horário semanal (aberto/fechado no
+                cardápio) define-se em{' '}
+                <Link href="/dashboard/settings" className="font-medium text-[var(--dash-primary)] underline">
+                  Configurações
+                </Link>
+                ; se a loja estiver fechada manualmente aqui, o cardápio fica fechado.
+              </>
+            ) : (
+              <>
+                Útil em manutenção ou pausa geral. O horário semanal em{' '}
+                <Link href="/dashboard/settings" className="font-medium text-[var(--dash-primary)] underline">
+                  Configurações
+                </Link>{' '}
+                continua a aplicar-se onde fizer sentido para o teu plano.
+              </>
+            )}
           </p>
         </div>
         <StoreOpenSwitch
@@ -150,43 +176,45 @@ export function DashboardOperationCard({
         />
       </div>
 
-      <div className="mt-6 rounded-xl border border-[var(--card-border)] bg-[#fafafa] p-4 md:p-5">
-        <h3 className="text-sm font-bold text-[#1a1614]">Taxa de entrega</h3>
-        <p className="mt-1 text-xs leading-relaxed text-[#6b7280]">
-          Valor cobrado ao cliente pela entrega. Podes oferecer frete grátis quando o subtotal
-          do pedido ultrapassa um valor.
-        </p>
+      {showDeliveryFeeSection ? (
+        <div className="mt-6 rounded-xl border border-[var(--card-border)] bg-[#fafafa] p-4 md:p-5">
+          <h3 className="text-sm font-bold text-[#1a1614]">Taxa de entrega</h3>
+          <p className="mt-1 text-xs leading-relaxed text-[#6b7280]">
+            Valor cobrado ao cliente pela entrega. Podes oferecer frete grátis quando o subtotal
+            do pedido ultrapassa um valor.
+          </p>
 
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <label className="block text-sm font-medium text-[#374151]">
-            Valor fixo (R$)
-            <input
-              className={inputClass}
-              inputMode="decimal"
-              placeholder="Ex.: 5,00"
-              value={deliveryFee}
-              onChange={(e) => setDeliveryFee(e.target.value)}
-            />
-            <span className="mt-1 block text-xs text-[#9ca3af]">
-              O que o cliente paga de entrega quando não há frete grátis.
-            </span>
-          </label>
-          <label className="block text-sm font-medium text-[#374151]">
-            Frete grátis acima de (R$)
-            <input
-              className={inputClass}
-              inputMode="decimal"
-              placeholder="Ex.: 40,00"
-              value={freeAbove}
-              onChange={(e) => setFreeAbove(e.target.value)}
-            />
-            <span className="mt-1 block text-xs text-[#9ca3af]">
-              Subtotal do pedido a partir do qual a taxa passa a zero. Vazio = sem frete grátis
-              automático.
-            </span>
-          </label>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <label className="block text-sm font-medium text-[#374151]">
+              Valor fixo (R$)
+              <input
+                className={inputClass}
+                inputMode="decimal"
+                placeholder="Ex.: 5,00"
+                value={deliveryFee}
+                onChange={(e) => setDeliveryFee(e.target.value)}
+              />
+              <span className="mt-1 block text-xs text-[#9ca3af]">
+                O que o cliente paga de entrega quando não há frete grátis.
+              </span>
+            </label>
+            <label className="block text-sm font-medium text-[#374151]">
+              Frete grátis acima de (R$)
+              <input
+                className={inputClass}
+                inputMode="decimal"
+                placeholder="Ex.: 40,00"
+                value={freeAbove}
+                onChange={(e) => setFreeAbove(e.target.value)}
+              />
+              <span className="mt-1 block text-xs text-[#9ca3af]">
+                Subtotal do pedido a partir do qual a taxa passa a zero. Vazio = sem frete grátis
+                automático.
+              </span>
+            </label>
+          </div>
         </div>
-      </div>
+      ) : null}
 
       <div className="mt-5 flex flex-wrap items-center justify-end gap-3">
         {justSaved ? (

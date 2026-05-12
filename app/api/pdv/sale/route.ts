@@ -4,6 +4,7 @@ import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
 import { getUser } from '@/services/auth.server'
 import { createClient } from '@/lib/supabase/server'
 import { getOpenCaixaTurno } from '@/services/caixa-turnos.server'
+import { buildItemsSummaryWithLineTotals } from '@/lib/print/items-summary-format'
 
 type PaymentMethod = 'cash' | 'pix' | 'card'
 
@@ -158,9 +159,7 @@ export async function POST(request: Request) {
   const disc = round2(Math.min(Math.max(0, discountBrl), gross))
   const total = round2(Math.max(0, gross - disc))
 
-  const itemsSummary = cleanItems
-    .map((i) => `${i.quantity}x ${i.name}`)
-    .join(', ')
+  const itemsSummary = buildItemsSummaryWithLineTotals(cleanItems)
 
   const customerName =
     typeof body.customerName === 'string' ? body.customerName.trim() || null : null

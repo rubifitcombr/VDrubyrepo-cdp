@@ -2,6 +2,10 @@ import { redirect } from 'next/navigation'
 import { getUser } from '@/services/auth.server'
 import { getStoreByUser } from '@/services/store.server'
 import { resolveStoreTheme } from '@/lib/store-theme'
+import {
+  isDeliveryPipelineEnabled,
+  parseOperationModeFromStore,
+} from '@/lib/merchant-operation-mode'
 import { AppearanceThemeClient } from './_components/AppearanceThemeClient'
 
 /** Sempre dados frescos da loja após guardar (evita cache de RSC). */
@@ -36,6 +40,10 @@ export default async function AppearancePage() {
   const initialSlug =
     typeof row.slug === 'string' && row.slug.trim() ? row.slug.trim() : ''
 
+  const hidePublicSlugFields = !isDeliveryPipelineEnabled(
+    parseOperationModeFromStore(row)
+  )
+
   return (
     <AppearanceThemeClient
       key={`appearance-${String(row.id)}-${rawPreset || 'none'}-${initialSlug}-${initialBanner ?? 'nobanner'}`}
@@ -44,6 +52,7 @@ export default async function AppearancePage() {
       initialPreset={resolved.id}
       initialBannerUrl={initialBanner}
       initialSlug={initialSlug}
+      hidePublicSlugFields={hidePublicSlugFields}
     />
   )
 }

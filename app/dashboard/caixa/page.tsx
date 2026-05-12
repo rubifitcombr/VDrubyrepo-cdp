@@ -13,6 +13,10 @@ import { getStoreByUser } from '@/services/store.server'
 import { listEntregadoresForStore } from '@/services/store-entregadores.server'
 import { listEntregasForTurno } from '@/services/entregas.server'
 import type { EntregaDTO, StoreEntregadorDTO } from '@/lib/entregas-types'
+import {
+  isDeliveryPipelineEnabled,
+  parseOperationModeFromStore,
+} from '@/lib/merchant-operation-mode'
 import { CashierClient } from './_components/CashierClient'
 
 export default async function CaixaPage() {
@@ -75,18 +79,24 @@ export default async function CaixaPage() {
   ]
   const movimentacoesPorTurno = await getMovimentacoesForTurnos(supabase, turnoIds)
 
+  const deliveryPipelineEnabled = isDeliveryPipelineEnabled(
+    parseOperationModeFromStore(storeRow)
+  )
+
   let entregadoresInicial: StoreEntregadorDTO[] = []
   let entregasTurnoInicial: EntregaDTO[] = []
-  try {
-    entregadoresInicial = await listEntregadoresForStore(supabase, storeId)
-  } catch {
-    entregadoresInicial = []
-  }
-  if (turnoAberto?.id) {
+  if (deliveryPipelineEnabled) {
     try {
-      entregasTurnoInicial = await listEntregasForTurno(supabase, storeId, turnoAberto.id)
+      entregadoresInicial = await listEntregadoresForStore(supabase, storeId)
     } catch {
-      entregasTurnoInicial = []
+      entregadoresInicial = []
+    }
+    if (turnoAberto?.id) {
+      try {
+        entregasTurnoInicial = await listEntregasForTurno(supabase, storeId, turnoAberto.id)
+      } catch {
+        entregasTurnoInicial = []
+      }
     }
   }
 
@@ -106,6 +116,7 @@ export default async function CaixaPage() {
       initialMovimentacoesPorTurno={movimentacoesPorTurno as Record<string, CaixaMovimentacaoDTO[]>}
       initialEntregadores={entregadoresInicial}
       initialEntregasTurno={entregasTurnoInicial}
+      deliveryPipelineEnabled={deliveryPipelineEnabled}
     />
   )
 }

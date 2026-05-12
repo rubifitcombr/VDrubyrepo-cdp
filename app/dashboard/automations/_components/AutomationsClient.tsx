@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import type { Plan } from '@/lib/plan'
@@ -135,6 +135,7 @@ export function AutomationsClient({
   storePlan,
   initial,
   initialWhatsappAutomation,
+  deliveryPipelineEnabled = true,
 }: {
   storeId: string
   storeSlug: string
@@ -145,6 +146,7 @@ export function AutomationsClient({
     message_template: string
     delay_seconds: number
   }
+  deliveryPipelineEnabled?: boolean
 }) {
   const [values, setValues] = useState<StoreAutomationsState>(initial)
   const [savingKey, setSavingKey] = useState<StoreAutomationKey | null>(null)
@@ -175,10 +177,20 @@ export function AutomationsClient({
     typeof window !== 'undefined' && window.location.origin
       ? window.location.origin
       : 'https://seudominio.com'
-  const previewLink = `${origin}/${storeSlug || 'minhaloja'}`
+  const previewLink = deliveryPipelineEnabled
+    ? `${origin}/${storeSlug || 'minhaloja'}`
+    : '(sem link de pedidos online — modo presencial)'
   const previewText = (waConfig.message_template || '').replaceAll(
     '{link}',
     previewLink
+  )
+
+  const orderAutomationRows = useMemo(
+    () =>
+      deliveryPipelineEnabled
+        ? ROWS
+        : ROWS.filter((r) => r.key !== 'auto_whatsapp_delivery'),
+    [deliveryPipelineEnabled]
   )
 
   async function toggle(key: StoreAutomationKey) {
@@ -384,7 +396,7 @@ export function AutomationsClient({
 
       {canUseOrderAutomations ? (
         <ul className="mt-8 flex flex-col gap-4">
-          {ROWS.map(({ key, title, description, Icon }) => (
+          {orderAutomationRows.map(({ key, title, description, Icon }) => (
             <li
               key={key}
               className="flex items-center gap-4 rounded-2xl border border-[var(--card-border)] bg-white p-4 shadow-sm shadow-vyria-navy-deep/[0.04] sm:gap-5 sm:p-5"

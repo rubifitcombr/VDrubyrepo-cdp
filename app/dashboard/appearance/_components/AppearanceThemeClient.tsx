@@ -19,12 +19,15 @@ export function AppearanceThemeClient({
   initialPreset,
   initialBannerUrl,
   initialSlug,
+  hidePublicSlugFields = false,
 }: {
   storeId: string
   storeName: string
   initialPreset: string | null | undefined
   initialBannerUrl?: string | null
   initialSlug: string
+  /** Modo só presencial: sem editar slug nem link público de checkout. */
+  hidePublicSlugFields?: boolean
 }) {
   const router = useRouter()
   const initial = resolveStoreTheme(initialPreset).id
@@ -65,9 +68,11 @@ export function AppearanceThemeClient({
 
   async function handleSave() {
     const nextSlug = slugifyStoreSlug(slug)
-    if (!nextSlug) {
-      setError('Indica um slug válido para o URL público (letras, números e hífens).')
-      return
+    if (!hidePublicSlugFields) {
+      if (!nextSlug) {
+        setError('Indica um slug válido para o URL público (letras, números e hífens).')
+        return
+      }
     }
 
     setError(null)
@@ -93,7 +98,7 @@ export function AppearanceThemeClient({
     }
 
     const patch: Record<string, unknown> = {
-      slug: nextSlug,
+      ...(hidePublicSlugFields ? {} : { slug: nextSlug }),
       theme_preset: selected,
       storefront_banner_url: nextBanner,
     }
@@ -132,11 +137,13 @@ export function AppearanceThemeClient({
     setBannerCommitted(nextBanner)
     setPendingFile(null)
     setBannerMarkedRemove(false)
-    setSlug(
+    const resolvedSlug =
       typeof appliedSlug === 'string' && appliedSlug.trim()
         ? appliedSlug.trim()
-        : nextSlug
-    )
+        : hidePublicSlugFields
+          ? slug
+          : nextSlug ?? ''
+    setSlug(resolvedSlug)
     router.refresh()
   }
 
@@ -160,8 +167,9 @@ export function AppearanceThemeClient({
           Aparência
         </h1>
         <p className="mt-1 text-sm text-vyria-navy-muted">
-          Personalize o tema e o banner do cardápio. Guarda as alterações para
-          atualizar o link público (slug).
+          {hidePublicSlugFields
+            ? 'Personaliza o tema e o banner usados no painel e nos fluxos em loja.'
+            : 'Personaliza o tema e o banner do cardápio. Guarda as alterações para atualizar o link público (slug).'}
         </p>
       </div>
 
@@ -174,36 +182,42 @@ export function AppearanceThemeClient({
         </p>
       ) : null}
 
-      <div className="mt-10 rounded-2xl border border-[var(--card-border)] bg-white p-6 shadow-sm">
-        <h2 className="font-brand text-lg font-bold text-vyria-navy">
-          Link público (slug)
-        </h2>
-        <p className="mt-1 text-sm text-vyria-navy-muted">
-          O endereço do teu cardápio. É guardado quando clicas em «Guardar
-          alterações».
-        </p>
-        <label className="mt-4 block text-sm font-medium text-vyria-navy">
-          Slug do URL
-          <input
-            type="text"
-            value={slug}
-            onChange={(e) => setSlug(e.target.value)}
-            className="mt-2 w-full max-w-md rounded-xl border border-[var(--card-border)] bg-[#fafafa] px-4 py-3 text-sm text-vyria-navy outline-none transition-colors focus:border-[var(--dash-primary)]/40 focus:ring-2 focus:ring-[var(--dash-primary)]/12"
-            placeholder="minha-loja"
-            autoComplete="off"
-          />
-        </label>
-        {slugifyStoreSlug(slug) ? (
-          <div className="mt-3 flex flex-wrap items-center gap-3">
-            <PublicSlugPathPill slug={slugifyStoreSlug(slug)} />
-            {publicUrl ? (
-              <span className="text-xs text-vyria-navy-muted">{publicUrl}</span>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
+      {hidePublicSlugFields ? null : (
+        <div className="mt-10 rounded-2xl border border-[var(--card-border)] bg-white p-6 shadow-sm">
+          <h2 className="font-brand text-lg font-bold text-vyria-navy">
+            Link público (slug)
+          </h2>
+          <p className="mt-1 text-sm text-vyria-navy-muted">
+            O endereço do teu cardápio. É guardado quando clicas em «Guardar
+            alterações».
+          </p>
+          <label className="mt-4 block text-sm font-medium text-vyria-navy">
+            Slug do URL
+            <input
+              type="text"
+              value={slug}
+              onChange={(e) => setSlug(e.target.value)}
+              className="mt-2 w-full max-w-md rounded-xl border border-[var(--card-border)] bg-[#fafafa] px-4 py-3 text-sm text-vyria-navy outline-none transition-colors focus:border-[var(--dash-primary)]/40 focus:ring-2 focus:ring-[var(--dash-primary)]/12"
+              placeholder="minha-loja"
+              autoComplete="off"
+            />
+          </label>
+          {slugifyStoreSlug(slug) ? (
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <PublicSlugPathPill slug={slugifyStoreSlug(slug)} />
+              {publicUrl ? (
+                <span className="text-xs text-vyria-navy-muted">{publicUrl}</span>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      )}
 
-      <div className="mt-8 rounded-2xl border border-[var(--card-border)] bg-white p-6 shadow-sm">
+      <div
+        className={`rounded-2xl border border-[var(--card-border)] bg-white p-6 shadow-sm ${
+          hidePublicSlugFields ? 'mt-10' : 'mt-8'
+        }`}
+      >
         <h2 className="font-brand text-lg font-bold text-vyria-navy">
           Banner do cardápio público
         </h2>

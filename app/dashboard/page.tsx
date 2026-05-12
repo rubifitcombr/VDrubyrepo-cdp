@@ -16,6 +16,10 @@ import {
   type DashboardRecentOrderRow,
 } from '@/services/dashboard.server'
 import { getStoreByUser } from '@/services/store.server'
+import {
+  isDeliveryPipelineEnabled,
+  parseOperationModeFromStore,
+} from '@/lib/merchant-operation-mode'
 
 const money = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
@@ -56,18 +60,21 @@ function buildDashboardAlerts(rows: DashboardProductSignalRow[]): string[] {
   return alerts
 }
 
-function orderStatusLabel(s: string | null | undefined) {
+function orderStatusLabel(
+  s: string | null | undefined,
+  deliveryPipeline: boolean
+) {
   switch (s) {
     case 'pending':
       return 'Pendente'
     case 'preparing':
       return 'A preparar'
     case 'ready':
-      return 'Pronto p/ envio'
+      return deliveryPipeline ? 'Pronto p/ envio' : 'Pronto'
     case 'delivered':
       return 'Entregue'
     case 'confirmed':
-      return 'A caminho'
+      return deliveryPipeline ? 'A caminho' : 'Em curso'
     default:
       return s?.trim() || '—'
   }
@@ -195,6 +202,9 @@ export default async function Dashboard() {
   const monthPct = ov
     ? formatPctVsPrevious(ov.monthRevenue, ov.prevMonthRevenue)
     : null
+
+  const deliveryPipeline =
+    st != null && isDeliveryPipelineEnabled(parseOperationModeFromStore(st))
 
   return (
     <div className="mx-auto w-full max-w-[1280px] space-y-6 xl:max-w-none">
@@ -364,7 +374,7 @@ export default async function Dashboard() {
                       <span
                         className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ring-1 ${statusBadgeClass(o.status)}`}
                       >
-                        {orderStatusLabel(o.status)}
+                        {orderStatusLabel(o.status, deliveryPipeline)}
                       </span>
                       <span className="shrink-0 text-sm font-bold tabular-nums text-[#1a1614]">
                         {money.format(Number(o.total) || 0)}
@@ -446,20 +456,27 @@ export default async function Dashboard() {
       )}
 
       {storeId ? (
-        <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
-          <DashboardStoreControls storeSlug={storeSlug} origin={origin} />
+        <div
+          className={`grid gap-6 lg:items-start ${
+            deliveryPipeline ? 'lg:grid-cols-2' : ''
+          }`}
+        >
+          {deliveryPipeline ? (
+            <DashboardStoreControls storeSlug={storeSlug} origin={origin} />
+          ) : null}
           <DashboardOperationCard
             key={`${storeId}-${initialManualClosed}-${deliveryFeeInitial}-${deliveryFreeAboveInitial}`}
             storeId={storeId}
             initialManualClosed={initialManualClosed}
             initialDeliveryFee={deliveryFeeInitial}
             initialDeliveryFreeAbove={deliveryFreeAboveInitial}
+            showDeliveryFeeSection={deliveryPipeline}
           />
         </div>
       ) : (
         <div className="rounded-2xl border border-dashed border-[var(--card-border)] bg-white p-5 text-sm text-[#6b7280] shadow-sm">
-          Associa uma loja à conta para veres métricas, link público e funcionamento (loja aberta e
-          taxas de entrega).
+          Associa uma loja à conta para veres métricas
+          {deliveryPipeline ? ', link público e funcionamento (loja aberta e taxas de entrega).' : ' e funcionamento da loja.'}
         </div>
       )}
     </div>

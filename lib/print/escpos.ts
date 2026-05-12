@@ -45,7 +45,7 @@ export function buildEscPosTicket(bodyTextUtf8: string): Uint8Array {
   const body = encodeCp850(
     bodyTextUtf8.endsWith('\n') ? bodyTextUtf8 : `${bodyTextUtf8}\n`
   )
-  return concatBytes(ESC_INIT, ESC_CODEPAGE_PC850, body, ESC_FEED_CUT)
+  return concatBytes(ESC_INIT, body, ESC_FEED_CUT)
 }
 
 export function uint8ToBase64(bytes: Uint8Array): string {

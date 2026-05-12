@@ -275,6 +275,7 @@ export function DashboardShell({
   billingBlock = null,
   vyriaDualAccount,
   operationMode = null,
+  deliveryPipelineEnabled = true,
   disableAutoAccept = false,
   notifyOnNewOrder = true,
   autoAcceptOrders = false,
@@ -304,6 +305,8 @@ export function DashboardShell({
   vyriaDualAccount?: { mode: VyriaPanelMode }
   /** `null` = legado: menu e rotas como antes (só plano). */
   operationMode?: MerchantOperationMode | null
+  /** Slug público / «Ver minha loja»: só delivery e híbrido. */
+  deliveryPipelineEnabled?: boolean
   disableAutoAccept?: boolean
   /** Som / notificação do browser para novo pedido (automação + plano Pro). */
   notifyOnNewOrder?: boolean
@@ -383,7 +386,7 @@ export function DashboardShell({
               currentMode={vyriaDualAccount.mode}
             />
           ) : null}
-          {storeSlug ? (
+          {deliveryPipelineEnabled && storeSlug ? (
             <a
               href={`/${storeSlug}`}
               target="_blank"
@@ -393,11 +396,11 @@ export function DashboardShell({
               <IconExternal className="h-4 w-4 shrink-0" />
               Ver minha loja
             </a>
-          ) : (
+          ) : deliveryPipelineEnabled ? (
             <p className="hidden px-1 text-center text-[11px] text-white/40 md:block">
               Cria a tua loja para veres o link público
             </p>
-          )}
+          ) : null}
           <PlansNavCta pathname={pathname} layout="sidebar" />
           {isAuthenticated ? <DashboardLogoutButton /> : null}
         </div>
@@ -537,7 +540,7 @@ export function DashboardShell({
 
             <div className="flex shrink-0 flex-col gap-2 border-t border-white/10 p-3">
               <PlansNavCta pathname={pathname} layout="drawer" />
-              {storeSlug ? (
+              {deliveryPipelineEnabled && storeSlug ? (
                 <a
                   href={`/${storeSlug}`}
                   target="_blank"
@@ -547,11 +550,11 @@ export function DashboardShell({
                   <IconExternal className="h-4 w-4 shrink-0" />
                   Ver minha loja
                 </a>
-              ) : (
+              ) : deliveryPipelineEnabled ? (
                 <span className="text-xs text-white/45">
                   Cria a tua loja para veres o link público
                 </span>
-              )}
+              ) : null}
               {isAuthenticated ? (
                 <DashboardLogoutButton size="compact" className="w-full" />
               ) : null}

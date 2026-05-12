@@ -1,6 +1,10 @@
 import { redirect } from 'next/navigation'
 import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
 import { readStorePlano } from '@/lib/store-columns'
+import {
+  isDeliveryPipelineEnabled,
+  parseOperationModeFromStore,
+} from '@/lib/merchant-operation-mode'
 import { parseAutomationsFromStore } from '@/lib/store-automations'
 import { createClient } from '@/lib/supabase/server'
 import { getUser } from '@/services/auth.server'
@@ -27,6 +31,9 @@ export default async function AutomationsPage() {
   const rawPlan = readStorePlano(row)
   const plan = effectiveDashboardPlan(user.email ?? null, rawPlan)
   const storeSlug = typeof row.slug === 'string' ? row.slug : ''
+  const deliveryPipelineEnabled = isDeliveryPipelineEnabled(
+    parseOperationModeFromStore(row)
+  )
 
   const supabase = await createClient()
   const { data: whatsappRow } = await supabase
@@ -47,6 +54,7 @@ export default async function AutomationsPage() {
           whatsappRow?.message_template || 'Olá 👋 faça seu pedido aqui: {link}',
         delay_seconds: Number(whatsappRow?.delay_seconds ?? 3),
       }}
+      deliveryPipelineEnabled={deliveryPipelineEnabled}
     />
   )
 }

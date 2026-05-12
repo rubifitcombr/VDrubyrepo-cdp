@@ -342,12 +342,14 @@ export function MenuManagerClient({
   storeId,
   storeSlug,
   plan,
+  showPublicStorefrontLink = true,
 }: {
   initialProducts: Product[]
   stockByProduct: Record<string, StockInfo>
   storeId: string
   storeSlug: string | null
   plan: Plan
+  showPublicStorefrontLink?: boolean
 }) {
   const effectivePlan = parsePlan(plan)
   const [products, setProducts] = useState<Product[]>(initialProducts)
@@ -888,7 +890,7 @@ export function MenuManagerClient({
               ) : null}
             </>
           ) : null}
-          {storeSlug ? (
+          {showPublicStorefrontLink && storeSlug ? (
             <a
               href={`/${storeSlug}`}
               target="_blank"

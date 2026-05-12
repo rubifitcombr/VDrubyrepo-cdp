@@ -30,6 +30,17 @@ export function parseOperationModeInput(
   return parseOperationModeFromStore({ operation_mode: raw })
 }
 
+/**
+ * Canal online (slug, entregas, taxa, «a caminho»): delivery e híbrido.
+ * Em **presencial** (`null` no modo = legado inclui tudo) só falso quando `presencial` explícito.
+ */
+export function isDeliveryPipelineEnabled(
+  mode: MerchantOperationMode | null
+): boolean {
+  if (mode === null) return true
+  return mode === 'delivery' || mode === 'hibrido'
+}
+
 export function operationModeLabel(mode: MerchantOperationMode): string {
   switch (mode) {
     case 'delivery':

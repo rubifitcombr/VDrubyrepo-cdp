@@ -7,11 +7,26 @@ import { useState } from 'react'
 export function DashboardStoreControls({
   storeSlug,
   origin,
+  showPublicCheckoutLink = true,
 }: {
   storeSlug: string | null
   origin: string
+  /** Slug + QR de pedido online (entrega/retirada); desligado no modo só presencial. */
+  showPublicCheckoutLink?: boolean
 }) {
   const [copied, setCopied] = useState(false)
+
+  if (!showPublicCheckoutLink) {
+    return (
+      <div className="space-y-2 rounded-xl border border-[var(--card-border)] bg-white p-4 md:p-5">
+        <p className="text-sm font-semibold text-[#1a1614]">Canal online</p>
+        <p className="text-sm text-[#6b7280]">
+          No modelo <strong>presencial</strong> não há link público de pedidos nem QR de checkout
+          online — usa PDV, autoatendimento na mesa e garçom.
+        </p>
+      </div>
+    )
+  }
 
   const publicUrl =
     storeSlug && origin

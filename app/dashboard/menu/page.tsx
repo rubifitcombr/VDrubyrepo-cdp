@@ -2,6 +2,10 @@ import Link from 'next/link'
 import { MenuManagerClient } from './_components/MenuManagerClient'
 import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
 import { readStorePlano } from '@/lib/store-columns'
+import {
+  isDeliveryPipelineEnabled,
+  parseOperationModeFromStore,
+} from '@/lib/merchant-operation-mode'
 import { getUser } from '@/services/auth.server'
 import { getProductStocksForStore } from '@/services/inventory.server'
 import { getMenuProductsForStore } from '@/services/menu.server'
@@ -62,6 +66,9 @@ export default async function MenuManagerPage() {
       ? readStorePlano(store as Record<string, unknown>)
       : undefined
   const plan = effectiveDashboardPlan(user.email ?? null, rawPlan)
+  const showPublicStorefrontLink = isDeliveryPipelineEnabled(
+    parseOperationModeFromStore(store as Record<string, unknown>)
+  )
 
   return (
     <MenuManagerClient
@@ -70,6 +77,7 @@ export default async function MenuManagerPage() {
       storeId={storeId}
       storeSlug={storeSlug}
       plan={plan}
+      showPublicStorefrontLink={showPublicStorefrontLink}
     />
   )
 }

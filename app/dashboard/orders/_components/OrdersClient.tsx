@@ -89,16 +89,16 @@ const TAB_DEF: {
   { id: 'delivered', label: 'Entregues', match: (s) => s === 'delivered' },
 ]
 
-function statusLabel(status: string | null): string {
+function statusLabel(status: string | null, deliveryPipeline: boolean): string {
   switch (status) {
     case 'pending':
       return 'Pendente'
     case 'preparing':
       return 'Preparando'
     case 'ready':
-      return 'Pronto p/ envio'
+      return deliveryPipeline ? 'Pronto p/ envio' : 'Pronto'
     case 'confirmed':
-      return 'A caminho'
+      return deliveryPipeline ? 'A caminho' : 'Em curso'
     case 'delivered':
       return 'Entregue'
     case 'cancelled':
@@ -303,6 +303,7 @@ export function OrdersClient({
   printing,
   plan,
   autoAcceptOrders,
+  deliveryPipelineEnabled = true,
 }: {
   initialOrders: StoreOrderRow[]
   storeId: string
@@ -311,6 +312,8 @@ export function OrdersClient({
   plan: Plan
   /** Igual ao painel: Pro com toggle «Aceitar pedidos automaticamente». */
   autoAcceptOrders: boolean
+  /** Slug / entregas / separador «A caminho»: só delivery e híbrido. */
+  deliveryPipelineEnabled?: boolean
 }) {
   const [orders, setOrders] = useState<StoreOrderRow[]>(initialOrders)
   const [tab, setTab] = useState<TabId>('all')
@@ -338,6 +341,14 @@ export function OrdersClient({
   const [delObs, setDelObs] = useState('')
   const [delSubmitting, setDelSubmitting] = useState(false)
   const [orderIdsComEntrega, setOrderIdsComEntrega] = useState<Set<string>>(new Set())
+
+  const tabList = useMemo(
+    () =>
+      deliveryPipelineEnabled
+        ? TAB_DEF
+        : TAB_DEF.filter((t) => t.id !== 'delivering'),
+    [deliveryPipelineEnabled]
+  )
 
   /** Growth: sempre. Pro: quando não há aceite+impressão automáticos em conjunto. */
   const showManualComandaPrint =
@@ -409,7 +420,13 @@ export function OrdersClient({
   }, [storeId])
 
   useEffect(() => {
-    if (tab !== 'delivered') return
+    if (!deliveryPipelineEnabled && tab === 'delivering') {
+      setTab('all')
+    }
+  }, [deliveryPipelineEnabled, tab])
+
+  useEffect(() => {
+    if (!deliveryPipelineEnabled || tab !== 'delivered') return
     let cancelled = false
     void (async () => {
       const res = await dashboardFetch('/api/entregas?period=7d')
@@ -422,7 +439,7 @@ export function OrdersClient({
     return () => {
       cancelled = true
     }
-  }, [tab, orders])
+  }, [tab, orders, deliveryPipelineEnabled])
 
   useEffect(() => {
     if (!deliveryModal) return
@@ -480,10 +497,10 @@ export function OrdersClient({
   }, [orders])
 
   const filtered = useMemo(() => {
-    const def = TAB_DEF.find((t) => t.id === tab)
+    const def = tabList.find((t) => t.id === tab)
     const match = def?.match ?? (() => true)
     return orders.filter((o) => match(o.status))
-  }, [orders, tab])
+  }, [orders, tab, tabList])
 
   function flashWaNotice(message: string) {
     if (waNoticeTimerRef.current) {
@@ -531,9 +548,12 @@ export function OrdersClient({
     setOrders((prev) =>
       prev.map((o) => (o.id === orderId ? { ...o, status } : o))
     )
-    if (status === 'confirmed') {
+    if (status === 'confirmed' && deliveryPipelineEnabled) {
       setTab('delivering')
       setExpandedMobileId(orderId)
+    }
+    if (status === 'delivered') {
+      setTab('delivered')
     }
     if (deliveryNotified) {
       flashWaNotice('Aviso de entrega enviado ao cliente por WhatsApp.')
@@ -758,7 +778,7 @@ export function OrdersClient({
         role="tablist"
         aria-label="Filtros de pedidos"
       >
-        {TAB_DEF.map((t) => {
+        {tabList.map((t) => {
           const selected = tab === t.id
           const c = tabCount(t.id)
           return (
@@ -858,7 +878,7 @@ export function OrdersClient({
                   <span
                     className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-wide ${statusBadgeClass(st)}`}
                   >
-                    {statusLabel(st)}
+                    {statusLabel(st, deliveryPipelineEnabled)}
                   </span>
                   <IconChevronExpand
                     className={`h-5 w-5 shrink-0 text-[#9ca3af] transition-transform duration-200 ${
@@ -994,12 +1014,19 @@ export function OrdersClient({
                         <button
                           type="button"
                           disabled={busy}
-                          onClick={() => void patchStatus(o.id, 'confirmed')}
+                          onClick={() =>
+                            void patchStatus(
+                              o.id,
+                              deliveryPipelineEnabled ? 'confirmed' : 'delivered'
+                            )
+                          }
                           className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
                         >
-                          Sair para entrega
+                          {deliveryPipelineEnabled
+                            ? 'Sair para entrega'
+                            : 'Marcar concluído'}
                         </button>
-                        {waOut ? (
+                        {deliveryPipelineEnabled && waOut ? (
                           <a
                             href={waOut}
                             target="_blank"
@@ -1036,7 +1063,10 @@ export function OrdersClient({
                         ) : null}
                       </div>
                     ) : null}
-                    {st === 'delivered' && isDeliveryFlowOrder(o) && !orderIdsComEntrega.has(o.id) ? (
+                    {st === 'delivered' &&
+                    deliveryPipelineEnabled &&
+                    isDeliveryFlowOrder(o) &&
+                    !orderIdsComEntrega.has(o.id) ? (
                       <div className="pt-2 sm:hidden">
                         <button
                           type="button"
@@ -1063,7 +1093,7 @@ export function OrdersClient({
                       <span
                         className={`hidden sm:inline-flex justify-center rounded-full px-3 py-1.5 text-center text-[10px] font-bold uppercase tracking-wide ${statusBadgeClass(st)}`}
                       >
-                        {statusLabel(st)}
+                        {statusLabel(st, deliveryPipelineEnabled)}
                       </span>
                       {st === 'pending' ? (
                         <div className="hidden w-full flex-col gap-2 sm:flex">
@@ -1102,12 +1132,19 @@ export function OrdersClient({
                           <button
                             type="button"
                             disabled={busy}
-                            onClick={() => void patchStatus(o.id, 'confirmed')}
+                            onClick={() =>
+                              void patchStatus(
+                                o.id,
+                                deliveryPipelineEnabled ? 'confirmed' : 'delivered'
+                              )
+                            }
                             className="w-full rounded-lg bg-sky-600 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
                           >
-                            Sair para entrega
+                            {deliveryPipelineEnabled
+                              ? 'Sair para entrega'
+                              : 'Marcar concluído'}
                           </button>
-                          {waOut ? (
+                          {deliveryPipelineEnabled && waOut ? (
                             <a
                               href={waOut}
                               target="_blank"
@@ -1143,7 +1180,10 @@ export function OrdersClient({
                           ) : null}
                         </div>
                       ) : null}
-                      {st === 'delivered' && isDeliveryFlowOrder(o) && !orderIdsComEntrega.has(o.id) ? (
+                      {st === 'delivered' &&
+                    deliveryPipelineEnabled &&
+                    isDeliveryFlowOrder(o) &&
+                    !orderIdsComEntrega.has(o.id) ? (
                         <div className="hidden w-full flex-col gap-2 sm:flex">
                           <button
                             type="button"
@@ -1156,7 +1196,7 @@ export function OrdersClient({
                         </div>
                       ) : null}
                       {st === 'ready' || st === 'confirmed' ? (
-                        !wa && !waOut ? (
+                        !wa && !(deliveryPipelineEnabled && waOut) ? (
                           <p className="text-center text-[10px] text-[#9ca3af] sm:px-1">
                             Sem telefone do cliente para WhatsApp
                           </p>

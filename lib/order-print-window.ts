@@ -68,7 +68,7 @@ export function orderTicketVariantFromSource(
   source: string | null | undefined
 ): OrderTicketVariant {
   const s = (source ?? '').trim().toLowerCase()
-  if (s === 'pdv') return 'balcao'
+  if (s === 'pdv' || s === 'waiter') return 'balcao'
   return 'delivery'
 }
 

@@ -7,6 +7,10 @@ import { PublicSlugPathPill } from '@/app/_components/PublicSlugPathPill'
 import { planTier, parsePlan, type Plan } from '@/lib/plan'
 import { readStorePlano } from '@/lib/store-columns'
 import { slugifyStoreSlug } from '@/lib/store-slug'
+import {
+  isDeliveryPipelineEnabled,
+  parseOperationModeFromStore,
+} from '@/lib/merchant-operation-mode'
 import { uploadStoreLogo } from '@/lib/storage-upload'
 import Image from 'next/image'
 import Link from 'next/link'
@@ -76,6 +80,7 @@ export default function SettingsPage() {
   const [locationLng, setLocationLng] = useState<number | null>(null)
   const [supportsWaiterExitPin, setSupportsWaiterExitPin] = useState(true)
   const [waiterExitPin, setWaiterExitPin] = useState('')
+  const [deliveryPipelineEnabled, setDeliveryPipelineEnabled] = useState(true)
 
   useEffect(() => {
     async function load() {
@@ -89,6 +94,9 @@ export default function SettingsPage() {
       const parsedPlan = parsePlan(readStorePlano(s))
       setStoreId(s.id as string)
       setStorePlan(parsedPlan)
+      setDeliveryPipelineEnabled(
+        isDeliveryPipelineEnabled(parseOperationModeFromStore(s))
+      )
       setSlug((s.slug as string) || '')
       setName((s.name as string) || '')
       setSupportsSubtitle('subtitle' in s)
@@ -152,14 +160,14 @@ export default function SettingsPage() {
     if (!storeId) return
     setSaving(true)
     const nextSlug = slugifyStoreSlug(slug)
-    if (!nextSlug) {
+    if (deliveryPipelineEnabled && !nextSlug) {
       setSaving(false)
       alert('Indica um slug válido para o URL público (letras, números e hífens).')
       return
     }
     const patch: Record<string, unknown> = {
       name: name.trim(),
-      slug: nextSlug,
+      ...(deliveryPipelineEnabled && nextSlug ? { slug: nextSlug } : {}),
       phone: phone.trim() || null,
     }
     if (supportsSubtitle) {
@@ -168,7 +176,10 @@ export default function SettingsPage() {
     }
 
     patch.address = address.trim() || null
-    const canPersistLocation = supportsLocationFields && hasGrowthLocation
+    const canPersistLocation =
+      deliveryPipelineEnabled &&
+      supportsLocationFields &&
+      hasGrowthLocation
     patch.location_enabled = canPersistLocation ? locationEnabled : false
     patch.location_label = canPersistLocation
       ? locationLabel.trim() || 'Nossa localização'
@@ -206,7 +217,7 @@ export default function SettingsPage() {
     const droppedFields: string[] = []
     let error: { message: string } | null = null
 
-    let effectiveSlug = nextSlug
+    let effectiveSlug = deliveryPipelineEnabled ? nextSlug ?? '' : slug
     while (true) {
       const result = await updateStore(storeId, attemptedPatch)
       if (!result.error) {
@@ -433,7 +444,11 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          <div className="mt-6 grid gap-5 sm:grid-cols-2">
+          <div
+            className={`mt-6 grid gap-5 ${
+              deliveryPipelineEnabled ? 'sm:grid-cols-2' : 'sm:grid-cols-1'
+            }`}
+          >
             <label className="block text-sm font-medium text-[#374151]">
               Nome
               <input
@@ -443,20 +458,26 @@ export default function SettingsPage() {
                 placeholder="Nome da loja"
               />
             </label>
-            <label className="block text-sm font-medium text-[#374151]">
-              Slug (URL)
-              <input
-                className={inputClass}
-                value={slug}
-                onChange={(e) => setSlug(e.target.value)}
-                placeholder="ex.: burger-house"
-              />
-              <p className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[#9ca3af]">
-                <span>Caminho público</span>
-                <PublicSlugPathPill slug={slugifyStoreSlug(slug) || 'slug'} />
-              </p>
-            </label>
-            <label className="block text-sm font-medium text-[#374151]">
+            {deliveryPipelineEnabled ? (
+              <label className="block text-sm font-medium text-[#374151]">
+                Slug (URL)
+                <input
+                  className={inputClass}
+                  value={slug}
+                  onChange={(e) => setSlug(e.target.value)}
+                  placeholder="ex.: burger-house"
+                />
+                <p className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[#9ca3af]">
+                  <span>Caminho público</span>
+                  <PublicSlugPathPill slug={slugifyStoreSlug(slug) || 'slug'} />
+                </p>
+              </label>
+            ) : null}
+            <label
+              className={`block text-sm font-medium text-[#374151] ${
+                deliveryPipelineEnabled ? '' : 'sm:col-span-1'
+              }`}
+            >
               WhatsApp
               <input
                 className={inputClass}
@@ -484,6 +505,7 @@ export default function SettingsPage() {
             ) : null}
           </label>
 
+          {deliveryPipelineEnabled ? (
           <div className="mt-5 rounded-xl border border-[var(--card-border)] bg-[#f9fafb] p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
               Link público
@@ -529,8 +551,10 @@ export default function SettingsPage() {
               qrCheckoutMode="delivery_pickup"
             />
           </div>
+          ) : null}
         </section>
 
+        {deliveryPipelineEnabled ? (
         <section className="rounded-2xl border border-[var(--card-border)] bg-white p-6 shadow-sm shadow-black/[0.04] md:p-8">
           <h2 className="text-base font-bold text-[#1a1614]">Localização da loja</h2>
           <p className="mt-1 text-sm text-[#6b7280]">
@@ -590,6 +614,7 @@ export default function SettingsPage() {
             </label>
           </div>
         </section>
+        ) : null}
 
         <section className="rounded-2xl border border-[var(--card-border)] bg-white p-6 shadow-sm shadow-black/[0.04] md:p-8">
           <h2 className="text-base font-bold text-[#1a1614]">

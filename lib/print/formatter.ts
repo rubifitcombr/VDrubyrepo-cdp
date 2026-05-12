@@ -1,5 +1,12 @@
 import { PRINT_PLACEHOLDER, sanitizePrintText, stringifySafe } from '@/lib/print/sanitize'
 
+function parseMoneySegment(raw: string): number | null {
+  const t = raw.trim().replace(/\./g, '').replace(',', '.')
+  if (!t) return null
+  const n = Number(t)
+  return Number.isFinite(n) ? Math.round(n * 100) / 100 : null
+}
+
 /**
  * Valor em BRL só com caracteres ASCII.
  * Evita NBSP (U+202F) e outros símbolos de `Intl` que viram "?" na térmica CP850.
@@ -103,27 +110,59 @@ export function wrapText(text: string, width: number): string[] {
 }
 
 /**
- * Expande `items_summary` (ex.: "1x A, 2x B") em linhas alinhadas:
- * primeira linha `N x nome`; continuação indentada.
+ * Expande `items_summary` em linhas para cupom:
+ * - Novo: `2x Item=12,50; 1x Outro=5,00` (preço = total da linha)
+ * - Legado: `1x A, 2x B` ou `x A, x B` (qty 1 implícita; sem preço à direita)
  */
 export function expandOrderItemLines(summary: string, width: number): string[] {
   const s = sanitizePrintText(stringifySafe(summary)).trim()
   if (!s) return [`${PRINT_PLACEHOLDER} (sem itens)`]
-  const segments = s
-    .split(/,(?=\s*\d+\s*x\s)/i)
+
+  const segments = (s.includes(';') ? s.split(';') : s.split(/,(?=\s*(\d+\s*)?x\s)/i))
     .map((t) => t.trim())
     .filter(Boolean)
   if (!segments.length) return wrapText(s, width)
 
   const out: string[] = []
   const indent = '  '
+  const priceColMin = 10
 
   for (const seg of segments) {
-    const m = seg.match(/^(\d+)\s*x\s*(.+)$/i)
-    if (m) {
-      const qty = m[1]!
-      const name = sanitizePrintText(m[2]!.trim())
+    const withPrice = seg.match(/^(\d+)\s*x\s*(.+?)\s*=\s*([\d.,]+)\s*$/i)
+    if (withPrice) {
+      const qty = withPrice[1]!
+      const name = sanitizePrintText(withPrice[2]!.trim())
+      const lineTotal = parseMoneySegment(withPrice[3]!)
+      const priceStr = lineTotal != null ? moneyBrl(lineTotal) : PRINT_PLACEHOLDER
       const prefix = `${qty}x `
+      const maxNameW = Math.max(6, width - prefix.length - priceColMin)
+      const nameLines = wrapText(name, maxNameW)
+      const first = (nameLines[0] || PRINT_PLACEHOLDER).trim() || PRINT_PLACEHOLDER
+      out.push(leftRight(truncate(prefix + first, width - priceColMin), priceStr, width))
+      for (let i = 1; i < nameLines.length; i++) {
+        const cont = nameLines[i]!.trim()
+        if (cont) out.push(truncate(indent + cont, width))
+      }
+      continue
+    }
+
+    const mQty = seg.match(/^(\d+)\s*x\s*(.+)$/i)
+    const mBare = seg.match(/^x\s+(.+)$/i)
+    if (mQty) {
+      const qty = mQty[1]!
+      const name = sanitizePrintText(mQty[2]!.trim())
+      const prefix = `${qty}x `
+      const maxNameW = Math.max(4, width - prefix.length)
+      const nameLines = wrapText(name, maxNameW)
+      const first = (nameLines[0] || PRINT_PLACEHOLDER).trim() || PRINT_PLACEHOLDER
+      out.push(truncate(prefix + first, width))
+      for (let i = 1; i < nameLines.length; i++) {
+        const cont = nameLines[i]!.trim()
+        if (cont) out.push(truncate(indent + cont, width))
+      }
+    } else if (mBare) {
+      const name = sanitizePrintText(mBare[1]!.trim())
+      const prefix = `1x `
       const maxNameW = Math.max(4, width - prefix.length)
       const nameLines = wrapText(name, maxNameW)
       const first = (nameLines[0] || PRINT_PLACEHOLDER).trim() || PRINT_PLACEHOLDER

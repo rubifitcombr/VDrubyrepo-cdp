@@ -96,6 +96,7 @@ export function CashierClient({
   initialMovimentacoesPorTurno,
   initialEntregadores = [],
   initialEntregasTurno = [],
+  deliveryPipelineEnabled = true,
 }: {
   storeId: string
   storeName: string
@@ -107,6 +108,7 @@ export function CashierClient({
   initialMovimentacoesPorTurno: Record<string, CaixaMovimentacaoDTO[]>
   initialEntregadores?: StoreEntregadorDTO[]
   initialEntregasTurno?: EntregaDTO[]
+  deliveryPipelineEnabled?: boolean
 }) {
   const router = useRouter()
   const [orders, setOrders] = useState(initialOrders)
@@ -211,6 +213,12 @@ export function CashierClient({
     }
   }, [storeId, router])
 
+  useEffect(() => {
+    if (!deliveryPipelineEnabled && sourceFilter === 'menu_link') {
+      setSourceFilter('all')
+    }
+  }, [deliveryPipelineEnabled, sourceFilter])
+
   const filteredOrders = useMemo(() => {
     const from = periodStart(period)
     return orders.filter((o) => {
@@ -261,6 +269,12 @@ export function CashierClient({
   const turnoId = turno?.id
 
   const reloadEntregas = useCallback(async () => {
+    if (!deliveryPipelineEnabled) {
+      setEntregasApi([])
+      setEntregasTurnoAtual([])
+      setBusyEntregas(false)
+      return
+    }
     if (entPeriod === 'turno' && !turnoId) {
       setEntregasApi([])
       setEntregasTurnoAtual([])
@@ -294,7 +308,14 @@ export function CashierClient({
     } finally {
       setBusyEntregas(false)
     }
-  }, [turnoId, entPeriod, entFilterQuick, entDriverKey, showToast])
+  }, [
+    turnoId,
+    entPeriod,
+    entFilterQuick,
+    entDriverKey,
+    showToast,
+    deliveryPipelineEnabled,
+  ])
 
   useEffect(() => {
     void reloadEntregas()
@@ -969,6 +990,7 @@ export function CashierClient({
         )}
       </section>
 
+      {deliveryPipelineEnabled ? (
       <section className="mt-8 rounded-2xl border border-[var(--card-border)] bg-white p-4 shadow-sm sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
@@ -1225,6 +1247,7 @@ export function CashierClient({
           </div>
         ) : null}
       </section>
+      ) : null}
 
       {/* BLOCO 6 — Histórico de turnos */}
       <section className="mt-8 rounded-2xl border border-[var(--card-border)] bg-white p-4 shadow-sm sm:p-6">
@@ -1377,7 +1400,10 @@ export function CashierClient({
             </button>
           ))}
           <span className="mx-1 hidden h-5 w-px bg-[var(--card-border)] sm:inline" />
-          {(['all', 'waiter', 'pdv', 'menu_link'] as const).map((id) => (
+          {(deliveryPipelineEnabled
+            ? (['all', 'waiter', 'pdv', 'menu_link'] as const)
+            : (['all', 'waiter', 'pdv'] as const)
+          ).map((id) => (
             <button
               key={id}
               type="button"
@@ -1394,8 +1420,17 @@ export function CashierClient({
         </div>
       </section>
 
-      <section className="mt-5 grid gap-4 lg:grid-cols-3">
-        {(['waiter', 'pdv', 'menu_link'] as const).map((k) => {
+      <section
+        className={
+          deliveryPipelineEnabled
+            ? 'mt-5 grid gap-4 lg:grid-cols-3'
+            : 'mt-5 grid gap-4 sm:grid-cols-2'
+        }
+      >
+        {(deliveryPipelineEnabled
+          ? (['waiter', 'pdv', 'menu_link'] as const)
+          : (['waiter', 'pdv'] as const)
+        ).map((k) => {
           const pct = totalRevenue > 0 ? Math.round((summary[k].total / totalRevenue) * 1000) / 10 : 0
           const ticket = summary[k].count > 0 ? summary[k].total / summary[k].count : 0
           return (
