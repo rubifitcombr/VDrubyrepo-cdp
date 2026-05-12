@@ -85,23 +85,49 @@ export function DashboardAutoAcceptOrders({
 
     void seedStatusMapFromServer()
 
-    async function printOrderPreparing(orderId: string) {
-      const rows = await fetchOrdersSnapshot()
-      const order = rows.find((o) => o.id === orderId)
-      if (!order || order.status !== 'preparing') return
-      const displayById = buildDisplayRefById(rows)
-      const ref =
-        displayById.get(orderId) ?? orderId.replace(/-/g, '').slice(0, 8)
-      openOrderTicketPrintDeduped(orderId, {
-        storeName,
-        order,
-        orderDisplayRef: ref,
-        printing: {
-          print_include_customer_details:
-            printing.print_include_customer_details,
-          print_delivery_copy: printing.print_delivery_copy,
-        },
-      })
+    async function printOrderPreparing(
+      orderId: string,
+      newRowHint?: Record<string, unknown>
+    ) {
+      const delaysMs = [0, 80, 200, 500, 1200, 2500]
+      for (let i = 0; i < delaysMs.length; i++) {
+        const wait = delaysMs[i]!
+        if (wait > 0) {
+          await new Promise((r) => setTimeout(r, wait))
+        }
+
+        const rows = await fetchOrdersSnapshot()
+        const fromDb = rows.find((o) => o.id === orderId)
+
+        let order: StoreOrderRow | undefined
+        if (fromDb?.status === 'preparing') {
+          order = fromDb
+        } else if (newRowHint && String(newRowHint.id ?? '') === orderId) {
+          const hinted = mapStoreOrderRow(newRowHint)
+          if (hinted.status === 'preparing') {
+            order = hinted
+          }
+        }
+
+        if (!order || order.status !== 'preparing') continue
+
+        const displayRows =
+          rows.some((r) => r.id === orderId) ? rows : [...rows, order]
+        const displayById = buildDisplayRefById(displayRows)
+        const ref =
+          displayById.get(orderId) ?? orderId.replace(/-/g, '').slice(0, 8)
+        openOrderTicketPrintDeduped(orderId, {
+          storeName,
+          order,
+          orderDisplayRef: ref,
+          printing: {
+            print_include_customer_details:
+              printing.print_include_customer_details,
+            print_delivery_copy: printing.print_delivery_copy,
+          },
+        })
+        return
+      }
     }
 
     async function acceptPending() {
@@ -173,7 +199,7 @@ export function DashboardAutoAcceptOrders({
           : 'pending'
       lastOrderStatusRef.current.set(id, status)
       if (status === 'preparing') {
-        void printOrderPreparing(id)
+        void printOrderPreparing(id, raw)
       }
     }
 
@@ -196,7 +222,7 @@ export function DashboardAutoAcceptOrders({
       const prev = oldFromPayload ?? prevFromMap
 
       if (newStatus === 'preparing' && prev !== 'preparing') {
-        void printOrderPreparing(id)
+        void printOrderPreparing(id, raw)
       }
       lastOrderStatusRef.current.set(id, newStatus || prev || 'pending')
     }
