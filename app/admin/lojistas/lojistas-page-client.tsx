@@ -434,6 +434,9 @@ export function LojistasPageClient() {
   const [busyDrawerOperationMode, setBusyDrawerOperationMode] = useState(false)
   const [drawerOperationModeDraft, setDrawerOperationModeDraft] = useState('')
   const [busyDrawerFatura, setBusyDrawerFatura] = useState(false)
+  const [ownerPwdNew, setOwnerPwdNew] = useState('')
+  const [ownerPwdConfirm, setOwnerPwdConfirm] = useState('')
+  const [busyOwnerPwd, setBusyOwnerPwd] = useState(false)
 
   useEffect(() => {
     if (!toast) return
@@ -643,6 +646,8 @@ export function LojistasPageClient() {
       setDrawerFaturas([])
       setDrawerLogs([])
       setEditingDados(false)
+      setOwnerPwdNew('')
+      setOwnerPwdConfirm('')
       return
     }
     void refreshDrawerDetail()
@@ -878,6 +883,44 @@ export function LojistasPageClient() {
       await load(true)
     } finally {
       setBusyPurge(false)
+    }
+  }
+
+  async function postOwnerPassword() {
+    if (!drawerId) return
+    if (ownerPwdNew.length < 6) {
+      setToast({ type: 'err', msg: 'A senha deve ter pelo menos 6 caracteres.' })
+      return
+    }
+    if (ownerPwdNew !== ownerPwdConfirm) {
+      setToast({ type: 'err', msg: 'As senhas não coincidem.' })
+      return
+    }
+    setBusyOwnerPwd(true)
+    try {
+      const res = await fetch(`/api/admin/lojistas/${drawerId}/owner-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ password: ownerPwdNew }),
+      })
+      const data = (await res.json()) as { error?: string; ok?: boolean }
+      if (!res.ok) {
+        setToast({
+          type: 'err',
+          msg: data.error?.trim() || `Erro ao atualizar (${res.status}).`,
+        })
+        return
+      }
+      setOwnerPwdNew('')
+      setOwnerPwdConfirm('')
+      setToast({
+        type: 'ok',
+        msg: 'Senha de acesso do titular atualizada. Informa o lojista por um canal seguro.',
+      })
+      void refreshDrawerDetail()
+    } finally {
+      setBusyOwnerPwd(false)
     }
   }
 
@@ -1760,6 +1803,47 @@ export function LojistasPageClient() {
                         </button>
                       </div>
                     )}
+                  </section>
+
+                  <section className="rounded-2xl border border-[var(--card-border)] bg-[#fafafa] p-4">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
+                      Senha de acesso (titular)
+                    </h3>
+                    <p className="mt-1 text-[11px] leading-snug text-[#9ca3af]">
+                      Define uma nova senha para a conta Supabase Auth do dono desta loja (o mesmo email
+                      indicado em «Email»). A senha anterior deixa de funcionar. Não envies a nova senha
+                      por email em claro.
+                    </p>
+                    <div className="mt-3 space-y-3">
+                      <label className="block text-sm text-[#374151]">
+                        Nova senha
+                        <input
+                          type="password"
+                          autoComplete="new-password"
+                          className="mt-1 w-full rounded-xl border border-[var(--card-border)] bg-white px-3 py-2 text-sm"
+                          value={ownerPwdNew}
+                          onChange={(e) => setOwnerPwdNew(e.target.value)}
+                        />
+                      </label>
+                      <label className="block text-sm text-[#374151]">
+                        Confirmar senha
+                        <input
+                          type="password"
+                          autoComplete="new-password"
+                          className="mt-1 w-full rounded-xl border border-[var(--card-border)] bg-white px-3 py-2 text-sm"
+                          value={ownerPwdConfirm}
+                          onChange={(e) => setOwnerPwdConfirm(e.target.value)}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        disabled={busyOwnerPwd}
+                        onClick={() => void postOwnerPassword()}
+                        className="w-full rounded-lg bg-[#1a1614] px-3 py-2.5 text-xs font-semibold text-white hover:bg-black/90 disabled:opacity-50"
+                      >
+                        {busyOwnerPwd ? 'A atualizar…' : 'Atualizar senha de acesso'}
+                      </button>
+                    </div>
                   </section>
 
                   <section className="rounded-2xl border border-[var(--card-border)] bg-[#fafafa] p-4">
