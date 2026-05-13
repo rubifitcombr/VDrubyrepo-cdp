@@ -85,17 +85,29 @@ function LoginForm() {
           </label>
 
           <div>
-            <label className="block text-sm font-medium text-vyria-navy">
-              Senha
-              <input
-                className={inputClass}
-                placeholder="••••••••"
-                type={showPassword ? 'text' : 'password'}
-                autoComplete="current-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </label>
+            <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
+              <label
+                className="block text-sm font-medium text-vyria-navy"
+                htmlFor="vyria-login-password"
+              >
+                Senha
+              </label>
+              <Link
+                href="/login/recuperar"
+                className="text-xs font-semibold text-vyria-plum hover:text-vyria-orange"
+              >
+                Esqueceste-te da senha?
+              </Link>
+            </div>
+            <input
+              id="vyria-login-password"
+              className={inputClass}
+              placeholder="••••••••"
+              type={showPassword ? 'text' : 'password'}
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
             <div className="mt-2 flex items-center gap-2">
               <input
                 id="vyria-show-password-login"

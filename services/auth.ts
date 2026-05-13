@@ -27,3 +27,24 @@ export async function signOut() {
   const supabase = createClient()
   return supabase.auth.signOut()
 }
+
+/** URL absoluta para o email de recuperação (whitelist no Supabase: Authentication → URL Configuration). */
+export function getPasswordResetRedirectUrl(): string {
+  if (typeof window === 'undefined') return ''
+  return `${window.location.origin}/login/redefinir-senha`
+}
+
+/** Envia email com link para definir nova senha (utilizador não autenticado). */
+export async function requestPasswordResetEmail(email: string) {
+  const supabase = createClient()
+  const redirectTo = getPasswordResetRedirectUrl()
+  return supabase.auth.resetPasswordForEmail(email.trim(), {
+    ...(redirectTo ? { redirectTo } : {}),
+  })
+}
+
+/** Altera a senha da sessão atual (utilizador autenticado ou fluxo PASSWORD_RECOVERY). */
+export async function updatePassword(newPassword: string) {
+  const supabase = createClient()
+  return supabase.auth.updateUser({ password: newPassword })
+}

@@ -16,7 +16,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { getUser } from '@/services/auth'
+import { getUser, updatePassword } from '@/services/auth'
 import { getStoreByUser, updateStore } from '@/services/store'
 const inputClass =
   'mt-2 w-full rounded-xl border border-[var(--card-border)] bg-white px-4 py-3 text-sm text-[#1a1614] outline-none transition-all placeholder:text-[#9ca3af] focus:border-[var(--dash-primary)]/40 focus:ring-2 focus:ring-[var(--dash-primary)]/12'
@@ -55,6 +55,14 @@ function extractCoordsFromGoogleMaps(url: string): { lat: number; lng: number } 
   return null
 }
 
+function IconLock({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+    </svg>
+  )
+}
+
 export default function SettingsPage() {
   const router = useRouter()
   const [storeId, setStoreId] = useState<string | null>(null)
@@ -81,11 +89,17 @@ export default function SettingsPage() {
   const [supportsWaiterExitPin, setSupportsWaiterExitPin] = useState(true)
   const [waiterExitPin, setWaiterExitPin] = useState('')
   const [deliveryPipelineEnabled, setDeliveryPipelineEnabled] = useState(true)
+  const [userEmail, setUserEmail] = useState<string | null>(null)
+  const [newAccountPassword, setNewAccountPassword] = useState('')
+  const [confirmAccountPassword, setConfirmAccountPassword] = useState('')
+  const [accountPassBusy, setAccountPassBusy] = useState(false)
+  const [showAccountPassword, setShowAccountPassword] = useState(false)
 
   useEffect(() => {
     async function load() {
       const user = await getUser()
       if (!user) return
+      setUserEmail(typeof user.email === 'string' ? user.email : null)
 
       const store = await getStoreByUser(user.id)
       if (!store || typeof store !== 'object') return
@@ -141,6 +155,16 @@ export default function SettingsPage() {
     load()
   }, [])
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (window.location.hash !== '#conta-senha') return
+    queueMicrotask(() => {
+      document
+        .getElementById('conta-senha')
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }, [])
+
   const publicUrl =
     typeof window !== 'undefined' && slug
       ? `${window.location.origin}/${slug}`
@@ -155,6 +179,33 @@ export default function SettingsPage() {
       ? `${window.location.origin}/${slugParaQr}?auto=1`
       : null
   const hasGrowthLocation = planTier(storePlan) >= planTier('GROWTH')
+
+  async function handleChangeAccountPassword() {
+    if (newAccountPassword.length < 6) {
+      alert('A senha deve ter pelo menos 6 caracteres.')
+      return
+    }
+    if (newAccountPassword !== confirmAccountPassword) {
+      alert('As senhas não coincidem.')
+      return
+    }
+    setAccountPassBusy(true)
+    try {
+      const { error } = await updatePassword(newAccountPassword)
+      if (error) {
+        alert(error.message)
+        return
+      }
+      setNewAccountPassword('')
+      setConfirmAccountPassword('')
+      setSavedToast(true)
+      window.setTimeout(() => setSavedToast(false), 2400)
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Erro ao alterar a senha.')
+    } finally {
+      setAccountPassBusy(false)
+    }
+  }
 
   async function handleSave() {
     if (!storeId) return
@@ -376,6 +427,68 @@ export default function SettingsPage() {
       </header>
 
       <div className="mt-8 space-y-6">
+        <section
+          id="conta-senha"
+          className="rounded-2xl border border-[var(--card-border)] bg-white p-6 shadow-sm shadow-black/[0.04] md:p-8"
+        >
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--dash-primary)]/12 text-[var(--dash-primary)]">
+              <IconLock className="h-5 w-5" />
+            </span>
+            <h2 className="text-base font-bold text-[#1a1614]">Conta e senha</h2>
+          </div>
+          <p className="mt-2 text-sm text-[#6b7280]">
+            Email da sessão:{' '}
+            <span className="font-medium text-[#1a1614]">{userEmail ?? '—'}</span>
+          </p>
+          <p className="mt-1 text-xs text-[#6b7280]">
+            Para recuperar o acesso sem sessão, usa{' '}
+            <Link href="/login/recuperar" className="font-semibold text-[var(--dash-primary)] hover:underline">
+              Esqueci-me da senha
+            </Link>{' '}
+            no ecrã de login.
+          </p>
+          <div className="mt-6 grid gap-4 sm:max-w-md">
+            <label className="block text-sm font-medium text-[#374151]">
+              Nova senha
+              <input
+                className={inputClass}
+                type={showAccountPassword ? 'text' : 'password'}
+                autoComplete="new-password"
+                value={newAccountPassword}
+                onChange={(e) => setNewAccountPassword(e.target.value)}
+              />
+            </label>
+            <label className="block text-sm font-medium text-[#374151]">
+              Confirmar nova senha
+              <input
+                className={inputClass}
+                type={showAccountPassword ? 'text' : 'password'}
+                autoComplete="new-password"
+                value={confirmAccountPassword}
+                onChange={(e) => setConfirmAccountPassword(e.target.value)}
+              />
+            </label>
+            <label className="flex cursor-pointer items-center gap-2 text-sm text-[#6b7280]">
+              <input
+                type="checkbox"
+                checked={showAccountPassword}
+                onChange={(e) => setShowAccountPassword(e.target.checked)}
+                className="h-4 w-4 rounded border-[var(--card-border)]"
+              />
+              Ver senhas
+            </label>
+            <button
+              type="button"
+              disabled={accountPassBusy}
+              onClick={() => void handleChangeAccountPassword()}
+              className="rounded-xl bg-[var(--dash-primary)] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:brightness-105 disabled:opacity-50"
+            >
+              {accountPassBusy ? 'A guardar…' : 'Alterar senha'}
+            </button>
+          </div>
+        </section>
+
         <section className="rounded-2xl border border-[var(--card-border)] bg-white p-6 shadow-sm shadow-black/[0.04] md:p-8">
           <div className="flex items-center gap-2.5">
             <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--dash-primary)]/12 text-[var(--dash-primary)]">

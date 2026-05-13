@@ -2,6 +2,12 @@
 
 App Next.js (painel + cardápio público). Variáveis de ambiente: ver `.env.example`.
 
+## Conta e senha (Supabase Auth)
+
+- **Recuperar senha:** `/login/recuperar` envia email com link; a página `/login/redefinir-senha` define a nova senha.
+- **Alterar senha com sessão:** Configurações (`/dashboard/settings`, bloco «Conta e senha») chama `updateUser({ password })`.
+- No **Supabase Dashboard** → Authentication → URL Configuration, adiciona à lista **Redirect URLs** o URL completo de `/login/redefinir-senha` (produção e `http://localhost:PORT`, conforme o deploy). Sem isto, o link do email pode falhar.
+
 ## Impressão térmica Wi-Fi (plano Pro)
 
 O painel **Impressão** (`/dashboard/printing`) guarda URL do agente local, token, IP da impressora e toggles por origem. A API `POST /api/print` gera ESC/POS e envia para o agente (`agent/`), que abre TCP **9100** na impressora.

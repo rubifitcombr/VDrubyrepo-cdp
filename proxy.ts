@@ -68,7 +68,12 @@ export async function proxy(request: NextRequest) {
   } = await supabase.auth.getUser()
 
   const p = rawPath
-  const isAuthPage = p === '/login' || p === '/register'
+  const isPasswordRedefinePage = p === '/login/redefinir-senha'
+  const isAuthPage =
+    p === '/login' ||
+    p === '/register' ||
+    p === '/login/recuperar' ||
+    isPasswordRedefinePage
   const vyriaPanelMode = parseVyriaPanelMode(
     request.cookies.get(VYRIA_PANEL_MODE_COOKIE)?.value
   )
@@ -77,7 +82,8 @@ export async function proxy(request: NextRequest) {
     isVyriaAdminPanelUser(user.id) &&
     vyriaPanelMode === 'admin'
 
-  if (isAuthPage && user) {
+  /** Com sessão normal, /login e /register redirecionam. Em recuperação de senha a sessão é temporária: a página /login/redefinir-senha tem de carregar. */
+  if (isAuthPage && user && !isPasswordRedefinePage) {
     if (vyriaInAdminMode) {
       return NextResponse.redirect(new URL('/admin', request.url))
     }

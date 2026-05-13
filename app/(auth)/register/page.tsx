@@ -219,6 +219,11 @@ export default function Register() {
                 Ver senha
               </label>
             </div>
+            <p className="mt-2 text-right text-xs">
+              <Link href="/login/recuperar" className="font-semibold text-vyria-plum hover:text-vyria-orange">
+                Já tens conta mas esqueceste-te da senha?
+              </Link>
+            </p>
           </div>
 
           <button
