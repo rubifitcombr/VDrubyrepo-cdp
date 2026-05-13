@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { MenuProductRow } from '@/lib/menu-product'
-import type { Plan } from '@/lib/plan'
+import { type Plan, hasFeature } from '@/lib/plan'
 import {
   planAllowsSalonSelfServiceQr,
   planAllowsSalonStaffGarcom,
@@ -20,6 +20,7 @@ import {
 } from '@/lib/waiter-order-notes'
 import { dashboardFetch } from '@/lib/dashboard-fetch.client'
 import { StorePublicQrPanel } from '@/app/dashboard/_components/StorePublicQrPanel'
+import { IconPrinter } from '@/app/dashboard/_components/NavIcons'
 import { updateStore } from '@/services/store'
 import { updateOrderStatus } from '@/services/orders'
 
@@ -171,6 +172,8 @@ export function WaiterClient({
   initialTables,
   stockQuantityByProductId,
   waiterExitPin,
+  printAgentUrl,
+  showThermalPrint,
 }: {
   storeId: string
   storeSlug: string
@@ -184,6 +187,8 @@ export function WaiterClient({
   initialTables: StoreTableDTO[]
   stockQuantityByProductId: Record<string, number>
   waiterExitPin: string
+  printAgentUrl: string
+  showThermalPrint: boolean
 }) {
   const [tables, setTables] = useState(initialTables)
   const [sectorsEditText, setSectorsEditText] = useState(() => initialSectors.join('\n'))
@@ -216,6 +221,7 @@ export function WaiterClient({
   const [discountInput, setDiscountInput] = useState('')
   const [saving, setSaving] = useState(false)
   const [busyOrderId, setBusyOrderId] = useState<string | null>(null)
+  const [thermalBusyOrderId, setThermalBusyOrderId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [canFullscreen, setCanFullscreen] = useState(false)
@@ -690,6 +696,45 @@ export function WaiterClient({
       return
     }
     setOpenOrders((prev) => prev.map((x) => (x.id === order.id ? { ...x, status: 'confirmed' } : x)))
+  }
+
+  async function thermalPrintOpenOrder(order: StoreOrderRow) {
+    if (!showThermalPrint) {
+      setSuccess(null)
+      setError('Impressão térmica Wi-Fi está no plano Pro.')
+      return
+    }
+    if (!printAgentUrl?.trim()) {
+      setSuccess(null)
+      setError('Configura o agente em Impressão (painel).')
+      return
+    }
+    setThermalBusyOrderId(order.id)
+    setError(null)
+    setSuccess('A imprimir na térmica…')
+    try {
+      const res = await dashboardFetch('/api/print', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store_id: storeId, order_id: order.id }),
+      })
+      const json = (await res.json().catch(() => ({}))) as {
+        error?: string
+        ok?: boolean
+      }
+      if (!res.ok || !json.ok) {
+        setSuccess(null)
+        setError(json.error || 'Erro ao imprimir.')
+        return
+      }
+      setError(null)
+      setSuccess('Impresso na térmica.')
+    } catch {
+      setSuccess(null)
+      setError('Erro de rede ao imprimir.')
+    } finally {
+      setThermalBusyOrderId(null)
+    }
   }
 
   async function submitWaiterCheckout(order: StoreOrderRow) {
@@ -1389,6 +1434,17 @@ export function WaiterClient({
                     >
                       Ver / Editar
                     </button>
+                    {showThermalPrint ? (
+                      <button
+                        type="button"
+                        disabled={thermalBusyOrderId === order.id}
+                        onClick={() => void thermalPrintOpenOrder(order)}
+                        className="inline-flex items-center justify-center gap-1 rounded-lg border border-[var(--card-border)] bg-zinc-50 py-1.5 text-xs font-semibold text-[#1a1614] hover:bg-zinc-100 disabled:opacity-50"
+                      >
+                        <IconPrinter className="h-3.5 w-3.5 text-[var(--dash-primary)]" />
+                        {thermalBusyOrderId === order.id ? '…' : 'Térmica'}
+                      </button>
+                    ) : null}
                   </div>
                 </li>
               )

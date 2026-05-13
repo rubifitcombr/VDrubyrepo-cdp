@@ -105,7 +105,7 @@ export async function POST(req: NextRequest) {
 
     const src = String((order as { source?: string }).source ?? '').trim().toLowerCase()
     const waiterToDelivered =
-      src === 'waiter' &&
+      (src === 'waiter' || src === 'autoatendimento') &&
       newStatus === 'delivered' &&
       ['pending', 'preparing', 'ready', 'confirmed'].includes(current)
 

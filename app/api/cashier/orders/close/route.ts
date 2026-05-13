@@ -4,6 +4,7 @@ import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
 import { getUser } from '@/services/auth.server'
 import { createClient } from '@/lib/supabase/server'
 import { getOpenCaixaTurno } from '@/services/caixa-turnos.server'
+import { tryAutoThermalPrint } from '@/services/thermal-print.server'
 
 type PaymentMethod = 'cash' | 'pix' | 'card'
 
@@ -64,9 +65,9 @@ export async function POST(request: Request) {
   }
 
   const src = String(order.source ?? '').trim().toLowerCase()
-  if (src !== 'pdv' && src !== 'waiter') {
+  if (src !== 'pdv' && src !== 'waiter' && src !== 'autoatendimento') {
     return NextResponse.json(
-      { error: 'Somente comandas de PDV/Garçom podem ser fechadas aqui.' },
+      { error: 'Somente comandas de PDV/Garçom/QR podem ser fechadas aqui.' },
       { status: 409 }
     )
   }
@@ -114,6 +115,12 @@ export async function POST(request: Request) {
       { status: 500 }
     )
   }
+
+  void tryAutoThermalPrint(supabase, {
+    storeId,
+    orderId,
+    orderSource: src,
+  })
 
   return NextResponse.json({
     ok: true,

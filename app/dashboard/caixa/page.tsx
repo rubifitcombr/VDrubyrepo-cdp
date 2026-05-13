@@ -17,6 +17,9 @@ import {
   isDeliveryPipelineEnabled,
   parseOperationModeFromStore,
 } from '@/lib/merchant-operation-mode'
+import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
+import { readStorePlano } from '@/lib/store-columns'
+import { hasFeature } from '@/lib/plan'
 import { CashierClient } from './_components/CashierClient'
 
 export default async function CaixaPage() {
@@ -83,6 +86,9 @@ export default async function CaixaPage() {
     parseOperationModeFromStore(storeRow)
   )
 
+  const plan = effectiveDashboardPlan(user.email, readStorePlano(storeRow))
+  const printingCfg = parsePrintingFromStore(storeRow)
+
   let entregadoresInicial: StoreEntregadorDTO[] = []
   let entregasTurnoInicial: EntregaDTO[] = []
   if (deliveryPipelineEnabled) {
@@ -117,6 +123,8 @@ export default async function CaixaPage() {
       initialEntregadores={entregadoresInicial}
       initialEntregasTurno={entregasTurnoInicial}
       deliveryPipelineEnabled={deliveryPipelineEnabled}
+      showThermalPrint={hasFeature(plan, 'printing')}
+      printAgentUrl={printingCfg.print_agent_url}
     />
   )
 }

@@ -14,6 +14,7 @@ export function paymentMethodLabel(pm: string | null | undefined): string {
 export function sourceLabel(src: string | null | undefined): string {
   const t = String(src ?? '').trim().toLowerCase()
   if (t === 'waiter') return 'Garcom'
+  if (t === 'autoatendimento') return 'QR autoatendimento'
   if (t === 'pdv') return 'Balcao / PDV'
   if (t === 'site_pickup') return 'Retirada'
   if (t === 'site_live' || t === 'site_start' || t === 'menu_link' || t === '')

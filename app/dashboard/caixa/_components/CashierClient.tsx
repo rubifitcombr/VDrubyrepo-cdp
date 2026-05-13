@@ -12,6 +12,7 @@ import { saldoEntregaLinha } from '@/lib/entregas-types'
 import type { PaperMm } from '@/lib/print/layout'
 import type { StoreOrderRow } from '@/lib/store-order'
 import { createClient } from '@/lib/supabase/client'
+import { IconPrinter } from '@/app/dashboard/_components/NavIcons'
 
 type SourceKey = 'waiter' | 'pdv' | 'menu_link'
 type PaymentDraft = 'cash' | 'pix' | 'card'
@@ -32,7 +33,7 @@ const timeOnlyFmt = new Intl.DateTimeFormat('pt-BR', {
 
 function mapSource(source: string | null | undefined): SourceKey {
   const s = (source || '').trim().toLowerCase()
-  if (s === 'waiter') return 'waiter'
+  if (s === 'waiter' || s === 'autoatendimento') return 'waiter'
   if (s === 'pdv') return 'pdv'
   return 'menu_link'
 }
@@ -97,6 +98,8 @@ export function CashierClient({
   initialEntregadores = [],
   initialEntregasTurno = [],
   deliveryPipelineEnabled = true,
+  showThermalPrint = false,
+  printAgentUrl = '',
 }: {
   storeId: string
   storeName: string
@@ -109,6 +112,8 @@ export function CashierClient({
   initialEntregadores?: StoreEntregadorDTO[]
   initialEntregasTurno?: EntregaDTO[]
   deliveryPipelineEnabled?: boolean
+  showThermalPrint?: boolean
+  printAgentUrl?: string
 }) {
   const router = useRouter()
   const [orders, setOrders] = useState(initialOrders)
@@ -120,6 +125,7 @@ export function CashierClient({
   const [openingCashInput, setOpeningCashInput] = useState('')
   const [paymentDraftByOrder, setPaymentDraftByOrder] = useState<Record<string, PaymentDraft>>({})
   const [closingOrderId, setClosingOrderId] = useState<string | null>(null)
+  const [thermalBusyOrderId, setThermalBusyOrderId] = useState<string | null>(null)
   const [cashierError, setCashierError] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const [busyOpen, setBusyOpen] = useState(false)
@@ -189,6 +195,42 @@ export function CashierClient({
     setToast(msg)
     window.setTimeout(() => setToast(null), 4500)
   }, [])
+
+  const thermalPrintOrder = useCallback(
+    async (o: StoreOrderRow) => {
+      if (!showThermalPrint) {
+        showToast('Função disponível no plano Pro.')
+        return
+      }
+      if (!printAgentUrl?.trim()) {
+        showToast('Configura o agente em Impressão.')
+        return
+      }
+      setThermalBusyOrderId(o.id)
+      showToast('A imprimir na térmica…')
+      try {
+        const res = await dashboardFetch('/api/print', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ store_id: storeId, order_id: o.id }),
+        })
+        const json = (await res.json().catch(() => ({}))) as {
+          error?: string
+          ok?: boolean
+        }
+        if (!res.ok || !json.ok) {
+          showToast(json.error || 'Erro ao imprimir.')
+          return
+        }
+        showToast('Impresso na térmica.')
+      } catch {
+        showToast('Erro de rede ao imprimir.')
+      } finally {
+        setThermalBusyOrderId(null)
+      }
+    },
+    [printAgentUrl, showThermalPrint, showToast, storeId]
+  )
 
   useEffect(() => {
     if (!storeId) return
@@ -914,7 +956,13 @@ export function CashierClient({
           <ul className="mt-4 grid gap-4 lg:grid-cols-2">
             {openComandas.map((o) => {
               const src = mapSource(o.source)
+              const rawSrc = (o.source ?? '').trim().toLowerCase()
               const badgeWaiter = src === 'waiter'
+              const badgeText = badgeWaiter
+                ? rawSrc === 'autoatendimento'
+                  ? 'QR MESA'
+                  : 'GARÇOM'
+                : 'BALCÃO'
               return (
                 <li
                   key={o.id}
@@ -928,7 +976,7 @@ export function CashierClient({
                           : 'bg-violet-100 text-violet-900 ring-1 ring-violet-200'
                       }`}
                     >
-                      {badgeWaiter ? 'GARÇOM' : 'BALCÃO'}
+                      {badgeText}
                     </span>
                     <span className="text-[11px] font-medium text-[#6b7280]">
                       {dateTime.format(new Date(o.created_at))}
@@ -953,6 +1001,18 @@ export function CashierClient({
                         </p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
+                        {showThermalPrint ? (
+                          <button
+                            type="button"
+                            disabled={thermalBusyOrderId === o.id}
+                            onClick={() => void thermalPrintOrder(o)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-[var(--card-border)] bg-white px-2 py-2 text-xs font-semibold text-[#1f2937] disabled:opacity-50"
+                            title="Impressora térmica Wi-Fi"
+                          >
+                            <IconPrinter className="h-4 w-4 text-[var(--dash-primary)]" />
+                            {thermalBusyOrderId === o.id ? '…' : 'Térmica'}
+                          </button>
+                        ) : null}
                         <select
                           value={paymentDraft(o)}
                           onChange={(e) =>

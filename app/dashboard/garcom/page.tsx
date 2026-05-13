@@ -7,7 +7,8 @@ import { getStoreByUser } from '@/services/store.server'
 import { getStoreTablesForStore } from '@/services/waiter-tables.server'
 import { getWaiterOpenOrdersForStore } from '@/services/waiter.server'
 import { readStorePlano } from '@/lib/store-columns'
-import { parsePlan, planTier } from '@/lib/plan'
+import { parsePlan, planTier, hasFeature } from '@/lib/plan'
+import { parsePrintingFromStore } from '@/lib/store-printing'
 import { effectiveSalaoAttendanceMode } from '@/lib/salao-attendance'
 import { WaiterClient } from './_components/WaiterClient'
 
@@ -65,6 +66,7 @@ export default async function GarcomPage() {
   }
   const s = store as Record<string, unknown>
   const plan = parsePlan(readStorePlano(s))
+  const printing = parsePrintingFromStore(s)
   if (planTier(plan) < planTier('GROWTH')) {
     return (
       <div className="mx-auto max-w-lg rounded-2xl border border-[var(--card-border)] bg-white p-8 text-center shadow-sm">
@@ -119,6 +121,8 @@ export default async function GarcomPage() {
       }))}
       stockQuantityByProductId={stockQuantityByProductId}
       waiterExitPin={waiterExitPin}
+      printAgentUrl={printing.print_agent_url}
+      showThermalPrint={hasFeature(plan, 'printing')}
     />
   )
 }

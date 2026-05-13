@@ -7,6 +7,7 @@ import { ORDER_SELECT, mapStoreOrderRow } from '@/lib/store-order'
 import { buildWaiterNotes } from '@/lib/waiter-order-notes'
 import { createClient } from '@/lib/supabase/server'
 import { buildItemsSummaryWithLineTotals } from '@/lib/print/items-summary-format'
+import { tryAutoThermalPrint } from '@/services/thermal-print.server'
 
 type BodyItem = {
   product_id: string
@@ -176,6 +177,12 @@ export async function POST(request: Request) {
     .select(ORDER_SELECT)
     .eq('id', orderId)
     .single()
+
+  void tryAutoThermalPrint(supabase, {
+    storeId,
+    orderId,
+    orderSource: 'waiter',
+  })
 
   if (fullErr || !full) {
     return NextResponse.json({

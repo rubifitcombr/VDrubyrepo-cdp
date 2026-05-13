@@ -61,9 +61,9 @@ export async function POST(request: Request) {
   }
 
   const src = String(order.source ?? '').trim().toLowerCase()
-  if (src !== 'waiter') {
+  if (src !== 'waiter' && src !== 'autoatendimento') {
     return NextResponse.json(
-      { error: 'Apenas comandas do Garçom podem ser fechadas aqui.' },
+      { error: 'Apenas comandas do salão (garçom ou QR) podem ser fechadas aqui.' },
       { status: 409 }
     )
   }

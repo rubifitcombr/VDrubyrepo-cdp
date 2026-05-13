@@ -18,6 +18,7 @@ import { updateOrderStatus } from '@/services/orders'
 import { dashboardFetch } from '@/lib/dashboard-fetch.client'
 import { type Plan, hasFeature } from '@/lib/plan'
 import type { StoreEntregadorDTO } from '@/lib/entregas-types'
+import { IconPrinter } from '@/app/dashboard/_components/NavIcons'
 
 function playNewOrderBeep() {
   try {
@@ -190,10 +191,17 @@ function paymentKind(
   return null
 }
 
-/** Entrega com endereço (não retirada no balcão / garçom / pickup no site). */
+/** Entrega com endereço (não retirada no balcão / garçom / pickup no site / QR mesa). */
 function isDeliveryFlowOrder(o: StoreOrderRow): boolean {
   const source = (o.source ?? '').trim().toLowerCase()
-  if (source === 'pdv' || source === 'waiter' || source === 'site_pickup') return false
+  if (
+    source === 'pdv' ||
+    source === 'waiter' ||
+    source === 'site_pickup' ||
+    source === 'autoatendimento'
+  ) {
+    return false
+  }
   const addr = (o.delivery_address ?? '').trim()
   if (!addr) return false
   if (/^retirada/i.test(addr)) return false
@@ -342,6 +350,7 @@ export function OrdersClient({
   const [delObs, setDelObs] = useState('')
   const [delSubmitting, setDelSubmitting] = useState(false)
   const [orderIdsComEntrega, setOrderIdsComEntrega] = useState<Set<string>>(new Set())
+  const [thermalBusyId, setThermalBusyId] = useState<string | null>(null)
 
   const tabList = useMemo(
     () =>
@@ -531,6 +540,41 @@ export function OrdersClient({
       flashWaNotice(
         'Permite pop-ups neste site para abrir a janela de impressão da comanda.'
       )
+    }
+  }
+
+  async function thermalPrintOrder(o: StoreOrderRow) {
+    if (!hasFeature(plan, 'printing')) {
+      flashWaNotice('Impressão térmica Wi-Fi está disponível no plano Pro.')
+      return
+    }
+    if (!printing.print_agent_url?.trim()) {
+      flashWaNotice(
+        'Configura o agente e o IP da impressora em Impressão antes de usar a térmica Wi-Fi.'
+      )
+      return
+    }
+    setThermalBusyId(o.id)
+    flashWaNotice('A imprimir na térmica…')
+    try {
+      const res = await dashboardFetch('/api/print', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store_id: storeId, order_id: o.id }),
+      })
+      const json = (await res.json().catch(() => ({}))) as {
+        error?: string
+        ok?: boolean
+      }
+      if (!res.ok || !json.ok) {
+        flashWaNotice(json.error || 'Erro ao imprimir.')
+        return
+      }
+      flashWaNotice('Impresso na térmica.')
+    } catch {
+      flashWaNotice('Erro de rede ao imprimir.')
+    } finally {
+      setThermalBusyId(null)
     }
   }
 
@@ -827,6 +871,7 @@ export function OrdersClient({
         <ul className="mt-8 flex flex-col gap-4 max-sm:gap-2">
           {filtered.map((o) => {
             const busy = busyId === o.id
+            const thermalBusy = thermalBusyId === o.id
             const st = o.status
             const ref = `#${displayNumberById.get(o.id) ?? '—'}`
             const itemsLine =
@@ -844,9 +889,10 @@ export function OrdersClient({
             const source = (o.source ?? '').trim().toLowerCase()
             const isCounterOrder = source === 'pdv'
             const isWaiterOrder = source === 'waiter'
+            const isSalaoQrOrder = source === 'autoatendimento'
             const isPickupOrder = source === 'site_pickup'
             const isDeliveryOrder =
-              !isCounterOrder && !isWaiterOrder && !isPickupOrder
+              !isCounterOrder && !isWaiterOrder && !isPickupOrder && !isSalaoQrOrder
 
             const mobileExpanded = expandedMobileId === o.id
             const customerName = o.customer_name?.trim() || 'Cliente'
@@ -911,6 +957,11 @@ export function OrdersClient({
                           Pedido balcão
                         </p>
                       ) : null}
+                      {isSalaoQrOrder ? (
+                        <p className="inline-flex w-fit items-center rounded-full bg-fuchsia-100 px-2 py-0.5 text-[11px] font-semibold text-fuchsia-900 ring-1 ring-fuchsia-200">
+                          QR autoatendimento
+                        </p>
+                      ) : null}
                       {isWaiterOrder ? (
                         <p className="inline-flex w-fit items-center rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-semibold text-violet-900 ring-1 ring-violet-200">
                           Pedido garçom
@@ -951,7 +1002,7 @@ export function OrdersClient({
                     ) : null}
 
                     {showManualComandaPrint && canPrintComandaStatus(st) ? (
-                      <div className="pt-2">
+                      <div className="flex flex-wrap gap-2 pt-2">
                         <button
                           type="button"
                           onClick={() => printComanda(o)}
@@ -959,6 +1010,18 @@ export function OrdersClient({
                         >
                           Imprimir comanda
                         </button>
+                        {hasFeature(plan, 'printing') ? (
+                          <button
+                            type="button"
+                            disabled={thermalBusy}
+                            onClick={() => void thermalPrintOrder(o)}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--card-border)] bg-white px-3 py-2 text-xs font-semibold text-[#374151] shadow-sm transition-colors hover:bg-[#fafafa] disabled:opacity-50"
+                            title="Impressora térmica Wi-Fi"
+                          >
+                            <IconPrinter className="h-4 w-4 shrink-0 text-[var(--dash-primary)]" />
+                            {thermalBusy ? '…' : 'Térmica'}
+                          </button>
+                        ) : null}
                       </div>
                     ) : null}
 

@@ -2,6 +2,19 @@
 
 App Next.js (painel + cardápio público). Variáveis de ambiente: ver `.env.example`.
 
+## Impressão térmica Wi-Fi (plano Pro)
+
+O painel **Impressão** (`/dashboard/printing`) guarda URL do agente local, token, IP da impressora e toggles por origem. A API `POST /api/print` gera ESC/POS e envia para o agente (`agent/`), que abre TCP **9100** na impressora.
+
+- **Agente na loja:** na pasta `agent/`, `npm install`, opcional `set AGENT_TOKEN=...` (Windows) ou `export AGENT_TOKEN=...`, depois `node print-agent.js` (porta **3001**, `GET /health`, `POST /print` com header `x-agent-token`). O dispositivo tem de estar na mesma Wi-Fi que a impressora.
+- **Base de dados:** aplica `supabase/migrations/20260513120000_store_thermal_print_agent.sql` para criar as colunas em `stores`.
+- **Quando imprime sozinha (toggle ativo + agente configurado):**
+  - **Delivery / link / retirada no site** — na **criação** do pedido (`POST /api/public/checkout`). Não volta a imprimir em `POST /api/orders/status` ao passar a «A caminho» (`confirmed`), para evitar cupom duplicado.
+  - **QR autoatendimento (mesa)** — na criação em `checkout` (`source: autoatendimento`).
+  - **Garçom** — ao criar em `POST /api/waiter/orders`.
+  - **PDV** — ao criar em `POST /api/pdv/sale` e ao fechar em `POST /api/cashier/orders/close` (com o mesmo toggle `print_auto_pdv` podes ter dois envios no ciclo da comanda; usa impressão manual se quiseres só um dos momentos).
+- **Impressão manual:** botão térmica em Pedidos, Caixa e Garçom chama `POST /api/print` com `order_id`.
+
 ## Planos e cobrança
 
 O plano da loja (`stores.plano`: `start` \| `growth` \| `pro`; o valor legado `master` é lido como Pro) e o estado (`stores.status`: pendente, ativo, bloqueado, cancelado) são atualizados no painel admin, na página **Assinatura** (pedido de upgrade) ou diretamente na base de dados. **Cobrança e liberação de acessos são tratadas manualmente** pela equipa — não há integração automática com gateway de pagamento no código.

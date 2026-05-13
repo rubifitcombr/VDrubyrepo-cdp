@@ -14,6 +14,7 @@ import { maybeSendOrderAcceptedWhatsApp } from '@/services/order-accepted-whatsa
 import { sendWebPushNewOrder } from '@/services/web-push.server'
 import { buildWaiterNotes } from '@/lib/waiter-order-notes'
 import { buildItemsSummaryWithLineTotals } from '@/lib/print/items-summary-format'
+import { tryAutoThermalPrint } from '@/services/thermal-print.server'
 
 type CheckoutLine = {
   productId: string
@@ -283,7 +284,7 @@ export async function POST(req: NextRequest) {
 
     const insertSource =
       fulfillment === 'dine_in'
-        ? 'waiter'
+        ? 'autoatendimento'
         : fulfillment === 'pickup'
           ? 'site_pickup'
           : orderSource
@@ -389,6 +390,12 @@ export async function POST(req: NextRequest) {
         customerName,
       })
     }
+
+    void tryAutoThermalPrint(supabase, {
+      storeId: String(storeRow.id),
+      orderId: String(order.id),
+      orderSource: insertSource,
+    })
 
     return NextResponse.json({
       ok: true,

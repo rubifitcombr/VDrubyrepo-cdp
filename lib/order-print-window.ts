@@ -96,7 +96,8 @@ export function orderTicketVariantFromSource(
   order?: Pick<StoreOrderRow, 'delivery_address' | 'delivery_fee'> | null
 ): OrderTicketVariant {
   const s = (source ?? '').trim().toLowerCase()
-  if (s === 'pdv' || s === 'waiter' || s === 'site_pickup') return 'balcao'
+  if (s === 'pdv' || s === 'waiter' || s === 'site_pickup' || s === 'autoatendimento')
+    return 'balcao'
   if (s === 'site_live' || s === 'site_start' || s === 'menu_link') {
     if (slugOrderUsesFullDeliveryTicket(order)) return 'delivery'
     return 'balcao'
