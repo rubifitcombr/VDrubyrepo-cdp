@@ -9,6 +9,12 @@ import {
 import { verificarAcessoLojista } from '@/middleware/verificarAcesso'
 import { NextResponse, type NextRequest } from 'next/server'
 
+function pathnameWithoutTrailingSlash(pathname: string) {
+  return pathname.length > 1 && pathname.endsWith('/')
+    ? pathname.slice(0, -1)
+    : pathname
+}
+
 export async function proxy(request: NextRequest) {
   const rawPath = request.nextUrl.pathname
   const host =
@@ -23,7 +29,9 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  const segments = rawPath.split('/').filter(Boolean)
+  const p = pathnameWithoutTrailingSlash(rawPath)
+
+  const segments = p.split('/').filter(Boolean)
   if (segments.length >= 1) {
     const first = segments[0]
     const firstLower = first.toLowerCase()
@@ -67,12 +75,14 @@ export async function proxy(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const p = rawPath
-  const isPasswordRedefinePage = p === '/login/redefinir-senha'
+  const isPasswordRedefinePage =
+    p === '/login/redefinir-senha' || p.startsWith('/login/redefinir-senha/')
+  const isRecuperarSenhaPage =
+    p === '/login/recuperar' || p.startsWith('/login/recuperar/')
   const isAuthPage =
     p === '/login' ||
     p === '/register' ||
-    p === '/login/recuperar' ||
+    isRecuperarSenhaPage ||
     isPasswordRedefinePage
   const vyriaPanelMode = parseVyriaPanelMode(
     request.cookies.get(VYRIA_PANEL_MODE_COOKIE)?.value
@@ -142,7 +152,7 @@ export async function proxy(request: NextRequest) {
   }
 
   /** Cardápio público /[slug]: evita CDN/browser servir 404 ou HTML antigo em mobile. */
-  const slugSegments = rawPath.split('/').filter(Boolean)
+  const slugSegments = p.split('/').filter(Boolean)
   if (
     slugSegments.length === 1 &&
     !slugSegments[0].includes('.') &&

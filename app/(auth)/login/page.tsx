@@ -85,20 +85,12 @@ function LoginForm() {
           </label>
 
           <div>
-            <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
-              <label
-                className="block text-sm font-medium text-vyria-navy"
-                htmlFor="vyria-login-password"
-              >
-                Senha
-              </label>
-              <Link
-                href="/login/recuperar"
-                className="text-xs font-semibold text-vyria-plum hover:text-vyria-orange"
-              >
-                Esqueceste-te da senha?
-              </Link>
-            </div>
+            <label
+              className="mt-1 block text-sm font-medium text-vyria-navy"
+              htmlFor="vyria-login-password"
+            >
+              Senha
+            </label>
             <input
               id="vyria-login-password"
               className={inputClass}
@@ -123,6 +115,12 @@ function LoginForm() {
                 Ver senha
               </label>
             </div>
+            <Link
+              href="/login/recuperar"
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-vyria-plum/25 bg-vyria-plum/[0.06] px-4 py-3 text-sm font-semibold text-vyria-plum transition-colors hover:border-vyria-plum/40 hover:bg-vyria-plum/10 hover:text-vyria-orange"
+            >
+              Esqueci a senha — redefinir por email
+            </Link>
           </div>
 
           <div className="rounded-xl border border-[var(--card-border)] bg-[#fafafa] px-4 py-3.5 shadow-inner shadow-black/[0.02]">
@@ -178,15 +176,26 @@ function LoginForm() {
         </div>
       ) : null}
 
-      <p className="mt-8 text-center text-sm text-vyria-navy-muted">
-        Ainda sem conta?{' '}
-        <Link
-          href="/register"
-          className="font-semibold text-vyria-plum hover:text-vyria-orange"
-        >
-          Criar conta
-        </Link>
-      </p>
+      <div className="mt-8 space-y-3 text-center text-sm text-vyria-navy-muted">
+        <p>
+          <Link
+            href="/login/recuperar"
+            className="font-semibold text-vyria-plum underline-offset-2 hover:text-vyria-orange hover:underline"
+          >
+            Redefinir senha
+          </Link>
+          <span className="text-vyria-navy-muted/60"> · </span>
+          <Link
+            href="/register"
+            className="font-semibold text-vyria-plum underline-offset-2 hover:text-vyria-orange hover:underline"
+          >
+            Criar conta
+          </Link>
+        </p>
+        <p className="text-xs leading-relaxed text-vyria-navy-muted/90">
+          Enviámos um link seguro para o teu email; o passo seguinte é definires a nova senha.
+        </p>
+      </div>
     </div>
   )
 }
