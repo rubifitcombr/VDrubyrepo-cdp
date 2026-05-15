@@ -24,23 +24,34 @@ function parseMoney(raw: string): number | null {
   return !Number.isNaN(n) && n >= 0 ? n : null
 }
 
+function parseMaxKm(raw: string): number | null {
+  const t = raw.trim().replace(',', '.')
+  if (t === '') return null
+  const n = Number(t)
+  return !Number.isNaN(n) && n > 0 ? n : null
+}
+
 export function DashboardOperationCard({
   storeId,
   initialManualClosed,
   initialDeliveryFee,
   initialDeliveryFreeAbove,
+  initialDeliveryMaxKm = '',
   showDeliveryFeeSection = true,
 }: {
   storeId: string
   initialManualClosed: boolean
   initialDeliveryFee: string
   initialDeliveryFreeAbove: string
+  /** Raio máximo de entrega (km); vazio = sem limite por distância. */
+  initialDeliveryMaxKm?: string
   showDeliveryFeeSection?: boolean
 }) {
   const router = useRouter()
   const [storeOpen, setStoreOpen] = useState(!initialManualClosed)
   const [deliveryFee, setDeliveryFee] = useState(initialDeliveryFee)
   const [freeAbove, setFreeAbove] = useState(initialDeliveryFreeAbove)
+  const [deliveryMaxKm, setDeliveryMaxKm] = useState(initialDeliveryMaxKm)
   const [saving, setSaving] = useState(false)
   const [justSaved, setJustSaved] = useState(false)
 
@@ -68,6 +79,17 @@ export function DashboardOperationCard({
       return
     }
 
+    const maxKmNum = parseMaxKm(deliveryMaxKm)
+    if (
+      showDeliveryFeeSection &&
+      deliveryMaxKm.trim() !== '' &&
+      maxKmNum === null
+    ) {
+      setSaving(false)
+      alert('Raio de entrega inválido. Indica um número em km (ex.: 5).')
+      return
+    }
+
     const patch: Record<string, unknown> = {
       manual_closed: !storeOpen,
       ...(showDeliveryFeeSection
@@ -75,9 +97,8 @@ export function DashboardOperationCard({
             delivery_fee: deliveryFee.trim() === '' ? null : feeNum,
             delivery_free_above:
               freeAbove.trim() === '' ? null : freeNum,
-            delivery_max_km: null,
-            store_geo_lat: null,
-            store_geo_lng: null,
+            delivery_max_km:
+              deliveryMaxKm.trim() === '' ? null : maxKmNum,
           }
         : {}),
     }
@@ -210,6 +231,30 @@ export function DashboardOperationCard({
               <span className="mt-1 block text-xs text-[#9ca3af]">
                 Subtotal do pedido a partir do qual a taxa passa a zero. Vazio = sem frete grátis
                 automático.
+              </span>
+            </label>
+          </div>
+
+          <div className="mt-5 border-t border-[var(--card-border)] pt-5">
+            <h3 className="text-sm font-bold text-[#1a1614]">Zona de entrega</h3>
+            <p className="mt-1 text-xs leading-relaxed text-[#6b7280]">
+              Raio máximo a partir do endereço da loja em{' '}
+              <Link href="/dashboard/settings" className="font-medium text-[var(--dash-primary)] underline">
+                Configurações
+              </Link>
+              . Vazio = sem limite por distância (apenas taxa fixa).
+            </p>
+            <label className="mt-4 block text-sm font-medium text-[#374151]">
+              Raio máximo (km)
+              <input
+                className={inputClass}
+                inputMode="decimal"
+                placeholder="Ex.: 8"
+                value={deliveryMaxKm}
+                onChange={(e) => setDeliveryMaxKm(e.target.value)}
+              />
+              <span className="mt-1 block text-xs text-[#9ca3af]">
+                Pedidos fora deste raio são recusados no checkout online.
               </span>
             </label>
           </div>

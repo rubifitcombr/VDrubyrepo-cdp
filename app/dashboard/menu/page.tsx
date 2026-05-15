@@ -10,6 +10,7 @@ import { getUser } from '@/services/auth.server'
 import { getProductStocksForStore } from '@/services/inventory.server'
 import { getMenuProductsForStore } from '@/services/menu.server'
 import { getStoreByUser } from '@/services/store.server'
+import { hasFeature } from '@/lib/plan'
 
 export default async function MenuManagerPage() {
   const user = await getUser()
@@ -56,18 +57,23 @@ export default async function MenuManagerPage() {
   const storeId = store.id as string
   const storeSlug =
     'slug' in store && store.slug ? String(store.slug) : null
+  const storeRecord = store as Record<string, unknown>
+  const rawPlan = readStorePlano(storeRecord)
+  const plan = effectiveDashboardPlan(user.email ?? null, rawPlan)
   const [initialProducts, stockMap] = await Promise.all([
     getMenuProductsForStore(storeId),
-    getProductStocksForStore(storeId),
+    hasFeature(plan, 'inventory')
+      ? getProductStocksForStore(storeId)
+      : Promise.resolve(
+          new Map<
+            string,
+            { quantity: number; lowStockAlert: number | null; updatedAt: string | null }
+          >()
+        ),
   ])
 
-  const rawPlan =
-    store && typeof store === 'object'
-      ? readStorePlano(store as Record<string, unknown>)
-      : undefined
-  const plan = effectiveDashboardPlan(user.email ?? null, rawPlan)
   const showPublicStorefrontLink = isDeliveryPipelineEnabled(
-    parseOperationModeFromStore(store as Record<string, unknown>)
+    parseOperationModeFromStore(storeRecord)
   )
 
   return (

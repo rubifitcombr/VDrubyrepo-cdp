@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import { gateMerchantMenuKey } from '@/lib/merchant-api-gate.server'
-import { denyStaffWaiterPanelWrites } from '@/lib/waiter-staff-gate.server'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
 import { getUser } from '@/services/auth.server'
 import { createClient } from '@/lib/supabase/server'
@@ -59,8 +58,7 @@ export async function PUT(request: Request) {
   const deny = gateMerchantMenuKey(gate.ctx.store, user.email, 'garcom')
   if (deny) return deny
 
-  const denyStaff = denyStaffWaiterPanelWrites(gate.ctx.store, user.email)
-  if (denyStaff) return denyStaff
+  // Mesas/setores servem também ao QR de autoatendimento (Growth+); não aplicar denyStaffWaiterPanelWrites aqui.
 
   let body: { tables?: TableInput[] }
   try {

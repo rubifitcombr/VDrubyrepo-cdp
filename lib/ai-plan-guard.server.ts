@@ -1,7 +1,11 @@
 import 'server-only'
 
 import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
-import type { Plan } from '@/lib/plan'
+import {
+  hasMarketingAiDescription,
+  hasProMarketingAi,
+  type Plan,
+} from '@/lib/plan'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
 import { readStorePlano } from '@/lib/store-columns'
 import { getUser } from '@/services/auth.server'
@@ -46,11 +50,11 @@ export async function requireMarketingAiDescriptionStore(
 ): Promise<GuardOk | GuardFail> {
   const base = await requireOwnedActiveStorePlan(storeId)
   if (!base.ok) return base
-  if (base.plan === 'START') {
+  if (!hasMarketingAiDescription(base.plan)) {
     return {
       ok: false,
       status: 403,
-      error: 'Descrição com IA disponível nos planos Growth e Pro.',
+      error: 'Descrição com IA disponível a partir do plano Growth.',
     }
   }
   return base
@@ -61,11 +65,11 @@ export async function requireProMarketingAiStore(
 ): Promise<GuardOk | GuardFail> {
   const base = await requireOwnedActiveStorePlan(storeId)
   if (!base.ok) return base
-  if (base.plan !== 'PRO') {
+  if (!hasProMarketingAi(base.plan)) {
     return {
       ok: false,
       status: 403,
-      error: 'Geração de imagem com IA disponível no plano Pro.',
+      error: 'Geração de imagem com IA disponível a partir do plano Pro.',
     }
   }
   return base

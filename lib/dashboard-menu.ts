@@ -1,6 +1,6 @@
 import type { DashboardMenuKey } from '@/lib/dashboard-menu-types'
 export type { DashboardMenuKey } from '@/lib/dashboard-menu-types'
-import { hasFeature, type Plan } from '@/lib/plan'
+import { hasFeature, merchantEntregadoresEnabled, type Plan } from '@/lib/plan'
 import type { MerchantOperationMode } from '@/lib/merchant-operation-mode'
 import { menuKeysForOperationAndPlan } from '@/lib/merchant-menu-matrix'
 
@@ -10,6 +10,13 @@ function entregadoresMenuContext(operationMode: MerchantOperationMode | null): b
   return operationMode === 'delivery' || operationMode === 'hibrido'
 }
 
+/**
+ * Menu quando `stores.operation_mode` é null (legado).
+ * **Start** inclui PDV (balcão) — alinhado a Start presencial; modos definidos em loja usam a matriz.
+ * Growth **não** inclui `garcom` (legado alinhado a operação só delivery); com modo definido em loja,
+ * `menuKeysForMerchant` usa `merchant-menu-matrix` (ex.: Growth presencial inclui Garçom).
+ * O mapa completo de garçom no painel continua exclusivo do Pro (`hasFeature(_, 'waiter')`).
+ */
 export const MENU_POR_PLANO: Record<
   'start' | 'growth' | 'pro',
   DashboardMenuKey[]
@@ -17,6 +24,7 @@ export const MENU_POR_PLANO: Record<
   start: [
     'dashboard',
     'produtos',
+    'pdv',
     'relatorios',
     'configuracoes',
     'assinatura',
@@ -89,7 +97,11 @@ export function menuKeysForMerchant(
       ? menuKeysForPlan(plan)
       : menuKeysForOperationAndPlan(plan, operationMode)
   const set = new Set(base)
-  if (set.has('pedidos') && entregadoresMenuContext(operationMode)) {
+  if (
+    merchantEntregadoresEnabled(plan) &&
+    set.has('pedidos') &&
+    entregadoresMenuContext(operationMode)
+  ) {
     set.add('entregadores')
   }
   return set

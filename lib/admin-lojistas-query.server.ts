@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { VALOR_MENSAL_PLANO } from '@/lib/admin-mrr'
+import { valorMensalPlano } from '@/lib/admin-mrr'
 import type { MerchantStatus } from '@/lib/merchant-status'
 import { parseMerchantStatus } from '@/lib/merchant-status'
 import type { Plan } from '@/lib/plan'
@@ -376,7 +376,7 @@ export async function fetchLojistasForAdmin(
   for (const r of allRows) {
     if (r.status === 'ativo') {
       metrics.ativos++
-      metrics.mrr += VALOR_MENSAL_PLANO[r.plano] ?? 0
+      metrics.mrr += valorMensalPlano(r.plano, r.operation_mode)
     } else if (r.status === 'pendente') metrics.pendentes++
     else if (r.status === 'bloqueado' || r.status === 'cancelado')
       metrics.bloqueadosCancelados++

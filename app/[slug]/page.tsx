@@ -79,6 +79,7 @@ const STORE_PUBLIC_SELECT = [
   'location_label',
   'auto_close_outside_hours',
   'salao_attendance_mode',
+  'operation_mode',
 ].join(',')
 
 /** Evita 404 em cache (CDN/PWA) para rotas dinâmicas por loja. */

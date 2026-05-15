@@ -1,4 +1,7 @@
 import Link from 'next/link'
+import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
+import { hasFeature } from '@/lib/plan'
+import { readStorePlano } from '@/lib/store-columns'
 import { getUser } from '@/services/auth.server'
 import { getPdvProductsForStore } from '@/services/pdv.server'
 import { getStoreByUser } from '@/services/store.server'
@@ -47,7 +50,16 @@ export default async function PdvPage() {
   }
 
   const storeId = store.id as string
+  const row = store as Record<string, unknown>
+  const plan = effectiveDashboardPlan(user.email, readStorePlano(row))
+  const cashierPanelEnabled = hasFeature(plan, 'cashier')
   const initialProducts = await getPdvProductsForStore(storeId)
 
-  return <PdvClient storeId={storeId} initialProducts={initialProducts} />
+  return (
+    <PdvClient
+      storeId={storeId}
+      initialProducts={initialProducts}
+      cashierPanelEnabled={cashierPanelEnabled}
+    />
+  )
 }

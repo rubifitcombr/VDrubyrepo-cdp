@@ -9,6 +9,7 @@ import type {
   ReportsAdvancedSummary,
   ReportsDashboardData,
 } from '@/lib/reports-data'
+import { slugChannelSourcesForSupabaseIn } from '@/lib/slug-channel-orders'
 import { createClient } from '@/lib/supabase/server'
 import { getPromotionSuggestionsForStore } from '@/services/promo-suggestions.server'
 
@@ -162,7 +163,7 @@ function emptyData(): ReportsDashboardData {
 
 export async function getReportsDashboardData(
   storeId: string | null,
-  options?: { advanced?: boolean }
+  options?: { advanced?: boolean; slugChannelSourcesOnly?: boolean }
 ): Promise<ReportsDashboardData> {
   if (!storeId) return emptyData()
 
@@ -170,13 +171,17 @@ export async function getReportsDashboardData(
   const lookbackDays = options?.advanced === true ? 70 : 42
   const since = new Date(Date.now() - lookbackDays * 86400000).toISOString()
 
-  const { data: ordRaw, error } = await supabase
+  let ordQ = supabase
     .from('orders')
     .select('id, created_at, total, status, payment_method')
     .eq('store_id', storeId)
     .gte('created_at', since)
     .order('created_at', { ascending: false })
     .limit(4500)
+  if (options?.slugChannelSourcesOnly) {
+    ordQ = ordQ.in('source', slugChannelSourcesForSupabaseIn())
+  }
+  const { data: ordRaw, error } = await ordQ
 
   if (error) {
     console.error('[reports] orders:', error.message)
@@ -455,7 +460,9 @@ export async function getReportsDashboardData(
   }
 
   try {
-    const sug = await getPromotionSuggestionsForStore(storeId)
+    const sug = await getPromotionSuggestionsForStore(storeId, {
+      slugChannelSourcesOnly: options?.slugChannelSourcesOnly,
+    })
     if (sug?.title) {
       recommendations.unshift(`Combo sugerido: ${sug.title} — abre Promoções e usa “Usar no assistente”.`)
     }

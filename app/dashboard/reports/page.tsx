@@ -3,6 +3,10 @@ import { ReportsDashboardClient } from './_components/ReportsDashboardClient'
 import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
 import { hasFeature } from '@/lib/plan'
 import { readStorePlano } from '@/lib/store-columns'
+import { dashboardUsesSlugChannelOrdersOnly } from '@/lib/slug-channel-orders'
+import {
+  parseOperationModeFromStore,
+} from '@/lib/merchant-operation-mode'
 import { getUser } from '@/services/auth.server'
 import { getReportsDashboardData } from '@/services/reports.server'
 import { getStoreByUser } from '@/services/store.server'
@@ -50,11 +54,17 @@ export default async function ReportsPage() {
     store && typeof store === 'object'
       ? readStorePlano(store as Record<string, unknown>)
       : undefined
+  const storeRow = store as Record<string, unknown>
   const plan = effectiveDashboardPlan(user.email ?? null, rawPlan)
   const reportsAdvanced = hasFeature(plan, 'reports_advanced')
   const canExportPdf = hasFeature(plan, 'reports')
+  const slugChannelSourcesOnly = dashboardUsesSlugChannelOrdersOnly(
+    plan,
+    parseOperationModeFromStore(storeRow)
+  )
   const data = await getReportsDashboardData(storeId, {
     advanced: reportsAdvanced,
+    slugChannelSourcesOnly,
   })
 
   return (

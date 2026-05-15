@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { slugChannelSourcesForSupabaseIn } from '@/lib/slug-channel-orders'
 import { createClient } from '@/lib/supabase/server'
 
 export type RecentOrder = {
@@ -221,14 +222,19 @@ export type DashboardOverview = {
 
 async function fetchTopProductsForStore(
   storeId: string,
-  supabase: Awaited<ReturnType<typeof createClient>>
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  slugChannelSourcesOnly?: boolean
 ): Promise<DashboardTopProductRow[]> {
   const since = new Date(Date.now() - 90 * 86400000).toISOString()
-  const { data: orderRows, error: oErr } = await supabase
+  let oq = supabase
     .from('orders')
     .select('id')
     .eq('store_id', storeId)
     .gte('created_at', since)
+  if (slugChannelSourcesOnly) {
+    oq = oq.in('source', slugChannelSourcesForSupabaseIn())
+  }
+  const { data: orderRows, error: oErr } = await oq
 
   if (oErr || !orderRows?.length) return []
 
@@ -280,14 +286,19 @@ async function fetchTopProductsForStore(
 
 /** Pedidos que precisam de atenção (badge no sino). */
 export async function getDashboardNotificationCount(
-  storeId: string
+  storeId: string,
+  options?: { slugChannelSourcesOnly?: boolean }
 ): Promise<number> {
   const supabase = await createClient()
-  const { count, error } = await supabase
+  let q = supabase
     .from('orders')
     .select('*', { count: 'exact', head: true })
     .eq('store_id', storeId)
     .in('status', ['pending', 'preparing', 'ready', 'confirmed'])
+  if (options?.slugChannelSourcesOnly) {
+    q = q.in('source', slugChannelSourcesForSupabaseIn())
+  }
+  const { count, error } = await q
 
   if (error) {
     console.error('[dashboard] notification count:', error.message)
@@ -296,8 +307,20 @@ export async function getDashboardNotificationCount(
   return count ?? 0
 }
 
+function withSlugOrderSources(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  q: any,
+  slugChannelSourcesOnly: boolean | undefined
+) {
+  if (!slugChannelSourcesOnly) return q
+  return q.in('source', slugChannelSourcesForSupabaseIn())
+}
+
 /** Pedidos de hoje (Brasília) + produtos ativos + KPIs e widgets do painel. */
-export async function getDashboardHomeData(storeId: string): Promise<{
+export async function getDashboardHomeData(
+  storeId: string,
+  options?: { slugChannelSourcesOnly?: boolean }
+): Promise<{
   todayOrders: DashboardTodayOrder[]
   activeProducts: DashboardProductSignalRow[]
   overview: DashboardOverview
@@ -307,6 +330,7 @@ export async function getDashboardHomeData(storeId: string): Promise<{
   const { startIso, endExclusiveIso } = saoPauloDayBounds(now)
   const yBounds = saoPauloDayBounds(new Date(now.getTime() - 86400000))
   const monthB = saoPauloMonthPair(now)
+  const slugF = options?.slugChannelSourcesOnly
 
   const [
     ordersRes,
@@ -320,12 +344,15 @@ export async function getDashboardHomeData(storeId: string): Promise<{
     prevMonthTotalsRes,
     recentRes,
   ] = await Promise.all([
-    supabase
-      .from('orders')
-      .select('id, created_at, total, status, customer_name')
-      .eq('store_id', storeId)
-      .gte('created_at', startIso)
-      .lt('created_at', endExclusiveIso)
+    withSlugOrderSources(
+      supabase
+        .from('orders')
+        .select('id, created_at, total, status, customer_name')
+        .eq('store_id', storeId)
+        .gte('created_at', startIso)
+        .lt('created_at', endExclusiveIso),
+      slugF
+    )
       .order('created_at', { ascending: false })
       .limit(50),
     supabase
@@ -333,51 +360,75 @@ export async function getDashboardHomeData(storeId: string): Promise<{
       .select('image_url, promotion_active, promotional_price, price')
       .eq('store_id', storeId)
       .eq('active', true),
-    supabase
-      .from('orders')
-      .select('*', { count: 'exact', head: true })
-      .eq('store_id', storeId)
-      .gte('created_at', startIso)
-      .lt('created_at', endExclusiveIso),
-    supabase
-      .from('orders')
-      .select('total')
-      .eq('store_id', storeId)
-      .gte('created_at', startIso)
-      .lt('created_at', endExclusiveIso),
-    supabase
-      .from('orders')
-      .select('*', { count: 'exact', head: true })
-      .eq('store_id', storeId)
-      .gte('created_at', yBounds.startIso)
-      .lt('created_at', yBounds.endExclusiveIso),
-    supabase
-      .from('orders')
-      .select('total')
-      .eq('store_id', storeId)
-      .gte('created_at', yBounds.startIso)
-      .lt('created_at', yBounds.endExclusiveIso),
-    supabase
-      .from('orders')
-      .select('*', { count: 'exact', head: true })
-      .eq('store_id', storeId)
-      .eq('status', 'pending'),
-    supabase
-      .from('orders')
-      .select('total')
-      .eq('store_id', storeId)
-      .gte('created_at', monthB.monthStart)
-      .lt('created_at', monthB.monthEndExclusive),
-    supabase
-      .from('orders')
-      .select('total')
-      .eq('store_id', storeId)
-      .gte('created_at', monthB.prevMonthStart)
-      .lt('created_at', monthB.prevMonthEndExclusive),
-    supabase
-      .from('orders')
-      .select('id, created_at, total, status, customer_name')
-      .eq('store_id', storeId)
+    withSlugOrderSources(
+      supabase
+        .from('orders')
+        .select('*', { count: 'exact', head: true })
+        .eq('store_id', storeId)
+        .gte('created_at', startIso)
+        .lt('created_at', endExclusiveIso),
+      slugF
+    ),
+    withSlugOrderSources(
+      supabase
+        .from('orders')
+        .select('total')
+        .eq('store_id', storeId)
+        .gte('created_at', startIso)
+        .lt('created_at', endExclusiveIso),
+      slugF
+    ),
+    withSlugOrderSources(
+      supabase
+        .from('orders')
+        .select('*', { count: 'exact', head: true })
+        .eq('store_id', storeId)
+        .gte('created_at', yBounds.startIso)
+        .lt('created_at', yBounds.endExclusiveIso),
+      slugF
+    ),
+    withSlugOrderSources(
+      supabase
+        .from('orders')
+        .select('total')
+        .eq('store_id', storeId)
+        .gte('created_at', yBounds.startIso)
+        .lt('created_at', yBounds.endExclusiveIso),
+      slugF
+    ),
+    withSlugOrderSources(
+      supabase
+        .from('orders')
+        .select('*', { count: 'exact', head: true })
+        .eq('store_id', storeId)
+        .eq('status', 'pending'),
+      slugF
+    ),
+    withSlugOrderSources(
+      supabase
+        .from('orders')
+        .select('total')
+        .eq('store_id', storeId)
+        .gte('created_at', monthB.monthStart)
+        .lt('created_at', monthB.monthEndExclusive),
+      slugF
+    ),
+    withSlugOrderSources(
+      supabase
+        .from('orders')
+        .select('total')
+        .eq('store_id', storeId)
+        .gte('created_at', monthB.prevMonthStart)
+        .lt('created_at', monthB.prevMonthEndExclusive),
+      slugF
+    ),
+    withSlugOrderSources(
+      supabase
+        .from('orders')
+        .select('id, created_at, total, status, customer_name')
+        .eq('store_id', storeId),
+      slugF
+    )
       .order('created_at', { ascending: false })
       .limit(8),
   ])
@@ -408,7 +459,11 @@ export async function getDashboardHomeData(storeId: string): Promise<{
     ? []
     : ((recentRes.data as DashboardRecentOrderRow[] | null) ?? [])
 
-  const topProducts = await fetchTopProductsForStore(storeId, supabase)
+  const topProducts = await fetchTopProductsForStore(
+    storeId,
+    supabase,
+    options?.slugChannelSourcesOnly
+  )
 
   const overview: DashboardOverview = {
     ordersToday,

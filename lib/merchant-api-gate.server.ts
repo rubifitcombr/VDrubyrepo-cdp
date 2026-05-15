@@ -9,7 +9,7 @@ import {
   parseOperationModeFromStore,
   type MerchantOperationMode,
 } from '@/lib/merchant-operation-mode'
-import { hasFeature, type Plan } from '@/lib/plan'
+import { hasFeature, merchantEntregadoresEnabled, type Plan } from '@/lib/plan'
 import { readStorePlano } from '@/lib/store-columns'
 
 // Gating alinhado ao menu comercial: `merchant-menu-matrix`, `menuKeysForMerchant`.
@@ -87,6 +87,10 @@ export function gateMerchantDeliveryPipeline(
   store: Record<string, unknown>,
   userEmail: string | null | undefined
 ): NextResponse | null {
+  const plan = effectivePlanFromStore(store, userEmail)
+  if (!merchantEntregadoresEnabled(plan)) {
+    return merchantApiForbidden('entregadores')
+  }
   const denyMenu = gateMerchantMenuKey(store, userEmail, 'pedidos')
   if (denyMenu) return denyMenu
   if (!merchantHasDeliveryContext(store)) {

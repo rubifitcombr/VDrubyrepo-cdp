@@ -7,9 +7,11 @@ import {
   beneficiosDoPlano,
   proximoPlano,
 } from '@/lib/assinatura-beneficios'
+import { operationModeLabel } from '@/lib/merchant-operation-mode'
 import {
   planContentBadgeClass,
   planMonthlyPriceLabel,
+  planMonthlyPricesCatalogLinePt,
   planShortLabel,
 } from '@/lib/plan'
 import Link from 'next/link'
@@ -98,13 +100,13 @@ export function AssinaturaClient({ model }: { model: AssinaturaPageModel }) {
   const [showAllBenefits, setShowAllBenefits] = useState(false)
 
   const subUi = subscriptionStatusPresentation(model.subscriptionStatus)
-  const lista = beneficiosDoPlano(model.plan)
+  const lista = beneficiosDoPlano(model.plan, model.operationMode)
   const visiveis = showAllBenefits ? lista : lista.slice(0, MAX_BENEFICIOS)
   const temMais = lista.length > MAX_BENEFICIOS
 
   const nextP = proximoPlano(model.plan)
   const extras =
-    nextP ? beneficiosAdicionaisProximoPlano(model.plan, nextP) : []
+    nextP ? beneficiosAdicionaisProximoPlano(model.plan, nextP, model.operationMode) : []
 
   let bannerVencimento: 'none' | 'warning' | 'expired' = 'none'
   let diasLabel = ''
@@ -137,6 +139,33 @@ export function AssinaturaClient({ model }: { model: AssinaturaPageModel }) {
         </h1>
         <p className="mt-1 text-sm text-[#6b7280]">
           Plano, benefícios e faturas da tua conta Vyria.
+          {model.operationMode === 'delivery' ? (
+            <>
+              {' '}
+              Benefícios listados para o modelo <strong>Delivery</strong> (pedidos online, link
+              público e entregas).
+            </>
+          ) : model.operationMode === 'presencial' ? (
+            <>
+              {' '}
+              Benefícios listados para o modelo <strong>{operationModeLabel('presencial')}</strong>{' '}
+              (balcão, PDV e operação no salão).
+            </>
+          ) : model.operationMode === 'hibrido' ? (
+            <>
+              {' '}
+              Benefícios listados para o modelo <strong>{operationModeLabel('hibrido')}</strong>{' '}
+              (balcão/PDV, link público, entregas e operação no salão conforme plano).
+            </>
+          ) : (
+            <>
+              {' '}
+              Benefícios listados pelo plano (modelo comercial opcional na loja).
+            </>
+          )}{' '}
+          Tabela mensal (
+          {model.operationMode === 'hibrido' ? 'Híbrido' : model.operationMode === 'delivery' ? 'Delivery' : model.operationMode === 'presencial' ? 'Presencial' : 'geral'}
+          ): <strong>{planMonthlyPricesCatalogLinePt(model.operationMode)}</strong>.
         </p>
       </header>
 
@@ -239,7 +268,7 @@ export function AssinaturaClient({ model }: { model: AssinaturaPageModel }) {
                   Próximo plano
                 </p>
                 <p className="mt-1 text-lg font-bold text-[#1a1614]">
-                  {planShortLabel(nextP)} — {planMonthlyPriceLabel(nextP)}
+                  {planShortLabel(nextP)} — {planMonthlyPriceLabel(nextP, model.operationMode)}
                 </p>
               </div>
               <span className="inline-flex rounded-full bg-[var(--dash-primary)]/12 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--dash-primary)]">

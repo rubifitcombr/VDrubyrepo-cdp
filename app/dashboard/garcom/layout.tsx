@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
+import { menuKeysForMerchant } from '@/lib/dashboard-menu'
 import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
-import { hasFeature } from '@/lib/plan'
+import { parseOperationModeFromStore } from '@/lib/merchant-operation-mode'
 import { readStorePlano } from '@/lib/store-columns'
 import { getUser } from '@/services/auth.server'
 import { getStoreByUser } from '@/services/store.server'
@@ -14,14 +15,13 @@ export default async function GarcomLayout({
   if (!user) redirect('/login')
 
   const store = await getStoreByUser(user.id)
-  const rawPlan =
-    store && typeof store === 'object'
-      ? readStorePlano(store as Record<string, unknown>)
-      : undefined
+  const row = store && typeof store === 'object' ? (store as Record<string, unknown>) : null
+  const rawPlan = row ? readStorePlano(row) : undefined
   const plan = effectiveDashboardPlan(user.email ?? null, rawPlan)
+  const operationMode = parseOperationModeFromStore(row)
 
-  if (!hasFeature(plan, 'waiter')) {
-    redirect('/dashboard/upgrade?feature=waiter')
+  if (!menuKeysForMerchant(plan, operationMode).has('garcom')) {
+    redirect('/planos?planRestricted=1')
   }
 
   return children

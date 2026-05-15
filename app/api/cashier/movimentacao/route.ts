@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { gateMerchantMenuKey } from '@/lib/merchant-api-gate.server'
+import { gateMerchantDeliveryPipeline, gateMerchantMenuKey } from '@/lib/merchant-api-gate.server'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
 import { getUser } from '@/services/auth.server'
 import {
@@ -50,6 +50,11 @@ export async function POST(request: Request) {
       { error: 'Tipo inválido (use suprimento, sangria ou acerto_entregador).' },
       { status: 400 }
     )
+  }
+
+  if (tipo === 'acerto_entregador') {
+    const deny = gateMerchantDeliveryPipeline(gate.ctx.store, user.email)
+    if (deny) return deny
   }
 
   const valor = parseMoney(body.valor)

@@ -4,6 +4,7 @@ import type { AssinaturaPageModel, BillingSubscriptionStatus } from '@/lib/billi
 import { shouldBlockDashboardAfterOverdue } from '@/lib/billing'
 import { getAdminWhatsappHref } from '@/lib/admin-whatsapp-href.server'
 import type { Plan } from '@/lib/plan'
+import { parseOperationModeFromStore } from '@/lib/merchant-operation-mode'
 import { planMonthlyPriceLabel, planShortLabel } from '@/lib/plan'
 
 export type DashboardBillingBanner = {
@@ -99,14 +100,17 @@ export async function getAssinaturaPageModel(
       ? store.plano_vence_em.trim()
       : null
 
+  const operationMode = parseOperationModeFromStore(store ?? null)
+
   return {
     plan,
     planBadgeLabel: planShortLabel(plan),
-    priceLabel: planMonthlyPriceLabel(plan),
+    priceLabel: planMonthlyPriceLabel(plan, operationMode),
     nextChargeDateLabel,
     planoVenceEm,
     subscriptionStatus: parseStatus(store?.billing_subscription_status),
     invoices: invoicesFromDb,
     whatsappHref: getAdminWhatsappHref(),
+    operationMode,
   }
 }

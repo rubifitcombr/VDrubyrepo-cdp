@@ -1,9 +1,10 @@
 import { redirect } from 'next/navigation'
+import { menuKeysForMerchant } from '@/lib/dashboard-menu'
 import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
+import { parseOperationModeFromStore } from '@/lib/merchant-operation-mode'
 import { readStorePlano } from '@/lib/store-columns'
 import { getUser } from '@/services/auth.server'
 import { getStoreByUser } from '@/services/store.server'
-import { hasFeature } from '@/lib/plan'
 
 export default async function PdvLayout({
   children,
@@ -14,13 +15,13 @@ export default async function PdvLayout({
   if (!user) redirect('/login')
 
   const store = await getStoreByUser(user.id)
-  const rawPlan =
-    store && typeof store === 'object'
-      ? readStorePlano(store as Record<string, unknown>)
-      : undefined
+  const storeRow =
+    store && typeof store === 'object' ? (store as Record<string, unknown>) : null
+  const rawPlan = storeRow ? readStorePlano(storeRow) : undefined
   const plan = effectiveDashboardPlan(user.email ?? null, rawPlan)
+  const operationMode = parseOperationModeFromStore(storeRow)
 
-  if (!hasFeature(plan, 'pdv')) {
+  if (!menuKeysForMerchant(plan, operationMode).has('pdv')) {
     redirect('/dashboard/upgrade?feature=pdv')
   }
 

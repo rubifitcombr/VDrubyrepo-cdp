@@ -189,7 +189,7 @@ export async function POST(req: NextRequest) {
     const { data: store, error: storeErr } = await fetchStoreByPublicSlug(
       supabase,
       slug,
-      'id, name, plan, plano, address, delivery_fee, delivery_free_above, delivery_max_km, store_geo_lat, store_geo_lng, auto_accept_orders, manual_closed, business_hours, auto_whatsapp_confirm, auto_notify_new_order, salao_attendance_mode'
+      'id, name, plan, plano, address, delivery_fee, delivery_free_above, delivery_max_km, store_geo_lat, store_geo_lng, auto_accept_orders, manual_closed, business_hours, auto_whatsapp_confirm, auto_notify_new_order, salao_attendance_mode, operation_mode'
     )
 
     if (storeErr || !store) {

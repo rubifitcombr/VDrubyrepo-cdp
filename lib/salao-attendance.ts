@@ -1,3 +1,5 @@
+import { menuKeysForMerchant } from '@/lib/dashboard-menu'
+import { parseOperationModeFromStore } from '@/lib/merchant-operation-mode'
 import type { Plan } from '@/lib/plan'
 import { hasFeature, planTier } from '@/lib/plan'
 
@@ -21,8 +23,8 @@ export function planAllowsSalonStaffGarcom(plan: Plan): boolean {
 }
 
 /**
- * Modo efectivo no painel Garçom.
- * Growth → sempre autoatendimento (sem mapa de garçom no painel).
+ * Modo efectivo no painel Garçom (quando a rota está disponível no menu).
+ * Growth sem mapa staff → autoatendimento no ecrã Garçom.
  * Pro → valor na loja (default `waiter` se coluna ausente).
  */
 export function effectiveSalaoAttendanceMode(
@@ -34,7 +36,7 @@ export function effectiveSalaoAttendanceMode(
   return parseSalaoAttendanceMode(stored)
 }
 
-/** Checkout público `?auto=1` só quando a loja está em autoatendimento (Pro) ou Growth. */
+/** Checkout público `?auto=1` / consumo no local: Pro em autoatendimento, ou Growth quando o menu inclui Garçom (presencial/híbrido). */
 export function publicDineInCheckoutAllowed(
   plan: Plan,
   storeRow: Record<string, unknown>
@@ -43,5 +45,7 @@ export function publicDineInCheckoutAllowed(
   if (planAllowsSalonStaffGarcom(plan)) {
     return parseSalaoAttendanceMode(storeRow.salao_attendance_mode) === 'self_service'
   }
+  const mode = parseOperationModeFromStore(storeRow)
+  if (!menuKeysForMerchant(plan, mode).has('garcom')) return false
   return true
 }

@@ -9,6 +9,9 @@ import {
 import { DashboardOperationCard } from './_components/DashboardOperationCard'
 import { DashboardStoreControls } from './_components/DashboardStoreControls'
 import { hasActivePromotion } from '@/lib/product-pricing'
+import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
+import { readStorePlano } from '@/lib/store-columns'
+import { dashboardUsesSlugChannelOrdersOnly } from '@/lib/slug-channel-orders'
 import { getUser } from '@/services/auth.server'
 import {
   getDashboardHomeData,
@@ -178,13 +181,25 @@ export default async function Dashboard() {
 
   const deliveryFeeInitial = moneyInput(st?.delivery_fee)
   const deliveryFreeAboveInitial = moneyInput(st?.delivery_free_above)
+  const deliveryMaxKmInitial = moneyInput(st?.delivery_max_km)
 
   const h = await headers()
   const host = h.get('x-forwarded-host') ?? h.get('host') ?? ''
   const proto = h.get('x-forwarded-proto') ?? 'http'
   const origin = host ? `${proto}://${host}` : ''
 
-  const homeData = storeId ? await getDashboardHomeData(storeId) : null
+  const slugChannelSourcesOnly =
+    st != null &&
+    dashboardUsesSlugChannelOrdersOnly(
+      effectiveDashboardPlan(user.email ?? null, readStorePlano(st)),
+      parseOperationModeFromStore(st)
+    )
+
+  const homeData = storeId
+    ? await getDashboardHomeData(storeId, {
+        slugChannelSourcesOnly,
+      })
+    : null
   const alerts = homeData ? buildDashboardAlerts(homeData.activeProducts) : []
   const ov = homeData?.overview
 
@@ -465,11 +480,12 @@ export default async function Dashboard() {
             <DashboardStoreControls storeSlug={storeSlug} origin={origin} />
           ) : null}
           <DashboardOperationCard
-            key={`${storeId}-${initialManualClosed}-${deliveryFeeInitial}-${deliveryFreeAboveInitial}`}
+            key={`${storeId}-${initialManualClosed}-${deliveryFeeInitial}-${deliveryFreeAboveInitial}-${deliveryMaxKmInitial}`}
             storeId={storeId}
             initialManualClosed={initialManualClosed}
             initialDeliveryFee={deliveryFeeInitial}
             initialDeliveryFreeAbove={deliveryFreeAboveInitial}
+            initialDeliveryMaxKm={deliveryMaxKmInitial}
             showDeliveryFeeSection={deliveryPipeline}
           />
         </div>

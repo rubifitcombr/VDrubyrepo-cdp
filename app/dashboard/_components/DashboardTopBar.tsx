@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react'
 import type { Plan } from '@/lib/plan'
 import { planTitle } from '@/lib/plan'
 import { createClient } from '@/lib/supabase/client'
+import { slugChannelSourcesForSupabaseIn } from '@/lib/slug-channel-orders'
 import { IconBell, IconSearch } from './NavIcons'
 import { DashboardNotificationPrompt } from './DashboardNotificationPrompt'
 
@@ -24,12 +25,14 @@ export function DashboardTopBar({
   storeId,
   plan,
   notificationCount,
+  slugChannelSourcesOnly = false,
 }: {
   storeName: string | null
   storeLogoUrl: string | null
   storeId: string | null
   plan: Plan
   notificationCount: number
+  slugChannelSourcesOnly?: boolean
 }) {
   const router = useRouter()
   const [q, setQ] = useState('')
@@ -45,11 +48,15 @@ export function DashboardTopBar({
     let disposed = false
 
     async function refreshPendingCount() {
-      const { count, error } = await supabase
+      let q = supabase
         .from('orders')
         .select('id', { count: 'exact', head: true })
         .eq('store_id', storeId)
         .eq('status', 'pending')
+      if (slugChannelSourcesOnly) {
+        q = q.in('source', slugChannelSourcesForSupabaseIn())
+      }
+      const { count, error } = await q
       if (!disposed && !error) {
         setPendingCount(count ?? 0)
       }
@@ -84,7 +91,7 @@ export function DashboardTopBar({
       window.clearInterval(poll)
       void supabase.removeChannel(channel)
     }
-  }, [storeId])
+  }, [storeId, slugChannelSourcesOnly])
 
   function onSearch(e: React.FormEvent) {
     e.preventDefault()

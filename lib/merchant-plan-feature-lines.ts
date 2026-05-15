@@ -71,5 +71,13 @@ export function planPreviewLinesForMerchant(
   if (hasProMarketingAi(plan)) {
     lines.push('Imagem de produto com IA')
   }
+  if (operationMode === 'hibrido' && plan === 'START') {
+    if (!lines.some((l) => l.includes('Link público'))) {
+      lines.push('Link público e QR de pedidos (entrega/retirada)')
+    }
+    if (!lines.some((l) => l.includes('Taxa de entrega'))) {
+      lines.push('Taxa de entrega e zona de entrega (raio em km)')
+    }
+  }
   return lines
 }

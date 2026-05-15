@@ -1,6 +1,13 @@
 import { NextResponse } from 'next/server'
+import {
+  caixaProDeliveryOnlyScope,
+  isPdvWaiterComandaSource,
+} from '@/lib/cashier-pro-delivery-scope'
 import { gateMerchantMenuKey } from '@/lib/merchant-api-gate.server'
+import { parseOperationModeFromStore } from '@/lib/merchant-operation-mode'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
+import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
+import { readStorePlano } from '@/lib/store-columns'
 import { getUser } from '@/services/auth.server'
 import { createClient } from '@/lib/supabase/server'
 import { getOpenCaixaTurno } from '@/services/caixa-turnos.server'
@@ -65,6 +72,19 @@ export async function POST(request: Request) {
   }
 
   const src = String(order.source ?? '').trim().toLowerCase()
+
+  const plan = effectiveDashboardPlan(user.email ?? null, readStorePlano(gate.ctx.store))
+  const operationMode = parseOperationModeFromStore(gate.ctx.store)
+  if (caixaProDeliveryOnlyScope(plan, operationMode) && isPdvWaiterComandaSource(src)) {
+    return NextResponse.json(
+      {
+        error:
+          'No plano Pro em modo delivery o caixa não recebe comandas de balcão ou garçom. Usa Pedidos e entregadores.',
+      },
+      { status: 403 }
+    )
+  }
+
   if (src !== 'pdv' && src !== 'waiter' && src !== 'autoatendimento') {
     return NextResponse.json(
       { error: 'Somente comandas de PDV/Garçom/QR podem ser fechadas aqui.' },

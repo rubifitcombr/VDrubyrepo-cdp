@@ -6,8 +6,9 @@ import { hasFeature, type Plan } from '@/lib/plan'
 import { parseSalaoAttendanceMode } from '@/lib/salao-attendance'
 
 /**
- * Escrita de pedidos / mesas pelo fluxo «garçom no painel» (Pro + modo waiter).
- * Growth usa só o QR público.
+ * Escrita de pedidos pelo fluxo «garçom no painel» (Pro + modo waiter).
+ * Growth usa só o QR público para criar/alterar pedidos; configuração de mesas (`PUT /api/waiter/tables`)
+ * fica disponível com acesso a Garçom (ex.: Growth + QR salão).
  */
 export function denyStaffWaiterPanelWrites(
   store: Record<string, unknown>,

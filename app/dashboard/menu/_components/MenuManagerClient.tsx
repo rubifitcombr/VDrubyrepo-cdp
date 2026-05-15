@@ -18,7 +18,6 @@ import {
   hasFeature,
   hasMarketingAiDescription,
   hasProMarketingAi,
-  parsePlan,
 } from '@/lib/plan'
 import { uploadProductImage } from '@/lib/storage-upload'
 import {
@@ -351,7 +350,6 @@ export function MenuManagerClient({
   plan: Plan
   showPublicStorefrontLink?: boolean
 }) {
-  const effectivePlan = parsePlan(plan)
   const [products, setProducts] = useState<Product[]>(initialProducts)
   const [extraCategories, setExtraCategories] = useState<string[]>([])
   const [busyIds, setBusyIds] = useState<Set<string>>(new Set())
@@ -736,6 +734,9 @@ export function MenuManagerClient({
     let withoutControl = 0
     let outOfStock = 0
     let lowStock = 0
+    if (!hasFeature(plan, 'inventory')) {
+      return { withoutControl: 0, outOfStock: 0, lowStock: 0 }
+    }
     for (const p of products) {
       const stock = stockByProduct[p.id]
       if (!stock) {
@@ -754,7 +755,7 @@ export function MenuManagerClient({
       }
     }
     return { withoutControl, outOfStock, lowStock }
-  }, [products, stockByProduct])
+  }, [products, stockByProduct, plan])
 
   const importPhotoInputRef = useRef<HTMLInputElement>(null)
   const [importPhotoBusy, setImportPhotoBusy] = useState(false)
@@ -845,17 +846,19 @@ export function MenuManagerClient({
             Produtos
           </h1>
           <p className="mt-1 text-sm text-[#6b7280]">{productCountLabel}</p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <span className="inline-flex items-center rounded-full border border-[var(--card-border)] bg-white px-3 py-1 text-xs font-semibold text-[#374151]">
-              Sem controle: {stockSummary.withoutControl}
-            </span>
-            <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-900">
-              Baixo: {stockSummary.lowStock}
-            </span>
-            <span className="inline-flex items-center rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-800">
-              Zerado: {stockSummary.outOfStock}
-            </span>
-          </div>
+          {hasFeature(plan, 'inventory') ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <span className="inline-flex items-center rounded-full border border-[var(--card-border)] bg-white px-3 py-1 text-xs font-semibold text-[#374151]">
+                Sem controle: {stockSummary.withoutControl}
+              </span>
+              <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-900">
+                Baixo: {stockSummary.lowStock}
+              </span>
+              <span className="inline-flex items-center rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-800">
+                Zerado: {stockSummary.outOfStock}
+              </span>
+            </div>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-2 sm:justify-end">
           {hasFeature(plan, 'inventory') ? (
@@ -866,7 +869,7 @@ export function MenuManagerClient({
               Gerenciar estoque
             </Link>
           ) : null}
-          {hasAiMenuPhotoImport(effectivePlan) ? (
+          {hasAiMenuPhotoImport(plan) ? (
             <>
               <input
                 ref={importPhotoInputRef}
@@ -1047,7 +1050,7 @@ export function MenuManagerClient({
               placeholder="Opcional — ingredientes, tamanho…"
             />
           </label>
-          {hasMarketingAiDescription(effectivePlan) ? (
+          {hasMarketingAiDescription(plan) ? (
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
@@ -1083,7 +1086,7 @@ export function MenuManagerClient({
               className="mt-1 block w-full text-sm text-vyria-navy-muted file:mr-3 file:rounded file:border-0 file:bg-[#f0f0f0] file:px-3 file:py-1.5 file:text-sm file:font-medium"
             />
           </label>
-          {hasProMarketingAi(effectivePlan) ? (
+          {hasProMarketingAi(plan) ? (
             <div className="space-y-2 rounded-xl border border-[var(--card-border)] bg-[#fafafa]/80 p-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-vyria-navy-muted">
                 Imagem com IA
@@ -1154,9 +1157,9 @@ export function MenuManagerClient({
             {editingId
               ? 'Só envia um ficheiro se quiseres substituir a imagem atual.'
               : 'Envia um ficheiro para mostrar foto no cardápio.'}
-            {hasProMarketingAi(effectivePlan)
+            {hasProMarketingAi(plan)
               ? ' Imagem por IA só quando pedires — custo controlado.'
-              : hasMarketingAiDescription(effectivePlan)
+              : hasMarketingAiDescription(plan)
                 ? ' Geração de descrição por IA disponível no seu plano.'
               : ''}
           </p>
@@ -1233,28 +1236,30 @@ export function MenuManagerClient({
               const imgUrl = p.image_url?.trim()
               const desc = p.description?.trim()
               const stock = stockByProduct[p.id]
-              const stockBadge = !stock
-                ? { label: 'Sem controle', className: 'bg-zinc-100 text-zinc-700' }
-                : (() => {
-                    const stockQty = Math.max(0, Math.floor(Number(stock.quantity) || 0))
-                    const stockLow =
-                      stock.lowStockAlert == null
-                        ? null
-                        : Math.max(0, Math.floor(Number(stock.lowStockAlert) || 0))
-                    if (stockQty <= 0) {
-                      return { label: 'Sem estoque', className: 'bg-red-100 text-red-800' }
-                    }
-                    if (stockLow != null && stockLow > 0 && stockQty <= stockLow) {
-                      return {
-                        label: `Baixo (${stockQty})`,
-                        className: 'bg-amber-100 text-amber-900',
+              const stockBadge = hasFeature(plan, 'inventory')
+                ? !stock
+                  ? { label: 'Sem controle', className: 'bg-zinc-100 text-zinc-700' }
+                  : (() => {
+                      const stockQty = Math.max(0, Math.floor(Number(stock.quantity) || 0))
+                      const stockLow =
+                        stock.lowStockAlert == null
+                          ? null
+                          : Math.max(0, Math.floor(Number(stock.lowStockAlert) || 0))
+                      if (stockQty <= 0) {
+                        return { label: 'Sem estoque', className: 'bg-red-100 text-red-800' }
                       }
-                    }
-                    return {
-                      label: `Estoque ${stockQty}`,
-                      className: 'bg-emerald-100 text-emerald-800',
-                    }
-                  })()
+                      if (stockLow != null && stockLow > 0 && stockQty <= stockLow) {
+                        return {
+                          label: `Baixo (${stockQty})`,
+                          className: 'bg-amber-100 text-amber-900',
+                        }
+                      }
+                      return {
+                        label: `Estoque ${stockQty}`,
+                        className: 'bg-emerald-100 text-emerald-800',
+                      }
+                    })()
+                : null
               return (
                 <li
                   key={p.id}
@@ -1286,13 +1291,15 @@ export function MenuManagerClient({
                         {catLabel}
                       </span>
                     </div>
-                    <div className="mt-2">
-                      <span
-                        className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${stockBadge.className}`}
-                      >
-                        {stockBadge.label}
-                      </span>
-                    </div>
+                    {stockBadge ? (
+                      <div className="mt-2">
+                        <span
+                          className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${stockBadge.className}`}
+                        >
+                          {stockBadge.label}
+                        </span>
+                      </div>
+                    ) : null}
                     {desc ? (
                       <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-[#6b7280]">
                         {desc}
@@ -1344,7 +1351,7 @@ export function MenuManagerClient({
         onClose={closeImportReview}
         storeId={storeId}
         parsed={importReviewParsed}
-        plan={effectivePlan}
+        plan={plan}
         onSaved={() => void refresh()}
       />
     </div>

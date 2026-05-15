@@ -1,11 +1,15 @@
 import { NextResponse } from 'next/server'
-import { gateMerchantMenuKey } from '@/lib/merchant-api-gate.server'
+import {
+  effectivePlanFromStore,
+  gateMerchantMenuKey,
+} from '@/lib/merchant-api-gate.server'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
 import { getUser } from '@/services/auth.server'
 import { createClient } from '@/lib/supabase/server'
 import { getOpenCaixaTurno } from '@/services/caixa-turnos.server'
 import { buildItemsSummaryWithLineTotals } from '@/lib/print/items-summary-format'
 import { tryAutoThermalPrint } from '@/services/thermal-print.server'
+import { hasFeature } from '@/lib/plan'
 
 type PaymentMethod = 'cash' | 'pix' | 'card'
 
@@ -55,6 +59,9 @@ export async function POST(request: Request) {
   const denyPdv = gateMerchantMenuKey(gate.ctx.store, user.email, 'pdv')
   if (denyPdv) return denyPdv
 
+  const plan = effectivePlanFromStore(gate.ctx.store, user.email)
+  const caixaModule = hasFeature(plan, 'cashier')
+
   let body: {
     closeMode?: unknown
     paymentMethod?: unknown
@@ -72,16 +79,28 @@ export async function POST(request: Request) {
   const closeMode = body.closeMode === 'immediate' ? 'immediate' : 'cashier'
   let paymentMethod: PaymentMethod | null = null
 
+  if (closeMode === 'cashier' && !caixaModule) {
+    return NextResponse.json(
+      {
+        error:
+          'Este plano não inclui o módulo Caixa. Regista o pagamento com «Receber agora».',
+      },
+      { status: 400 }
+    )
+  }
+
   if (closeMode === 'immediate') {
-    const denyCaixa = gateMerchantMenuKey(gate.ctx.store, user.email, 'caixa')
-    if (denyCaixa) {
-      return NextResponse.json(
-        {
-          error:
-            'Receber no balcão exige permissão de Caixa. Usa «Enviar para o Caixa» ou abre sessão com acesso ao Caixa.',
-        },
-        { status: 403 }
-      )
+    if (caixaModule) {
+      const denyCaixa = gateMerchantMenuKey(gate.ctx.store, user.email, 'caixa')
+      if (denyCaixa) {
+        return NextResponse.json(
+          {
+            error:
+              'Receber no balcão exige permissão de Caixa. Usa «Enviar para o Caixa» ou abre sessão com acesso ao Caixa.',
+          },
+          { status: 403 }
+        )
+      }
     }
     paymentMethod = normalizePayment(body.paymentMethod)
     if (!paymentMethod) {
@@ -104,7 +123,7 @@ export async function POST(request: Request) {
   const supabase = await createClient()
 
   let turnoAberto: { id: string } | null = null
-  if (closeMode === 'immediate') {
+  if (closeMode === 'immediate' && caixaModule) {
     turnoAberto = await getOpenCaixaTurno(supabase, storeId)
     if (!turnoAberto) {
       return NextResponse.json(
@@ -176,7 +195,7 @@ export async function POST(request: Request) {
   }
   let notes = noteLines.length ? noteLines.join('\n') : null
 
-  if (closeMode === 'immediate' && paymentMethod && turnoAberto) {
+  if (closeMode === 'immediate' && paymentMethod) {
     const closeLine = `[PDV] Recebido em ${new Date().toISOString()} (${paymentMethod})`
     notes = notes ? `${notes}\n${closeLine}` : closeLine
   }

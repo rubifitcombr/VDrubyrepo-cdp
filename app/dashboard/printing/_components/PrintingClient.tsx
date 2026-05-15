@@ -54,19 +54,18 @@ const LEGACY_ROWS: Array<{
 }> = [
   {
     key: 'print_auto_on_confirm',
-    title: 'Impressão automática (navegador)',
-    description:
-      'Ao entrar em «Preparando», abre o cupom no browser (pop-up) quando a automação ou esta opção estiver ativa.',
+    title: 'Cupom no navegador ao aceitar',
+    description: 'Abre o cupom quando o pedido passa a «A preparar».',
   },
   {
     key: 'print_include_customer_details',
-    title: 'Imprimir detalhes do cliente',
-    description: 'Incluir nome, telefone e endereço na impressão.',
+    title: 'Dados do cliente no cupom',
+    description: 'Nome, telefone e morada.',
   },
   {
     key: 'print_delivery_copy',
-    title: 'Cópia para entregador',
-    description: 'Imprimir segunda via para o entregador.',
+    title: 'Segunda via para entrega',
+    description: 'Cópia extra para o estafeta.',
   },
 ]
 
@@ -77,24 +76,23 @@ const THERMAL_AUTO_ROWS: Array<{
 }> = [
   {
     key: 'print_auto_delivery',
-    title: 'Delivery / link do cardápio',
-    description:
-      'Pedidos `site_live`, `site_start` ou retirada no site (`site_pickup`).',
+    title: 'Pedidos online',
+    description: 'Delivery e retirada pelo site.',
   },
   {
     key: 'print_auto_autoatendimento',
-    title: 'Autoatendimento (QR Code mesa)',
-    description: 'Pedidos criados pelo cliente no salão via QR.',
+    title: 'QR na mesa',
+    description: 'Pedidos pelo QR do salão.',
   },
   {
     key: 'print_auto_pdv',
-    title: 'PDV balcão',
-    description: 'Vendas registadas no PDV.',
+    title: 'PDV',
+    description: 'Vendas no balcão.',
   },
   {
     key: 'print_auto_garcom',
     title: 'Garçom',
-    description: 'Pedidos criados no painel Garçom.',
+    description: 'Pedidos pelo painel Garçom.',
   },
 ]
 
@@ -119,6 +117,8 @@ export function PrintingClient({
   const [agentOnline, setAgentOnline] = useState<boolean | null>(null)
   const [busyHealth, setBusyHealth] = useState(false)
   const [busyTestPrint, setBusyTestPrint] = useState(false)
+  const [discoverBusy, setDiscoverBusy] = useState(false)
+  const [discoveredPrinters, setDiscoveredPrinters] = useState<string[]>([])
 
   useEffect(() => {
     setValues(initial)
@@ -194,7 +194,7 @@ export function PrintingClient({
     }
   }
 
-  async function saveAgentAndPrinter() {
+  async function saveAgentAndPrinter(options?: { skipSuccessToast?: boolean }): Promise<boolean> {
     setSavingAgent(true)
     setError(null)
     const port = Number.parseInt(String(values.print_printer_port), 10)
@@ -213,12 +213,33 @@ export function PrintingClient({
           ? 'Aplica a migração SQL em supabase/migrations/20260513120000_store_thermal_print_agent.sql no Supabase.'
           : msg || 'Não foi possível guardar.'
       )
-      return
+      return false
     }
-    showToast('Configurações guardadas.')
+    if (!options?.skipSuccessToast) {
+      showToast('Guardado.')
+    }
+    return true
   }
 
-  async function testAgentHealth() {
+  async function saveLinkAndTestPrint() {
+    setError(null)
+    const url = values.print_agent_url?.trim() ?? ''
+    if (!url || !/^https?:\/\//i.test(url)) {
+      setError('No primeiro campo, coloca o endereço que começa com http:// ou https://')
+      return
+    }
+    if (!values.print_printer_ip?.trim()) {
+      setError('No segundo campo, coloca o número da impressora (ex.: 192.168.1.200).')
+      return
+    }
+    const ok = await saveAgentAndPrinter({ skipSuccessToast: true })
+    if (!ok) return
+    await testAgentHealth({ quiet: true })
+    await testThermalPrint({ quiet: true })
+    showToast('Se saiu um cupom na impressora, está tudo certo.')
+  }
+
+  async function testAgentHealth(opts?: { quiet?: boolean }) {
     const base = values.print_agent_url?.trim().replace(/\/+$/, '')
     if (!base || !/^https?:\/\//i.test(base)) {
       setAgentOnline(null)
@@ -230,8 +251,11 @@ export function PrintingClient({
     try {
       const res = await fetch(`${base}/health`, { method: 'GET' })
       setAgentOnline(res.ok)
-      if (!res.ok) showToast('Agente offline ou URL incorreta.')
-      else showToast('Agente respondeu ao health check.')
+      if (!res.ok) {
+        showToast('Agente offline ou URL incorreta.')
+      } else if (!opts?.quiet) {
+        showToast('Agente respondeu ao health check.')
+      }
     } catch {
       setAgentOnline(false)
       showToast('Não foi possível contactar o agente (rede / URL).')
@@ -240,7 +264,7 @@ export function PrintingClient({
     }
   }
 
-  async function testThermalPrint() {
+  async function testThermalPrint(opts?: { quiet?: boolean }) {
     setBusyTestPrint(true)
     setError(null)
     try {
@@ -254,7 +278,9 @@ export function PrintingClient({
         showToast(json.error || 'Erro ao imprimir teste.')
         return
       }
-      showToast('Cupom de teste enviado à impressora.')
+      if (!opts?.quiet) {
+        showToast('Cupom de teste enviado à impressora.')
+      }
     } catch {
       showToast('Erro de rede ao imprimir teste.')
     } finally {
@@ -262,16 +288,71 @@ export function PrintingClient({
     }
   }
 
+  async function discoverPrintersOnLan() {
+    setError(null)
+    const base = values.print_agent_url?.trim().replace(/\/+$/, '')
+    if (!base || !/^https?:\/\//i.test(base)) {
+      setError('Escreve primeiro o endereço do programa (Campo 1).')
+      return
+    }
+    setDiscoverBusy(true)
+    setDiscoveredPrinters([])
+    try {
+      const token = values.print_agent_token.trim() || 'vyria-agent-2026'
+      const port = Number.isFinite(Number(values.print_printer_port))
+        ? Number(values.print_printer_port)
+        : 9100
+      const res = await fetch(`${base}/discover-printers?port=${port}`, {
+        headers: { 'x-agent-token': token },
+      })
+      if (res.status === 404) {
+        showToast('Actualiza o programa Vyria na loja (ficheiro print-agent.js novo) para procurar na Wi-Fi.')
+        return
+      }
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean
+        printers?: string[]
+        error?: string
+      }
+      if (!res.ok || !json.ok) {
+        showToast(json.error || 'Não foi possível procurar.')
+        return
+      }
+      const list = Array.isArray(json.printers) ? json.printers : []
+      setDiscoveredPrinters(list)
+      if (list.length === 0) {
+        showToast(
+          'Não encontrámos nada na porta ' +
+            String(port) +
+            '. Confirma a Wi-Fi ou escreve o número à mão.'
+        )
+      } else if (list.length === 1) {
+        const only = list[0]!
+        setValues((v) => ({ ...v, print_printer_ip: only }))
+        showToast(`Encontrámos ${only} — já está no Campo 2.`)
+      } else {
+        showToast(`Encontrámos ${list.length} máquinas. Escolhe uma em baixo.`)
+      }
+    } catch {
+      showToast('Não deu para falar com o programa. Mesma Wi-Fi que o Campo 1?')
+    } finally {
+      setDiscoverBusy(false)
+    }
+  }
+
+  const linkWizardBusy = savingAgent || busyHealth || busyTestPrint || discoverBusy
+
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-8">
-      <div>
+    <div className="mx-auto w-full max-w-2xl space-y-5 pb-6">
+      <header>
         <h1 className="font-brand text-2xl font-bold tracking-tight text-vyria-navy md:text-3xl">
           Impressão
         </h1>
         <p className="mt-1 text-sm text-vyria-navy-muted">
-          Térmica Wi-Fi (agente local + ESC/POS) e opções de cupom no navegador.
+          Funciona no telemóvel (iPhone ou Android), tablet e computador — escolhe a forma que
+          combina com a tua impressora.
         </p>
-      </div>
+      </header>
 
       {toast ? (
         <p
@@ -291,202 +372,285 @@ export function PrintingClient({
         </p>
       ) : null}
 
-      {/* Bloco 1 — Estado */}
-      <section className="rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-sm sm:p-6">
-        <h2 className="font-brand text-lg font-bold text-vyria-navy">Estado da ligação</h2>
-        {!values.print_agent_url?.trim() ? (
-          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-            <p className="font-semibold">Impressão não configurada</p>
-            <p className="mt-1 text-amber-900/95">
-              Para imprimir pelo telemóvel ou tablet, configura o agente Node na rede Wi-Fi da loja
-              e o IP da impressora térmica.
+      <section
+        id="formas-impressao"
+        className="rounded-2xl border border-[var(--card-border)] bg-gradient-to-b from-[#fafafa] to-white p-5 shadow-sm sm:p-6"
+      >
+        <h2 className="font-brand text-base font-bold text-vyria-navy">
+          Três formas de imprimir (escolhe uma)
+        </h2>
+        <ul className="mt-4 space-y-4 text-sm leading-relaxed text-vyria-navy-muted">
+          <li className="flex gap-3">
+            <span
+              className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--dash-primary)] text-xs font-bold text-white"
+              aria-hidden
+            >
+              1
+            </span>
+            <div>
+              <p className="font-semibold text-vyria-navy">Wi-Fi na loja (o mais simples no telemóvel)</p>
+              <p className="mt-1">
+                Um aparelho na <strong>mesma Wi-Fi</strong> que a impressora corre o programa Vyria
+                (abaixo). O painel — no iPhone, Android, tablet ou PC — manda imprimir pela nuvem.
+                Usa <strong>«Procurar impressora na Wi-Fi»</strong> ou escreve o número da impressora.{' '}
+                <a href="#wifi-loja" className="font-semibold text-[var(--dash-primary)] underline">
+                  Configurar
+                </a>
+              </p>
+            </div>
+          </li>
+          <li className="flex gap-3">
+            <span
+              className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#374151] text-xs font-bold text-white"
+              aria-hidden
+            >
+              2
+            </span>
+            <div>
+              <p className="font-semibold text-vyria-navy">Cabo USB neste computador</p>
+              <p className="mt-1">
+                Em <strong>Chrome ou Edge</strong> (Windows ou Mac), abre «Abrir para imprimir» e,
+                na janela, liga a térmica por <strong>USB / porta série</strong>. No{' '}
+                <strong>iPhone ou Safari</strong> isto não está disponível — usa a opção Wi-Fi (1) ou{' '}
+                <a href="#preview-cupom" className="font-semibold text-[var(--dash-primary)] underline">
+                  cabo num PC com Chrome
+                </a>
+                .
+              </p>
+            </div>
+          </li>
+          <li className="flex gap-3">
+            <span
+              className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-zinc-300 text-xs font-bold text-zinc-800"
+              aria-hidden
+            >
+              3
+            </span>
+            <div>
+              <p className="font-semibold text-vyria-navy">Bluetooth</p>
+              <p className="mt-1">
+                Impressão <strong>directa por Bluetooth a partir do site</strong> ainda não está
+                incluída. Liga a impressora ao <strong>Wi-Fi</strong> do sítio ou usa <strong>USB</strong>{' '}
+                num portátil com Chrome.
+              </p>
+            </div>
+          </li>
+        </ul>
+      </section>
+
+      <section
+        id="wifi-loja"
+        className="rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-sm sm:p-6"
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="font-brand text-lg font-bold text-vyria-navy">Wi-Fi na loja</h2>
+            <p className="mt-2 text-base font-medium leading-snug text-[#1a1614]">
+              Impressora e aparelho com o <span className="text-[var(--dash-primary)]">programa Vyria</span>{' '}
+              na <strong>mesma Wi-Fi</strong>.
             </p>
-            <p className="mt-2">
-              <a href="#instrucoes-agente" className="font-semibold text-amber-950 underline">
-                Ver instruções de instalação
+            <p className="mt-2 text-sm leading-relaxed text-vyria-navy-muted">
+              Preenche os dois campos, toca em <strong>Procurar impressora na Wi-Fi</strong> se quiseres,
+              depois em <strong>Guardar e testar impressão</strong>. Só precisas de instalar o programa
+              uma vez —{' '}
+              <a href="#instrucoes-agente" className="font-semibold text-[var(--dash-primary)] underline">
+                ver os 4 passos
               </a>
+              .
             </p>
           </div>
-        ) : (
-          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-            <button
-              type="button"
-              disabled={busyHealth}
-              onClick={() => void testAgentHealth()}
-              className="rounded-xl bg-[var(--dash-primary)] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:brightness-105 disabled:opacity-50"
-            >
-              {busyHealth ? 'A testar…' : 'Testar ligação'}
-            </button>
-            <button
-              type="button"
-              disabled={busyTestPrint || !agentConfigured}
-              onClick={() => void testThermalPrint()}
-              className="rounded-xl border border-[var(--card-border)] bg-white px-4 py-2.5 text-sm font-semibold text-vyria-navy shadow-sm hover:bg-[#f9fafb] disabled:opacity-50"
-            >
-              {busyTestPrint ? 'A imprimir…' : 'Imprimir teste'}
-            </button>
-            {agentOnline === null ? (
-              <span className="text-xs text-vyria-navy-muted">
-                Usa «Testar ligação» para verificar o agente.
-              </span>
-            ) : agentOnline ? (
-              <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800 ring-1 ring-emerald-200/80">
+          {values.print_agent_url?.trim() ? (
+            agentOnline === null ? null : agentOnline ? (
+              <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800 ring-1 ring-emerald-200/80">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden />
-                Agente online
+                Ligado
               </span>
             ) : (
-              <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-800 ring-1 ring-red-200/80">
+              <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-800 ring-1 ring-red-200/80">
                 <span className="h-1.5 w-1.5 rounded-full bg-red-500" aria-hidden />
-                Agente offline
+                Sem ligação
               </span>
-            )}
-          </div>
-        )}
-      </section>
+            )
+          ) : null}
+        </div>
 
-      {/* Bloco 2 — Agente */}
-      <section className="rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-sm sm:p-6">
-        <h2 className="font-brand text-lg font-bold text-vyria-navy">Agente local</h2>
-        <p className="mt-1 text-sm text-vyria-navy-muted">
-          O servidor Vyria na nuvem chama este URL; o agente na loja encaminha dados para a
-          impressora na porta 9100.
-        </p>
-        <label className="mt-4 block text-xs font-medium text-vyria-navy-muted">
-          URL do agente
-          <input
-            className="mt-1 block w-full rounded-xl border border-[var(--card-border)] bg-white px-3 py-2.5 text-sm text-vyria-navy"
-            placeholder="http://192.168.1.100:3001"
-            value={values.print_agent_url}
-            disabled={savingAgent || savingKey !== null}
-            onChange={(e) =>
-              setValues((v) => ({ ...v, print_agent_url: e.target.value }))
-            }
-          />
-          <span className="mt-1 block text-[11px] text-vyria-navy-muted">
-            IP do telemóvel, mini-PC ou Android TV box onde corre o agente (mesma Wi-Fi da loja).
-          </span>
-        </label>
-        <label className="mt-4 block text-xs font-medium text-vyria-navy-muted">
-          Token de segurança
-          <input
-            className="mt-1 block w-full rounded-xl border border-[var(--card-border)] bg-white px-3 py-2.5 text-sm text-vyria-navy"
-            placeholder="vyria-agent-2026"
-            value={values.print_agent_token}
-            disabled={savingAgent || savingKey !== null}
-            onChange={(e) =>
-              setValues((v) => ({ ...v, print_agent_token: e.target.value }))
-            }
-          />
-          <span className="mt-1 block text-[11px] text-vyria-navy-muted">
-            variável de ambiente <code className="text-[11px]">AGENT_TOKEN</code> no agente.
-          </span>
-        </label>
-      </section>
-
-      {/* Bloco 3 — Impressora */}
-      <section className="rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-sm sm:p-6">
-        <h2 className="font-brand text-lg font-bold text-vyria-navy">Impressora térmica</h2>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <label className="block text-xs font-medium text-vyria-navy-muted">
-            IP da impressora
+        <ol className="mt-5 list-none space-y-5">
+          <li className="rounded-xl border border-[var(--card-border)] bg-[#fafafa] p-4">
+            <span className="text-xs font-bold uppercase tracking-wide text-[var(--dash-primary)]">
+              Campo 1
+            </span>
+            <p className="mt-1 text-sm font-semibold text-vyria-navy">Endereço que o programa mostra</p>
+            <p className="mt-0.5 text-xs text-vyria-navy-muted">
+              Copia tudo o que aparece no topo do Chrome (começa quase sempre por{' '}
+              <strong className="font-mono text-[11px]">http://</strong>).
+            </p>
             <input
-              className="mt-1 block w-full rounded-xl border border-[var(--card-border)] bg-white px-3 py-2.5 text-sm text-vyria-navy"
+              className="mt-3 block w-full rounded-xl border border-[var(--card-border)] bg-white px-4 py-3 text-base text-vyria-navy shadow-inner"
+              placeholder="http://192.168.1.50:3001"
+              value={values.print_agent_url}
+              disabled={linkWizardBusy || savingKey !== null}
+              onChange={(e) => setValues((v) => ({ ...v, print_agent_url: e.target.value }))}
+              autoComplete="off"
+            />
+          </li>
+          <li className="rounded-xl border border-[var(--card-border)] bg-[#fafafa] p-4">
+            <span className="text-xs font-bold uppercase tracking-wide text-[var(--dash-primary)]">
+              Campo 2
+            </span>
+            <p className="mt-1 text-sm font-semibold text-vyria-navy">Número da impressora na rede</p>
+            <p className="mt-0.5 text-xs text-vyria-navy-muted">
+              São vários números separados por pontos (ex.: 192.168.1.200). Está no manual, no
+              papel de teste da impressora ou pergunta a quem instalou a Wi-Fi na loja. Podes
+              também pedir ao programa para{' '}
+              <strong className="text-vyria-navy">procurar sozinho</strong> no botão abaixo.
+            </p>
+            <input
+              className="mt-3 block w-full rounded-xl border border-[var(--card-border)] bg-white px-4 py-3 text-base text-vyria-navy shadow-inner"
               placeholder="192.168.1.200"
               value={values.print_printer_ip}
-              disabled={savingAgent || savingKey !== null}
-              onChange={(e) =>
-                setValues((v) => ({ ...v, print_printer_ip: e.target.value }))
-              }
+              disabled={linkWizardBusy || savingKey !== null}
+              onChange={(e) => setValues((v) => ({ ...v, print_printer_ip: e.target.value }))}
+              autoComplete="off"
             />
-            <span className="mt-1 block text-[11px] text-vyria-navy-muted">
-              IP atribuído pela rede Wi-Fi da loja.
-            </span>
-          </label>
-          <label className="block text-xs font-medium text-vyria-navy-muted">
-            Porta
-            <input
-              inputMode="numeric"
-              className="mt-1 block w-full rounded-xl border border-[var(--card-border)] bg-white px-3 py-2.5 text-sm text-vyria-navy"
-              placeholder="9100"
-              value={String(values.print_printer_port)}
-              disabled={savingAgent || savingKey !== null}
-              onChange={(e) => {
-                const n = Number.parseInt(e.target.value, 10)
-                setValues((v) => ({
-                  ...v,
-                  print_printer_port: Number.isFinite(n) ? n : v.print_printer_port,
-                }))
-              }}
-            />
-            <span className="mt-1 block text-[11px] text-vyria-navy-muted">
-              Padrão ESC/POS raw: 9100.
-            </span>
-          </label>
+          </li>
+        </ol>
+
+        <div className="mt-4 rounded-xl border border-sky-200/80 bg-sky-50/60 px-4 py-3">
+          <p className="text-sm font-semibold text-sky-950">Procura automática na Wi-Fi</p>
+          <p className="mt-1 text-xs leading-relaxed text-sky-900/90">
+            O programa no Campo 1 varre a rede onde ele está (até ~20 s). Só funciona com
+            impressoras que falem na porta {String(values.print_printer_port || 9100)} — o normal
+            para térmicas.
+          </p>
+          <button
+            type="button"
+            disabled={linkWizardBusy || savingKey !== null}
+            onClick={() => void discoverPrintersOnLan()}
+            className="mt-3 w-full rounded-xl border border-sky-300 bg-white py-3 text-sm font-bold text-sky-950 shadow-sm hover:bg-sky-50 disabled:opacity-50 sm:w-auto sm:px-6"
+          >
+            {discoverBusy ? 'A procurar na rede…' : 'Procurar impressora na Wi-Fi'}
+          </button>
+          {discoveredPrinters.length > 1 ? (
+            <ul className="mt-3 flex flex-wrap gap-2" aria-label="Impressoras encontradas">
+              {discoveredPrinters.map((ip) => (
+                <li key={ip}>
+                  <button
+                    type="button"
+                    disabled={linkWizardBusy || savingKey !== null}
+                    onClick={() => {
+                      setValues((v) => ({ ...v, print_printer_ip: ip }))
+                      setDiscoveredPrinters([])
+                      showToast(`${ip} escolhido. Toca em «Guardar e testar impressão».`)
+                    }}
+                    className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-sky-950 ring-1 ring-sky-300 hover:bg-sky-100 disabled:opacity-50"
+                  >
+                    {ip}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </div>
+
+        <details className="mt-4 rounded-xl border border-dashed border-[var(--card-border)] bg-white px-4 py-3">
+          <summary className="cursor-pointer text-sm font-semibold text-vyria-navy">
+            Opções extra (só se o suporte pedir)
+          </summary>
+          <div className="mt-4 space-y-4 border-t border-[var(--card-border)] pt-4">
+            <label className="block text-xs font-medium text-vyria-navy-muted">
+              Palavra-passe do programa
+              <input
+                className="mt-1 block w-full rounded-xl border border-[var(--card-border)] bg-white px-3 py-2.5 text-sm text-vyria-navy"
+                placeholder="Deixa vazio para o normal"
+                value={values.print_agent_token}
+                disabled={linkWizardBusy || savingKey !== null}
+                onChange={(e) => setValues((v) => ({ ...v, print_agent_token: e.target.value }))}
+              />
+              <span className="mt-1 block text-[11px] text-vyria-navy-muted">
+                Só mexe aqui se alguém da Vyria te tiver dado outra palavra-passe.
+              </span>
+            </label>
+            <label className="block text-xs font-medium text-vyria-navy-muted">
+              Porta da impressora (quase sempre 9100)
+              <input
+                inputMode="numeric"
+                className="mt-1 block w-full rounded-xl border border-[var(--card-border)] bg-white px-3 py-2.5 text-sm text-vyria-navy"
+                placeholder="9100"
+                value={String(values.print_printer_port)}
+                disabled={linkWizardBusy || savingKey !== null}
+                onChange={(e) => {
+                  const n = Number.parseInt(e.target.value, 10)
+                  setValues((v) => ({
+                    ...v,
+                    print_printer_port: Number.isFinite(n) ? n : v.print_printer_port,
+                  }))
+                }}
+              />
+            </label>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={busyHealth || linkWizardBusy}
+                onClick={() => void testAgentHealth()}
+                className="rounded-lg border border-[var(--card-border)] bg-white px-3 py-2 text-xs font-semibold text-vyria-navy hover:bg-[#f9fafb] disabled:opacity-50"
+              >
+                {busyHealth ? 'A testar…' : 'Só testar ligação'}
+              </button>
+              <button
+                type="button"
+                disabled={busyTestPrint || !agentConfigured || linkWizardBusy}
+                onClick={() => void testThermalPrint()}
+                className="rounded-lg border border-[var(--card-border)] bg-white px-3 py-2 text-xs font-semibold text-vyria-navy hover:bg-[#f9fafb] disabled:opacity-50"
+              >
+                {busyTestPrint ? 'A imprimir…' : 'Só testar impressão'}
+              </button>
+            </div>
+          </div>
+        </details>
+
         <button
           type="button"
-          disabled={savingAgent || savingKey !== null || savingPaper}
-          onClick={() => void saveAgentAndPrinter()}
-          className="mt-6 rounded-xl bg-[var(--dash-primary)] px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:brightness-105 disabled:opacity-50"
+          disabled={linkWizardBusy || savingKey !== null || savingPaper}
+          onClick={() => void saveLinkAndTestPrint()}
+          className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-[var(--dash-primary)] py-4 text-base font-bold text-white shadow-md shadow-[var(--dash-primary)]/25 transition-[filter] hover:brightness-105 disabled:opacity-50"
         >
-          {savingAgent ? 'A guardar…' : 'Guardar configurações'}
+          {linkWizardBusy ? (
+            <>
+              <span className="inline-block size-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+              A ligar e a testar…
+            </>
+          ) : (
+            'Guardar e testar impressão'
+          )}
         </button>
+        <p className="mt-3 text-center text-xs text-vyria-navy-muted">
+          O botão grava os dados e tenta imprimir um cupom de teste. Se não imprimir, chama o
+          suporte com uma foto do ecrã.
+        </p>
       </section>
 
-      {/* Bloco 4 — Automático térmico + legado cupom */}
       <section className="rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-sm sm:p-6">
-        <div className="flex items-center gap-3">
+        <div className="flex items-start gap-3">
           <div
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[var(--dash-primary)]/12 text-[var(--dash-primary)]"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--dash-primary)]/12 text-[var(--dash-primary)]"
             aria-hidden
           >
-            <IconPrinter className="h-6 w-6" />
+            <IconPrinter className="h-5 w-5" />
           </div>
-          <h2 className="font-brand text-lg font-bold text-vyria-navy">
-            Impressão automática (térmica Wi-Fi)
-          </h2>
+          <div className="min-w-0 flex-1">
+            <h2 className="font-brand text-lg font-bold text-vyria-navy">Impressão automática nos pedidos</h2>
+            <p className="mt-1 text-xs leading-relaxed text-vyria-navy-muted">
+              Térmica: imprime quando entra o pedido (site, QR mesa, PDV ou Garçom), se a ligação
+              acima estiver correcta. Não duplica ao mudar o estado do pedido.
+            </p>
+          </div>
         </div>
-        <p className="mt-2 text-sm text-vyria-navy-muted">
-          Só envia para a impressora quando o agente e o IP estão configurados e o toggle da origem
-          está ativo. Pedidos do site e QR mesa imprimem na <strong>criação</strong> do pedido (não
-          de novo ao mudar o estado para «A caminho», para evitar cupom duplicado).
-        </p>
-        <ul className="mt-6 divide-y divide-vyria-navy/10">
-          {THERMAL_AUTO_ROWS.map(({ key, title, description }) => (
-            <li
-              key={key}
-              className="flex items-center gap-4 py-4 first:pt-0 last:pb-0 sm:gap-5"
-            >
-              <div className="min-w-0 flex-1">
-                <h3 className="font-semibold text-vyria-navy">{title}</h3>
-                <p className="mt-1 text-sm leading-relaxed text-vyria-navy-muted">
-                  {description}
-                </p>
-              </div>
-              <PrintSwitch
-                on={values[key]}
-                disabled={savingKey !== null || savingPaper || savingAgent}
-                onToggle={() => toggle(key)}
-                label={title}
-              />
-            </li>
-          ))}
-        </ul>
-
-        <h3 className="mt-8 border-t border-vyria-navy/10 pt-6 font-semibold text-vyria-navy">
-          Cupom no navegador (pop-up)
-        </h3>
         <ul className="mt-4 divide-y divide-vyria-navy/10">
-          {LEGACY_ROWS.map(({ key, title, description }) => (
-            <li
-              key={key}
-              className="flex items-center gap-4 py-4 first:pt-0 last:pb-0 sm:gap-5"
-            >
+          {THERMAL_AUTO_ROWS.map(({ key, title, description }) => (
+            <li key={key} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
               <div className="min-w-0 flex-1">
-                <h3 className="font-semibold text-vyria-navy">{title}</h3>
-                <p className="mt-1 text-sm leading-relaxed text-vyria-navy-muted">
-                  {description}
-                </p>
+                <p className="text-sm font-semibold text-vyria-navy">{title}</p>
+                <p className="mt-0.5 text-xs text-vyria-navy-muted">{description}</p>
               </div>
               <PrintSwitch
                 on={values[key]}
@@ -498,16 +662,38 @@ export function PrintingClient({
           ))}
         </ul>
 
-        <div className="mt-6 border-t border-vyria-navy/10 pt-6">
-          <h3 className="font-semibold text-vyria-navy">Largura do papel e porta série</h3>
-          <p className="mt-1 text-sm text-vyria-navy-muted">
-            Usado na pré-visualização e no envio USB / série no browser.
+        <h3 className="mt-5 border-t border-vyria-navy/10 pt-5 text-sm font-bold text-vyria-navy">
+          Cupom no navegador
+        </h3>
+        <ul className="mt-3 divide-y divide-vyria-navy/10">
+          {LEGACY_ROWS.map(({ key, title, description }) => (
+            <li key={key} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-vyria-navy">{title}</p>
+                <p className="mt-0.5 text-xs text-vyria-navy-muted">{description}</p>
+              </div>
+              <PrintSwitch
+                on={values[key]}
+                disabled={savingKey !== null || savingPaper || savingAgent}
+                onToggle={() => toggle(key)}
+                label={title}
+              />
+            </li>
+          ))}
+        </ul>
+
+        <details className="mt-5 rounded-xl border border-[var(--card-border)] bg-[#fafafa] px-4 py-3">
+          <summary className="cursor-pointer text-sm font-semibold text-vyria-navy">
+            Papel e porta série (avançado)
+          </summary>
+          <p className="mt-2 text-xs text-vyria-navy-muted">
+            Usado na pré-visualização e na impressão USB no browser.
           </p>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <label className="block text-xs font-medium text-vyria-navy-muted">
               Largura do rolo
               <select
-                className="mt-1 block w-full rounded-xl border border-[var(--card-border)] bg-white px-3 py-2.5 text-sm font-medium text-vyria-navy"
+                className="mt-1 block w-full rounded-lg border border-[var(--card-border)] bg-white px-3 py-2 text-sm text-vyria-navy"
                 value={values.print_paper_mm}
                 disabled={savingKey !== null || savingPaper || savingAgent}
                 onChange={(e) => {
@@ -515,14 +701,14 @@ export function PrintingClient({
                   void savePaperMm(v === 58 ? 58 : 80)
                 }}
               >
-                <option value={80}>80 mm (48 colunas)</option>
-                <option value={58}>58 mm (32 colunas)</option>
+                <option value={80}>80 mm</option>
+                <option value={58}>58 mm</option>
               </select>
             </label>
             <label className="block text-xs font-medium text-vyria-navy-muted">
-              Velocidade série (Web Serial)
+              Velocidade série
               <select
-                className="mt-1 block w-full rounded-xl border border-[var(--card-border)] bg-white px-3 py-2.5 text-sm font-medium text-vyria-navy"
+                className="mt-1 block w-full rounded-lg border border-[var(--card-border)] bg-white px-3 py-2 text-sm text-vyria-navy"
                 value={serialBaud}
                 disabled={savingKey !== null}
                 onChange={(e) => {
@@ -539,37 +725,34 @@ export function PrintingClient({
               </select>
             </label>
           </div>
-        </div>
+        </details>
       </section>
 
-      {/* Pré-visualização */}
-      <section>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h2 className="font-brand text-lg font-bold text-vyria-navy">
-              Pré-visualização do cupom
-            </h2>
-            <p className="mt-1 text-sm text-vyria-navy-muted">
-              Simulação para o fluxo no navegador (não usa o agente Wi-Fi).
-            </p>
-          </div>
-          <div className="flex shrink-0 flex-col gap-2 sm:items-end">
-            <Link
-              href="/dashboard/printing/preview"
-              className="inline-flex items-center justify-center rounded-xl bg-[var(--dash-primary)] px-4 py-2.5 text-center text-sm font-semibold text-white shadow-sm transition-[filter] hover:brightness-105"
-            >
-              Abrir pré-visualização
-            </Link>
-            <button
-              type="button"
-              onClick={printPreviewToWindow}
-              className="rounded-xl border border-[var(--card-border)] bg-white px-4 py-2.5 text-sm font-semibold text-vyria-navy shadow-sm hover:bg-[#f9fafb]"
-            >
-              Imprimir teste (janela)
-            </button>
-          </div>
+      <section
+        id="preview-cupom"
+        className="rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-sm sm:p-6"
+      >
+        <h2 className="font-brand text-lg font-bold text-vyria-navy">Pré-visualização e cabo USB</h2>
+        <p className="mt-1 text-xs text-vyria-navy-muted">
+          Cupom no ecrã. Em <strong>Chrome ou Edge</strong> no PC, na janela que abre podes também
+          ligar a térmica por <strong>USB / porta série</strong> (não funciona no Safari do iPhone).
+        </p>
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={printPreviewToWindow}
+            className="rounded-xl bg-[var(--dash-primary)] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:brightness-105"
+          >
+            Abrir para imprimir
+          </button>
+          <Link
+            href="/dashboard/printing/preview"
+            className="text-sm font-semibold text-[var(--dash-primary)] underline-offset-2 hover:underline"
+          >
+            Ver página completa
+          </Link>
         </div>
-        <div className="mt-6 flex justify-center">
+        <div className="mt-5 flex justify-center overflow-x-auto">
           <ReceiptPreview
             storeName={storeName}
             includeCustomer={values.print_include_customer_details}
@@ -580,55 +763,47 @@ export function PrintingClient({
         </div>
       </section>
 
-      {/* Bloco 5 — Instruções */}
       <details
         id="instrucoes-agente"
-        className="rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-sm sm:p-6"
+        className="rounded-2xl border border-[var(--card-border)] bg-white px-5 py-4 shadow-sm"
       >
-        <summary className="cursor-pointer font-brand text-lg font-bold text-vyria-navy">
-          Como instalar o agente de impressão
+        <summary className="cursor-pointer text-sm font-bold text-vyria-navy">
+          Programa na loja — só 4 passos (uma vez)
         </summary>
-        <div className="mt-4 space-y-6 text-sm text-vyria-navy-muted">
-          <div>
-            <h3 className="font-semibold text-vyria-navy">Passo 1 — Android (Termux)</h3>
-            <ol className="mt-2 list-decimal space-y-1 pl-5">
-              <li>Instala o Termux na Play Store.</li>
-              <li>
-                <code className="rounded bg-[#f3f4f6] px-1">pkg install nodejs</code>
-              </li>
-              <li>
-                Clona o repositório Vyria Delivery (ou copia a pasta{' '}
-                <code className="rounded bg-[#f3f4f6] px-1">agent/</code>).
-              </li>
-              <li>
-                <code className="rounded bg-[#f3f4f6] px-1">cd agent && npm install</code>
-              </li>
-              <li>
-                <code className="rounded bg-[#f3f4f6] px-1">node print-agent.js</code>
-              </li>
-              <li>
-                Anota o IP do telemóvel (Wi-Fi) e cola em «URL do agente», por exemplo{' '}
-                <code className="rounded bg-[#f3f4f6] px-1">http://192.168.1.50:3001</code>
-              </li>
-            </ol>
-          </div>
-          <div>
-            <h3 className="font-semibold text-vyria-navy">Passo 2 — Mini PC / Android TV Box</h3>
-            <p className="mt-2">
-              Instala Node.js LTS, copia a pasta <code className="rounded bg-[#f3f4f6] px-1">agent/</code>,
-              corre <code className="rounded bg-[#f3f4f6] px-1">npm install</code> e{' '}
-              <code className="rounded bg-[#f3f4f6] px-1">node print-agent.js</code>. Ideal para ficar
-              ligado 24h na loja.
-            </p>
-          </div>
-          <p className="rounded-lg border border-vyria-navy/10 bg-[#fafafa] px-3 py-2 text-xs text-vyria-navy">
-            Compatível com impressoras térmicas Wi-Fi que aceitem ESC/POS na porta 9100. Exemplos:
-            Elgin i9, Bematech MP-4200, Epson TM-T20X.
-          </p>
-        </div>
+        <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm leading-relaxed text-vyria-navy-muted">
+          <li>
+            Num <strong>telemóvel Android, tablet ou PC</strong> na Wi-Fi da loja, instala o{' '}
+            <strong>Node.js</strong> (grátis em{' '}
+            <a
+              href="https://nodejs.org/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-[var(--dash-primary)] underline"
+            >
+              nodejs.org
+            </a>
+            ). No iPhone não dá para correr este programa — usa um Android ou PC pequeno na mesa.
+          </li>
+          <li>
+            Copia a pasta <code className="rounded bg-[#f3f4f6] px-1 text-xs">agent</code> do projeto
+            Vyria para esse aparelho.
+          </li>
+          <li>
+            Abre a terminal nessa pasta: <code className="rounded bg-[#f3f4f6] px-1 text-xs">npm install</code>{' '}
+            e depois <code className="rounded bg-[#f3f4f6] px-1 text-xs">node print-agent.js</code>.
+          </li>
+          <li>
+            O programa mostra um endereço no ecrã — cola-o no <strong>Campo 1</strong> em cima,
+            depois usa <strong>Procurar impressora na Wi-Fi</strong> ou escreve o número no Campo 2.
+          </li>
+        </ol>
+        <p className="mt-3 rounded-lg bg-[#fafafa] px-3 py-2 text-xs text-vyria-navy">
+          Térmicas comuns na porta 9100 (Elgin, Bematech, Epson, etc.). Impressora só por Bluetooth
+          sem Wi-Fi: liga-a ao router ou usa USB num portátil (opção 2 em «Três formas»).
+        </p>
       </details>
 
-      {savingKey || savingPaper || savingAgent ? (
+      {savingKey || savingPaper || savingAgent || discoverBusy ? (
         <p className="text-center text-xs text-vyria-navy-muted">A guardar…</p>
       ) : null}
     </div>

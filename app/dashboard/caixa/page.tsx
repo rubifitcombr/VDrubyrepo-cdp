@@ -13,13 +13,14 @@ import { getStoreByUser } from '@/services/store.server'
 import { listEntregadoresForStore } from '@/services/store-entregadores.server'
 import { listEntregasForTurno } from '@/services/entregas.server'
 import type { EntregaDTO, StoreEntregadorDTO } from '@/lib/entregas-types'
+import { caixaProDeliveryOnlyScope } from '@/lib/cashier-pro-delivery-scope'
 import {
   isDeliveryPipelineEnabled,
   parseOperationModeFromStore,
 } from '@/lib/merchant-operation-mode'
 import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
 import { readStorePlano } from '@/lib/store-columns'
-import { hasFeature } from '@/lib/plan'
+import { hasFeature, merchantEntregadoresEnabled } from '@/lib/plan'
 import { CashierClient } from './_components/CashierClient'
 
 export default async function CaixaPage() {
@@ -68,8 +69,14 @@ export default async function CaixaPage() {
       : 'Meu estabelecimento'
   const printPaperMm = parsePrintingFromStore(storeRow).print_paper_mm
   const supabase = await createClient()
+  const operationMode = parseOperationModeFromStore(storeRow)
+  const plan = effectiveDashboardPlan(user.email, readStorePlano(storeRow))
+  const caixaProDeliveryOnly = caixaProDeliveryOnlyScope(plan, operationMode)
+
   const [orders, turnoAberto, historico] = await Promise.all([
-    getCashierOrdersForStore(storeId),
+    getCashierOrdersForStore(storeId, 45, {
+      excludePdvWaiterComandas: caixaProDeliveryOnly,
+    }),
     getOpenCaixaTurno(supabase, storeId),
     getCaixaTurnosHistorico(supabase, storeId, 10),
   ])
@@ -82,16 +89,15 @@ export default async function CaixaPage() {
   ]
   const movimentacoesPorTurno = await getMovimentacoesForTurnos(supabase, turnoIds)
 
-  const deliveryPipelineEnabled = isDeliveryPipelineEnabled(
-    parseOperationModeFromStore(storeRow)
-  )
+  const deliveryPipelineEnabled = isDeliveryPipelineEnabled(operationMode)
+  const entregasCaixaEnabled =
+    deliveryPipelineEnabled && merchantEntregadoresEnabled(plan)
 
-  const plan = effectiveDashboardPlan(user.email, readStorePlano(storeRow))
   const printingCfg = parsePrintingFromStore(storeRow)
 
   let entregadoresInicial: StoreEntregadorDTO[] = []
   let entregasTurnoInicial: EntregaDTO[] = []
-  if (deliveryPipelineEnabled) {
+  if (entregasCaixaEnabled) {
     try {
       entregadoresInicial = await listEntregadoresForStore(supabase, storeId)
     } catch {
@@ -123,8 +129,11 @@ export default async function CaixaPage() {
       initialEntregadores={entregadoresInicial}
       initialEntregasTurno={entregasTurnoInicial}
       deliveryPipelineEnabled={deliveryPipelineEnabled}
+      entregasCaixaEnabled={entregasCaixaEnabled}
+      caixaProDeliveryOnly={caixaProDeliveryOnly}
       showThermalPrint={hasFeature(plan, 'printing')}
       printAgentUrl={printingCfg.print_agent_url}
+      printing={printingCfg}
     />
   )
 }

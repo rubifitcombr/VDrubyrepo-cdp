@@ -2,6 +2,7 @@ import 'server-only'
 
 import type { PromotionSuggestionDTO } from '@/lib/promo-suggestions'
 import { presetHappyHourSp } from '@/lib/promo-guided'
+import { slugChannelSourcesForSupabaseIn } from '@/lib/slug-channel-orders'
 import { createClient } from '@/lib/supabase/server'
 
 const DAYS = 45
@@ -26,18 +27,23 @@ const money = new Intl.NumberFormat('pt-BR', {
 })
 
 export async function getPromotionSuggestionsForStore(
-  storeId: string
+  storeId: string,
+  options?: { slugChannelSourcesOnly?: boolean }
 ): Promise<PromotionSuggestionDTO | null> {
   const supabase = await createClient()
   const since = new Date(Date.now() - DAYS * 86400000).toISOString()
 
-  const { data: orderRows, error: oErr } = await supabase
+  let oq = supabase
     .from('orders')
     .select('id, created_at, total, status')
     .eq('store_id', storeId)
     .gte('created_at', since)
     .order('created_at', { ascending: false })
     .limit(1200)
+  if (options?.slugChannelSourcesOnly) {
+    oq = oq.in('source', slugChannelSourcesForSupabaseIn())
+  }
+  const { data: orderRows, error: oErr } = await oq
 
   if (oErr || !orderRows?.length) return null
 

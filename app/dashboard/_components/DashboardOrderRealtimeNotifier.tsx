@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { isSlugChannelOrderSource } from '@/lib/slug-channel-orders'
 
 const NOTIFICATION_PREF_KEY = 'vyria-notifications-enabled'
 
@@ -124,10 +125,13 @@ async function showOrderNotification(title: string, body: string, url: string) {
 export function DashboardOrderRealtimeNotifier({
   storeId,
   notifyOnNewOrder = true,
+  slugChannelSourcesOnly = false,
 }: {
   storeId: string | null
   /** Quando false, desativa som e notificação no browser (toggle «Notificação de novo pedido» + plano Pro). */
   notifyOnNewOrder?: boolean
+  /** Growth + delivery: só alerta para pedidos do cardápio público (slug/QR). */
+  slugChannelSourcesOnly?: boolean
 }) {
   const seenIdsRef = useRef<Set<string>>(new Set())
   const notificationsEnabledRef = useRef(true)
@@ -235,7 +239,17 @@ export function DashboardOrderRealtimeNotifier({
         (payload) => {
           if (!notifyOnNewOrder) return
           if (!notificationsEnabledRef.current) return
-          const row = payload.new as { id?: string; customer_name?: string | null }
+          const row = payload.new as {
+            id?: string
+            customer_name?: string | null
+            source?: string | null
+          }
+          if (
+            slugChannelSourcesOnly &&
+            !isSlugChannelOrderSource(row.source)
+          ) {
+            return
+          }
           const id = String(row.id ?? '')
           if (!id) return
           if (seenIdsRef.current.has(id)) return
@@ -262,7 +276,7 @@ export function DashboardOrderRealtimeNotifier({
       )
       w.__vyriaGlobalOrderNotifierActive = false
     }
-  }, [storeId, notifyOnNewOrder])
+  }, [storeId, notifyOnNewOrder, slugChannelSourcesOnly])
 
   return null
 }

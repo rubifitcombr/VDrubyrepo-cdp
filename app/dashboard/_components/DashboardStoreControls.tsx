@@ -66,7 +66,12 @@ export function DashboardStoreControls({
               {copied ? 'Copiado' : 'Copiar link'}
             </button>
           </div>
-          <StorePublicQrPanel publicUrl={publicUrl} storeSlug={storeSlug} qrCheckoutMode="delivery_pickup" />
+          <StorePublicQrPanel
+            publicUrl={publicUrl}
+            storeSlug={storeSlug}
+            qrCheckoutMode="delivery_pickup"
+            hideExplanatoryCopy
+          />
         </>
       ) : (
         <p className="text-sm text-[#9ca3af]">Define o slug em Configurações.</p>

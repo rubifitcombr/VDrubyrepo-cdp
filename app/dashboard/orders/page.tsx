@@ -6,6 +6,7 @@ import {
   isDeliveryPipelineEnabled,
   parseOperationModeFromStore,
 } from '@/lib/merchant-operation-mode'
+import { dashboardUsesSlugChannelOrdersOnly } from '@/lib/slug-channel-orders'
 import { OrdersClient } from './_components/OrdersClient'
 import { getUser } from '@/services/auth.server'
 import { getStoreOrders } from '@/services/orders.server'
@@ -50,16 +51,21 @@ export default async function OrdersPage() {
   }
 
   const storeId = store.id as string
-  const initialOrders = await getStoreOrders(storeId)
-
   const row = store as Record<string, unknown>
+  const plan = effectiveDashboardPlan(user.email, readStorePlano(row))
+  const operationMode = parseOperationModeFromStore(row)
+  const slugChannelSourcesOnly = dashboardUsesSlugChannelOrdersOnly(
+    plan,
+    operationMode
+  )
+  const initialOrders = await getStoreOrders(storeId, {
+    slugChannelSourcesOnly,
+  })
+
   const printing = parsePrintingFromStore(row)
   const storeName =
     typeof row.name === 'string' ? row.name : 'Meu estabelecimento'
-  const plan = effectiveDashboardPlan(user.email, readStorePlano(row))
-  const deliveryPipelineEnabled = isDeliveryPipelineEnabled(
-    parseOperationModeFromStore(row)
-  )
+  const deliveryPipelineEnabled = isDeliveryPipelineEnabled(operationMode)
 
   return (
     <OrdersClient
@@ -69,6 +75,7 @@ export default async function OrdersPage() {
       printing={printing}
       plan={plan}
       deliveryPipelineEnabled={deliveryPipelineEnabled}
+      slugChannelSourcesOnly={slugChannelSourcesOnly}
     />
   )
 }

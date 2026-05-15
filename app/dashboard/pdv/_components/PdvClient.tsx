@@ -45,9 +45,12 @@ type CartLine = {
 export function PdvClient({
   storeId,
   initialProducts,
+  cashierPanelEnabled,
 }: {
   storeId: string
   initialProducts: MenuProductRow[]
+  /** Plano com módulo Caixa: mostra «Enviar para o Caixa». Sem Caixa (ex.: Start presencial), só receber no balcão. */
+  cashierPanelEnabled: boolean
 }) {
   const [cart, setCart] = useState<CartLine[]>([])
   const [customerName, setCustomerName] = useState('')
@@ -56,7 +59,9 @@ export function PdvClient({
   const [successKind, setSuccessKind] = useState<
     null | 'cashier' | 'immediate'
   >(null)
-  const [closeMode, setCloseMode] = useState<PdvCloseMode>('cashier')
+  const [closeMode, setCloseMode] = useState<PdvCloseMode>(() =>
+    cashierPanelEnabled ? 'cashier' : 'immediate'
+  )
   const [immediatePayment, setImmediatePayment] =
     useState<PdvImmediatePaymentMethod>('cash')
   const [searchQuery, setSearchQuery] = useState('')
@@ -326,7 +331,9 @@ export function PdvClient({
         >
           <div className="rounded-xl border border-emerald-500/40 bg-emerald-600 px-4 py-3 text-center text-sm font-semibold text-white shadow-lg shadow-emerald-900/20">
             {successKind === 'immediate'
-              ? 'Pagamento registado no turno de caixa. Comanda fechada.'
+              ? cashierPanelEnabled
+                ? 'Pagamento registado no turno de caixa. Comanda fechada.'
+                : 'Pagamento registado. Comanda fechada.'
               : 'Comanda enviada ao Caixa para fecho e pagamento.'}
           </div>
         </div>
@@ -678,48 +685,63 @@ export function PdvClient({
             <span className="mb-1.5 block text-xs font-medium text-vyria-navy-muted">
               Destino
             </span>
-            <div className="flex rounded-xl border border-[var(--card-border)] bg-zinc-100 p-1">
-              <button
-                type="button"
-                onClick={() => {
-                  setCloseMode('cashier')
-                  setError(null)
-                  setSuccessKind(null)
-                }}
-                className={`flex-1 rounded-lg px-2 py-2.5 text-xs font-semibold transition sm:text-sm ${
-                  closeMode === 'cashier'
-                    ? 'bg-white text-vyria-navy shadow-sm'
-                    : 'text-vyria-navy-muted hover:text-vyria-navy'
-                }`}
-              >
-                Enviar para o Caixa
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setCloseMode('immediate')
-                  setError(null)
-                  setSuccessKind(null)
-                }}
-                className={`flex-1 rounded-lg px-2 py-2.5 text-xs font-semibold transition sm:text-sm ${
-                  closeMode === 'immediate'
-                    ? 'bg-white text-vyria-navy shadow-sm'
-                    : 'text-vyria-navy-muted hover:text-vyria-navy'
-                }`}
-              >
+            {cashierPanelEnabled ? (
+              <div className="flex rounded-xl border border-[var(--card-border)] bg-zinc-100 p-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCloseMode('cashier')
+                    setError(null)
+                    setSuccessKind(null)
+                  }}
+                  className={`flex-1 rounded-lg px-2 py-2.5 text-xs font-semibold transition sm:text-sm ${
+                    closeMode === 'cashier'
+                      ? 'bg-white text-vyria-navy shadow-sm'
+                      : 'text-vyria-navy-muted hover:text-vyria-navy'
+                  }`}
+                >
+                  Enviar para o Caixa
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCloseMode('immediate')
+                    setError(null)
+                    setSuccessKind(null)
+                  }}
+                  className={`flex-1 rounded-lg px-2 py-2.5 text-xs font-semibold transition sm:text-sm ${
+                    closeMode === 'immediate'
+                      ? 'bg-white text-vyria-navy shadow-sm'
+                      : 'text-vyria-navy-muted hover:text-vyria-navy'
+                  }`}
+                >
+                  Receber agora
+                </button>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-[var(--card-border)] bg-zinc-100 px-3 py-2.5 text-sm font-semibold text-vyria-navy">
                 Receber agora
-              </button>
-            </div>
+              </div>
+            )}
             {closeMode === 'immediate' ? (
               <p className="mt-1.5 text-xs text-vyria-navy-muted">
-                Exige{' '}
-                <Link
-                  href="/dashboard/caixa"
-                  className="font-semibold text-[var(--dash-primary)] underline"
-                >
-                  turno de caixa aberto
-                </Link>{' '}
-                e permissão de Caixa. O pedido fica fechado e pago.
+                {cashierPanelEnabled ? (
+                  <>
+                    Exige{' '}
+                    <Link
+                      href="/dashboard/caixa"
+                      className="font-semibold text-[var(--dash-primary)] underline"
+                    >
+                      turno de caixa aberto
+                    </Link>{' '}
+                    e permissão de Caixa. O pedido fica fechado e pago.
+                  </>
+                ) : (
+                  <>
+                    O pedido fica <strong>concluído e pago</strong> no balcão (sem módulo Caixa neste
+                    plano).
+                  </>
+                )}
               </p>
             ) : (
               <p className="mt-1.5 text-xs text-vyria-navy-muted">

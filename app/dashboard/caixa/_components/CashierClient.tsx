@@ -10,6 +10,11 @@ import { dashboardFetch } from '@/lib/dashboard-fetch.client'
 import type { EntregaDTO, StoreEntregadorDTO } from '@/lib/entregas-types'
 import { saldoEntregaLinha } from '@/lib/entregas-types'
 import type { PaperMm } from '@/lib/print/layout'
+import {
+  openOrderTicketPrint,
+  orderTicketVariantFromSource,
+} from '@/lib/order-print-window'
+import type { StorePrintingState } from '@/lib/store-printing'
 import type { StoreOrderRow } from '@/lib/store-order'
 import { createClient } from '@/lib/supabase/client'
 import { IconPrinter } from '@/app/dashboard/_components/NavIcons'
@@ -38,9 +43,10 @@ function mapSource(source: string | null | undefined): SourceKey {
   return 'menu_link'
 }
 
-function sourceLabel(k: SourceKey): string {
+function sourceLabel(k: SourceKey, opts?: { proDelivery?: boolean }): string {
   if (k === 'waiter') return 'Garçom'
   if (k === 'pdv') return 'Balcão'
+  if (opts?.proDelivery) return 'Slug / QR (site)'
   return 'Link de cardápio'
 }
 
@@ -98,8 +104,12 @@ export function CashierClient({
   initialEntregadores = [],
   initialEntregasTurno = [],
   deliveryPipelineEnabled = true,
+  /** Secção entregas / entregadores e chamadas à API de entregas — Growth+ com pipeline de entregas. */
+  entregasCaixaEnabled = false,
+  caixaProDeliveryOnly = false,
   showThermalPrint = false,
   printAgentUrl = '',
+  printing,
 }: {
   storeId: string
   storeName: string
@@ -112,8 +122,12 @@ export function CashierClient({
   initialEntregadores?: StoreEntregadorDTO[]
   initialEntregasTurno?: EntregaDTO[]
   deliveryPipelineEnabled?: boolean
+  entregasCaixaEnabled?: boolean
+  /** Pro + modo delivery: sem comandas PDV/garçom; métricas só pedidos do site (slug/QR) + entregas na secção dedicada. */
+  caixaProDeliveryOnly?: boolean
   showThermalPrint?: boolean
   printAgentUrl?: string
+  printing: StorePrintingState
 }) {
   const router = useRouter()
   const [orders, setOrders] = useState(initialOrders)
@@ -196,40 +210,71 @@ export function CashierClient({
     window.setTimeout(() => setToast(null), 4500)
   }, [])
 
-  const thermalPrintOrder = useCallback(
-    async (o: StoreOrderRow) => {
-      if (!showThermalPrint) {
-        showToast('Função disponível no plano Pro.')
-        return
-      }
-      if (!printAgentUrl?.trim()) {
-        showToast('Configura o agente em Impressão.')
-        return
-      }
-      setThermalBusyOrderId(o.id)
-      showToast('A imprimir na térmica…')
-      try {
-        const res = await dashboardFetch('/api/print', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ store_id: storeId, order_id: o.id }),
-        })
-        const json = (await res.json().catch(() => ({}))) as {
-          error?: string
-          ok?: boolean
-        }
-        if (!res.ok || !json.ok) {
-          showToast(json.error || 'Erro ao imprimir.')
-          return
-        }
-        showToast('Impresso na térmica.')
-      } catch {
-        showToast('Erro de rede ao imprimir.')
-      } finally {
-        setThermalBusyOrderId(null)
+  const displayNumberById = useMemo(() => {
+    const sorted = [...orders].sort(
+      (a, b) =>
+        new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    )
+    const m = new Map<string, string>()
+    sorted.forEach((o, i) => {
+      m.set(o.id, String(i + 1).padStart(3, '0'))
+    })
+    return m
+  }, [orders])
+
+  const printComandaCaixa = useCallback(
+    (o: StoreOrderRow) => {
+      const orderRef =
+        displayNumberById.get(o.id) ?? o.id.replace(/-/g, '').slice(0, 8)
+      const r = openOrderTicketPrint({
+        storeName,
+        order: o,
+        orderDisplayRef: orderRef,
+        printing: {
+          print_include_customer_details: printing.print_include_customer_details,
+          print_delivery_copy: printing.print_delivery_copy,
+          print_paper_mm: printing.print_paper_mm,
+        },
+        variant: orderTicketVariantFromSource(o.source, o),
+      })
+      if (r === 'failed') {
+        showToast('Permite pop-ups para abrir a comanda.')
       }
     },
-    [printAgentUrl, showThermalPrint, showToast, storeId]
+    [displayNumberById, printing, showToast, storeName]
+  )
+
+  const printOrderDefault = useCallback(
+    async (o: StoreOrderRow) => {
+      const useThermal =
+        showThermalPrint && Boolean(printAgentUrl?.trim())
+      if (useThermal) {
+        setThermalBusyOrderId(o.id)
+        showToast('A imprimir…')
+        try {
+          const res = await dashboardFetch('/api/print', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ store_id: storeId, order_id: o.id }),
+          })
+          const json = (await res.json().catch(() => ({}))) as {
+            error?: string
+            ok?: boolean
+          }
+          if (res.ok && json.ok) {
+            showToast('Comanda enviada à impressora.')
+            return
+          }
+        } catch {
+          /* abre pré-visualização */
+        } finally {
+          setThermalBusyOrderId(null)
+        }
+        showToast('A abrir pré-visualização…')
+      }
+      printComandaCaixa(o)
+    },
+    [printAgentUrl, printComandaCaixa, showThermalPrint, showToast, storeId]
   )
 
   useEffect(() => {
@@ -260,6 +305,12 @@ export function CashierClient({
       setSourceFilter('all')
     }
   }, [deliveryPipelineEnabled, sourceFilter])
+
+  useEffect(() => {
+    if (caixaProDeliveryOnly && (sourceFilter === 'waiter' || sourceFilter === 'pdv')) {
+      setSourceFilter('all')
+    }
+  }, [caixaProDeliveryOnly, sourceFilter])
 
   const filteredOrders = useMemo(() => {
     const from = periodStart(period)
@@ -311,7 +362,7 @@ export function CashierClient({
   const turnoId = turno?.id
 
   const reloadEntregas = useCallback(async () => {
-    if (!deliveryPipelineEnabled) {
+    if (!entregasCaixaEnabled) {
       setEntregasApi([])
       setEntregasTurnoAtual([])
       setBusyEntregas(false)
@@ -356,7 +407,7 @@ export function CashierClient({
     entFilterQuick,
     entDriverKey,
     showToast,
-    deliveryPipelineEnabled,
+    entregasCaixaEnabled,
   ])
 
   useEffect(() => {
@@ -715,7 +766,7 @@ export function CashierClient({
       o.id,
       new Date(o.created_at).toISOString(),
       operatorLabel,
-      sourceLabel(mapSource(o.source)),
+      sourceLabel(mapSource(o.source), { proDelivery: caixaProDeliveryOnly }),
       o.status || '',
       (o.customer_name || '').replaceAll(';', ','),
       (o.items_summary || '').replaceAll(';', ','),
@@ -758,7 +809,9 @@ export function CashierClient({
               Caixa
             </h1>
             <p className="mt-1 text-sm text-[#6b7280]">
-              Turno, recebimentos, comandas e faturamento por origem.
+              {caixaProDeliveryOnly
+                ? 'Turno, pedidos do link público (slug/QR), entregas dos estafetas e faturamento por origem.'
+                : 'Turno, recebimentos, comandas e faturamento por origem.'}
             </p>
           </div>
           <button
@@ -949,7 +1002,9 @@ export function CashierClient({
             <div className="h-10 w-10 rounded-full bg-[#e5e7eb]" aria-hidden />
             <p className="text-sm font-medium text-[#374151]">Nenhuma comanda em aberto</p>
             <p className="max-w-sm text-xs text-[#6b7280]">
-              As comandas criadas no Garçom ou no PDV aparecem aqui para pagamento.
+              {caixaProDeliveryOnly
+                ? 'Neste modo não há comandas de balcão ou garçom. Pedidos do site aparecem nas métricas; entregas dos estafetas, na secção abaixo.'
+                : 'As comandas criadas no Garçom ou no PDV aparecem aqui para pagamento.'}
             </p>
           </div>
         ) : (
@@ -1001,18 +1056,16 @@ export function CashierClient({
                         </p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
-                        {showThermalPrint ? (
-                          <button
-                            type="button"
-                            disabled={thermalBusyOrderId === o.id}
-                            onClick={() => void thermalPrintOrder(o)}
-                            className="inline-flex items-center gap-1 rounded-lg border border-[var(--card-border)] bg-white px-2 py-2 text-xs font-semibold text-[#1f2937] disabled:opacity-50"
-                            title="Impressora térmica Wi-Fi"
-                          >
-                            <IconPrinter className="h-4 w-4 text-[var(--dash-primary)]" />
-                            {thermalBusyOrderId === o.id ? '…' : 'Térmica'}
-                          </button>
-                        ) : null}
+                        <button
+                          type="button"
+                          disabled={thermalBusyOrderId === o.id}
+                          onClick={() => void printOrderDefault(o)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-[var(--card-border)] bg-white px-2 py-2 text-xs font-semibold text-[#1f2937] disabled:opacity-50"
+                          title="Térmica Wi‑Fi se configurada; senão abre a pré-visualização da comanda."
+                        >
+                          <IconPrinter className="h-4 w-4 text-[var(--dash-primary)]" />
+                          {thermalBusyOrderId === o.id ? '…' : 'Imprimir comanda'}
+                        </button>
                         <select
                           value={paymentDraft(o)}
                           onChange={(e) =>
@@ -1050,7 +1103,7 @@ export function CashierClient({
         )}
       </section>
 
-      {deliveryPipelineEnabled ? (
+      {entregasCaixaEnabled ? (
       <section className="mt-8 rounded-2xl border border-[var(--card-border)] bg-white p-4 shadow-sm sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
@@ -1435,7 +1488,9 @@ export function CashierClient({
       <section className="mt-8 rounded-2xl border border-[var(--card-border)] bg-white p-4 shadow-sm">
         <h2 className="text-base font-semibold text-[#1a1614]">Métricas por origem</h2>
         <p className="mt-0.5 text-xs text-[#6b7280]">
-          Faturamento consoante o período e a origem selecionados.
+          {caixaProDeliveryOnly
+            ? 'Faturamento dos pedidos pelo link público (slug/QR). Entregas de motoboy na secção dedicada.'
+            : 'Faturamento consoante o período e a origem selecionados.'}
         </p>
         <div className="flex flex-wrap items-center gap-2">
           {(
@@ -1460,9 +1515,11 @@ export function CashierClient({
             </button>
           ))}
           <span className="mx-1 hidden h-5 w-px bg-[var(--card-border)] sm:inline" />
-          {(deliveryPipelineEnabled
-            ? (['all', 'waiter', 'pdv', 'menu_link'] as const)
-            : (['all', 'waiter', 'pdv'] as const)
+          {(caixaProDeliveryOnly
+            ? (['all', 'menu_link'] as const)
+            : deliveryPipelineEnabled
+              ? (['all', 'waiter', 'pdv', 'menu_link'] as const)
+              : (['all', 'waiter', 'pdv'] as const)
           ).map((id) => (
             <button
               key={id}
@@ -1474,7 +1531,7 @@ export function CashierClient({
                   : 'border border-[var(--card-border)] bg-white text-[#374151]'
               }`}
             >
-              {id === 'all' ? 'Todos' : sourceLabel(id)}
+              {id === 'all' ? 'Todos' : sourceLabel(id, { proDelivery: caixaProDeliveryOnly })}
             </button>
           ))}
         </div>
@@ -1482,14 +1539,18 @@ export function CashierClient({
 
       <section
         className={
-          deliveryPipelineEnabled
-            ? 'mt-5 grid gap-4 lg:grid-cols-3'
-            : 'mt-5 grid gap-4 sm:grid-cols-2'
+          caixaProDeliveryOnly
+            ? 'mt-5 grid gap-4'
+            : deliveryPipelineEnabled
+              ? 'mt-5 grid gap-4 lg:grid-cols-3'
+              : 'mt-5 grid gap-4 sm:grid-cols-2'
         }
       >
-        {(deliveryPipelineEnabled
-          ? (['waiter', 'pdv', 'menu_link'] as const)
-          : (['waiter', 'pdv'] as const)
+        {(caixaProDeliveryOnly
+          ? (['menu_link'] as const)
+          : deliveryPipelineEnabled
+            ? (['waiter', 'pdv', 'menu_link'] as const)
+            : (['waiter', 'pdv'] as const)
         ).map((k) => {
           const pct = totalRevenue > 0 ? Math.round((summary[k].total / totalRevenue) * 1000) / 10 : 0
           const ticket = summary[k].count > 0 ? summary[k].total / summary[k].count : 0
@@ -1498,7 +1559,9 @@ export function CashierClient({
               key={k}
               className="rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-sm"
             >
-              <p className="text-sm font-semibold text-[#1a1614]">{sourceLabel(k)}</p>
+              <p className="text-sm font-semibold text-[#1a1614]">
+                {sourceLabel(k, { proDelivery: caixaProDeliveryOnly })}
+              </p>
               <p className="mt-2 text-2xl font-bold text-[var(--dash-primary)]">
                 {money.format(summary[k].total)}
               </p>

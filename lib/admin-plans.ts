@@ -1,12 +1,36 @@
-import type { Plan } from '@/lib/plan'
+import type { MerchantOperationMode } from '@/lib/merchant-operation-mode'
+import { planMonthlyAmountBrl, planShortLabel, type Plan } from '@/lib/plan'
 
-/** Preços exibidos no painel admin (cobrança manual). */
-export const ADMIN_PLAN_OPTIONS: Array<{
+const moneyBr = new Intl.NumberFormat('pt-BR', {
+  style: 'currency',
+  currency: 'BRL',
+})
+
+export type AdminPlanOption = {
   code: Plan
   label: string
   priceLabel: string
-}> = [
-  { code: 'START', label: 'Start', priceLabel: 'R$ 49,90' },
-  { code: 'GROWTH', label: 'Growth', priceLabel: 'R$ 99,90' },
-  { code: 'PRO', label: 'Pro', priceLabel: 'R$ 149,90' },
-]
+}
+
+/** Preço mensal formatado para selects do admin (sem sufixo «/mês»). */
+export function adminPlanPriceLabel(
+  plan: Plan,
+  operationMode: MerchantOperationMode | null = null
+): string {
+  return moneyBr.format(planMonthlyAmountBrl(plan, operationMode))
+}
+
+/** Opções de plano no admin — preços conforme modelo de operação da loja. */
+export function adminPlanOptionsForOperationMode(
+  operationMode: MerchantOperationMode | null = null
+): AdminPlanOption[] {
+  return (['START', 'GROWTH', 'PRO'] as const).map((code) => ({
+    code,
+    label: planShortLabel(code),
+    priceLabel: adminPlanPriceLabel(code, operationMode),
+  }))
+}
+
+/** Legado: tabela Delivery/Presencial (modo não definido). */
+export const ADMIN_PLAN_OPTIONS: AdminPlanOption[] =
+  adminPlanOptionsForOperationMode(null)

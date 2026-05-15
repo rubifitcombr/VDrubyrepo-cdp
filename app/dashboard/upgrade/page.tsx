@@ -15,7 +15,11 @@ const FEATURE_LABEL: Record<string, { title: string; minPlan: string }> = {
     minPlan: 'Pro',
   },
   inventory: { title: 'Gestão de estoque', minPlan: 'Pro' },
-  waiter: { title: 'Garçom — pedidos por mesa', minPlan: 'Pro' },
+  garcom: {
+    title: 'Garçom / QR salão (Growth em modo presencial ou híbrido; mapa completo no Pro)',
+    minPlan: 'Growth',
+  },
+  waiter: { title: 'Mapa de garçom no painel (pedidos por mesa)', minPlan: 'Pro' },
   cashier: { title: 'Caixa completo', minPlan: 'Pro' },
 }
 

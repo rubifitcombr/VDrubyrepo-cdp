@@ -1,4 +1,5 @@
 import type { Plan } from '@/lib/plan'
+import type { MerchantOperationMode } from '@/lib/merchant-operation-mode'
 
 export type BillingSubscriptionStatus = 'active' | 'overdue' | 'cancelled'
 
@@ -25,6 +26,7 @@ export type AssinaturaPageModel = {
   subscriptionStatus: BillingSubscriptionStatus
   invoices: BillingInvoiceRow[]
   whatsappHref: string | null
+  operationMode: MerchantOperationMode | null
 }
 
 const OVERDUE_BLOCK_DAYS = 3

@@ -7,6 +7,7 @@ import {
 } from '@/lib/vyria-panel-mode'
 import { getDashboardAccessRedirectPath } from '@/lib/merchant-access-redirect.server'
 import { readStorePlano } from '@/lib/store-columns'
+import { dashboardUsesSlugChannelOrdersOnly } from '@/lib/slug-channel-orders'
 import {
   getDashboardBillingBanner,
   getDashboardBillingBlock,
@@ -76,18 +77,28 @@ export default async function DashboardLayout({
       : undefined
   const plan = effectiveDashboardPlan(user?.email ?? null, rawPlan)
 
+  const storeRecordPreSync: Record<string, unknown> | null =
+    store && typeof store === 'object'
+      ? (store as Record<string, unknown>)
+      : null
+  const slugChannelSourcesOnly = dashboardUsesSlugChannelOrdersOnly(
+    plan,
+    storeRecordPreSync
+      ? parseOperationModeFromStore(storeRecordPreSync)
+      : null
+  )
+
   const storeId =
     store && typeof store === 'object' && 'id' in store
       ? (store.id as string)
       : null
   const notificationCount = storeId
-    ? await getDashboardNotificationCount(storeId)
+    ? await getDashboardNotificationCount(storeId, {
+        slugChannelSourcesOnly,
+      })
     : 0
 
-  let storeRecord: Record<string, unknown> | null =
-    store && typeof store === 'object'
-      ? (store as Record<string, unknown>)
-      : null
+  let storeRecord: Record<string, unknown> | null = storeRecordPreSync
 
   if (storeRecord && user) {
     const supabase = await createClient()
@@ -130,6 +141,7 @@ export default async function DashboardLayout({
       isAuthenticated={!!user}
       plan={plan}
       notificationCount={notificationCount}
+      slugChannelSourcesOnly={slugChannelSourcesOnly}
       billingBanner={billingBanner}
       billingBlock={billingBlock}
       vyriaDualAccount={vyriaDualAccount}

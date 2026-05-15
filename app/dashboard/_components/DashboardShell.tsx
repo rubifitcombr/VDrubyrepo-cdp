@@ -271,6 +271,7 @@ export function DashboardShell({
   isAuthenticated,
   plan,
   notificationCount = 0,
+  slugChannelSourcesOnly = false,
   billingBanner = null,
   billingBlock = null,
   vyriaDualAccount,
@@ -304,6 +305,8 @@ export function DashboardShell({
   isAuthenticated: boolean
   plan: Plan
   notificationCount?: number
+  /** Growth + delivery: sino / realtime só canal slug (site_* / menu_link / site_pickup). */
+  slugChannelSourcesOnly?: boolean
   billingBanner?: {
     openInvoiceDateLabel: string
     payUrl: string
@@ -417,6 +420,7 @@ export function DashboardShell({
           <DashboardOrderRealtimeNotifier
             storeId={storeId}
             notifyOnNewOrder={notifyOnNewOrder}
+            slugChannelSourcesOnly={slugChannelSourcesOnly}
           />
         ) : null}
         {isAuthenticated &&
@@ -429,6 +433,7 @@ export function DashboardShell({
             manualClosed={manualClosed}
             autoAcceptOrders={autoAcceptOrders}
             printing={autoAcceptPrinting}
+            slugChannelSourcesOnly={slugChannelSourcesOnly}
           />
         ) : null}
         {billingBanner && isAuthenticated ? (
@@ -478,6 +483,7 @@ export function DashboardShell({
                     storeId={storeId}
                     plan={plan}
                     notificationCount={notificationCount}
+                    slugChannelSourcesOnly={slugChannelSourcesOnly}
                   />
                 </div>
               </div>

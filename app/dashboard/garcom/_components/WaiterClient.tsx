@@ -11,6 +11,7 @@ import {
   type SalaoAttendanceMode,
 } from '@/lib/salao-attendance'
 import { effectiveProductPrice } from '@/lib/product-pricing'
+import type { MerchantOperationMode } from '@/lib/merchant-operation-mode'
 import type { StoreOrderRow } from '@/lib/store-order'
 import {
   extractUserNotes,
@@ -19,6 +20,11 @@ import {
   parseTableFromNotes,
 } from '@/lib/waiter-order-notes'
 import { dashboardFetch } from '@/lib/dashboard-fetch.client'
+import {
+  openOrderTicketPrint,
+  orderTicketVariantFromSource,
+} from '@/lib/order-print-window'
+import type { StorePrintingState } from '@/lib/store-printing'
 import { StorePublicQrPanel } from '@/app/dashboard/_components/StorePublicQrPanel'
 import { IconPrinter } from '@/app/dashboard/_components/NavIcons'
 import { updateStore } from '@/services/store'
@@ -97,6 +103,11 @@ function statusLabel(status: string | null): string {
   }
 }
 
+function canPrintComandaStatus(status: string | null | undefined): boolean {
+  const s = String(status ?? '').trim().toLowerCase()
+  return s === 'pending' || s === 'preparing' || s === 'ready' || s === 'confirmed'
+}
+
 function orderMatchesTable(o: StoreOrderRow, tableName: string, amb: string): boolean {
   const tn = parseTableFromNotes(o.notes) || ''
   const sc = parseSectorFromNotes(o.notes)
@@ -161,9 +172,11 @@ function mergedSectorList(
 
 export function WaiterClient({
   storeId,
+  storeName,
   storeSlug,
   origin,
   plan,
+  operationMode,
   initialSalaoAttendanceMode,
   initialProducts,
   initialOpenOrders,
@@ -174,11 +187,15 @@ export function WaiterClient({
   waiterExitPin,
   printAgentUrl,
   showThermalPrint,
+  printing,
 }: {
   storeId: string
+  storeName: string
   storeSlug: string
   origin: string
   plan: Plan
+  /** `null` = legado (comportamento anterior ao campo em loja). */
+  operationMode: MerchantOperationMode | null
   initialSalaoAttendanceMode: SalaoAttendanceMode
   initialProducts: MenuProductRow[]
   initialOpenOrders: StoreOrderRow[]
@@ -189,6 +206,7 @@ export function WaiterClient({
   waiterExitPin: string
   printAgentUrl: string
   showThermalPrint: boolean
+  printing: StorePrintingState
 }) {
   const [tables, setTables] = useState(initialTables)
   const [sectorsEditText, setSectorsEditText] = useState(() => initialSectors.join('\n'))
@@ -260,6 +278,10 @@ export function WaiterClient({
   const selfServiceSalonUi =
     planAllowsSalonSelfServiceQr(plan) &&
     (!planAllowsSalonStaffGarcom(plan) || salaoMode === 'self_service')
+  /** PIN ao sair do ecrã completo: Pro com mapa garçom; Growth presencial (QR mesa) não usa PIN. */
+  const pinRequiredForGarcomScreen =
+    planAllowsSalonStaffGarcom(plan) &&
+    !(plan === 'GROWTH' && operationMode === 'presencial')
 
   async function persistSalaoMode(next: SalaoAttendanceMode) {
     setSalaoSaving(true)
@@ -285,6 +307,18 @@ export function WaiterClient({
   useEffect(() => {
     setOpenOrders(initialOpenOrders)
   }, [initialOpenOrders])
+
+  const displayNumberById = useMemo(() => {
+    const sorted = [...openOrders].sort(
+      (a, b) =>
+        new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    )
+    const m = new Map<string, string>()
+    sorted.forEach((o, i) => {
+      m.set(o.id, String(i + 1).padStart(3, '0'))
+    })
+    return m
+  }, [openOrders])
 
   useEffect(() => {
     const root = typeof document !== 'undefined' ? (document.documentElement as HTMLElement & {
@@ -361,6 +395,10 @@ export function WaiterClient({
   )
 
   const hasSavedOrder = !!activeOrderId && !!activeOrder
+
+  /** Coluna do pedido no desktop: só quando há contexto (evita faixa vazia com mensagem). */
+  const showDesktopOrderAside =
+    Boolean(table.trim()) || cart.length > 0 || hasSavedOrder || loadingOrder
 
   async function loadOrderEditor(order: StoreOrderRow, openDrawer = true) {
     setLoadingOrder(true)
@@ -698,43 +736,56 @@ export function WaiterClient({
     setOpenOrders((prev) => prev.map((x) => (x.id === order.id ? { ...x, status: 'confirmed' } : x)))
   }
 
-  async function thermalPrintOpenOrder(order: StoreOrderRow) {
-    if (!showThermalPrint) {
+  function printSavedOrderTicket(order: StoreOrderRow) {
+    const orderRef =
+      displayNumberById.get(order.id) ?? order.id.replace(/-/g, '').slice(0, 8)
+    const r = openOrderTicketPrint({
+      storeName,
+      order,
+      orderDisplayRef: orderRef,
+      printing: {
+        print_include_customer_details: printing.print_include_customer_details,
+        print_delivery_copy: printing.print_delivery_copy,
+        print_paper_mm: printing.print_paper_mm,
+      },
+      variant: orderTicketVariantFromSource(order.source, order),
+    })
+    if (r === 'failed') {
       setSuccess(null)
-      setError('Impressão térmica Wi-Fi está no plano Pro.')
-      return
+      setError('Não foi possível abrir a janela de impressão.')
     }
-    if (!printAgentUrl?.trim()) {
-      setSuccess(null)
-      setError('Configura o agente em Impressão (painel).')
-      return
-    }
-    setThermalBusyOrderId(order.id)
-    setError(null)
-    setSuccess('A imprimir na térmica…')
-    try {
-      const res = await dashboardFetch('/api/print', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ store_id: storeId, order_id: order.id }),
-      })
-      const json = (await res.json().catch(() => ({}))) as {
-        error?: string
-        ok?: boolean
-      }
-      if (!res.ok || !json.ok) {
-        setSuccess(null)
-        setError(json.error || 'Erro ao imprimir.')
-        return
+  }
+
+  async function printSavedOrderDefault(order: StoreOrderRow) {
+    const useThermal = showThermalPrint && Boolean(printAgentUrl?.trim())
+    if (useThermal) {
+      setThermalBusyOrderId(order.id)
+      setError(null)
+      setSuccess('A imprimir…')
+      try {
+        const res = await dashboardFetch('/api/print', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ store_id: storeId, order_id: order.id }),
+        })
+        const json = (await res.json().catch(() => ({}))) as {
+          error?: string
+          ok?: boolean
+        }
+        if (res.ok && json.ok) {
+          setError(null)
+          setSuccess('Comanda enviada à impressora.')
+          return
+        }
+      } catch {
+        /* abre pré-visualização */
+      } finally {
+        setThermalBusyOrderId(null)
       }
       setError(null)
-      setSuccess('Impresso na térmica.')
-    } catch {
-      setSuccess(null)
-      setError('Erro de rede ao imprimir.')
-    } finally {
-      setThermalBusyOrderId(null)
+      setSuccess('A abrir pré-visualização…')
     }
+    printSavedOrderTicket(order)
   }
 
   async function submitWaiterCheckout(order: StoreOrderRow) {
@@ -775,11 +826,32 @@ export function WaiterClient({
     }
   }
 
+  async function exitGarcomScreenMode() {
+    setError(null)
+    const doc = document as Document & { webkitExitFullscreen?: () => Promise<void> | void }
+    try {
+      if (mobileScreenOpen) {
+        setMobileScreenOpen(false)
+      } else {
+        await (doc.exitFullscreen?.() ?? doc.webkitExitFullscreen?.())
+      }
+      setPinExitOpen(false)
+      setPinAttempt('')
+      setPinError(null)
+    } catch {
+      setError('Não foi possível sair do ecrã completo.')
+    }
+  }
+
   async function toggleFullscreen() {
     if (!fullscreenRootRef.current) return
     const onMobile = typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches
     const inScreenMode = isFullscreen || mobileScreenOpen
     if (inScreenMode) {
+      if (!pinRequiredForGarcomScreen) {
+        await exitGarcomScreenMode()
+        return
+      }
       if (!waiterExitPin) {
         setError('Configure o PIN do Garçom nas Configurações para sair do ecrã.')
         return
@@ -789,7 +861,7 @@ export function WaiterClient({
       setPinExitOpen(true)
       return
     }
-    if (!waiterExitPin) {
+    if (pinRequiredForGarcomScreen && !waiterExitPin) {
       setError('Defina o PIN do Garçom nas Configurações antes de abrir o ecrã.')
       return
     }
@@ -820,19 +892,7 @@ export function WaiterClient({
       setPinError('PIN inválido.')
       return
     }
-    const doc = document as Document & { webkitExitFullscreen?: () => Promise<void> | void }
-    try {
-      if (mobileScreenOpen) {
-        setMobileScreenOpen(false)
-      } else {
-        await (doc.exitFullscreen?.() ?? doc.webkitExitFullscreen?.())
-      }
-      setPinExitOpen(false)
-      setPinAttempt('')
-      setPinError(null)
-    } catch {
-      setPinError('Não foi possível sair do ecrã completo.')
-    }
+    await exitGarcomScreenMode()
   }
 
   async function saveTableConfig() {
@@ -1008,12 +1068,6 @@ export function WaiterClient({
           {salaoSaving ? (
             <p className="mt-2 text-[11px] text-[#6b7280]">A guardar…</p>
           ) : null}
-        </div>
-      ) : planAllowsSalonSelfServiceQr(plan) ? (
-        <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50/90 p-3 text-xs leading-relaxed text-amber-950">
-          <strong>Plano Growth:</strong> QR de autoatendimento para o salão (mesa, URL com{' '}
-          <code className="text-[10px]">?auto=1</code>), distinto do QR de entrega/retirada nas
-          Configurações. O mapa de garçom no painel está disponível no plano Pro.
         </div>
       ) : null}
 
@@ -1315,7 +1369,8 @@ export function WaiterClient({
           </div>
         </main>
 
-        {/* Direita — desktop */}
+        {/* Direita — desktop: painel do pedido só quando há mesa, carrinho ou comanda carregada */}
+        {showDesktopOrderAside ? (
         <aside className="relative hidden min-h-0 w-[320px] min-w-[320px] flex-col border-l border-[var(--card-border)]/80 bg-white md:flex">
           <OrderPanelContent
             table={table}
@@ -1352,6 +1407,7 @@ export function WaiterClient({
             sticky
           />
         </aside>
+        ) : null}
       </div>
       </>
       ) : selfServiceSalonUi ? (
@@ -1364,6 +1420,98 @@ export function WaiterClient({
               qrCheckoutMode="dine_in"
               hideExplanatoryCopy
             />
+          </div>
+
+          <div className="rounded-xl border border-[var(--card-border)] bg-white p-4 shadow-sm md:p-5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-base font-bold text-[#1a1614]">Mesas e setores</h2>
+              <button
+                type="button"
+                onClick={() => {
+                  setTablesSaveError(null)
+                  setSuccess(null)
+                  setConfigOpen(true)
+                  setConfigAmbTab(sectors[0] || 'Salão')
+                }}
+                className="rounded-lg border border-[var(--card-border)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#374151] shadow-sm hover:bg-[#f9fafb]"
+              >
+                + Configurar mesas
+              </button>
+            </div>
+            <p className="mt-2 text-xs leading-relaxed text-[#6b7280]">
+              As mesas e ambientes que definires aqui aparecem no checkout quando o cliente pede
+              pelo QR do salão. Esta área é só de leitura: os pedidos na mesa entram pelo QR, não
+              pelo mapa do garçom (mapa completo no plano Pro).
+            </p>
+            <p className="mt-2 text-[11px] text-[#6b7280]">
+              <span className="mr-2">🟢 Livre</span>
+              <span className="mr-2">🟠 Ocupada</span>
+              <span>🔵 Em preparo</span>
+            </p>
+            {tables.length === 0 ? (
+              <p className="mt-4 rounded-lg border border-dashed border-[var(--card-border)] bg-[#fafafa] p-4 text-sm text-[#6b7280]">
+                Ainda não há mesas. Configura para o cliente poder indicar a mesa ao pedir pelo QR.
+              </p>
+            ) : (
+              <div className="mt-4 space-y-6">
+                {Array.from(tablesByAmbiente.entries()).map(([amb, list]) => (
+                  <div key={amb}>
+                    <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[#9ca3af]">
+                      {amb}
+                    </p>
+                    <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                      {list.map((tb) => {
+                        const st = tableState(openOrders, tb.name, tb.ambiente)
+                        const agg = aggregateTable(openOrders, tb.name, tb.ambiente)
+                        const base =
+                          st === 'free'
+                            ? 'border-[var(--card-border)] bg-white'
+                            : st === 'pending_kitchen'
+                              ? 'border-sky-400 bg-sky-50'
+                              : 'border-amber-400 bg-amber-50/90'
+                        return (
+                          <li key={tb.id}>
+                            <div
+                              className={`flex w-full flex-col items-center rounded-lg border p-3 text-center ${base}`}
+                            >
+                              <span className="text-2xl font-bold tabular-nums text-[#1a1614]">
+                                {tb.name}
+                              </span>
+                              {st === 'free' ? (
+                                <span className="mt-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
+                                  Livre
+                                </span>
+                              ) : st === 'pending_kitchen' ? (
+                                <>
+                                  <span className="mt-2 rounded-full bg-sky-200 px-2 py-0.5 text-[10px] font-bold text-sky-900">
+                                    Em preparo
+                                  </span>
+                                  <span className="mt-1 text-xs font-semibold text-sky-900">
+                                    {money.format(agg.total)}
+                                  </span>
+                                </>
+                              ) : (
+                                <>
+                                  <span className="mt-2 rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-bold text-amber-900">
+                                    Ocupada
+                                  </span>
+                                  <span className="mt-1 text-xs font-semibold text-amber-900">
+                                    {money.format(agg.total)}
+                                  </span>
+                                  <span className="text-[10px] text-amber-800/90">
+                                    {agg.itemsApprox} itens
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       ) : null}
@@ -1434,15 +1582,17 @@ export function WaiterClient({
                     >
                       Ver / Editar
                     </button>
-                    {showThermalPrint ? (
+                    {hasFeature(plan, 'orders') &&
+                    canPrintComandaStatus(order.status) ? (
                       <button
                         type="button"
                         disabled={thermalBusyOrderId === order.id}
-                        onClick={() => void thermalPrintOpenOrder(order)}
+                        onClick={() => void printSavedOrderDefault(order)}
                         className="inline-flex items-center justify-center gap-1 rounded-lg border border-[var(--card-border)] bg-zinc-50 py-1.5 text-xs font-semibold text-[#1a1614] hover:bg-zinc-100 disabled:opacity-50"
+                        title="Térmica Wi‑Fi se configurada; senão abre a pré-visualização da comanda."
                       >
                         <IconPrinter className="h-3.5 w-3.5 text-[var(--dash-primary)]" />
-                        {thermalBusyOrderId === order.id ? '…' : 'Térmica'}
+                        {thermalBusyOrderId === order.id ? '…' : 'Imprimir comanda'}
                       </button>
                     ) : null}
                   </div>

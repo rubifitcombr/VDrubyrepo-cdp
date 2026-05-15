@@ -1,6 +1,7 @@
 'use client'
 
-import { ADMIN_PLAN_OPTIONS } from '@/lib/admin-plans'
+import { adminPlanOptionsForOperationMode } from '@/lib/admin-plans'
+import { planMonthlyPriceLabel } from '@/lib/plan'
 import { createClient } from '@/lib/supabase/client'
 import type { MerchantStatus } from '@/lib/merchant-status'
 import {
@@ -14,7 +15,7 @@ import {
   type MerchantOperationMode,
 } from '@/lib/merchant-operation-mode'
 import { parsePlan, planShortLabel, type Plan } from '@/lib/plan'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Area,
   AreaChart,
@@ -434,6 +435,14 @@ export function LojistasPageClient() {
   const [busyDrawerOperationMode, setBusyDrawerOperationMode] = useState(false)
   const [drawerOperationModeDraft, setDrawerOperationModeDraft] = useState('')
   const [busyDrawerFatura, setBusyDrawerFatura] = useState(false)
+
+  const planOptionsInModal = useMemo(
+    () =>
+      adminPlanOptionsForOperationMode(
+        planoModal?.row.operation_mode ?? null
+      ),
+    [planoModal?.row.operation_mode]
+  )
   const [ownerPwdNew, setOwnerPwdNew] = useState('')
   const [ownerPwdConfirm, setOwnerPwdConfirm] = useState('')
   const [busyOwnerPwd, setBusyOwnerPwd] = useState(false)
@@ -1519,13 +1528,29 @@ export function LojistasPageClient() {
                 value={planoPick}
                 onChange={(e) => setPlanoPick(e.target.value as Plan)}
               >
-                {ADMIN_PLAN_OPTIONS.map((o) => (
+                {planOptionsInModal.map((o) => (
                   <option key={o.code} value={o.code}>
                     {o.label} {o.priceLabel}/mês
                   </option>
                 ))}
               </select>
             </label>
+            {planoModal.row.operation_mode === 'hibrido' ? (
+              <p className="rounded-xl border border-vyria-plum/20 bg-[var(--dash-primary)]/[0.06] px-3 py-2 text-xs leading-snug text-[#374151]">
+                Preços do modelo <strong>Híbrido</strong> (Delivery + Presencial): valores
+                superiores à tabela só delivery ou só presencial.
+              </p>
+            ) : planoModal.row.operation_mode ? (
+              <p className="text-xs text-[#6b7280]">
+                Tabela {operationModeLabel(planoModal.row.operation_mode)}:{' '}
+                {planOptionsInModal.map((o) => `${o.label} ${o.priceLabel}`).join(' · ')}
+              </p>
+            ) : (
+              <p className="text-xs text-[#6b7280]">
+                Loja sem modelo definido — preços base Delivery/Presencial (
+                {planOptionsInModal.map((o) => `${o.label} ${o.priceLabel}`).join(' · ')}).
+              </p>
+            )}
             <label className="block text-sm font-medium text-[#374151]">
               Data de vencimento
               <input
@@ -1851,9 +1876,10 @@ export function LojistasPageClient() {
                       Modelo de operação
                     </h3>
                     <p className="mt-1 text-[11px] leading-snug text-[#9ca3af]">
-                      «Não definido» mantém o menu do painel como antes (só por plano). Com Delivery,
-                      Presencial ou Híbrido activo, o menu segue a matriz plano×modo (ex.: Delivery Pro sem
-                      PDV/garçom no menu; Presencial Growth com PDV e sem Automações).
+                      «Não definido» mantém o menu só por plano. <strong>Híbrido</strong> = união
+                      Delivery + Presencial no mesmo tier; cobrança com tabela própria (Start R$ 69,90 ·
+                      Growth R$ 109,90 · Pro R$ 149,90). Ao ativar/renovar plano, os valores do select
+                      seguem o modelo guardado aqui.
                     </p>
                     <label className="mt-3 block text-sm text-[#374151]">
                       Modo
@@ -1906,6 +1932,18 @@ export function LojistasPageClient() {
                     <h3 className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
                       Assinatura
                     </h3>
+                    <p className="mt-2 text-sm text-[#374151]">
+                      <span className="text-[#6b7280]">Mensalidade indicativa:</span>{' '}
+                      <span className="font-semibold tabular-nums text-[#1a1614]">
+                        {planMonthlyPriceLabel(
+                          drawerLojista.plano,
+                          drawerLojista.operation_mode
+                        )}
+                      </span>
+                      {drawerLojista.operation_mode === 'hibrido' ? (
+                        <span className="ml-1 text-xs text-[#6b7280]">(tabela Híbrido)</span>
+                      ) : null}
+                    </p>
                     <div className="mt-3 flex flex-wrap items-center gap-2">
                       <span className="inline-flex rounded-full bg-white px-2.5 py-0.5 text-xs font-semibold text-[#1a1614] ring-1 ring-black/10">
                         {planShortLabel(drawerLojista.plano)}

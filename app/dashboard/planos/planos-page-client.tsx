@@ -6,53 +6,134 @@ import {
   type MerchantOperationMode,
 } from '@/lib/merchant-operation-mode'
 import type { Plan } from '@/lib/plan'
-import { planMonthlyPriceLabel, planTier, recommendedUpgradePlan } from '@/lib/plan'
+import {
+  planMonthlyPriceLabel,
+  planMonthlyPricesCatalogLinePt,
+  planTier,
+  recommendedUpgradePlan,
+} from '@/lib/plan'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { useMemo, useState } from 'react'
 
 const PLANS: Plan[] = ['START', 'GROWTH', 'PRO']
 
-export type PlanosPreviewTab = 'legacy' | MerchantOperationMode
+export type PlanosPreviewTab = MerchantOperationMode
 
-const PREVIEW_TABS: { id: PlanosPreviewTab; label: string; hint: string }[] = [
-  {
-    id: 'legacy',
-    label: 'Sem modelo definido',
-    hint: 'Menu do painel só por plano (comportamento anterior).',
-  },
-  {
-    id: 'delivery',
-    label: operationModeLabel('delivery'),
-    hint: 'Foco em pedidos online, entregas e WhatsApp.',
-  },
-  {
-    id: 'presencial',
-    label: operationModeLabel('presencial'),
-    hint: 'Balcão, PDV e operação no espaço físico.',
-  },
-  {
-    id: 'hibrido',
-    label: operationModeLabel('hibrido'),
-    hint: 'Combina canal online com atendimento presencial.',
-  },
-]
-
-function defaultPreviewTab(storeMode: MerchantOperationMode | null): PlanosPreviewTab {
-  if (storeMode == null) return 'legacy'
-  return storeMode
+function catalogForTab(tab: PlanosPreviewTab): string {
+  return planMonthlyPricesCatalogLinePt(tab)
 }
 
-const PRICE_LABEL: Record<Plan, string> = {
-  START: planMonthlyPriceLabel('START'),
-  GROWTH: planMonthlyPriceLabel('GROWTH'),
-  PRO: planMonthlyPriceLabel('PRO'),
+function defaultPreviewTab(storeMode: MerchantOperationMode | null): PlanosPreviewTab {
+  return storeMode ?? 'delivery'
 }
 
 const TITLE: Record<Plan, string> = {
   START: 'Start',
   GROWTH: 'Growth',
   PRO: 'Pro',
+}
+
+const MODE_INTRO: Record<
+  MerchantOperationMode,
+  { indicadoPara: string; resumo: string }
+> = {
+  delivery: {
+    indicadoPara:
+      'Negócios em que o foco é vender pelo canal online: cardápio público (link ou QR), pedidos para entrega ou retirada, gestão de entregadores e automações WhatsApp — sem operação de salão com PDV ou garçom no painel.',
+    resumo:
+      'O painel prioriza pedidos do site, promoções, aparência da loja online e, nos planos superiores, caixa, cozinha (KDS) e impressão ligados a esse fluxo.',
+  },
+  presencial: {
+    indicadoPara:
+      'Estabelecimentos que atendem só no espaço físico: balcão (PDV), mesas e consumo no local, com pedidos registados no salão — sem link público de delivery nem gestão de corridas de entrega.',
+    resumo:
+      'O painel inclui PDV desde o Start; no Growth entram garçom/QR de mesa e pedidos em loja; no Pro, caixa, mapa de mesas, impressão e KDS para a operação local.',
+  },
+  hibrido: {
+    indicadoPara:
+      'Quem precisa dos dois mundos no mesmo contrato: atendimento no balcão e no salão (PDV, garçom, mesas) e, em paralelo, vendas pelo link/QR com entregas, taxas e zona de entrega.',
+    resumo:
+      'Cada plano Híbrido reúne o que o Delivery e o Presencial oferecem no mesmo nível (Start, Growth ou Pro), com tabela de preços própria.',
+  },
+}
+
+function ModeloOperacaoIntro({ mode }: { mode: MerchantOperationMode }) {
+  const intro = MODE_INTRO[mode]
+  const headingId = `${mode}-o-que-e`
+
+  return (
+    <section
+      className="mb-6 rounded-2xl border border-vyria-plum/25 bg-gradient-to-br from-[var(--dash-primary)]/[0.06] to-white p-5 shadow-sm md:p-6"
+      aria-labelledby={headingId}
+    >
+      <h2 id={headingId} className="text-base font-bold text-vyria-navy">
+        O que é o modelo {operationModeLabel(mode)}?
+      </h2>
+      <p className="mt-2 max-w-3xl text-sm leading-relaxed text-vyria-navy-muted">
+        <strong className="text-vyria-navy">Indicado para:</strong> {intro.indicadoPara}
+      </p>
+      <p className="mt-2 max-w-3xl text-sm leading-relaxed text-vyria-navy-muted">
+        {intro.resumo}
+      </p>
+      <p className="mt-3 text-xs font-semibold text-vyria-navy">
+        Tabela {operationModeLabel(mode)}: {catalogForTab(mode)}
+      </p>
+
+      {mode === 'hibrido' ? (
+        <>
+          <div className="mt-4 overflow-x-auto rounded-xl border border-[var(--card-border)] bg-white">
+            <table className="w-full min-w-[520px] text-left text-sm">
+              <thead className="border-b border-[var(--card-border)] bg-[#f9fafb] text-xs font-semibold uppercase tracking-wide text-vyria-navy-muted">
+                <tr>
+                  <th className="px-4 py-3">Plano</th>
+                  <th className="px-4 py-3">Delivery (online)</th>
+                  <th className="px-4 py-3">Presencial (salão)</th>
+                  <th className="px-4 py-3">Híbrido (união)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--card-border)] text-vyria-navy-muted">
+                <tr>
+                  <td className="px-4 py-3 font-semibold text-vyria-navy">Start</td>
+                  <td className="px-4 py-3">
+                    Dash, produtos, relatórios, link/QR, taxa e zona de entrega
+                  </td>
+                  <td className="px-4 py-3">Dash, produtos, relatórios, PDV</td>
+                  <td className="px-4 py-3 text-vyria-navy">
+                    Tudo acima · {planMonthlyPriceLabel('START', 'hibrido')}
+                  </td>
+                </tr>
+                <tr>
+                  <td className="px-4 py-3 font-semibold text-vyria-navy">Growth</td>
+                  <td className="px-4 py-3">
+                    Pedidos, promoções, aparência, automações, entregadores
+                  </td>
+                  <td className="px-4 py-3">
+                    PDV, garçom/QR mesa, pedidos, promoções, aparência
+                  </td>
+                  <td className="px-4 py-3 text-vyria-navy">
+                    União dos dois · {planMonthlyPriceLabel('GROWTH', 'hibrido')}
+                  </td>
+                </tr>
+                <tr>
+                  <td className="px-4 py-3 font-semibold text-vyria-navy">Pro</td>
+                  <td className="px-4 py-3">Caixa, impressão, KDS (canal online)</td>
+                  <td className="px-4 py-3">Garçom (mapa), PDV, caixa, impressão, KDS</td>
+                  <td className="px-4 py-3 text-vyria-navy">
+                    Operação mista completa · {planMonthlyPriceLabel('PRO', 'hibrido')}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-3 text-xs text-vyria-navy-muted">
+            Nos modelos só Delivery ou só Presencial, a tabela mensal é{' '}
+            {catalogForTab('delivery')}.
+          </p>
+        </>
+      ) : null}
+    </section>
+  )
 }
 
 export function PlanosPageClient({
@@ -71,12 +152,29 @@ export function PlanosPageClient({
     defaultPreviewTab(storeOperationMode)
   )
 
+  const previewMode = previewTab
+
+  const previewTabs = useMemo(
+    () =>
+      (['delivery', 'presencial', 'hibrido'] as const).map((id) => ({
+        id,
+        label: operationModeLabel(id),
+      })),
+    []
+  )
+
+  const priceLabelByPlan = useMemo(
+    () =>
+      Object.fromEntries(
+        PLANS.map((p) => [p, planMonthlyPriceLabel(p, previewMode)])
+      ) as Record<Plan, string>,
+    [previewMode]
+  )
+
   const currentTier = planTier(currentPlan)
   const recommendedPlan = useMemo(() => recommendedUpgradePlan(currentPlan), [currentPlan])
 
-  const tabMeta = PREVIEW_TABS.find((t) => t.id === previewTab)
-  const previewModeForLines: MerchantOperationMode | null =
-    previewTab === 'legacy' ? null : previewTab
+  const previewModeForLines = previewTab
 
   return (
     <div className="mx-auto w-full max-w-[1280px] pb-8 xl:max-w-[1400px]">
@@ -102,9 +200,8 @@ export function PlanosPageClient({
           Planos em cada modelo de operação
         </h1>
         <p className="mt-2 max-w-2xl text-sm text-vyria-navy-muted">
-          Escolhe um modelo para ver exactamente o que aparece no painel em cada plano. Isto
-          corresponde ao menu lateral quando o modelo da loja está definido; em «Sem modelo
-          definido» o painel continua só por plano (legado).
+          Escolhe um modelo para ver exactamente o que aparece no painel em cada plano — o menu
+          lateral segue o modelo de operação da tua loja.
         </p>
         {storeOperationMode != null ? (
           <p className="mt-2 max-w-2xl text-sm font-medium text-vyria-navy">
@@ -113,8 +210,7 @@ export function PlanosPageClient({
           </p>
         ) : (
           <p className="mt-2 max-w-2xl text-sm text-vyria-navy-muted">
-            A tua loja ainda não tem modelo comercial definido no sistema — o painel usa só o
-            plano (legado).
+            Compara abaixo os três modelos; fala connosco para definir o da tua loja.
           </p>
         )}
       </div>
@@ -124,7 +220,7 @@ export function PlanosPageClient({
           Ver funcionalidades como
         </p>
         <div className="flex flex-wrap gap-2">
-          {PREVIEW_TABS.map((t) => (
+          {previewTabs.map((t) => (
             <button
               key={t.id}
               type="button"
@@ -139,10 +235,9 @@ export function PlanosPageClient({
             </button>
           ))}
         </div>
-        {tabMeta ? (
-          <p className="text-xs leading-snug text-vyria-navy-muted">{tabMeta.hint}</p>
-        ) : null}
       </div>
+
+      <ModeloOperacaoIntro mode={previewTab} />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {PLANS.map((plan) => {
@@ -165,7 +260,7 @@ export function PlanosPageClient({
                   <p className="text-xs font-semibold uppercase tracking-wider text-vyria-navy-muted">
                     {TITLE[plan]}
                   </p>
-                  <p className="mt-1 text-lg font-bold text-vyria-navy">{PRICE_LABEL[plan]}</p>
+                  <p className="mt-1 text-lg font-bold text-vyria-navy">{priceLabelByPlan[plan]}</p>
                 </div>
                 <div className="flex flex-col items-end gap-1">
                   {isCurrent ? (

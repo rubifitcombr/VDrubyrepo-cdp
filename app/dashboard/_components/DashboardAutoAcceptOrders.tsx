@@ -9,6 +9,7 @@ import {
 } from '@/lib/store-order'
 import type { StorePrintingState } from '@/lib/store-printing'
 import { openOrderTicketPrintDeduped, orderTicketVariantFromSource } from '@/lib/order-print-window'
+import { slugChannelSourcesForSupabaseIn, isSlugChannelOrderSource } from '@/lib/slug-channel-orders'
 import { updateOrderStatus } from '@/services/orders'
 
 function buildDisplayRefById(rows: StoreOrderRow[]): Map<string, string> {
@@ -45,12 +46,14 @@ export function DashboardAutoAcceptOrders({
   manualClosed,
   autoAcceptOrders,
   printing,
+  slugChannelSourcesOnly = false,
 }: {
   storeId: string | null
   storeName: string
   manualClosed: boolean
   autoAcceptOrders: boolean
   printing: StorePrintingState
+  slugChannelSourcesOnly?: boolean
 }) {
   const attemptedRef = useRef<Set<string>>(new Set())
   const runningRef = useRef(false)
@@ -71,11 +74,14 @@ export function DashboardAutoAcceptOrders({
     const trackPrint = printing.print_auto_on_confirm
 
     async function fetchOrdersSnapshot(): Promise<StoreOrderRow[]> {
-      const { data, error } = await supabase
+      let q = supabase
         .from('orders')
         .select(ORDER_SELECT)
         .eq('store_id', storeId)
-        .order('created_at', { ascending: false })
+      if (slugChannelSourcesOnly) {
+        q = q.in('source', slugChannelSourcesForSupabaseIn())
+      }
+      const { data, error } = await q.order('created_at', { ascending: false })
       if (error || !data?.length) return []
       return (data as Record<string, unknown>[]).map(mapStoreOrderRow)
     }
@@ -258,6 +264,12 @@ export function DashboardAutoAcceptOrders({
 
     function onOrderInsert(payload: { new?: Record<string, unknown> }) {
       if (!payload.new) return
+      if (
+        slugChannelSourcesOnly &&
+        !isSlugChannelOrderSource(payload.new.source as string | null)
+      ) {
+        return
+      }
       if (trackPrint) {
         const raw = payload.new
         const id = String(raw.id ?? '')
@@ -279,6 +291,12 @@ export function DashboardAutoAcceptOrders({
       old?: Record<string, unknown>
     }) {
       if (!payload.new) return
+      if (
+        slugChannelSourcesOnly &&
+        !isSlugChannelOrderSource(payload.new.source as string | null)
+      ) {
+        return
+      }
       if (trackPrint) {
         const raw = payload.new
         const id = String(raw.id ?? '')
@@ -379,6 +397,7 @@ export function DashboardAutoAcceptOrders({
     storeName,
     manualClosed,
     autoAcceptOrders,
+    slugChannelSourcesOnly,
     printing.print_auto_on_confirm,
     printing.print_include_customer_details,
     printing.print_delivery_copy,

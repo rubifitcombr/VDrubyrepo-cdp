@@ -1,3 +1,5 @@
+import type { MerchantOperationMode } from '@/lib/merchant-operation-mode'
+
 /**
  * Planos comerciais: Start / Growth / Pro.
  * Valores em `stores.plano` (ou legado `plan`): start|growth|pro ou START|…
@@ -145,6 +147,11 @@ export function planTier(plan: Plan): number {
   }
 }
 
+/** Cadastro de entregadores, corridas e acertos — a partir do plano Growth. */
+export function merchantEntregadoresEnabled(plan: Plan): boolean {
+  return planTier(plan) >= planTier('GROWTH')
+}
+
 export function hasFeature(plan: Plan, feature: Feature) {
   return !!PLAN_FEATURES[plan]?.[feature]
 }
@@ -195,24 +202,59 @@ export function planTitle(plan: Plan): string {
   }
 }
 
+/** Delivery e Presencial (tabela base). */
 const PLAN_MONTHLY_BRL: Record<Plan, number> = {
   START: 49.9,
-  GROWTH: 99.9,
+  GROWTH: 89.9,
+  PRO: 139.9,
+}
+
+/** Híbrido = união comercial Delivery + Presencial (preço superior). */
+const PLAN_MONTHLY_BRL_HIBRIDO: Record<Plan, number> = {
+  START: 69.9,
+  GROWTH: 109.9,
   PRO: 149.9,
 }
 
+function planMonthlyTable(
+  operationMode: MerchantOperationMode | null | undefined
+): Record<Plan, number> {
+  return operationMode === 'hibrido' ? PLAN_MONTHLY_BRL_HIBRIDO : PLAN_MONTHLY_BRL
+}
+
 /** Valor mensal em BRL (mesma tabela que `planMonthlyPriceLabel`). */
-export function planMonthlyAmountBrl(plan: Plan): number {
-  return PLAN_MONTHLY_BRL[plan] ?? PLAN_MONTHLY_BRL.START
+export function planMonthlyAmountBrl(
+  plan: Plan,
+  operationMode: MerchantOperationMode | null = null
+): number {
+  const table = planMonthlyTable(operationMode)
+  return table[plan] ?? table.START
 }
 
 /** Preço mensal indicativo (BRL) para o painel de assinatura — alinhar com tabela comercial real. */
-export function planMonthlyPriceLabel(plan: Plan): string {
+export function planMonthlyPriceLabel(
+  plan: Plan,
+  operationMode: MerchantOperationMode | null = null
+): string {
   const money = new Intl.NumberFormat('pt-BR', {
     style: 'currency',
     currency: 'BRL',
   })
-  return `${money.format(planMonthlyAmountBrl(plan))}/mês`
+  return `${money.format(planMonthlyAmountBrl(plan, operationMode))}/mês`
+}
+
+const moneyBrl = new Intl.NumberFormat('pt-BR', {
+  style: 'currency',
+  currency: 'BRL',
+})
+
+/**
+ * Linha com os três valores mensais (BRL) para o modelo indicado.
+ */
+export function planMonthlyPricesCatalogLinePt(
+  operationMode: MerchantOperationMode | null = null
+): string {
+  return `Start ${moneyBrl.format(planMonthlyAmountBrl('START', operationMode))} · Growth ${moneyBrl.format(planMonthlyAmountBrl('GROWTH', operationMode))} · Pro ${moneyBrl.format(planMonthlyAmountBrl('PRO', operationMode))}/mês`
 }
 
 /** Importação de cardápio por foto — Growth em diante (matriz comercial). */
@@ -220,14 +262,14 @@ export function hasAiMenuPhotoImport(plan: Plan): boolean {
   return plan === 'GROWTH' || plan === 'PRO'
 }
 
-/** Geração de descrição com IA (API /api/ai/product-description) — Growth em diante. */
+/** Geração de descrição com IA (API /api/ai/product-description) — a partir do Growth. */
 export function hasMarketingAiDescription(plan: Plan): boolean {
-  return plan === 'GROWTH' || plan === 'PRO'
+  return planTier(plan) >= planTier('GROWTH')
 }
 
-/** Geração de imagem de produto com IA (API /api/ai/product-image) — só Pro. */
+/** Geração de imagem de produto com IA (API /api/ai/product-image) — a partir do Pro. */
 export function hasProMarketingAi(plan: Plan): boolean {
-  return plan === 'PRO'
+  return planTier(plan) >= planTier('PRO')
 }
 
 /** Acesso à automação de WhatsApp (chatbot simples) — Growth em diante. */

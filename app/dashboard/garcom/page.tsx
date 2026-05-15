@@ -7,9 +7,13 @@ import { getStoreByUser } from '@/services/store.server'
 import { getStoreTablesForStore } from '@/services/waiter-tables.server'
 import { getWaiterOpenOrdersForStore } from '@/services/waiter.server'
 import { readStorePlano } from '@/lib/store-columns'
+import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
 import { parsePlan, planTier, hasFeature } from '@/lib/plan'
 import { parsePrintingFromStore } from '@/lib/store-printing'
 import { effectiveSalaoAttendanceMode } from '@/lib/salao-attendance'
+import {
+  parseOperationModeFromStore,
+} from '@/lib/merchant-operation-mode'
 import { WaiterClient } from './_components/WaiterClient'
 
 export default async function GarcomPage() {
@@ -54,26 +58,37 @@ export default async function GarcomPage() {
   }
 
   const storeId = String(store.id)
+  const s = store as Record<string, unknown>
+  const rawPlan = readStorePlano(s)
+  const planEffective = effectiveDashboardPlan(user.email ?? null, rawPlan)
+
   const [products, openOrders, configuredTables, stockMap] = await Promise.all([
     getMenuProductsForStore(storeId),
     getWaiterOpenOrdersForStore(storeId),
     getStoreTablesForStore(storeId),
-    getProductStocksForStore(storeId),
+    hasFeature(planEffective, 'inventory')
+      ? getProductStocksForStore(storeId)
+      : Promise.resolve(
+          new Map<
+            string,
+            { quantity: number; lowStockAlert: number | null; updatedAt: string | null }
+          >()
+        ),
   ])
   const stockQuantityByProductId: Record<string, number> = {}
   for (const [pid, row] of stockMap) {
     stockQuantityByProductId[pid] = row.quantity
   }
-  const s = store as Record<string, unknown>
-  const plan = parsePlan(readStorePlano(s))
+  const plan = parsePlan(rawPlan)
   const printing = parsePrintingFromStore(s)
   if (planTier(plan) < planTier('GROWTH')) {
     return (
       <div className="mx-auto max-w-lg rounded-2xl border border-[var(--card-border)] bg-white p-8 text-center shadow-sm">
         <h1 className="font-brand text-xl font-bold text-[#1a1614]">Garçom e autoatendimento</h1>
         <p className="mt-2 text-sm text-[#6b7280]">
-          O QR de autoatendimento no salão está disponível a partir do plano Growth. O mapa de
-          garçom no painel e a alternância entre modos são do plano Pro.
+          O QR de mesa no salão está disponível a partir do plano Growth com operação{' '}
+          <strong>presencial</strong> ou <strong>híbrida</strong>. O mapa de garçom no painel e a
+          alternância entre modos são do plano Pro.
         </p>
         <Link
           href="/dashboard/planos"
@@ -100,13 +115,21 @@ export default async function GarcomPage() {
     typeof s.waiter_exit_pin === 'string' ? s.waiter_exit_pin.trim() : ''
   const storeSlug = typeof s.slug === 'string' ? s.slug.trim() : ''
   const salaoMode = effectiveSalaoAttendanceMode(plan, s.salao_attendance_mode)
+  const operationMode = parseOperationModeFromStore(s)
+
+  const storeName =
+    typeof s.name === 'string' && s.name.trim()
+      ? s.name.trim()
+      : 'Meu estabelecimento'
 
   return (
     <WaiterClient
       storeId={storeId}
+      storeName={storeName}
       storeSlug={storeSlug}
       origin={origin}
       plan={plan}
+      operationMode={operationMode}
       initialSalaoAttendanceMode={salaoMode}
       initialProducts={products.filter((p) => p.active !== false)}
       initialOpenOrders={openOrders}
@@ -123,6 +146,7 @@ export default async function GarcomPage() {
       waiterExitPin={waiterExitPin}
       printAgentUrl={printing.print_agent_url}
       showThermalPrint={hasFeature(plan, 'printing')}
+      printing={printing}
     />
   )
 }

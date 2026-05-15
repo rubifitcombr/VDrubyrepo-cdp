@@ -16,8 +16,9 @@ import {
 } from '@/lib/order-print-window'
 import { updateOrderStatus } from '@/services/orders'
 import { dashboardFetch } from '@/lib/dashboard-fetch.client'
-import { type Plan, hasFeature } from '@/lib/plan'
+import { type Plan, hasFeature, merchantEntregadoresEnabled } from '@/lib/plan'
 import type { StoreEntregadorDTO } from '@/lib/entregas-types'
+import { slugChannelSourcesForSupabaseIn } from '@/lib/slug-channel-orders'
 import { IconPrinter } from '@/app/dashboard/_components/NavIcons'
 
 function playNewOrderBeep() {
@@ -315,6 +316,7 @@ export function OrdersClient({
   printing,
   plan,
   deliveryPipelineEnabled = true,
+  slugChannelSourcesOnly = false,
 }: {
   initialOrders: StoreOrderRow[]
   storeId: string
@@ -323,6 +325,8 @@ export function OrdersClient({
   plan: Plan
   /** Slug / entregas / separador «A caminho»: só delivery e híbrido. */
   deliveryPipelineEnabled?: boolean
+  /** Growth + delivery: só pedidos do cardápio público (slug/QR entrega ou retirada). */
+  slugChannelSourcesOnly?: boolean
 }) {
   const [orders, setOrders] = useState<StoreOrderRow[]>(initialOrders)
   const [tab, setTab] = useState<TabId>('all')
@@ -376,11 +380,14 @@ export function OrdersClient({
     const supabase = createClient()
 
     async function pullOrders(options?: { beepOnNew?: boolean }) {
-      const { data, error } = await supabase
+      let q = supabase
         .from('orders')
         .select(ORDER_SELECT)
         .eq('store_id', storeId)
-        .order('created_at', { ascending: false })
+      if (slugChannelSourcesOnly) {
+        q = q.in('source', slugChannelSourcesForSupabaseIn())
+      }
+      const { data, error } = await q.order('created_at', { ascending: false })
       if (error || !data) return
       const rows = (data as Record<string, unknown>[]).map(mapStoreOrderRow)
       const nextIds = new Set(rows.map((r) => r.id))
@@ -424,7 +431,7 @@ export function OrdersClient({
       window.clearInterval(poll)
       void supabase.removeChannel(channel)
     }
-  }, [storeId])
+  }, [storeId, slugChannelSourcesOnly])
 
   useEffect(() => {
     if (!deliveryPipelineEnabled && tab === 'delivering') {
@@ -450,6 +457,10 @@ export function OrdersClient({
 
   useEffect(() => {
     if (!deliveryModal) return
+    if (!merchantEntregadoresEnabled(plan)) {
+      setDeliveryModal(null)
+      return
+    }
     const o = deliveryModal.order
     setDelSel('')
     setDelNomeAvulso('')
@@ -479,7 +490,7 @@ export function OrdersClient({
       setEntregadoresOpts(list)
       setDeliveryEntLoading(false)
     })()
-  }, [deliveryModal])
+  }, [deliveryModal, plan])
 
   const displayNumberById = useMemo(() => {
     const sorted = [...orders].sort(
@@ -543,39 +554,34 @@ export function OrdersClient({
     }
   }
 
-  async function thermalPrintOrder(o: StoreOrderRow) {
-    if (!hasFeature(plan, 'printing')) {
-      flashWaNotice('Impressão térmica Wi-Fi está disponível no plano Pro.')
-      return
-    }
-    if (!printing.print_agent_url?.trim()) {
-      flashWaNotice(
-        'Configura o agente e o IP da impressora em Impressão antes de usar a térmica Wi-Fi.'
-      )
-      return
-    }
-    setThermalBusyId(o.id)
-    flashWaNotice('A imprimir na térmica…')
-    try {
-      const res = await dashboardFetch('/api/print', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ store_id: storeId, order_id: o.id }),
-      })
-      const json = (await res.json().catch(() => ({}))) as {
-        error?: string
-        ok?: boolean
+  async function printOrderDefault(o: StoreOrderRow) {
+    const useThermal =
+      hasFeature(plan, 'printing') && Boolean(printing.print_agent_url?.trim())
+    if (useThermal) {
+      setThermalBusyId(o.id)
+      flashWaNotice('A imprimir…')
+      try {
+        const res = await dashboardFetch('/api/print', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ store_id: storeId, order_id: o.id }),
+        })
+        const json = (await res.json().catch(() => ({}))) as {
+          error?: string
+          ok?: boolean
+        }
+        if (res.ok && json.ok) {
+          flashWaNotice('Comanda enviada à impressora.')
+          return
+        }
+      } catch {
+        /* tenta janela de comanda */
+      } finally {
+        setThermalBusyId(null)
       }
-      if (!res.ok || !json.ok) {
-        flashWaNotice(json.error || 'Erro ao imprimir.')
-        return
-      }
-      flashWaNotice('Impresso na térmica.')
-    } catch {
-      flashWaNotice('Erro de rede ao imprimir.')
-    } finally {
-      setThermalBusyId(null)
+      flashWaNotice('A abrir pré-visualização da comanda…')
     }
+    printComanda(o)
   }
 
   async function patchStatus(orderId: string, status: string) {
@@ -630,6 +636,10 @@ export function OrdersClient({
   function onMarkDelivered(o: StoreOrderRow) {
     if (o.status !== 'confirmed') return
     if (isDeliveryFlowOrder(o)) {
+      if (!merchantEntregadoresEnabled(plan)) {
+        void patchStatus(o.id, 'delivered')
+        return
+      }
       setDeliveryModal({ mode: 'on_deliver', order: o })
       return
     }
@@ -638,6 +648,7 @@ export function OrdersClient({
 
   async function submitDeliveryModal(skip: boolean) {
     if (!deliveryModal) return
+    if (!skip && !merchantEntregadoresEnabled(plan)) return
     const o = deliveryModal.order
     setDelSubmitting(true)
     try {
@@ -1005,23 +1016,14 @@ export function OrdersClient({
                       <div className="flex flex-wrap gap-2 pt-2">
                         <button
                           type="button"
-                          onClick={() => printComanda(o)}
-                          className="rounded-lg border border-[var(--card-border)] bg-white px-3 py-2 text-xs font-semibold text-[#374151] shadow-sm transition-colors hover:bg-[#fafafa]"
+                          disabled={thermalBusy}
+                          onClick={() => void printOrderDefault(o)}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--card-border)] bg-white px-3 py-2 text-xs font-semibold text-[#374151] shadow-sm transition-colors hover:bg-[#fafafa] disabled:opacity-50"
+                          title="Térmica Wi‑Fi se configurada; senão abre a pré-visualização da comanda."
                         >
-                          Imprimir comanda
+                          <IconPrinter className="h-4 w-4 shrink-0 text-[var(--dash-primary)]" />
+                          {thermalBusy ? '…' : 'Imprimir comanda'}
                         </button>
-                        {hasFeature(plan, 'printing') ? (
-                          <button
-                            type="button"
-                            disabled={thermalBusy}
-                            onClick={() => void thermalPrintOrder(o)}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--card-border)] bg-white px-3 py-2 text-xs font-semibold text-[#374151] shadow-sm transition-colors hover:bg-[#fafafa] disabled:opacity-50"
-                            title="Impressora térmica Wi-Fi"
-                          >
-                            <IconPrinter className="h-4 w-4 shrink-0 text-[var(--dash-primary)]" />
-                            {thermalBusy ? '…' : 'Térmica'}
-                          </button>
-                        ) : null}
                       </div>
                     ) : null}
 
@@ -1126,6 +1128,7 @@ export function OrdersClient({
                     ) : null}
                     {st === 'delivered' &&
                     deliveryPipelineEnabled &&
+                    merchantEntregadoresEnabled(plan) &&
                     isDeliveryFlowOrder(o) &&
                     !orderIdsComEntrega.has(o.id) ? (
                       <div className="pt-2 sm:hidden">
@@ -1243,6 +1246,7 @@ export function OrdersClient({
                       ) : null}
                       {st === 'delivered' &&
                     deliveryPipelineEnabled &&
+                    merchantEntregadoresEnabled(plan) &&
                     isDeliveryFlowOrder(o) &&
                     !orderIdsComEntrega.has(o.id) ? (
                         <div className="hidden w-full flex-col gap-2 sm:flex">
@@ -1286,7 +1290,7 @@ export function OrdersClient({
         </ul>
       )}
 
-      {deliveryModal ? (
+      {deliveryModal && merchantEntregadoresEnabled(plan) ? (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4" role="dialog">
           <button
             type="button"

@@ -10,6 +10,7 @@ import { slugifyStoreSlug } from '@/lib/store-slug'
 import {
   isDeliveryPipelineEnabled,
   parseOperationModeFromStore,
+  type MerchantOperationMode,
 } from '@/lib/merchant-operation-mode'
 import { uploadStoreLogo } from '@/lib/storage-upload'
 import Image from 'next/image'
@@ -55,14 +56,6 @@ function extractCoordsFromGoogleMaps(url: string): { lat: number; lng: number } 
   return null
 }
 
-function IconLock({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-    </svg>
-  )
-}
-
 export default function SettingsPage() {
   const router = useRouter()
   const [storeId, setStoreId] = useState<string | null>(null)
@@ -89,6 +82,7 @@ export default function SettingsPage() {
   const [supportsWaiterExitPin, setSupportsWaiterExitPin] = useState(true)
   const [waiterExitPin, setWaiterExitPin] = useState('')
   const [deliveryPipelineEnabled, setDeliveryPipelineEnabled] = useState(true)
+  const [operationMode, setOperationMode] = useState<MerchantOperationMode | null>(null)
   const [userEmail, setUserEmail] = useState<string | null>(null)
   const [newAccountPassword, setNewAccountPassword] = useState('')
   const [confirmAccountPassword, setConfirmAccountPassword] = useState('')
@@ -108,9 +102,9 @@ export default function SettingsPage() {
       const parsedPlan = parsePlan(readStorePlano(s))
       setStoreId(s.id as string)
       setStorePlan(parsedPlan)
-      setDeliveryPipelineEnabled(
-        isDeliveryPipelineEnabled(parseOperationModeFromStore(s))
-      )
+      const mode = parseOperationModeFromStore(s)
+      setOperationMode(mode)
+      setDeliveryPipelineEnabled(isDeliveryPipelineEnabled(mode))
       setSlug((s.slug as string) || '')
       setName((s.name as string) || '')
       setSupportsSubtitle('subtitle' in s)
@@ -179,6 +173,11 @@ export default function SettingsPage() {
       ? `${window.location.origin}/${slugParaQr}?auto=1`
       : null
   const hasGrowthLocation = planTier(storePlan) >= planTier('GROWTH')
+  const showGarcomPinQrSettings =
+    operationMode !== 'delivery' && storePlan !== 'START'
+  const isGrowthPresencial = storePlan === 'GROWTH' && operationMode === 'presencial'
+  /** PIN do ecrã: omitido em Growth presencial (só QR mesa / autoatendimento). */
+  const showWaiterPinInSettings = showGarcomPinQrSettings && !isGrowthPresencial
 
   async function handleChangeAccountPassword() {
     if (newAccountPassword.length < 6) {
@@ -254,7 +253,7 @@ export default function SettingsPage() {
         }
       }
     }
-    if (supportsWaiterExitPin) {
+    if (supportsWaiterExitPin && showWaiterPinInSettings) {
       const pin = waiterExitPin.replace(/\D/g, '').slice(0, 4)
       if (pin.length > 0 && pin.length < 4) {
         setSaving(false)
@@ -427,68 +426,6 @@ export default function SettingsPage() {
       </header>
 
       <div className="mt-8 space-y-6">
-        <section
-          id="conta-senha"
-          className="rounded-2xl border border-[var(--card-border)] bg-white p-6 shadow-sm shadow-black/[0.04] md:p-8"
-        >
-          <div className="flex items-center gap-2.5">
-            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--dash-primary)]/12 text-[var(--dash-primary)]">
-              <IconLock className="h-5 w-5" />
-            </span>
-            <h2 className="text-base font-bold text-[#1a1614]">Conta e senha</h2>
-          </div>
-          <p className="mt-2 text-sm text-[#6b7280]">
-            Email da sessão:{' '}
-            <span className="font-medium text-[#1a1614]">{userEmail ?? '—'}</span>
-          </p>
-          <p className="mt-1 text-xs text-[#6b7280]">
-            Para recuperar o acesso sem sessão, usa{' '}
-            <Link href="/login/recuperar" className="font-semibold text-[var(--dash-primary)] hover:underline">
-              Esqueci-me da senha
-            </Link>{' '}
-            no ecrã de login.
-          </p>
-          <div className="mt-6 grid gap-4 sm:max-w-md">
-            <label className="block text-sm font-medium text-[#374151]">
-              Nova senha
-              <input
-                className={inputClass}
-                type={showAccountPassword ? 'text' : 'password'}
-                autoComplete="new-password"
-                value={newAccountPassword}
-                onChange={(e) => setNewAccountPassword(e.target.value)}
-              />
-            </label>
-            <label className="block text-sm font-medium text-[#374151]">
-              Confirmar nova senha
-              <input
-                className={inputClass}
-                type={showAccountPassword ? 'text' : 'password'}
-                autoComplete="new-password"
-                value={confirmAccountPassword}
-                onChange={(e) => setConfirmAccountPassword(e.target.value)}
-              />
-            </label>
-            <label className="flex cursor-pointer items-center gap-2 text-sm text-[#6b7280]">
-              <input
-                type="checkbox"
-                checked={showAccountPassword}
-                onChange={(e) => setShowAccountPassword(e.target.checked)}
-                className="h-4 w-4 rounded border-[var(--card-border)]"
-              />
-              Ver senhas
-            </label>
-            <button
-              type="button"
-              disabled={accountPassBusy}
-              onClick={() => void handleChangeAccountPassword()}
-              className="rounded-xl bg-[var(--dash-primary)] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:brightness-105 disabled:opacity-50"
-            >
-              {accountPassBusy ? 'A guardar…' : 'Alterar senha'}
-            </button>
-          </div>
-        </section>
-
         <section className="rounded-2xl border border-[var(--card-border)] bg-white p-6 shadow-sm shadow-black/[0.04] md:p-8">
           <div className="flex items-center gap-2.5">
             <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--dash-primary)]/12 text-[var(--dash-primary)]">
@@ -619,17 +556,25 @@ export default function SettingsPage() {
           </label>
 
           {deliveryPipelineEnabled ? (
+            <label className="mt-5 block text-sm font-medium text-[#374151]">
+              Endereço da loja (entregas)
+              <input
+                className={inputClass}
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                placeholder="Rua, número, bairro, cidade — usado para calcular o raio de entrega"
+              />
+              <p className="mt-1 text-xs text-[#6b7280]">
+                Necessário quando defines zona de entrega (km) no Dashboard. O raio é medido a
+                partir deste endereço.
+              </p>
+            </label>
+          ) : null}
+
+          {deliveryPipelineEnabled ? (
           <div className="mt-5 rounded-xl border border-[var(--card-border)] bg-[#f9fafb] p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
               Link público
-            </p>
-            <p className="mt-2 text-xs leading-relaxed text-[#6b7280]">
-              Este bloco é o link (e QR) para clientes pedirem com <strong>entrega</strong> ou{' '}
-              <strong>retirada</strong>. O QR de <strong>pedido na mesa</strong> está em{' '}
-              <Link href="/dashboard/garcom" className="font-semibold text-[var(--dash-primary)] underline">
-                Garçom
-              </Link>{' '}
-              e codifica o mesmo slug com <code className="rounded bg-white px-1">?auto=1</code>.
             </p>
             <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0 flex-1" title={publicUrl || undefined}>
@@ -662,6 +607,7 @@ export default function SettingsPage() {
               storeSlug={slugParaQr || null}
               compact
               qrCheckoutMode="delivery_pickup"
+              hideExplanatoryCopy
             />
           </div>
           ) : null}
@@ -729,49 +675,60 @@ export default function SettingsPage() {
         </section>
         ) : null}
 
-        <section className="rounded-2xl border border-[var(--card-border)] bg-white p-6 shadow-sm shadow-black/[0.04] md:p-8">
-          <h2 className="text-base font-bold text-[#1a1614]">
-            Garçom: PIN do ecrã e QR de autoatendimento (mesa)
-          </h2>
-          <p className="mt-1 text-sm text-[#6b7280]">
-            Os <strong>setores de mesa</strong> passam a ser editados em{' '}
-            <Link href="/dashboard/garcom" className="font-semibold text-[var(--dash-primary)] underline">
-              Garçom
-            </Link>
-            , em «Configurar mesas».
-          </p>
-          <div className="mt-5 grid gap-8 lg:grid-cols-2 lg:items-start">
-            <div>
-              <label className="block text-sm font-medium text-[#374151]">
-                PIN (4 dígitos)
-                <input
-                  className={inputClass}
-                  value={waiterExitPin}
-                  onChange={(e) => {
-                    const digits = e.target.value.replace(/\D/g, '').slice(0, 4)
-                    setWaiterExitPin(digits)
-                  }}
-                  placeholder="0000"
-                  inputMode="numeric"
-                  maxLength={4}
-                  disabled={!supportsWaiterExitPin}
+        {showGarcomPinQrSettings ? (
+          <section className="rounded-2xl border border-[var(--card-border)] bg-white p-6 shadow-sm shadow-black/[0.04] md:p-8">
+            <h2 className="text-base font-bold text-[#1a1614]">
+              {isGrowthPresencial
+                ? 'Autoatendimento (mesa): QR'
+                : 'Garçom: PIN do ecrã e QR de autoatendimento (mesa)'}
+            </h2>
+            <p className="mt-1 text-sm text-[#6b7280]">
+              Os <strong>setores de mesa</strong> passam a ser editados em{' '}
+              <Link href="/dashboard/garcom" className="font-semibold text-[var(--dash-primary)] underline">
+                Garçom
+              </Link>
+              , em «Configurar mesas».
+            </p>
+            <div
+              className={`mt-5 grid gap-8 lg:items-start ${
+                showWaiterPinInSettings ? 'lg:grid-cols-2' : 'lg:grid-cols-1'
+              }`}
+            >
+              {showWaiterPinInSettings ? (
+                <div>
+                  <label className="block text-sm font-medium text-[#374151]">
+                    PIN (4 dígitos)
+                    <input
+                      className={inputClass}
+                      value={waiterExitPin}
+                      onChange={(e) => {
+                        const digits = e.target.value.replace(/\D/g, '').slice(0, 4)
+                        setWaiterExitPin(digits)
+                      }}
+                      placeholder="0000"
+                      inputMode="numeric"
+                      maxLength={4}
+                      disabled={!supportsWaiterExitPin}
+                    />
+                    <p className="mt-2 text-xs text-[#6b7280]">
+                      Quando o modo ecrã estiver aberto no Garçom, este PIN é exigido para sair.
+                    </p>
+                  </label>
+                </div>
+              ) : null}
+              <div className={showWaiterPinInSettings ? 'min-w-0' : 'min-w-0 lg:max-w-md'}>
+                <StorePublicQrPanel
+                  publicUrl={qrMesaAutoUrl}
+                  storeSlug={slugParaQr || null}
+                  compact
+                  qrCheckoutMode="dine_in"
+                  showSlugUniquenessNote={false}
+                  hideExplanatoryCopy
                 />
-                <p className="mt-2 text-xs text-[#6b7280]">
-                  Quando o modo ecrã estiver aberto no Garçom, este PIN é exigido para sair.
-                </p>
-              </label>
+              </div>
             </div>
-            <div className="min-w-0">
-              <StorePublicQrPanel
-                publicUrl={qrMesaAutoUrl}
-                storeSlug={slugParaQr || null}
-                compact
-                qrCheckoutMode="dine_in"
-                showSlugUniquenessNote={false}
-              />
-            </div>
-          </div>
-        </section>
+          </section>
+        ) : null}
 
         {storeId ? (
           <section className="rounded-2xl border border-[var(--card-border)] bg-white p-6 shadow-sm shadow-black/[0.04] md:p-8">
@@ -807,6 +764,72 @@ export default function SettingsPage() {
             {saving ? 'A guardar…' : 'Salvar alterações'}
           </button>
         </div>
+
+        <section
+          id="conta-senha"
+          className="rounded-xl border border-dashed border-[var(--card-border)] bg-[#fafafa]/80 px-4 py-4 md:px-5 md:py-5"
+        >
+          <div className="flex flex-wrap items-baseline justify-between gap-2 gap-y-1">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-[#9ca3af]">
+              Conta e senha
+            </h2>
+            <span className="text-xs text-[#6b7280]">
+              Sessão:{' '}
+              <span className="font-medium text-[#374151]">{userEmail ?? '—'}</span>
+            </span>
+          </div>
+          <p className="mt-2 text-[11px] leading-snug text-[#9ca3af]">
+            Sem sessão ativa?{' '}
+            <Link
+              href="/login/recuperar"
+              className="font-medium text-[var(--dash-primary)] underline-offset-2 hover:underline"
+            >
+              Recuperar por e-mail
+            </Link>
+          </p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 sm:gap-x-3">
+            <label className="block text-xs font-medium text-[#6b7280]">
+              Nova senha
+              <input
+                className={`${inputClass} mt-1.5 py-2.5 text-sm`}
+                type={showAccountPassword ? 'text' : 'password'}
+                autoComplete="new-password"
+                value={newAccountPassword}
+                onChange={(e) => setNewAccountPassword(e.target.value)}
+              />
+            </label>
+            <label className="block text-xs font-medium text-[#6b7280]">
+              Confirmar
+              <input
+                className={`${inputClass} mt-1.5 py-2.5 text-sm`}
+                type={showAccountPassword ? 'text' : 'password'}
+                autoComplete="new-password"
+                value={confirmAccountPassword}
+                onChange={(e) => setConfirmAccountPassword(e.target.value)}
+              />
+            </label>
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-[#9ca3af]">
+              <input
+                type="checkbox"
+                checked={showAccountPassword}
+                onChange={(e) => setShowAccountPassword(e.target.checked)}
+                className="h-3.5 w-3.5 rounded border-[var(--card-border)]"
+              />
+              Mostrar
+            </label>
+            <button
+              type="button"
+              disabled={accountPassBusy}
+              onClick={() => void handleChangeAccountPassword()}
+              className="rounded-lg border border-[var(--card-border)] bg-white px-3 py-1.5 text-xs font-semibold text-[#374151] shadow-sm hover:bg-white disabled:opacity-50"
+            >
+              {accountPassBusy ? 'A guardar…' : 'Alterar senha'}
+            </button>
+          </div>
+        </section>
+
         {savedToast ? (
           <div className="fixed bottom-6 right-6 z-50 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-800 shadow-md">
             Configurações salvas com sucesso.
