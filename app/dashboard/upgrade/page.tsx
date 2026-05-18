@@ -21,6 +21,10 @@ const FEATURE_LABEL: Record<string, { title: string; minPlan: string }> = {
   },
   waiter: { title: 'Mapa de garçom no painel (pedidos por mesa)', minPlan: 'Pro' },
   cashier: { title: 'Caixa completo', minPlan: 'Pro' },
+  pix_checkout: {
+    title: 'Pagamento PIX no checkout (QR Code na conta do lojista)',
+    minPlan: 'Pro',
+  },
 }
 
 export default async function UpgradePage({

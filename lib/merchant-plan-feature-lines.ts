@@ -5,7 +5,10 @@ import {
   hasAiMenuPhotoImport,
   hasFeature,
   hasMarketingAiDescription,
+  hasPixCheckout,
   hasProMarketingAi,
+  PIX_CHECKOUT_BENEFIT_LINE,
+  PIX_CHECKOUT_PRO_ONLY_LINE,
   type Plan,
 } from '@/lib/plan'
 
@@ -78,6 +81,11 @@ export function planPreviewLinesForMerchant(
     if (!lines.some((l) => l.includes('Taxa de entrega'))) {
       lines.push('Taxa de entrega e zona de entrega (raio em km)')
     }
+  }
+  if (hasPixCheckout(plan)) {
+    lines.push(PIX_CHECKOUT_BENEFIT_LINE)
+  } else {
+    lines.push(PIX_CHECKOUT_PRO_ONLY_LINE)
   }
   return lines
 }

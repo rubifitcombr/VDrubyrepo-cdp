@@ -1,3 +1,6 @@
+import { hasPixCheckout, parsePlan } from '@/lib/plan'
+import { readStorePlano } from '@/lib/store-columns'
+
 /** Tipos de chave PIX (cadastro no painel). */
 export type PixKeyType = 'cpf' | 'cnpj' | 'email' | 'phone' | 'random'
 
@@ -146,8 +149,10 @@ export function normalizePixKey(
   return { ok: false, error: 'Chave PIX inválida.' }
 }
 
-/** Lojista com PIX activo para checkout público. */
+/** Lojista com PIX activo para checkout público (plano Pro + chave configurada). */
 export function storePixCheckoutEnabled(store: Record<string, unknown>): boolean {
+  const plan = parsePlan(readStorePlano(store))
+  if (!hasPixCheckout(plan)) return false
   const key =
     typeof store.pix_key === 'string' ? store.pix_key.trim() : ''
   if (!key) return false

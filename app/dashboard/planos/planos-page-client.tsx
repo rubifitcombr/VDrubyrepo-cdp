@@ -79,6 +79,11 @@ function ModeloOperacaoIntro({ mode }: { mode: MerchantOperationMode }) {
       <p className="mt-3 text-xs font-semibold text-vyria-navy">
         Tabela {operationModeLabel(mode)}: {catalogForTab(mode)}
       </p>
+      <p className="mt-2 text-xs leading-relaxed text-vyria-navy-muted">
+        <strong className="text-vyria-navy">PIX no checkout:</strong> geração de QR Code e
+        pagamento directo na conta do lojista — exclusivo do plano Pro (todos os modelos de
+        operação).
+      </p>
 
       {mode === 'hibrido' ? (
         <>
@@ -117,10 +122,15 @@ function ModeloOperacaoIntro({ mode }: { mode: MerchantOperationMode }) {
                 </tr>
                 <tr>
                   <td className="px-4 py-3 font-semibold text-vyria-navy">Pro</td>
-                  <td className="px-4 py-3">Caixa, impressão, KDS (canal online)</td>
-                  <td className="px-4 py-3">Garçom (mapa), PDV, caixa, impressão, KDS</td>
+                  <td className="px-4 py-3">
+                    Caixa, impressão, KDS, PIX no checkout
+                  </td>
+                  <td className="px-4 py-3">
+                    Garçom (mapa), PDV, caixa, impressão, KDS, PIX
+                  </td>
                   <td className="px-4 py-3 text-vyria-navy">
-                    Operação mista completa · {planMonthlyPriceLabel('PRO', 'hibrido')}
+                    Operação mista completa + PIX ·{' '}
+                    {planMonthlyPriceLabel('PRO', 'hibrido')}
                   </td>
                 </tr>
               </tbody>

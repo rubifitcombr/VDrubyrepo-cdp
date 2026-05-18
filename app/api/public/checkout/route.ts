@@ -6,7 +6,7 @@ import {
   evaluateDeliveryForCustomer,
   type StoreDeliveryConfig,
 } from '@/lib/delivery-zone.server'
-import { hasOrderPipelineAutomations, parsePlan } from '@/lib/plan'
+import { hasOrderPipelineAutomations, hasPixCheckout, parsePlan } from '@/lib/plan'
 import { readStorePlano } from '@/lib/store-columns'
 import { publicDineInCheckoutAllowed } from '@/lib/salao-attendance'
 import { parseAutomationsFromStore } from '@/lib/store-automations'
@@ -298,11 +298,22 @@ export async function POST(req: NextRequest) {
       .toLowerCase()
     const isPixPayment = paymentNorm === 'pix'
 
-    if (isPixPayment && !storePixCheckoutEnabled(storeRow as Record<string, unknown>)) {
+    const storeMetaEarly = storeRow as Record<string, unknown>
+    const checkoutPlanEarly = parsePlan(readStorePlano(storeMetaEarly))
+    if (isPixPayment && !hasPixCheckout(checkoutPlanEarly)) {
       return NextResponse.json(
         {
           error:
-            'Esta loja ainda não activou o PIX automático. Escolhe outro método de pagamento ou combina com a loja.',
+            'Pagamento PIX no checkout está disponível apenas no plano Pro. Escolhe cartão ou dinheiro.',
+        },
+        { status: 403 }
+      )
+    }
+    if (isPixPayment && !storePixCheckoutEnabled(storeMetaEarly)) {
+      return NextResponse.json(
+        {
+          error:
+            'Esta loja ainda não activou o PIX no painel (Configurações). Escolhe outro método ou combina com a loja.',
         },
         { status: 400 }
       )

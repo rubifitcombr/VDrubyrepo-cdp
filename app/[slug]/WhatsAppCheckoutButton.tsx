@@ -120,15 +120,20 @@ export function WhatsAppCheckoutButton({
   const [addressReferencia, setAddressReferencia] = useState('')
   const [addressBairro, setAddressBairro] = useState('')
   const [paymentMethod, setPaymentMethod] = useState<'pix' | 'card' | 'cash'>(
-    'pix'
+    () => (merchantPixConfigured ? 'pix' : 'cash')
   )
   const [pixStep, setPixStep] = useState<PixStepState | null>(null)
   const [trocoPara, setTrocoPara] = useState('')
   const [notes, setNotes] = useState('')
   const [fulfillment, setFulfillment] = useState<FulfillmentType | null>(null)
   const [tableMesa, setTableMesa] = useState('')
-  void storePlan
   const lastOpenSignalRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    if (!merchantPixConfigured && paymentMethod === 'pix') {
+      setPaymentMethod('cash')
+    }
+  }, [merchantPixConfigured, paymentMethod])
 
   useEffect(() => {
     if (!open) return
@@ -932,10 +937,17 @@ export function WhatsAppCheckoutButton({
                               }}
                               className="w-full rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm outline-none focus:border-[#25D366]"
                             >
-                              <option value="pix">PIX</option>
+                              {merchantPixConfigured ? (
+                                <option value="pix">PIX</option>
+                              ) : null}
                               <option value="card">Cartão</option>
                               <option value="cash">Dinheiro</option>
                             </select>
+                            {!merchantPixConfigured ? (
+                              <p className="mt-1.5 text-[11px] leading-snug text-vyria-navy-muted">
+                                PIX automático (QR Code) disponível no plano Pro da loja.
+                              </p>
+                            ) : null}
                             {paymentMethod === 'pix' && !merchantPixConfigured ? (
                               <p className="mt-1.5 text-[11px] leading-snug text-amber-800">
                                 Esta loja ainda não configurou a chave PIX. O pedido será registado;

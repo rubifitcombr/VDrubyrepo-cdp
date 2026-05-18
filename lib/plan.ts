@@ -26,6 +26,8 @@ export type Feature =
   | 'inventory'
   | 'waiter'
   | 'cashier'
+  /** PIX no checkout público (QR / copia e cola) — exclusivo Pro. */
+  | 'pix_checkout'
 
 const PLAN_FEATURES: Record<Plan, Record<Feature, boolean>> = {
   START: {
@@ -45,6 +47,7 @@ const PLAN_FEATURES: Record<Plan, Record<Feature, boolean>> = {
     inventory: false,
     waiter: false,
     cashier: false,
+    pix_checkout: false,
   },
   GROWTH: {
     dashboard: true,
@@ -63,6 +66,7 @@ const PLAN_FEATURES: Record<Plan, Record<Feature, boolean>> = {
     inventory: false,
     waiter: false,
     cashier: false,
+    pix_checkout: false,
   },
   PRO: {
     dashboard: true,
@@ -81,7 +85,19 @@ const PLAN_FEATURES: Record<Plan, Record<Feature, boolean>> = {
     inventory: true,
     waiter: true,
     cashier: true,
+    pix_checkout: true,
   },
+}
+
+/** Texto comercial nas páginas de planos. */
+export const PIX_CHECKOUT_BENEFIT_LINE =
+  'Pagamento PIX no checkout (QR Code — valor directo na conta do lojista)'
+
+export const PIX_CHECKOUT_PRO_ONLY_LINE =
+  'Pagamento PIX no checkout — exclusivo do plano Pro'
+
+export function hasPixCheckout(plan: Plan): boolean {
+  return hasFeature(plan, 'pix_checkout')
 }
 
 export function parsePlan(value: unknown): Plan {
@@ -171,6 +187,7 @@ const FEATURE_MIN_PLAN: Partial<Record<Feature, MinPlanForFeature>> = {
   inventory: 'PRO',
   waiter: 'PRO',
   cashier: 'PRO',
+  pix_checkout: 'PRO',
 }
 
 export function minPlanForFeature(feature: Feature): MinPlanForFeature | null {

@@ -4,7 +4,7 @@ import { DashboardBusinessHoursCard } from '@/app/dashboard/_components/Dashboar
 import { StorePublicQrPanel } from '@/app/dashboard/_components/StorePublicQrPanel'
 import { StoreOpenSwitch } from '@/app/dashboard/_components/StoreOpenSwitch'
 import { PublicSlugPathPill } from '@/app/_components/PublicSlugPathPill'
-import { planTier, parsePlan, type Plan } from '@/lib/plan'
+import { hasPixCheckout, planTier, parsePlan, type Plan } from '@/lib/plan'
 import { readStorePlano } from '@/lib/store-columns'
 import { slugifyStoreSlug } from '@/lib/store-slug'
 import {
@@ -207,6 +207,7 @@ export default function SettingsPage() {
       ? `${window.location.origin}/${slugParaQr}?auto=1`
       : null
   const hasGrowthLocation = planTier(storePlan) >= planTier('GROWTH')
+  const pixCheckoutAllowed = hasPixCheckout(storePlan)
   const showGarcomPinQrSettings =
     operationMode !== 'delivery' && storePlan !== 'START'
   const isGrowthPresencial = storePlan === 'GROWTH' && operationMode === 'presencial'
@@ -263,7 +264,8 @@ export default function SettingsPage() {
 
     if (supportsPixFields) {
       const keyTrim = pixKey.trim()
-      patch.pix_enabled = pixEnabled && keyTrim.length > 0
+      patch.pix_enabled =
+        pixCheckoutAllowed && pixEnabled && keyTrim.length > 0
       if (pixEnabled && keyTrim) {
         const norm = normalizePixKey(keyTrim, pixKeyType)
         if (!norm.ok) {
@@ -704,15 +706,28 @@ export default function SettingsPage() {
           <h2 className="text-base font-bold text-[#1a1614]">Recebimento PIX</h2>
           <p className="mt-1 text-sm text-[#6b7280]">
             Cadastra a chave PIX da tua conta. No checkout do cardápio público, o cliente paga
-            directamente para ti — a Vyria não intermedia o pagamento.
+            directamente para ti — a Vyria não intermedia o pagamento. Disponível no{' '}
+            <strong>plano Pro</strong>.
           </p>
+          {!pixCheckoutAllowed ? (
+            <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              O teu plano actual ({storePlan}) não inclui PIX automático no checkout. Faz upgrade
+              para o{' '}
+              <Link href="/dashboard/planos" className="font-semibold underline">
+                plano Pro
+              </Link>{' '}
+              para activar QR Code e copia e cola no cardápio público.
+            </p>
+          ) : null}
           {!supportsPixFields ? (
             <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
               Executa <code className="font-mono">scripts/supabase-store-pix.sql</code> no Supabase
               para activar esta secção.
             </p>
           ) : (
-            <div className="mt-5 space-y-4">
+            <div
+              className={`mt-5 space-y-4 ${pixCheckoutAllowed ? '' : 'pointer-events-none opacity-50'}`}
+            >
               <div className="flex items-center justify-between gap-3 rounded-xl border border-[var(--card-border)] bg-[#fafafa] px-4 py-3">
                 <div>
                   <p className="text-sm font-semibold text-[#1a1614]">Aceitar PIX</p>
@@ -722,8 +737,8 @@ export default function SettingsPage() {
                   </p>
                 </div>
                 <StoreOpenSwitch
-                  open={pixEnabled}
-                  disabled={saving}
+                  open={pixEnabled && pixCheckoutAllowed}
+                  disabled={saving || !pixCheckoutAllowed}
                   onToggle={() => setPixEnabled((v) => !v)}
                 />
               </div>

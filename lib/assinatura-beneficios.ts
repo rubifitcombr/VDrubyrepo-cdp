@@ -1,5 +1,5 @@
 import type { MerchantOperationMode } from '@/lib/merchant-operation-mode'
-import type { Plan } from '@/lib/plan'
+import { PIX_CHECKOUT_BENEFIT_LINE, type Plan } from '@/lib/plan'
 
 type PlanoSlug = 'start' | 'growth' | 'pro'
 
@@ -32,6 +32,7 @@ export const BENEFICIOS_POR_PLANO: Record<PlanoSlug, string[]> = {
     'Impressão automática de pedidos',
     'Descrição e imagem de produto com IA',
     'Relatórios avançados (comparativos e insights extra)',
+    PIX_CHECKOUT_BENEFIT_LINE,
   ],
 }
 
@@ -68,6 +69,7 @@ export const BENEFICIOS_HIBRIDO: Record<PlanoSlug, string[]> = {
     'Gestão de estoque por produto',
     'Relatórios avançados',
     'Descrição e imagem de produto com IA',
+    PIX_CHECKOUT_BENEFIT_LINE,
   ],
 }
 
@@ -99,6 +101,7 @@ export const BENEFICIOS_DELIVERY: Record<PlanoSlug, string[]> = {
     'Gestão de estoque por produto',
     'Relatórios avançados',
     'Descrição e imagem de produto com IA',
+    PIX_CHECKOUT_BENEFIT_LINE,
   ],
 }
 
