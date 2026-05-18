@@ -15,6 +15,8 @@ import { sendWebPushNewOrder } from '@/services/web-push.server'
 import { buildWaiterNotes } from '@/lib/waiter-order-notes'
 import { buildItemsSummaryWithLineTotals } from '@/lib/print/items-summary-format'
 import { tryAutoThermalPrint } from '@/services/thermal-print.server'
+import { buildPixChargeForOrder } from '@/lib/pix/build-charge.server'
+import { storePixCheckoutEnabled } from '@/lib/pix/key'
 
 type CheckoutLine = {
   productId: string
@@ -189,7 +191,7 @@ export async function POST(req: NextRequest) {
     const { data: store, error: storeErr } = await fetchStoreByPublicSlug(
       supabase,
       slug,
-      'id, name, plan, plano, address, delivery_fee, delivery_free_above, delivery_max_km, store_geo_lat, store_geo_lng, auto_accept_orders, manual_closed, business_hours, auto_whatsapp_confirm, auto_notify_new_order, salao_attendance_mode, operation_mode'
+      'id, name, plan, plano, address, delivery_fee, delivery_free_above, delivery_max_km, store_geo_lat, store_geo_lng, auto_accept_orders, manual_closed, business_hours, auto_whatsapp_confirm, auto_notify_new_order, salao_attendance_mode, operation_mode, pix_enabled, pix_key, pix_key_type, pix_receiver_name, pix_receiver_city'
     )
 
     if (storeErr || !store) {
@@ -291,6 +293,21 @@ export async function POST(req: NextRequest) {
 
     const deliveryFeeRow = fulfillment === 'delivery' ? deliveryCharge : 0
 
+    const paymentNorm = String(paymentMethod ?? '')
+      .trim()
+      .toLowerCase()
+    const isPixPayment = paymentNorm === 'pix'
+
+    if (isPixPayment && !storePixCheckoutEnabled(storeRow as Record<string, unknown>)) {
+      return NextResponse.json(
+        {
+          error:
+            'Esta loja ainda não activou o PIX automático. Escolhe outro método de pagamento ou combina com a loja.',
+        },
+        { status: 400 }
+      )
+    }
+
     const { data: order, error: orderErr } = await supabase
       .from('orders')
       .insert({
@@ -300,6 +317,7 @@ export async function POST(req: NextRequest) {
         delivery_address: normalizedDeliveryAddress,
         delivery_fee: deliveryFeeRow,
         payment_method: paymentMethod,
+        payment_status: isPixPayment ? 'pending' : null,
         notes: orderNotes,
         total,
         items_summary: itemsSummary,
@@ -397,6 +415,26 @@ export async function POST(req: NextRequest) {
       orderSource: insertSource,
     })
 
+    let pix: Awaited<ReturnType<typeof buildPixChargeForOrder>> = null
+    if (isPixPayment) {
+      pix = await buildPixChargeForOrder({
+        store: storeMeta,
+        orderId: String(order.id),
+        amount: total,
+        infoAdicional: `Pedido ${String(order.id).slice(0, 8)}`,
+      })
+      if (pix?.pixPayload) {
+        const { error: pixUpdateErr } = await supabase
+          .from('orders')
+          .update({ pix_payload: pix.pixPayload })
+          .eq('id', order.id)
+          .eq('store_id', String(storeRow.id))
+        if (pixUpdateErr && !pixUpdateErr.message?.includes('pix_payload')) {
+          console.warn('[checkout] pix_payload update', pixUpdateErr.message)
+        }
+      }
+    }
+
     return NextResponse.json({
       ok: true,
       orderId: String(order.id),
@@ -405,6 +443,16 @@ export async function POST(req: NextRequest) {
       subtotal,
       deliveryCharge,
       orderTotal: total,
+      ...(pix
+        ? {
+            pix: {
+              copyPaste: pix.copyPaste,
+              qrCodeDataUrl: pix.qrCodeDataUrl,
+              amount: pix.amount,
+              receiverName: pix.receiverName,
+            },
+          }
+        : {}),
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Erro inesperado.'

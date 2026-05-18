@@ -44,6 +44,11 @@ const STORE_ALLOWED_FIELDS = new Set([
   'table_sectors',
   'waiter_exit_pin',
   'salao_attendance_mode',
+  'pix_enabled',
+  'pix_key_type',
+  'pix_key',
+  'pix_receiver_name',
+  'pix_receiver_city',
 ])
 
 export async function getStoreByUser(userId: string) {

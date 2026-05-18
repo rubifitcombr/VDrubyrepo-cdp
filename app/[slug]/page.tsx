@@ -13,6 +13,7 @@ import { syncAutoCloseOutsideHoursForStore } from '@/services/store-hours-automa
 import { effectiveProductPrice, hasActivePromotion } from '@/lib/product-pricing'
 import { MENU_PRODUCT_SELECT } from '@/lib/menu-product'
 import { resolveStoreTheme } from '@/lib/store-theme'
+import { storePixCheckoutEnabled } from '@/lib/pix/key'
 import { notFound, redirect } from 'next/navigation'
 import { StorefrontMenuClient } from './StorefrontMenuClient'
 import type { StorefrontMenuProduct } from './storefront-menu-types'
@@ -80,6 +81,8 @@ const STORE_PUBLIC_SELECT = [
   'auto_close_outside_hours',
   'salao_attendance_mode',
   'operation_mode',
+  'pix_enabled',
+  'pix_key',
 ].join(',')
 
 /** Evita 404 em cache (CDN/PWA) para rotas dinâmicas por loja. */
@@ -256,6 +259,9 @@ export default async function StorefrontPage({ params, searchParams }: Props) {
       locationLabel={locationLabel}
       selfServiceFromQr={selfServiceFromQr}
       salaoAutoUnavailable={salaoAutoUnavailable}
+      merchantPixConfigured={storePixCheckoutEnabled(
+        s as Record<string, unknown>
+      )}
     />
   )
 }

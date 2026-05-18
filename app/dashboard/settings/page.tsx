@@ -13,6 +13,14 @@ import {
   type MerchantOperationMode,
 } from '@/lib/merchant-operation-mode'
 import { uploadStoreLogo } from '@/lib/storage-upload'
+import {
+  detectPixKeyKind,
+  normalizePixKey,
+  parsePixKeyTypeInput,
+  PIX_KEY_TYPE_OPTIONS,
+  pixKeyKindLabel,
+  type PixKeyType,
+} from '@/lib/pix/key'
 import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -88,6 +96,12 @@ export default function SettingsPage() {
   const [confirmAccountPassword, setConfirmAccountPassword] = useState('')
   const [accountPassBusy, setAccountPassBusy] = useState(false)
   const [showAccountPassword, setShowAccountPassword] = useState(false)
+  const [supportsPixFields, setSupportsPixFields] = useState(true)
+  const [pixEnabled, setPixEnabled] = useState(false)
+  const [pixKeyType, setPixKeyType] = useState<PixKeyType>('email')
+  const [pixKey, setPixKey] = useState('')
+  const [pixReceiverName, setPixReceiverName] = useState('')
+  const [pixReceiverCity, setPixReceiverCity] = useState('')
 
   useEffect(() => {
     async function load() {
@@ -116,6 +130,26 @@ export default function SettingsPage() {
           : null
       )
       setPhone((s.phone as string) || '')
+      setSupportsPixFields(
+        'pix_key' in s ||
+          'pix_receiver_name' in s ||
+          'pix_receiver_city' in s ||
+          'pix_enabled' in s
+      )
+      const loadedKey = typeof s.pix_key === 'string' ? s.pix_key : ''
+      setPixKey(loadedKey)
+      setPixReceiverName(
+        typeof s.pix_receiver_name === 'string' ? s.pix_receiver_name : ''
+      )
+      setPixReceiverCity(
+        typeof s.pix_receiver_city === 'string' ? s.pix_receiver_city : ''
+      )
+      const parsedType = parsePixKeyTypeInput(s.pix_key_type)
+      setPixKeyType(parsedType ?? detectPixKeyKind(loadedKey) ?? 'email')
+      const enabledFlag =
+        s.pix_enabled === true ||
+        (s.pix_enabled == null && loadedKey.trim().length > 0)
+      setPixEnabled(enabledFlag)
       setAddress(typeof s.address === 'string' ? s.address : '')
       setBusinessHours('business_hours' in s ? s.business_hours : null)
       setSupportsWaiterExitPin('waiter_exit_pin' in s)
@@ -226,6 +260,41 @@ export default function SettingsPage() {
     }
 
     patch.address = address.trim() || null
+
+    if (supportsPixFields) {
+      const keyTrim = pixKey.trim()
+      patch.pix_enabled = pixEnabled && keyTrim.length > 0
+      if (pixEnabled && keyTrim) {
+        const norm = normalizePixKey(keyTrim, pixKeyType)
+        if (!norm.ok) {
+          setSaving(false)
+          alert(norm.error)
+          return
+        }
+        patch.pix_key = norm.value
+        patch.pix_key_type = norm.type
+        const nameTrim = pixReceiverName.trim()
+        const cityTrim = pixReceiverCity.trim()
+        patch.pix_receiver_name = nameTrim || null
+        patch.pix_receiver_city = cityTrim || null
+      } else if (keyTrim) {
+        const norm = normalizePixKey(keyTrim, pixKeyType)
+        if (norm.ok) {
+          patch.pix_key = norm.value
+          patch.pix_key_type = norm.type
+          patch.pix_receiver_name = pixReceiverName.trim() || null
+          patch.pix_receiver_city = pixReceiverCity.trim() || null
+        }
+        patch.pix_enabled = false
+      } else {
+        patch.pix_key = null
+        patch.pix_key_type = null
+        patch.pix_receiver_name = null
+        patch.pix_receiver_city = null
+        patch.pix_enabled = false
+      }
+    }
+
     const canPersistLocation =
       deliveryPipelineEnabled &&
       supportsLocationFields &&
@@ -316,6 +385,23 @@ export default function SettingsPage() {
         delete attemptedPatch.waiter_exit_pin
         droppedFields.push('waiter_exit_pin')
         setSupportsWaiterExitPin(false)
+        continue
+      }
+      const canDropPix =
+        Object.keys(attemptedPatch).some((k) => k.startsWith('pix_')) &&
+        (msg.includes('pix_key') ||
+          msg.includes('pix_key_type') ||
+          msg.includes('pix_enabled') ||
+          msg.includes('pix_receiver_name') ||
+          msg.includes('pix_receiver_city'))
+      if (canDropPix) {
+        delete attemptedPatch.pix_enabled
+        delete attemptedPatch.pix_key_type
+        delete attemptedPatch.pix_key
+        delete attemptedPatch.pix_receiver_name
+        delete attemptedPatch.pix_receiver_city
+        droppedFields.push('pix')
+        setSupportsPixFields(false)
         continue
       }
       error = result.error
@@ -612,6 +698,96 @@ export default function SettingsPage() {
           </div>
           ) : null}
         </section>
+
+        {deliveryPipelineEnabled ? (
+        <section className="rounded-2xl border border-emerald-200/60 bg-white p-6 shadow-sm shadow-black/[0.04] md:p-8">
+          <h2 className="text-base font-bold text-[#1a1614]">Recebimento PIX</h2>
+          <p className="mt-1 text-sm text-[#6b7280]">
+            Cadastra a chave PIX da tua conta. No checkout do cardápio público, o cliente paga
+            directamente para ti — a Vyria não intermedia o pagamento.
+          </p>
+          {!supportsPixFields ? (
+            <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              Executa <code className="font-mono">scripts/supabase-store-pix.sql</code> no Supabase
+              para activar esta secção.
+            </p>
+          ) : (
+            <div className="mt-5 space-y-4">
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-[var(--card-border)] bg-[#fafafa] px-4 py-3">
+                <div>
+                  <p className="text-sm font-semibold text-[#1a1614]">Aceitar PIX</p>
+                  <p className="text-xs text-[#6b7280]">
+                    Mostra QR Code no checkout. O pagamento cai na tua conta — a Vyria não
+                    intermedia.
+                  </p>
+                </div>
+                <StoreOpenSwitch
+                  open={pixEnabled}
+                  disabled={saving}
+                  onToggle={() => setPixEnabled((v) => !v)}
+                />
+              </div>
+              <label className="block text-sm font-medium text-[#374151]">
+                Tipo da chave PIX
+                <select
+                  className={inputClass}
+                  value={pixKeyType}
+                  onChange={(e) => setPixKeyType(e.target.value as PixKeyType)}
+                >
+                  {PIX_KEY_TYPE_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block text-sm font-medium text-[#374151]">
+                Chave PIX
+                <input
+                  className={inputClass}
+                  value={pixKey}
+                  onChange={(e) => setPixKey(e.target.value)}
+                  placeholder="CPF, CNPJ, e-mail, telefone ou chave aleatória"
+                  autoComplete="off"
+                />
+                {pixKey.trim() ? (
+                  <p className="mt-1 text-xs text-emerald-800">
+                    Validação: {pixKeyKindLabel(pixKeyType)}
+                  </p>
+                ) : (
+                  <p className="mt-1 text-xs text-[#6b7280]">
+                    Preenche a chave e activa o toggle para gerar QR no checkout.
+                  </p>
+                )}
+              </label>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="block text-sm font-medium text-[#374151]">
+                  Nome do recebedor{' '}
+                  <span className="font-normal text-[#9ca3af]">(opcional)</span>
+                  <input
+                    className={inputClass}
+                    value={pixReceiverName}
+                    onChange={(e) => setPixReceiverName(e.target.value)}
+                    placeholder={name.trim() || 'Nome na conta PIX'}
+                    maxLength={25}
+                  />
+                </label>
+                <label className="block text-sm font-medium text-[#374151]">
+                  Cidade{' '}
+                  <span className="font-normal text-[#9ca3af]">(opcional)</span>
+                  <input
+                    className={inputClass}
+                    value={pixReceiverCity}
+                    onChange={(e) => setPixReceiverCity(e.target.value)}
+                    placeholder="Ex.: SAO PAULO"
+                    maxLength={15}
+                  />
+                </label>
+              </div>
+            </div>
+          )}
+        </section>
+        ) : null}
 
         {deliveryPipelineEnabled ? (
         <section className="rounded-2xl border border-[var(--card-border)] bg-white p-6 shadow-sm shadow-black/[0.04] md:p-8">

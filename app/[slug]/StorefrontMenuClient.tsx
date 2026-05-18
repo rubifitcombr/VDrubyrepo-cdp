@@ -309,6 +309,7 @@ export function StorefrontMenuClient({
   locationLabel,
   selfServiceFromQr = false,
   salaoAutoUnavailable = false,
+  merchantPixConfigured = false,
 }: {
   storeName: string
   storeSlug: string
@@ -334,6 +335,7 @@ export function StorefrontMenuClient({
   selfServiceFromQr?: boolean
   /** `?auto=1` mas a loja não aceita (ex.: Pro em modo garçom). */
   salaoAutoUnavailable?: boolean
+  merchantPixConfigured?: boolean
 }) {
   const { items, itemCount, subtotal, removeItem, setQuantity } = useCart()
   const searchRef = useRef<HTMLInputElement>(null)
@@ -1062,6 +1064,7 @@ export function StorefrontMenuClient({
             locationLabel={locationLabel ?? null}
             openSignal={checkoutOpenSignal}
             dineInSelfService={selfServiceFromQr}
+            merchantPixConfigured={merchantPixConfigured}
           />
         </div>
         <nav

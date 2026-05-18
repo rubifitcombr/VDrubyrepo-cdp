@@ -4,6 +4,20 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useCart } from '@/app/context/CartContext'
 import { computeDeliveryCharge } from '@/lib/delivery-pricing'
+import { PixPaymentPanel } from './PixPaymentPanel'
+
+type CheckoutPixPayload = {
+  copyPaste: string
+  qrCodeDataUrl: string
+  amount: number
+  receiverName: string
+}
+
+type PixStepState = CheckoutPixPayload & {
+  orderId: string
+  orderRef: string
+  whatsappText: string
+}
 
 const money = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
@@ -71,11 +85,14 @@ export function WhatsAppCheckoutButton({
   locationLabel,
   openSignal,
   dineInSelfService = false,
+  merchantPixConfigured = false,
 }: {
   storeName: string
   storeSlug: string
   storePlan: string | null | undefined
   phone: string | null | undefined
+  /** Lojista cadastrou chave PIX nas configurações. */
+  merchantPixConfigured?: boolean
   deliveryFee?: number | null
   deliveryFreeAbove?: number | null
   /** Reservado: raio validado no servidor no checkout. */
@@ -105,6 +122,7 @@ export function WhatsAppCheckoutButton({
   const [paymentMethod, setPaymentMethod] = useState<'pix' | 'card' | 'cash'>(
     'pix'
   )
+  const [pixStep, setPixStep] = useState<PixStepState | null>(null)
   const [trocoPara, setTrocoPara] = useState('')
   const [notes, setNotes] = useState('')
   const [fulfillment, setFulfillment] = useState<FulfillmentType | null>(null)
@@ -216,6 +234,57 @@ export function WhatsAppCheckoutButton({
     return [base, trocoLine].filter(Boolean).join('\n')
   }
 
+  function openWhatsAppWithText(text: string) {
+    const n = digitsOnly(phone || '')
+    if (n) {
+      const link = `https://wa.me/${n}?text=${encodeURIComponent(text)}`
+      window.open(link, '_blank', 'noopener,noreferrer')
+    } else {
+      window.alert('Pedido registado. A loja já recebeu o pedido no painel.')
+    }
+  }
+
+  function resetCheckoutModal() {
+    clearCart()
+    setSubmitting(false)
+    setOpen(false)
+    setFulfillment(null)
+    setPixStep(null)
+    setTableMesa('')
+  }
+
+  function finishCheckoutAfterApi(
+    payload: {
+      orderId: string
+      pix?: CheckoutPixPayload
+    },
+    whatsappText: string
+  ) {
+    const ref = `#${payload.orderId.slice(0, 8).toUpperCase()}`
+    if (paymentMethod === 'pix') {
+      if (!payload.pix?.copyPaste || !payload.pix?.qrCodeDataUrl) {
+        setSubmitting(false)
+        setError(
+          merchantPixConfigured
+            ? 'Não foi possível gerar o PIX. Tenta de novo ou escolhe outro pagamento.'
+            : 'PIX automático indisponível nesta loja. Escolhe cartão ou dinheiro.'
+        )
+        return
+      }
+      clearCart()
+      setPixStep({
+        ...payload.pix,
+        orderId: payload.orderId,
+        orderRef: ref,
+        whatsappText,
+      })
+      setSubmitting(false)
+      return
+    }
+    openWhatsAppWithText(whatsappText)
+    resetCheckoutModal()
+  }
+
   function locationMapsHref(): string | null {
     if (!locationEnabled) return null
     const rawText = locationAddress?.trim() || ''
@@ -285,6 +354,7 @@ export function WhatsAppCheckoutButton({
         subtotal?: number
         deliveryCharge?: number
         orderTotal?: number
+        pix?: CheckoutPixPayload
       }
       if (!resp.ok || !payload.ok || !payload.orderId) {
         setSubmitting(false)
@@ -323,6 +393,11 @@ export function WhatsAppCheckoutButton({
         '*Endereço:*',
         addrBlock,
         `*Pagamento:* ${paymentLabel(paymentMethod)}`,
+        paymentMethod === 'pix' && payload.pix
+          ? 'PIX (pago pelo cliente no app do banco)'
+          : paymentMethod === 'pix' && !merchantPixConfigured
+            ? 'PIX (loja ainda sem chave configurada — combinar pagamento)'
+            : '',
         paymentMethod === 'cash' && trocoPara.trim()
           ? `*Troco para quanto:* ${trocoPara.trim()}`
           : '',
@@ -336,13 +411,10 @@ export function WhatsAppCheckoutButton({
       ]
         .filter(Boolean)
         .join('\n')
-      const n = digitsOnly(phone || '')
-      const link = `https://wa.me/${n}?text=${encodeURIComponent(finalText)}`
-      window.open(link, '_blank', 'noopener,noreferrer')
-      clearCart()
-      setSubmitting(false)
-      setOpen(false)
-      setFulfillment(null)
+      finishCheckoutAfterApi(
+        { orderId: payload.orderId, pix: payload.pix },
+        finalText
+      )
     } catch (e) {
       setSubmitting(false)
       setError(e instanceof Error ? e.message : 'Erro ao finalizar pedido.')
@@ -383,6 +455,7 @@ export function WhatsAppCheckoutButton({
         error?: string
         orderId?: string
         orderTotal?: number
+        pix?: CheckoutPixPayload
       }
       if (!resp.ok || !payload.ok || !payload.orderId) {
         setSubmitting(false)
@@ -401,6 +474,9 @@ export function WhatsAppCheckoutButton({
         `*Nome:* ${customerName.trim()}`,
         `*Telefone:* ${customerPhone.trim()}`,
         `*Pagamento:* ${paymentLabel(paymentMethod)}`,
+        paymentMethod === 'pix' && payload.pix
+          ? 'PIX (pago pelo cliente no app do banco)'
+          : '',
         paymentMethod === 'cash' && trocoPara.trim()
           ? `*Troco para quanto:* ${trocoPara.trim()}`
           : '',
@@ -412,18 +488,10 @@ export function WhatsAppCheckoutButton({
       ]
         .filter(Boolean)
         .join('\n')
-      const n = digitsOnly(phone || '')
-      if (n) {
-        const link = `https://wa.me/${n}?text=${encodeURIComponent(finalText)}`
-        window.open(link, '_blank', 'noopener,noreferrer')
-      } else {
-        window.alert(`Pedido registado ${ref}. A equipa já recebeu.`)
-      }
-      clearCart()
-      setSubmitting(false)
-      setOpen(false)
-      setFulfillment(null)
-      setTableMesa('')
+      finishCheckoutAfterApi(
+        { orderId: payload.orderId, pix: payload.pix },
+        finalText
+      )
     } catch (e) {
       setSubmitting(false)
       setError(e instanceof Error ? e.message : 'Erro ao finalizar pedido.')
@@ -463,6 +531,7 @@ export function WhatsAppCheckoutButton({
         error?: string
         orderId?: string
         orderTotal?: number
+        pix?: CheckoutPixPayload
       }
       if (!resp.ok || !payload.ok || !payload.orderId) {
         setSubmitting(false)
@@ -481,6 +550,9 @@ export function WhatsAppCheckoutButton({
         customerName.trim() ? `*Nome:* ${customerName.trim()}` : '',
         `*Telefone:* ${customerPhone.trim()}`,
         `*Pagamento:* ${paymentLabel(paymentMethod)}`,
+        paymentMethod === 'pix' && payload.pix
+          ? 'PIX (pago pelo cliente no app do banco)'
+          : '',
         paymentMethod === 'cash' && trocoPara.trim()
           ? `*Troco para quanto:* ${trocoPara.trim()}`
           : '',
@@ -496,13 +568,10 @@ export function WhatsAppCheckoutButton({
       ]
         .filter(Boolean)
         .join('\n')
-      const n = digitsOnly(phone || '')
-      const link = `https://wa.me/${n}?text=${encodeURIComponent(finalText)}`
-      window.open(link, '_blank', 'noopener,noreferrer')
-      clearCart()
-      setSubmitting(false)
-      setOpen(false)
-      setFulfillment(null)
+      finishCheckoutAfterApi(
+        { orderId: payload.orderId, pix: payload.pix },
+        finalText
+      )
     } catch (e) {
       setSubmitting(false)
       setError(e instanceof Error ? e.message : 'Erro ao finalizar pedido.')
@@ -565,9 +634,11 @@ export function WhatsAppCheckoutButton({
                           id="checkout-modal-title"
                           className="text-lg font-bold tracking-tight text-vyria-navy"
                         >
-                          {resolvedFulfillment === 'dine_in'
-                            ? 'Pedido na mesa'
-                            : 'Finalizar pedido'}
+                          {pixStep
+                            ? 'Pagar com PIX'
+                            : resolvedFulfillment === 'dine_in'
+                              ? 'Pedido na mesa'
+                              : 'Finalizar pedido'}
                         </h3>
                         {resolvedFulfillment === 'dine_in' ? (
                           <p className="mt-1 text-xs text-vyria-navy-muted">
@@ -638,7 +709,26 @@ export function WhatsAppCheckoutButton({
                   </div>
 
                   <div className="max-h-[62dvh] overflow-y-auto px-4 py-4 sm:max-h-[60dvh] sm:px-6 sm:py-5">
-                    {fulfillment == null && !dineInSelfService ? (
+                    {pixStep ? (
+                      <PixPaymentPanel
+                        amount={pixStep.amount}
+                        receiverName={pixStep.receiverName}
+                        orderRef={pixStep.orderRef}
+                        copyPaste={pixStep.copyPaste}
+                        qrCodeDataUrl={pixStep.qrCodeDataUrl}
+                        storeSlug={storeSlug}
+                        orderId={pixStep.orderId}
+                        onNotifyStore={() => {
+                          openWhatsAppWithText(pixStep.whatsappText)
+                          resetCheckoutModal()
+                        }}
+                        onClose={() => {
+                          setPixStep(null)
+                          setOpen(false)
+                          setFulfillment(null)
+                        }}
+                      />
+                    ) : fulfillment == null && !dineInSelfService ? (
                       <div className="space-y-3">
                         <p className="text-sm font-medium text-vyria-navy">
                           Como você quer receber o pedido?
@@ -846,6 +936,16 @@ export function WhatsAppCheckoutButton({
                               <option value="card">Cartão</option>
                               <option value="cash">Dinheiro</option>
                             </select>
+                            {paymentMethod === 'pix' && !merchantPixConfigured ? (
+                              <p className="mt-1.5 text-[11px] leading-snug text-amber-800">
+                                Esta loja ainda não configurou a chave PIX. O pedido será registado;
+                                combine o pagamento com a loja.
+                              </p>
+                            ) : paymentMethod === 'pix' && merchantPixConfigured ? (
+                              <p className="mt-1.5 text-[11px] leading-snug text-emerald-800">
+                                Após confirmar, verás o QR Code para pagar directamente à loja.
+                              </p>
+                            ) : null}
                           </label>
                           {paymentMethod === 'cash' ? (
                             <label className="block">
@@ -888,6 +988,7 @@ export function WhatsAppCheckoutButton({
                     ) : null}
                   </div>
 
+                  {!pixStep ? (
                   <div className="border-t border-[var(--card-border)] bg-white px-4 py-3 sm:px-6 sm:py-4">
                     <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <p className="text-sm font-semibold text-vyria-navy">
@@ -931,6 +1032,7 @@ export function WhatsAppCheckoutButton({
                       )}
                     </div>
                   </div>
+                  ) : null}
                 </div>
               </div>
             </div>,
