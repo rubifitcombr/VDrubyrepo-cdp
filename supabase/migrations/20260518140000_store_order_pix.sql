@@ -19,6 +19,6 @@ ALTER TABLE public.orders
   ADD COLUMN IF NOT EXISTS pix_payload TEXT,
   ADD COLUMN IF NOT EXISTS pix_paid_at TIMESTAMPTZ;
 
-COMMENT ON COLUMN public.orders.payment_status IS 'pending | paid | confirmed | approved | completed (confirmação automática por provedor/webhook).';
+COMMENT ON COLUMN public.orders.payment_status IS 'pending | customer_reported | paid | confirmed | approved | completed.';
 COMMENT ON COLUMN public.orders.pix_payload IS 'Payload BR Code PIX copia e cola gerado no checkout.';
-COMMENT ON COLUMN public.orders.pix_paid_at IS 'Quando o provedor confirmou o pagamento PIX.';
+COMMENT ON COLUMN public.orders.pix_paid_at IS 'Quando o cliente informou pagamento ou o provedor confirmou o PIX.';

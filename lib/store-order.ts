@@ -24,7 +24,13 @@ export function pixPaymentStatusIsConfirmed(
   status: string | null | undefined
 ): boolean {
   const s = String(status ?? '').trim().toLowerCase()
-  return s === 'paid' || s === 'confirmed' || s === 'approved' || s === 'completed'
+  return (
+    s === 'paid' ||
+    s === 'confirmed' ||
+    s === 'approved' ||
+    s === 'completed' ||
+    s === 'customer_reported'
+  )
 }
 
 export function orderIsVisibleAfterPixConfirmation(

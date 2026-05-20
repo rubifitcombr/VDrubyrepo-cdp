@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createClient } from '@/lib/supabase/client'
 import type { MenuProductRow } from '@/lib/menu-product'
 import { type Plan, hasFeature } from '@/lib/plan'
 import {
@@ -12,9 +13,16 @@ import {
 } from '@/lib/salao-attendance'
 import { effectiveProductPrice } from '@/lib/product-pricing'
 import type { MerchantOperationMode } from '@/lib/merchant-operation-mode'
-import type { StoreOrderRow } from '@/lib/store-order'
+import {
+  ORDER_SELECT,
+  mapStoreOrderRow,
+  orderIsVisibleAfterPixConfirmation,
+  type StoreOrderRow,
+} from '@/lib/store-order'
 import {
   extractUserNotes,
+  isSalonMapOrderSource,
+  notesIndicateWaiterReleasedToCaixa,
   parseDiscountFromNotes,
   parseSectorFromNotes,
   parseTableFromNotes,
@@ -57,6 +65,8 @@ const money = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
   currency: 'BRL',
 })
+
+const WAITER_OPEN_STATUSES = new Set(['pending', 'preparing', 'ready', 'confirmed'])
 
 type WaiterPaymentMethod = 'cash' | 'pix' | 'card'
 
@@ -106,6 +116,16 @@ function statusLabel(status: string | null): string {
 function canPrintComandaStatus(status: string | null | undefined): boolean {
   const s = String(status ?? '').trim().toLowerCase()
   return s === 'pending' || s === 'preparing' || s === 'ready' || s === 'confirmed'
+}
+
+function isOpenSalonMapOrder(order: StoreOrderRow): boolean {
+  const status = String(order.status ?? '').trim().toLowerCase()
+  return (
+    WAITER_OPEN_STATUSES.has(status) &&
+    isSalonMapOrderSource(order.source) &&
+    orderIsVisibleAfterPixConfirmation(order) &&
+    !notesIndicateWaiterReleasedToCaixa(order.notes)
+  )
 }
 
 function orderSourceLabel(source: string | null | undefined): string {
@@ -320,6 +340,90 @@ export function WaiterClient({
   useEffect(() => {
     setOpenOrders(initialOpenOrders)
   }, [initialOpenOrders])
+
+  useEffect(() => {
+    const supabase = createClient()
+    let disposed = false
+
+    function sortOpenOrders(rows: StoreOrderRow[]): StoreOrderRow[] {
+      return [...rows].sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      )
+    }
+
+    function applyOpenOrders(rows: StoreOrderRow[]) {
+      if (disposed) return
+      setOpenOrders(sortOpenOrders(rows.filter(isOpenSalonMapOrder)))
+    }
+
+    async function pullOpenOrders() {
+      const { data, error } = await supabase
+        .from('orders')
+        .select(ORDER_SELECT)
+        .eq('store_id', storeId)
+        .in('source', ['waiter', 'autoatendimento'])
+        .in('status', Array.from(WAITER_OPEN_STATUSES))
+        .order('created_at', { ascending: false })
+
+      if (error || !data) return
+      applyOpenOrders((data as Record<string, unknown>[]).map(mapStoreOrderRow))
+    }
+
+    function upsertRealtimeOrder(row: StoreOrderRow) {
+      if (disposed) return
+      setOpenOrders((prev) => {
+        const without = prev.filter((o) => o.id !== row.id)
+        if (!isOpenSalonMapOrder(row)) return without
+        return sortOpenOrders([row, ...without])
+      })
+    }
+
+    const channel = supabase
+      .channel(`waiter-map-orders-${storeId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'orders',
+          filter: `store_id=eq.${storeId}`,
+        },
+        (payload) => {
+          if (payload.eventType === 'DELETE' && payload.old) {
+            const id = String((payload.old as { id?: unknown }).id ?? '')
+            if (id) {
+              setOpenOrders((prev) => prev.filter((o) => o.id !== id))
+            }
+            return
+          }
+
+          if (payload.new) {
+            upsertRealtimeOrder(
+              mapStoreOrderRow(payload.new as Record<string, unknown>)
+            )
+            return
+          }
+
+          void pullOpenOrders()
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          void pullOpenOrders()
+        }
+      })
+
+    const poll = window.setInterval(() => {
+      void pullOpenOrders()
+    }, 15000)
+
+    return () => {
+      disposed = true
+      window.clearInterval(poll)
+      void supabase.removeChannel(channel)
+    }
+  }, [storeId])
 
   const displayNumberById = useMemo(() => {
     const sorted = [...openOrders].sort(

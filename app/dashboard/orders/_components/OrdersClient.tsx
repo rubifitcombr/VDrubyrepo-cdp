@@ -193,6 +193,12 @@ function paymentKind(
   return null
 }
 
+function pixNeedsWhatsAppProofCheck(order: StoreOrderRow): boolean {
+  const method = paymentKind(order.payment_method)
+  const status = String(order.payment_status ?? '').trim().toLowerCase()
+  return method === 'pix' && status === 'customer_reported'
+}
+
 /** Entrega com endereço (não retirada no balcão / garçom / pickup no site / QR mesa). */
 function isDeliveryFlowOrder(o: StoreOrderRow): boolean {
   const source = (o.source ?? '').trim().toLowerCase()
@@ -900,6 +906,7 @@ export function OrdersClient({
             const isTrocoNote = Boolean(notes && /troco/i.test(notes))
             const payKind = paymentKind(o.payment_method)
             const showPaymentHighlight = payKind === 'pix' || payKind === 'card'
+            const showPixProofWarning = pixNeedsWhatsAppProofCheck(o)
             const source = (o.source ?? '').trim().toLowerCase()
             const isCounterOrder = source === 'pdv'
             const isWaiterOrder = source === 'waiter'
@@ -1005,6 +1012,27 @@ export function OrdersClient({
                         )}
                         Pagamento: {paymentLabel(o.payment_method)}
                       </p>
+                    ) : null}
+                    {showPixProofWarning ? (
+                      <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                        <p className="font-semibold">
+                          PIX informado pelo cliente.
+                        </p>
+                        <p className="mt-0.5 text-xs leading-relaxed">
+                          Confirme o comprovante no WhatsApp antes de preparar ou entregar o pedido.
+                        </p>
+                        {wa ? (
+                          <a
+                            href={wa}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-[#25D366] px-3 py-1.5 text-xs font-semibold text-white"
+                          >
+                            <IconWhatsApp className="h-4 w-4" />
+                            Abrir WhatsApp
+                          </a>
+                        ) : null}
+                      </div>
                     ) : null}
                     {isTrocoNote ? (
                       <p className="flex items-center gap-1.5 text-sm font-semibold text-[var(--dash-primary)]">

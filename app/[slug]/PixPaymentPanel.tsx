@@ -23,7 +23,7 @@ export function PixPaymentPanel({
   qrCodeDataUrl,
   storeSlug,
   orderId,
-  onConfirmed,
+  onReportedPaid,
   onClose,
 }: {
   amount: number
@@ -33,12 +33,13 @@ export function PixPaymentPanel({
   qrCodeDataUrl: string
   storeSlug: string
   orderId: string
-  onConfirmed: () => void
+  onReportedPaid: () => void
   onClose: () => void
 }) {
   const [secondsLeft, setSecondsLeft] = useState(PIX_TIMER_SECONDS)
   const [copied, setCopied] = useState(false)
   const [statusError, setStatusError] = useState<string | null>(null)
+  const [ackBusy, setAckBusy] = useState(false)
   const confirmedRef = useRef(false)
 
   useEffect(() => {
@@ -78,12 +79,12 @@ export function PixPaymentPanel({
       setStatusError(null)
       if (data.confirmed) {
         confirmedRef.current = true
-        onConfirmed()
+        onReportedPaid()
       }
     } catch (e) {
       setStatusError(e instanceof Error ? e.message : 'Erro de rede.')
     }
-  }, [onConfirmed, orderId, storeSlug])
+  }, [onReportedPaid, orderId, storeSlug])
 
   useEffect(() => {
     const first = window.setTimeout(() => {
@@ -97,6 +98,32 @@ export function PixPaymentPanel({
       window.clearInterval(t)
     }
   }, [checkPaymentStatus])
+
+  async function handlePaid() {
+    setStatusError(null)
+    setAckBusy(true)
+    try {
+      const resp = await fetch('/api/public/orders/pix-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug: storeSlug, orderId }),
+      })
+      const data = (await resp.json().catch(() => ({}))) as {
+        ok?: boolean
+        error?: string
+      }
+      if (!resp.ok || !data.ok) {
+        setStatusError(data.error || 'Não foi possível avisar a loja.')
+        setAckBusy(false)
+        return
+      }
+      confirmedRef.current = true
+      onReportedPaid()
+    } catch (e) {
+      setStatusError(e instanceof Error ? e.message : 'Erro de rede.')
+      setAckBusy(false)
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -155,7 +182,8 @@ export function PixPaymentPanel({
 
       <p className="text-center text-xs leading-relaxed text-vyria-navy-muted">
         O pagamento vai <strong className="text-vyria-navy">directamente</strong> para a conta da
-        loja. O pedido só entra no painel quando o pagamento for confirmado automaticamente.
+        loja. Depois de pagar, toque em <strong className="text-vyria-navy">Já paguei</strong> para
+        enviar o pedido ao painel. A loja vai conferir o comprovante no WhatsApp.
       </p>
 
       {statusError ? (
@@ -165,9 +193,14 @@ export function PixPaymentPanel({
       ) : null}
 
       <div className="flex flex-col gap-2 sm:flex-row">
-        <div className="flex-1 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-center text-sm font-semibold text-emerald-950">
-          Aguardando confirmação automática do PIX…
-        </div>
+        <button
+          type="button"
+          onClick={() => void handlePaid()}
+          disabled={ackBusy}
+          className="flex-1 rounded-xl bg-[#25D366] px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#20bd5a] disabled:opacity-60"
+        >
+          {ackBusy ? 'A avisar…' : 'Já paguei'}
+        </button>
         <button
           type="button"
           onClick={onClose}

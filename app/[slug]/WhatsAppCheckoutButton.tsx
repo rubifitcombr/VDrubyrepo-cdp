@@ -106,6 +106,7 @@ export function WhatsAppCheckoutButton({
   /** Cardápio aberto com `?auto=1`: checkout só mesa + nome + telefone. */
   dineInSelfService?: boolean
 }) {
+  void _storePlan
   void _deliveryMaxKm
   const { items, subtotal, clearCart } = useCart()
   const [open, setOpen] = useState(false)
@@ -715,7 +716,8 @@ export function WhatsAppCheckoutButton({
                         qrCodeDataUrl={pixStep.qrCodeDataUrl}
                         storeSlug={storeSlug}
                         orderId={pixStep.orderId}
-                        onConfirmed={() => {
+                        onReportedPaid={() => {
+                          openWhatsAppWithText(pixStep.whatsappText)
                           resetCheckoutModal()
                         }}
                         onClose={() => {
