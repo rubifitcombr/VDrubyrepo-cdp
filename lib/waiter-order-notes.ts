@@ -25,6 +25,56 @@ export function parseTableFromNotes(notes: string | null | undefined): string | 
   return m?.[1]?.trim() || null
 }
 
+/** Normaliza rótulo de mesa para comparar "12", "Mesa 12", "mesa 12". */
+export function normalizeTableLabel(value: string): string {
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/^mesa\s+/, '')
+}
+
+export function tableNamesMatch(orderTable: string, configuredName: string): boolean {
+  const a = normalizeTableLabel(orderTable)
+  const b = normalizeTableLabel(configuredName)
+  if (!a || !b) return false
+  if (a === b) return true
+  const digitsA = a.replace(/\D/g, '')
+  const digitsB = b.replace(/\D/g, '')
+  if (digitsA && digitsB && digitsA === digitsB && /^\d+$/.test(digitsA)) return true
+  return false
+}
+
+function isDefaultSalonSector(sector: string): boolean {
+  const s = sector.trim().toLowerCase()
+  return s === 'salão' || s === 'salao'
+}
+
+/** Associa comanda aberta à célula do mapa (nome + ambiente). */
+export function orderMatchesSalonTable(
+  o: { notes?: string | null; source?: string | null },
+  tableName: string,
+  ambiente: string,
+  configuredTables: { name: string; ambiente: string }[] = []
+): boolean {
+  const tn = parseTableFromNotes(o.notes) || ''
+  if (!tableNamesMatch(tn, tableName)) return false
+
+  const orderSector = parseSectorFromNotes(o.notes)
+  if (orderSector.trim().toLowerCase() === ambiente.trim().toLowerCase()) return true
+
+  const source = String(o.source ?? '').trim().toLowerCase()
+  if (source !== 'autoatendimento' || !isDefaultSalonSector(orderSector)) return false
+
+  const candidates = configuredTables.filter((t) => tableNamesMatch(tn, t.name))
+  if (candidates.length <= 1) {
+    return (
+      candidates.length === 1 &&
+      candidates[0]!.ambiente.trim().toLowerCase() === ambiente.trim().toLowerCase()
+    )
+  }
+  return isDefaultSalonSector(ambiente)
+}
+
 export function parseSectorFromNotes(notes: string | null | undefined): string {
   const t = notes?.trim()
   if (!t) return 'Salão'

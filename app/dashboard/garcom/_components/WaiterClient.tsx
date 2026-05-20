@@ -23,9 +23,11 @@ import {
   extractUserNotes,
   isSalonMapOrderSource,
   notesIndicateWaiterReleasedToCaixa,
+  orderMatchesSalonTable,
   parseDiscountFromNotes,
   parseSectorFromNotes,
   parseTableFromNotes,
+  tableNamesMatch,
 } from '@/lib/waiter-order-notes'
 import { dashboardFetch } from '@/lib/dashboard-fetch.client'
 import {
@@ -135,34 +137,36 @@ function orderSourceLabel(source: string | null | undefined): string {
   return 'Pedido'
 }
 
-function orderMatchesTable(o: StoreOrderRow, tableName: string, amb: string): boolean {
-  const tn = parseTableFromNotes(o.notes) || ''
-  const sc = parseSectorFromNotes(o.notes)
-  return (
-    tn.trim().toLowerCase() === tableName.trim().toLowerCase() &&
-    sc.trim().toLowerCase() === amb.trim().toLowerCase()
-  )
-}
-
-function ordersOnTable(openOrders: StoreOrderRow[], tableName: string, amb: string): StoreOrderRow[] {
+function ordersOnTable(
+  openOrders: StoreOrderRow[],
+  tableName: string,
+  amb: string,
+  configuredTables: StoreTableDTO[]
+): StoreOrderRow[] {
   return openOrders
-    .filter((o) => orderMatchesTable(o, tableName, amb))
+    .filter((o) => orderMatchesSalonTable(o, tableName, amb, configuredTables))
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 }
 
 function tableState(
   openOrders: StoreOrderRow[],
   tableName: string,
-  amb: string
+  amb: string,
+  configuredTables: StoreTableDTO[]
 ): 'free' | 'pending_kitchen' | 'occupied' {
-  const list = ordersOnTable(openOrders, tableName, amb)
+  const list = ordersOnTable(openOrders, tableName, amb, configuredTables)
   if (list.length === 0) return 'free'
   if (list.some((o) => (o.status || '').toLowerCase() === 'pending')) return 'pending_kitchen'
   return 'occupied'
 }
 
-function aggregateTable(openOrders: StoreOrderRow[], tableName: string, amb: string) {
-  const list = ordersOnTable(openOrders, tableName, amb)
+function aggregateTable(
+  openOrders: StoreOrderRow[],
+  tableName: string,
+  amb: string,
+  configuredTables: StoreTableDTO[]
+) {
+  const list = ordersOnTable(openOrders, tableName, amb, configuredTables)
   const total = list.reduce((s, o) => s + (Number(o.total) || 0), 0)
   const itemsApprox = list.reduce((s, o) => {
     const sum = (o.items_summary || '').split(',').filter((x) => x.trim()).length
@@ -337,47 +341,46 @@ export function WaiterClient({
   useEffect(() => {
     setTables(initialTables)
   }, [initialTables])
+  const sortOpenOrders = useCallback((rows: StoreOrderRow[]) => {
+    return [...rows].sort(
+      (a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    )
+  }, [])
+
+  const pullOpenOrders = useCallback(async () => {
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from('orders')
+      .select(ORDER_SELECT)
+      .eq('store_id', storeId)
+      .in('source', ['waiter', 'autoatendimento'])
+      .in('status', Array.from(WAITER_OPEN_STATUSES))
+      .order('created_at', { ascending: false })
+
+    if (error || !data) return
+    setOpenOrders(
+      sortOpenOrders(
+        (data as Record<string, unknown>[])
+          .map(mapStoreOrderRow)
+          .filter(isOpenSalonMapOrder)
+      )
+    )
+  }, [storeId, sortOpenOrders])
+
   useEffect(() => {
-    setOpenOrders(initialOpenOrders)
-  }, [initialOpenOrders])
+    setOpenOrders((prev) => {
+      const byId = new Map<string, StoreOrderRow>()
+      for (const o of initialOpenOrders) byId.set(o.id, o)
+      for (const o of prev) {
+        if (isOpenSalonMapOrder(o)) byId.set(o.id, o)
+      }
+      return sortOpenOrders(Array.from(byId.values()))
+    })
+  }, [initialOpenOrders, sortOpenOrders])
 
   useEffect(() => {
     const supabase = createClient()
-    let disposed = false
-
-    function sortOpenOrders(rows: StoreOrderRow[]): StoreOrderRow[] {
-      return [...rows].sort(
-        (a, b) =>
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      )
-    }
-
-    function applyOpenOrders(rows: StoreOrderRow[]) {
-      if (disposed) return
-      setOpenOrders(sortOpenOrders(rows.filter(isOpenSalonMapOrder)))
-    }
-
-    async function pullOpenOrders() {
-      const { data, error } = await supabase
-        .from('orders')
-        .select(ORDER_SELECT)
-        .eq('store_id', storeId)
-        .in('source', ['waiter', 'autoatendimento'])
-        .in('status', Array.from(WAITER_OPEN_STATUSES))
-        .order('created_at', { ascending: false })
-
-      if (error || !data) return
-      applyOpenOrders((data as Record<string, unknown>[]).map(mapStoreOrderRow))
-    }
-
-    function upsertRealtimeOrder(row: StoreOrderRow) {
-      if (disposed) return
-      setOpenOrders((prev) => {
-        const without = prev.filter((o) => o.id !== row.id)
-        if (!isOpenSalonMapOrder(row)) return without
-        return sortOpenOrders([row, ...without])
-      })
-    }
 
     const channel = supabase
       .channel(`waiter-map-orders-${storeId}`)
@@ -395,35 +398,23 @@ export function WaiterClient({
             if (id) {
               setOpenOrders((prev) => prev.filter((o) => o.id !== id))
             }
-            return
           }
-
-          if (payload.new) {
-            upsertRealtimeOrder(
-              mapStoreOrderRow(payload.new as Record<string, unknown>)
-            )
-            return
-          }
-
           void pullOpenOrders()
         }
       )
       .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          void pullOpenOrders()
-        }
+        if (status === 'SUBSCRIBED') void pullOpenOrders()
       })
 
     const poll = window.setInterval(() => {
-      void pullOpenOrders()
-    }, 15000)
+      if (document.visibilityState === 'visible') void pullOpenOrders()
+    }, 3000)
 
     return () => {
-      disposed = true
       window.clearInterval(poll)
       void supabase.removeChannel(channel)
     }
-  }, [storeId])
+  }, [storeId, pullOpenOrders])
 
   const displayNumberById = useMemo(() => {
     const sorted = [...openOrders].sort(
@@ -597,8 +588,8 @@ export function WaiterClient({
   }
 
   async function handleTablePress(tb: StoreTableDTO) {
-    const st = tableState(openOrders, tb.name, tb.ambiente)
-    const agg = aggregateTable(openOrders, tb.name, tb.ambiente)
+    const st = tableState(openOrders, tb.name, tb.ambiente, tables)
+    const agg = aggregateTable(openOrders, tb.name, tb.ambiente, tables)
     const mobile = isMobileViewport()
 
     if (st === 'free') {
@@ -792,7 +783,16 @@ export function WaiterClient({
         return
       }
       setSuccess('Pedido registado.')
-      if (json.order) setOpenOrders((prev) => [json.order as StoreOrderRow, ...prev])
+      if (json.order) {
+        const row = json.order as StoreOrderRow
+        if (isOpenSalonMapOrder(row)) {
+          setOpenOrders((prev) =>
+            sortOpenOrders([row, ...prev.filter((o) => o.id !== row.id)])
+          )
+        }
+        setSelectedTableKey(`${sector}::${table.trim()}`)
+      }
+      void pullOpenOrders()
       setCart([])
       setDiscountBrl(0)
       setCustomerName('')
@@ -1408,11 +1408,11 @@ export function WaiterClient({
                       </p>
                       <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
                         {list.map((tb) => {
-                          const st = tableState(openOrders, tb.name, tb.ambiente)
-                          const agg = aggregateTable(openOrders, tb.name, tb.ambiente)
+                          const st = tableState(openOrders, tb.name, tb.ambiente, tables)
+                          const agg = aggregateTable(openOrders, tb.name, tb.ambiente, tables)
                           const sel =
                             selectedTableKey === `${tb.ambiente}::${tb.name}` &&
-                            table.trim().toLowerCase() === tb.name.trim().toLowerCase() &&
+                            tableNamesMatch(table, tb.name) &&
                             sector === tb.ambiente
                           const base =
                             st === 'free'
@@ -1610,8 +1610,8 @@ export function WaiterClient({
                     </p>
                     <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
                       {list.map((tb) => {
-                        const st = tableState(openOrders, tb.name, tb.ambiente)
-                        const agg = aggregateTable(openOrders, tb.name, tb.ambiente)
+                        const st = tableState(openOrders, tb.name, tb.ambiente, tables)
+                        const agg = aggregateTable(openOrders, tb.name, tb.ambiente, tables)
                         const base =
                           st === 'free'
                             ? 'border-[var(--card-border)] bg-white'
