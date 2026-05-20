@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import {
   ORDER_SELECT,
   mapStoreOrderRow,
+  orderIsVisibleAfterPixConfirmation,
   type StoreOrderRow,
 } from '@/lib/store-order'
 import type { StorePrintingState } from '@/lib/store-printing'
@@ -97,7 +98,11 @@ export function KdsClient({
       .eq('store_id', storeId)
       .order('created_at', { ascending: false })
     if (error || !data) return
-    setOrders((data as Record<string, unknown>[]).map(mapStoreOrderRow))
+    setOrders(
+      (data as Record<string, unknown>[])
+        .map(mapStoreOrderRow)
+        .filter(orderIsVisibleAfterPixConfirmation)
+    )
   }, [storeId])
 
   useEffect(() => {
@@ -115,14 +120,21 @@ export function KdsClient({
         (payload) => {
           if (payload.eventType === 'INSERT' && payload.new) {
             const row = mapStoreOrderRow(payload.new as Record<string, unknown>)
+            if (!orderIsVisibleAfterPixConfirmation(row)) return
             setOrders((prev) => {
               if (prev.some((p) => p.id === row.id)) return prev
               return [row, ...prev]
             })
           } else if (payload.eventType === 'UPDATE' && payload.new) {
             const row = mapStoreOrderRow(payload.new as Record<string, unknown>)
+            if (!orderIsVisibleAfterPixConfirmation(row)) {
+              setOrders((prev) => prev.filter((p) => p.id !== row.id))
+              return
+            }
             setOrders((prev) =>
-              prev.map((p) => (p.id === row.id ? row : p))
+              prev.some((p) => p.id === row.id)
+                ? prev.map((p) => (p.id === row.id ? row : p))
+                : [row, ...prev]
             )
           } else if (payload.eventType === 'DELETE' && payload.old) {
             const id = String((payload.old as { id?: string }).id ?? '')

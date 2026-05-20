@@ -298,6 +298,16 @@ export async function POST(req: NextRequest) {
       .toLowerCase()
     const isPixPayment = paymentNorm === 'pix'
 
+    if (fulfillment === 'dine_in' && isPixPayment) {
+      return NextResponse.json(
+        {
+          error:
+            'PIX no checkout não está disponível no QR de autoatendimento. Escolhe cartão ou dinheiro.',
+        },
+        { status: 400 }
+      )
+    }
+
     const storeMetaEarly = storeRow as Record<string, unknown>
     const checkoutPlanEarly = parsePlan(readStorePlano(storeMetaEarly))
     if (isPixPayment && !hasPixCheckout(checkoutPlanEarly)) {
@@ -384,6 +394,7 @@ export async function POST(req: NextRequest) {
     const checkoutAutomations = parseAutomationsFromStore(storeMeta)
 
     if (
+      !isPixPayment &&
       checkoutAutomations.auto_accept_orders &&
       hasOrderPipelineAutomations(checkoutPlan)
     ) {
@@ -409,6 +420,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (
+      !isPixPayment &&
       hasOrderPipelineAutomations(checkoutPlan) &&
       checkoutAutomations.auto_notify_new_order
     ) {
@@ -420,11 +432,13 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    void tryAutoThermalPrint(supabase, {
-      storeId: String(storeRow.id),
-      orderId: String(order.id),
-      orderSource: insertSource,
-    })
+    if (!isPixPayment) {
+      void tryAutoThermalPrint(supabase, {
+        storeId: String(storeRow.id),
+        orderId: String(order.id),
+        orderSource: insertSource,
+      })
+    }
 
     let pix: Awaited<ReturnType<typeof buildPixChargeForOrder>> = null
     if (isPixPayment) {
@@ -443,6 +457,14 @@ export async function POST(req: NextRequest) {
         if (pixUpdateErr && !pixUpdateErr.message?.includes('pix_payload')) {
           console.warn('[checkout] pix_payload update', pixUpdateErr.message)
         }
+      }
+      if (!pix?.copyPaste || !pix.qrCodeDataUrl) {
+        await supabase.from('order_items').delete().eq('order_id', order.id)
+        await supabase.from('orders').delete().eq('id', order.id)
+        return NextResponse.json(
+          { error: 'Não foi possível gerar o QR Code PIX. Escolhe outro pagamento ou tenta de novo.' },
+          { status: 500 }
+        )
       }
     }
 

@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/client'
 import type { StoreOrderRow } from '@/lib/store-order'
-import { ORDER_SELECT } from '@/lib/store-order'
+import { ORDER_SELECT, orderIsVisibleAfterPixConfirmation } from '@/lib/store-order'
 
 export async function getStoreOrders(storeId: string): Promise<StoreOrderRow[]> {
   const supabase = createClient()
@@ -14,7 +14,7 @@ export async function getStoreOrders(storeId: string): Promise<StoreOrderRow[]> 
     console.error('[orders]', error.message)
     return []
   }
-  return (data as StoreOrderRow[]) ?? []
+  return ((data as StoreOrderRow[]) ?? []).filter(orderIsVisibleAfterPixConfirmation)
 }
 
 export async function updateOrderStatus(

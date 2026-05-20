@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import {
   ORDER_SELECT,
   mapStoreOrderRow,
+  orderIsVisibleAfterPixConfirmation,
   type StoreOrderRow,
 } from '@/lib/store-order'
 import type { StorePrintingState } from '@/lib/store-printing'
@@ -83,7 +84,9 @@ export function DashboardAutoAcceptOrders({
       }
       const { data, error } = await q.order('created_at', { ascending: false })
       if (error || !data?.length) return []
-      return (data as Record<string, unknown>[]).map(mapStoreOrderRow)
+      return (data as Record<string, unknown>[])
+        .map(mapStoreOrderRow)
+        .filter(orderIsVisibleAfterPixConfirmation)
     }
 
     async function seedStatusMapFromServer() {
@@ -270,6 +273,13 @@ export function DashboardAutoAcceptOrders({
       ) {
         return
       }
+      if (
+        !orderIsVisibleAfterPixConfirmation(
+          mapStoreOrderRow(payload.new as Record<string, unknown>)
+        )
+      ) {
+        return
+      }
       if (trackPrint) {
         const raw = payload.new
         const id = String(raw.id ?? '')
@@ -294,6 +304,13 @@ export function DashboardAutoAcceptOrders({
       if (
         slugChannelSourcesOnly &&
         !isSlugChannelOrderSource(payload.new.source as string | null)
+      ) {
+        return
+      }
+      if (
+        !orderIsVisibleAfterPixConfirmation(
+          mapStoreOrderRow(payload.new as Record<string, unknown>)
+        )
       ) {
         return
       }

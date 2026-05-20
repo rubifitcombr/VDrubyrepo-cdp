@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 const PIX_TIMER_SECONDS = 15 * 60
 
@@ -23,7 +23,7 @@ export function PixPaymentPanel({
   qrCodeDataUrl,
   storeSlug,
   orderId,
-  onNotifyStore,
+  onConfirmed,
   onClose,
 }: {
   amount: number
@@ -33,13 +33,13 @@ export function PixPaymentPanel({
   qrCodeDataUrl: string
   storeSlug: string
   orderId: string
-  onNotifyStore: () => void
+  onConfirmed: () => void
   onClose: () => void
 }) {
   const [secondsLeft, setSecondsLeft] = useState(PIX_TIMER_SECONDS)
   const [copied, setCopied] = useState(false)
-  const [ackBusy, setAckBusy] = useState(false)
-  const [ackError, setAckError] = useState<string | null>(null)
+  const [statusError, setStatusError] = useState<string | null>(null)
+  const confirmedRef = useRef(false)
 
   useEffect(() => {
     if (secondsLeft <= 0) return
@@ -59,27 +59,44 @@ export function PixPaymentPanel({
     }
   }, [copyPaste])
 
-  async function handlePaid() {
-    setAckError(null)
-    setAckBusy(true)
+  const checkPaymentStatus = useCallback(async () => {
+    if (confirmedRef.current) return
     try {
-      const resp = await fetch('/api/public/orders/pix-ack', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slug: storeSlug, orderId }),
+      const params = new URLSearchParams({ slug: storeSlug, orderId })
+      const resp = await fetch(`/api/public/orders/pix-status?${params.toString()}`, {
+        cache: 'no-store',
       })
-      const data = (await resp.json()) as { ok?: boolean; error?: string }
+      const data = (await resp.json().catch(() => ({}))) as {
+        ok?: boolean
+        confirmed?: boolean
+        error?: string
+      }
       if (!resp.ok || !data.ok) {
-        setAckError(data.error || 'Não foi possível registar o pagamento.')
-        setAckBusy(false)
+        setStatusError(data.error || 'Não foi possível verificar o pagamento.')
         return
       }
-      onNotifyStore()
+      setStatusError(null)
+      if (data.confirmed) {
+        confirmedRef.current = true
+        onConfirmed()
+      }
     } catch (e) {
-      setAckError(e instanceof Error ? e.message : 'Erro de rede.')
-      setAckBusy(false)
+      setStatusError(e instanceof Error ? e.message : 'Erro de rede.')
     }
-  }
+  }, [onConfirmed, orderId, storeSlug])
+
+  useEffect(() => {
+    const first = window.setTimeout(() => {
+      void checkPaymentStatus()
+    }, 0)
+    const t = window.setInterval(() => {
+      void checkPaymentStatus()
+    }, 5000)
+    return () => {
+      window.clearTimeout(first)
+      window.clearInterval(t)
+    }
+  }, [checkPaymentStatus])
 
   return (
     <div className="space-y-4">
@@ -138,24 +155,19 @@ export function PixPaymentPanel({
 
       <p className="text-center text-xs leading-relaxed text-vyria-navy-muted">
         O pagamento vai <strong className="text-vyria-navy">directamente</strong> para a conta da
-        loja. Após o pagamento envie o comprovante no WhatsApp.
+        loja. O pedido só entra no painel quando o pagamento for confirmado automaticamente.
       </p>
 
-      {ackError ? (
+      {statusError ? (
         <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
-          {ackError}
+          {statusError}
         </p>
       ) : null}
 
       <div className="flex flex-col gap-2 sm:flex-row">
-        <button
-          type="button"
-          onClick={() => void handlePaid()}
-          disabled={ackBusy}
-          className="flex-1 rounded-xl bg-[#25D366] px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#20bd5a] disabled:opacity-60"
-        >
-          {ackBusy ? 'A registar…' : 'Já paguei'}
-        </button>
+        <div className="flex-1 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-center text-sm font-semibold text-emerald-950">
+          Aguardando confirmação automática do PIX…
+        </div>
         <button
           type="button"
           onClick={onClose}

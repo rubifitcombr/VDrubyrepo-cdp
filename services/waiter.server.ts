@@ -1,8 +1,15 @@
 import 'server-only'
 
 import type { StoreOrderRow } from '@/lib/store-order'
-import { mapStoreOrderRow, ORDER_SELECT } from '@/lib/store-order'
-import { notesIndicateWaiterReleasedToCaixa } from '@/lib/waiter-order-notes'
+import {
+  mapStoreOrderRow,
+  ORDER_SELECT,
+  orderIsVisibleAfterPixConfirmation,
+} from '@/lib/store-order'
+import {
+  isSalonMapOrderSource,
+  notesIndicateWaiterReleasedToCaixa,
+} from '@/lib/waiter-order-notes'
 import { createClient } from '@/lib/supabase/server'
 
 const OPEN_STATUSES = ['pending', 'preparing', 'ready', 'confirmed']
@@ -15,7 +22,7 @@ export async function getWaiterOpenOrdersForStore(
     .from('orders')
     .select(ORDER_SELECT)
     .eq('store_id', storeId)
-    .eq('source', 'waiter')
+    .in('source', ['waiter', 'autoatendimento'])
     .in('status', OPEN_STATUSES)
     .order('created_at', { ascending: false })
 
@@ -25,6 +32,11 @@ export async function getWaiterOpenOrdersForStore(
   }
   return (data ?? [])
     .map((row) => mapStoreOrderRow(row as Record<string, unknown>))
-    .filter((o) => !notesIndicateWaiterReleasedToCaixa(o.notes))
+    .filter(
+      (o) =>
+        isSalonMapOrderSource(o.source) &&
+        orderIsVisibleAfterPixConfirmation(o) &&
+        !notesIndicateWaiterReleasedToCaixa(o.notes)
+    )
 }
 

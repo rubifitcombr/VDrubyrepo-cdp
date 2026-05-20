@@ -9,6 +9,7 @@ export type StoreOrderRow = {
   /** Taxa de entrega cobrada no pedido (checkout), quando existir coluna. */
   delivery_fee?: number | string | null
   payment_method?: string | null
+  payment_status?: string | null
   notes?: string | null
   customer_phone?: string | null
   items_summary?: string | null
@@ -17,7 +18,21 @@ export type StoreOrderRow = {
 }
 
 export const ORDER_SELECT =
-  'id, customer_name, total, status, created_at, source, delivery_address, delivery_fee, payment_method, notes, customer_phone, items_summary, caixa_turno_id'
+  'id, customer_name, total, status, created_at, source, delivery_address, delivery_fee, payment_method, payment_status, notes, customer_phone, items_summary, caixa_turno_id'
+
+export function pixPaymentStatusIsConfirmed(
+  status: string | null | undefined
+): boolean {
+  const s = String(status ?? '').trim().toLowerCase()
+  return s === 'paid' || s === 'confirmed' || s === 'approved' || s === 'completed'
+}
+
+export function orderIsVisibleAfterPixConfirmation(
+  order: Pick<StoreOrderRow, 'payment_method' | 'payment_status'>
+): boolean {
+  const method = String(order.payment_method ?? '').trim().toLowerCase()
+  return method !== 'pix' || pixPaymentStatusIsConfirmed(order.payment_status)
+}
 
 /** Mapeia linha Supabase / payload Realtime para o tipo do painel. */
 export function mapStoreOrderRow(row: Record<string, unknown>): StoreOrderRow {
@@ -49,6 +64,8 @@ export function mapStoreOrderRow(row: Record<string, unknown>): StoreOrderRow {
           : Number(String(row.delivery_fee).replace(',', '.')) || null,
     payment_method:
       typeof row.payment_method === 'string' ? row.payment_method : null,
+    payment_status:
+      typeof row.payment_status === 'string' ? row.payment_status : null,
     notes: typeof row.notes === 'string' ? row.notes : null,
     customer_phone:
       typeof row.customer_phone === 'string' ? row.customer_phone : null,

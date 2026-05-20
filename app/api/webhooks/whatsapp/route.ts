@@ -2,10 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClient } from '@/lib/supabase/service-role.server'
 import { hasAutomationAccess, parsePlan } from '@/lib/plan'
 import { readStorePlano } from '@/lib/store-columns'
-import {
-  sendWhatsAppMessage,
-  shouldSkipAutoReply,
-} from '@/services/whatsapp-sender.server'
+import { tryAcquireWhatsAppMenuAutoReplySlot } from '@/services/whatsapp-auto-reply-cooldown.server'
+import { sendWhatsAppMessage } from '@/services/whatsapp-sender.server'
 
 /** Vercel: aumenta limite para delays + chamada à Evolution (ajusta no painel se precisares de mais). */
 export const maxDuration = 60
@@ -221,12 +219,17 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const antiSpamKey = `${storeId}:${from}`
-    if (shouldSkipAutoReply(antiSpamKey)) {
+    const canReply = await tryAcquireWhatsAppMenuAutoReplySlot(
+      supabase,
+      storeId,
+      from
+    )
+    if (!canReply) {
       return NextResponse.json({
         ok: true,
         skipped: true,
-        reason: 'Cooldown anti-spam ativo.',
+        reason:
+          'Resposta automática já enviada a este número nas últimas 3 horas.',
       })
     }
 

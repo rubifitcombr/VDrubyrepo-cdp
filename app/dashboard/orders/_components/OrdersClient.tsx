@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import {
   ORDER_SELECT,
   mapStoreOrderRow,
+  orderIsVisibleAfterPixConfirmation,
   type StoreOrderRow,
 } from '@/lib/store-order'
 import type { StorePrintingState } from '@/lib/store-printing'
@@ -389,7 +390,9 @@ export function OrdersClient({
       }
       const { data, error } = await q.order('created_at', { ascending: false })
       if (error || !data) return
-      const rows = (data as Record<string, unknown>[]).map(mapStoreOrderRow)
+      const rows = (data as Record<string, unknown>[])
+        .map(mapStoreOrderRow)
+        .filter(orderIsVisibleAfterPixConfirmation)
       const nextIds = new Set(rows.map((r) => r.id))
       if (options?.beepOnNew) {
         const hasNew = rows.some((r) => !seenIdsRef.current.has(r.id))

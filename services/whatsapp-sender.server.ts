@@ -11,11 +11,12 @@ type SendWhatsAppMessageInput = {
 }
 
 const RECENT_AUTO_REPLIES = new Map<string, number>()
+/** Fallback em memória (ex.: notificação «a caminho»); não persiste entre invocações serverless. */
 const DEFAULT_COOLDOWN_MS = 30_000
 
 /**
- * Anti-spam inicial (memória local de processo).
- * Em produção distribuída, migrar para Redis/DB.
+ * Anti-spam em memória do processo atual.
+ * Resposta automática com link do cardápio usa Supabase (3h) — ver whatsapp-auto-reply-cooldown.server.ts.
  */
 export function shouldSkipAutoReply(
   key: string,

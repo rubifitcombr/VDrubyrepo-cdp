@@ -108,6 +108,13 @@ function canPrintComandaStatus(status: string | null | undefined): boolean {
   return s === 'pending' || s === 'preparing' || s === 'ready' || s === 'confirmed'
 }
 
+function orderSourceLabel(source: string | null | undefined): string {
+  const s = String(source ?? '').trim().toLowerCase()
+  if (s === 'autoatendimento') return 'QR'
+  if (s === 'waiter') return 'Garçom'
+  return 'Pedido'
+}
+
 function orderMatchesTable(o: StoreOrderRow, tableName: string, amb: string): boolean {
   const tn = parseTableFromNotes(o.notes) || ''
   const sc = parseSectorFromNotes(o.notes)
@@ -138,10 +145,16 @@ function aggregateTable(openOrders: StoreOrderRow[], tableName: string, amb: str
   const list = ordersOnTable(openOrders, tableName, amb)
   const total = list.reduce((s, o) => s + (Number(o.total) || 0), 0)
   const itemsApprox = list.reduce((s, o) => {
-    const sum = (o.items_summary || '').split(',').length
+    const sum = (o.items_summary || '').split(',').filter((x) => x.trim()).length
     return s + Math.max(1, sum)
   }, 0)
-  return { list, total, itemsApprox, primary: list[0] ?? null }
+  const waiterCount = list.filter((o) => String(o.source ?? '').toLowerCase() === 'waiter').length
+  const qrCount = list.filter((o) => String(o.source ?? '').toLowerCase() === 'autoatendimento').length
+  const originSummary = [
+    waiterCount ? `${waiterCount} garçom` : '',
+    qrCount ? `${qrCount} QR` : '',
+  ].filter(Boolean).join(' · ')
+  return { list, total, itemsApprox, waiterCount, qrCount, originSummary, primary: list[0] ?? null }
 }
 
 function sectorBadgeClass(amb: string): string {
@@ -452,6 +465,25 @@ export function WaiterClient({
     setDiscountBrl(0)
     setDiscountOpen(false)
     setPaymentMethod('cash')
+    setCenterTab('map')
+    if (openDrawer) setOrderDrawerOpen(true)
+  }
+
+  function startNewOrderForTable(name = table, amb = sector, openDrawer = true) {
+    const cleanName = name.trim()
+    if (!cleanName) return
+    setSelectedTableKey(`${amb}::${cleanName}`)
+    setActiveOrderId(null)
+    setTable(cleanName)
+    setSector(amb)
+    setCart([])
+    setCustomerName('')
+    setNotes('')
+    setDiscountBrl(0)
+    setDiscountOpen(false)
+    setPaymentMethod('cash')
+    setError(null)
+    setSuccess(null)
     setCenterTab('map')
     if (openDrawer) setOrderDrawerOpen(true)
   }
@@ -1308,6 +1340,12 @@ export function WaiterClient({
                                     <span className="mt-1 text-xs font-semibold text-sky-900">
                                       {money.format(agg.total)}
                                     </span>
+                                    {agg.list.length > 1 || agg.originSummary ? (
+                                      <span className="text-[10px] text-sky-800/90">
+                                        {agg.list.length} pedidos
+                                        {agg.originSummary ? ` · ${agg.originSummary}` : ''}
+                                      </span>
+                                    ) : null}
                                   </>
                                 ) : (
                                   <>
@@ -1320,6 +1358,12 @@ export function WaiterClient({
                                     <span className="text-[10px] text-amber-800/90">
                                       {agg.itemsApprox} itens
                                     </span>
+                                    {agg.list.length > 1 || agg.originSummary ? (
+                                      <span className="text-[10px] text-amber-800/90">
+                                        {agg.list.length} pedidos
+                                        {agg.originSummary ? ` · ${agg.originSummary}` : ''}
+                                      </span>
+                                    ) : null}
                                   </>
                                 )}
                               </button>
@@ -1399,6 +1443,7 @@ export function WaiterClient({
             hasSavedOrder={hasSavedOrder}
             onSubmitNew={submitNewOrder}
             onSaveExisting={saveExistingOrder}
+            onStartNewForTable={() => startNewOrderForTable()}
             onPrint={printComanda}
             onConfirmClose={() => {
               setMesaCloseMode('cashier')
@@ -1489,6 +1534,12 @@ export function WaiterClient({
                                   <span className="mt-1 text-xs font-semibold text-sky-900">
                                     {money.format(agg.total)}
                                   </span>
+                                  {agg.list.length > 1 || agg.originSummary ? (
+                                    <span className="text-[10px] text-sky-800/90">
+                                      {agg.list.length} pedidos
+                                      {agg.originSummary ? ` · ${agg.originSummary}` : ''}
+                                    </span>
+                                  ) : null}
                                 </>
                               ) : (
                                 <>
@@ -1501,6 +1552,12 @@ export function WaiterClient({
                                   <span className="text-[10px] text-amber-800/90">
                                     {agg.itemsApprox} itens
                                   </span>
+                                  {agg.list.length > 1 || agg.originSummary ? (
+                                    <span className="text-[10px] text-amber-800/90">
+                                      {agg.list.length} pedidos
+                                      {agg.originSummary ? ` · ${agg.originSummary}` : ''}
+                                    </span>
+                                  ) : null}
                                 </>
                               )}
                             </div>
@@ -1546,9 +1603,14 @@ export function WaiterClient({
                     <p className="text-xs font-semibold text-[#1a1614]">
                       Mesa {parseTableFromNotes(order.notes) || '—'} · {parseSectorFromNotes(order.notes)}
                     </p>
-                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${badgeClass}`}>
-                      {statusLabel(order.status)}
-                    </span>
+                    <div className="flex flex-wrap gap-1">
+                      <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-bold text-zinc-700 ring-1 ring-zinc-200">
+                        {orderSourceLabel(order.source)}
+                      </span>
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${badgeClass}`}>
+                        {statusLabel(order.status)}
+                      </span>
+                    </div>
                   </div>
                   <p className="mt-2 line-clamp-2 text-xs text-[#4b5563]">{order.items_summary || '—'}</p>
                   <p className="mt-2 text-sm font-bold text-[var(--dash-primary)]">
@@ -1997,6 +2059,7 @@ export function WaiterClient({
                 hasSavedOrder={hasSavedOrder}
                 onSubmitNew={submitNewOrder}
                 onSaveExisting={saveExistingOrder}
+                onStartNewForTable={() => startNewOrderForTable()}
                 onPrint={printComanda}
                 onConfirmClose={() => {
               setMesaCloseMode('cashier')
@@ -2021,6 +2084,16 @@ export function WaiterClient({
                 type="button"
                 onClick={() => {
                   setTableActionSheetOpen(false)
+                  startNewOrderForTable(table, sector, true)
+                }}
+                className="rounded-xl bg-[var(--dash-primary)] py-2.5 text-sm font-semibold text-white"
+              >
+                Novo pedido
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setTableActionSheetOpen(false)
                   setMenuSheetOpen(true)
                 }}
                 className="rounded-xl border border-[var(--card-border)] bg-white py-2.5 text-sm font-semibold text-[#1a1614]"
@@ -2033,7 +2106,7 @@ export function WaiterClient({
                   setTableActionSheetOpen(false)
                   setOrderDrawerOpen(true)
                 }}
-                className="rounded-xl bg-[var(--dash-primary)] py-2.5 text-sm font-semibold text-white"
+                className="rounded-xl border border-[var(--card-border)] bg-white py-2.5 text-sm font-semibold text-[#1a1614]"
               >
                 Pedido
               </button>
@@ -2129,6 +2202,7 @@ function OrderPanelContent({
   hasSavedOrder,
   onSubmitNew,
   onSaveExisting,
+  onStartNewForTable,
   onPrint,
   onConfirmClose,
   sticky,
@@ -2159,6 +2233,7 @@ function OrderPanelContent({
   hasSavedOrder: boolean
   onSubmitNew: () => void
   onSaveExisting: () => void
+  onStartNewForTable: () => void
   onPrint: () => void
   onConfirmClose: () => void
   sticky: boolean
@@ -2374,6 +2449,14 @@ function OrderPanelContent({
                   className="mt-2 w-full rounded-xl border border-emerald-600 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-50"
                 >
                   Receber e fechar mesa / conta
+                </button>
+                <button
+                  type="button"
+                  disabled={saving || !table.trim()}
+                  onClick={onStartNewForTable}
+                  className="mt-2 w-full rounded-xl border border-[var(--card-border)] py-2 text-sm font-semibold text-[#1a1614] hover:bg-zinc-50 disabled:opacity-50"
+                >
+                  Novo pedido nesta mesa
                 </button>
                 <button
                   type="button"

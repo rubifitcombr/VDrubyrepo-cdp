@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { slugChannelSourcesForSupabaseIn } from '@/lib/slug-channel-orders'
+import { orderIsVisibleAfterPixConfirmation } from '@/lib/store-order'
 import { createClient } from '@/lib/supabase/server'
 
 export type RecentOrder = {
@@ -292,19 +293,26 @@ export async function getDashboardNotificationCount(
   const supabase = await createClient()
   let q = supabase
     .from('orders')
-    .select('*', { count: 'exact', head: true })
+    .select('payment_method, payment_status')
     .eq('store_id', storeId)
     .in('status', ['pending', 'preparing', 'ready', 'confirmed'])
   if (options?.slugChannelSourcesOnly) {
     q = q.in('source', slugChannelSourcesForSupabaseIn())
   }
-  const { count, error } = await q
+  const { data, error } = await q
 
   if (error) {
     console.error('[dashboard] notification count:', error.message)
     return 0
   }
-  return count ?? 0
+  return (data ?? []).filter((row) =>
+    orderIsVisibleAfterPixConfirmation({
+      payment_method:
+        typeof row.payment_method === 'string' ? row.payment_method : null,
+      payment_status:
+        typeof row.payment_status === 'string' ? row.payment_status : null,
+    })
+  ).length
 }
 
 function withSlugOrderSources(

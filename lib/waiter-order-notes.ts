@@ -1,4 +1,12 @@
-/** Linhas fixas no início de `orders.notes` para pedidos do Garçom. */
+/** Linhas fixas no início de `orders.notes` para pedidos do Garçom / QR mesa. */
+
+/** Origens que alimentam o mapa de mesas e a lista de comandas abertas no módulo Garçom. */
+export const SALON_MAP_ORDER_SOURCES = ['waiter', 'autoatendimento'] as const
+
+export function isSalonMapOrderSource(source: string | null | undefined): boolean {
+  const s = String(source ?? '').trim().toLowerCase()
+  return (SALON_MAP_ORDER_SOURCES as readonly string[]).includes(s)
+}
 
 /** Quando presente em `orders.notes`, o pedido deixa de aparecer no mapa do Garçom mas continua aberto no Caixa. */
 export const WAITER_PENDING_CAIXA_MARKER =

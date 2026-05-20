@@ -73,7 +73,7 @@ type FulfillmentType = 'delivery' | 'pickup' | 'dine_in'
 export function WhatsAppCheckoutButton({
   storeName,
   storeSlug,
-  storePlan,
+  storePlan: _storePlan,
   phone,
   deliveryFee,
   deliveryFreeAbove,
@@ -120,7 +120,7 @@ export function WhatsAppCheckoutButton({
   const [addressReferencia, setAddressReferencia] = useState('')
   const [addressBairro, setAddressBairro] = useState('')
   const [paymentMethod, setPaymentMethod] = useState<'pix' | 'card' | 'cash'>(
-    () => (merchantPixConfigured ? 'pix' : 'cash')
+    () => (merchantPixConfigured && !dineInSelfService ? 'pix' : 'cash')
   )
   const [pixStep, setPixStep] = useState<PixStepState | null>(null)
   const [trocoPara, setTrocoPara] = useState('')
@@ -129,11 +129,7 @@ export function WhatsAppCheckoutButton({
   const [tableMesa, setTableMesa] = useState('')
   const lastOpenSignalRef = useRef<number | null>(null)
 
-  useEffect(() => {
-    if (!merchantPixConfigured && paymentMethod === 'pix') {
-      setPaymentMethod('cash')
-    }
-  }, [merchantPixConfigured, paymentMethod])
+  const pixAvailableForCheckout = merchantPixConfigured && !dineInSelfService
 
   useEffect(() => {
     if (!open) return
@@ -270,13 +266,12 @@ export function WhatsAppCheckoutButton({
       if (!payload.pix?.copyPaste || !payload.pix?.qrCodeDataUrl) {
         setSubmitting(false)
         setError(
-          merchantPixConfigured
+          pixAvailableForCheckout
             ? 'Não foi possível gerar o PIX. Tenta de novo ou escolhe outro pagamento.'
             : 'PIX automático indisponível nesta loja. Escolhe cartão ou dinheiro.'
         )
         return
       }
-      clearCart()
       setPixStep({
         ...payload.pix,
         orderId: payload.orderId,
@@ -342,7 +337,7 @@ export function WhatsAppCheckoutButton({
           addressCasa: addressCasa.trim(),
           addressReferencia: addressReferencia.trim(),
           addressBairro: addressBairro.trim(),
-          paymentMethod,
+        paymentMethod: pixAvailableForCheckout ? paymentMethod : 'cash',
           notes: buildNotesPayload(),
           items: items.map((i) => ({
             productId: i.productId,
@@ -397,7 +392,7 @@ export function WhatsAppCheckoutButton({
         `*Telefone:* ${customerPhone.trim()}`,
         '*Endereço:*',
         addrBlock,
-        `*Pagamento:* ${paymentLabel(paymentMethod)}`,
+        `*Pagamento:* ${paymentLabel(pixAvailableForCheckout ? paymentMethod : 'cash')}`,
         paymentMethod === 'pix' && payload.pix
           ? 'PIX (pago pelo cliente no app do banco)'
           : paymentMethod === 'pix' && !merchantPixConfigured
@@ -479,9 +474,6 @@ export function WhatsAppCheckoutButton({
         `*Nome:* ${customerName.trim()}`,
         `*Telefone:* ${customerPhone.trim()}`,
         `*Pagamento:* ${paymentLabel(paymentMethod)}`,
-        paymentMethod === 'pix' && payload.pix
-          ? 'PIX (pago pelo cliente no app do banco)'
-          : '',
         paymentMethod === 'cash' && trocoPara.trim()
           ? `*Troco para quanto:* ${trocoPara.trim()}`
           : '',
@@ -723,8 +715,7 @@ export function WhatsAppCheckoutButton({
                         qrCodeDataUrl={pixStep.qrCodeDataUrl}
                         storeSlug={storeSlug}
                         orderId={pixStep.orderId}
-                        onNotifyStore={() => {
-                          openWhatsAppWithText(pixStep.whatsappText)
+                        onConfirmed={() => {
                           resetCheckoutModal()
                         }}
                         onClose={() => {
@@ -937,25 +928,26 @@ export function WhatsAppCheckoutButton({
                               }}
                               className="w-full rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm outline-none focus:border-[#25D366]"
                             >
-                              {merchantPixConfigured ? (
+                              {pixAvailableForCheckout ? (
                                 <option value="pix">PIX</option>
                               ) : null}
                               <option value="card">Cartão</option>
                               <option value="cash">Dinheiro</option>
                             </select>
-                            {!merchantPixConfigured ? (
+                            {!pixAvailableForCheckout && !dineInSelfService ? (
                               <p className="mt-1.5 text-[11px] leading-snug text-vyria-navy-muted">
                                 PIX automático (QR Code) disponível no plano Pro da loja.
                               </p>
                             ) : null}
-                            {paymentMethod === 'pix' && !merchantPixConfigured ? (
+                            {paymentMethod === 'pix' && !pixAvailableForCheckout ? (
                               <p className="mt-1.5 text-[11px] leading-snug text-amber-800">
                                 Esta loja ainda não configurou a chave PIX. O pedido será registado;
                                 combine o pagamento com a loja.
                               </p>
-                            ) : paymentMethod === 'pix' && merchantPixConfigured ? (
+                            ) : paymentMethod === 'pix' && pixAvailableForCheckout ? (
                               <p className="mt-1.5 text-[11px] leading-snug text-emerald-800">
-                                Após confirmar, verás o QR Code para pagar directamente à loja.
+                                Após confirmar, verás o QR Code. O pedido só será enviado à loja
+                                quando o pagamento for confirmado automaticamente.
                               </p>
                             ) : null}
                           </label>

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import type { Plan } from '@/lib/plan'
 import { planTitle } from '@/lib/plan'
+import { orderIsVisibleAfterPixConfirmation } from '@/lib/store-order'
 import { createClient } from '@/lib/supabase/client'
 import { slugChannelSourcesForSupabaseIn } from '@/lib/slug-channel-orders'
 import { IconBell, IconSearch } from './NavIcons'
@@ -50,15 +51,24 @@ export function DashboardTopBar({
     async function refreshPendingCount() {
       let q = supabase
         .from('orders')
-        .select('id', { count: 'exact', head: true })
+        .select('id, payment_method, payment_status')
         .eq('store_id', storeId)
         .eq('status', 'pending')
       if (slugChannelSourcesOnly) {
         q = q.in('source', slugChannelSourcesForSupabaseIn())
       }
-      const { count, error } = await q
+      const { data, error } = await q
       if (!disposed && !error) {
-        setPendingCount(count ?? 0)
+        setPendingCount(
+          (data ?? []).filter((row) =>
+            orderIsVisibleAfterPixConfirmation({
+              payment_method:
+                typeof row.payment_method === 'string' ? row.payment_method : null,
+              payment_status:
+                typeof row.payment_status === 'string' ? row.payment_status : null,
+            })
+          ).length
+        )
       }
     }
 

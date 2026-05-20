@@ -1,7 +1,7 @@
 import 'server-only'
 
 import type { StoreOrderRow } from '@/lib/store-order'
-import { ORDER_SELECT } from '@/lib/store-order'
+import { ORDER_SELECT, orderIsVisibleAfterPixConfirmation } from '@/lib/store-order'
 import { slugChannelSourcesForSupabaseIn } from '@/lib/slug-channel-orders'
 import { createClient } from '@/lib/supabase/server'
 
@@ -23,5 +23,5 @@ export async function getStoreOrders(
     console.error('[orders]', error.message)
     return []
   }
-  return (data as StoreOrderRow[]) ?? []
+  return ((data as StoreOrderRow[]) ?? []).filter(orderIsVisibleAfterPixConfirmation)
 }

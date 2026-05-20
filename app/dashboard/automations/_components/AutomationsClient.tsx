@@ -535,6 +535,11 @@ export function AutomationsClient({
             }
             label="Ativar resposta automática no WhatsApp"
           />
+          <p className="mt-2 text-xs leading-relaxed text-vyria-navy-muted">
+            Cada número de cliente recebe a mensagem com o link do cardápio no máximo{' '}
+            <strong className="text-vyria-navy">uma vez a cada 3 horas</strong>, mesmo que envie
+            várias mensagens no WhatsApp.
+          </p>
         </div>
 
         <div className="mt-4 grid gap-4">

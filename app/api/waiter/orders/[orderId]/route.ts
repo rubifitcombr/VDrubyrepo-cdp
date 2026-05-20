@@ -3,7 +3,14 @@ import { gateMerchantMenuKey } from '@/lib/merchant-api-gate.server'
 import { denyStaffWaiterPanelWrites } from '@/lib/waiter-staff-gate.server'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
 import { ORDER_SELECT, mapStoreOrderRow } from '@/lib/store-order'
-import { buildWaiterNotes, extractUserNotes, notesIndicateWaiterReleasedToCaixa, parseSectorFromNotes, parseTableFromNotes } from '@/lib/waiter-order-notes'
+import {
+  buildWaiterNotes,
+  extractUserNotes,
+  isSalonMapOrderSource,
+  notesIndicateWaiterReleasedToCaixa,
+  parseSectorFromNotes,
+  parseTableFromNotes,
+} from '@/lib/waiter-order-notes'
 import { getUser } from '@/services/auth.server'
 import { createClient } from '@/lib/supabase/server'
 import { buildItemsSummaryWithLineTotals } from '@/lib/print/items-summary-format'
@@ -44,10 +51,13 @@ export async function GET(
     .select(ORDER_SELECT)
     .eq('id', id)
     .eq('store_id', gate.ctx.storeId)
-    .eq('source', 'waiter')
     .maybeSingle()
 
   if (error || !order) {
+    return NextResponse.json({ error: 'Pedido não encontrado.' }, { status: 404 })
+  }
+  const mapped = mapStoreOrderRow(order as Record<string, unknown>)
+  if (!isSalonMapOrderSource(mapped.source)) {
     return NextResponse.json({ error: 'Pedido não encontrado.' }, { status: 404 })
   }
 
@@ -61,7 +71,7 @@ export async function GET(
   }
 
   return NextResponse.json({
-    order: mapStoreOrderRow(order as Record<string, unknown>),
+    order: mapped,
     items: items ?? [],
   })
 }
@@ -106,13 +116,15 @@ export async function PATCH(
 
   const { data: existing, error: fErr } = await supabase
     .from('orders')
-    .select('id, status, notes')
+    .select('id, status, notes, source')
     .eq('id', id)
     .eq('store_id', storeId)
-    .eq('source', 'waiter')
     .maybeSingle()
 
   if (fErr || !existing) {
+    return NextResponse.json({ error: 'Pedido não encontrado.' }, { status: 404 })
+  }
+  if (!isSalonMapOrderSource(existing.source as string | null)) {
     return NextResponse.json({ error: 'Pedido não encontrado.' }, { status: 404 })
   }
 
