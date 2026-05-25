@@ -263,7 +263,7 @@ export function WhatsAppCheckoutButton({
     whatsappText: string
   ) {
     const ref = `#${payload.orderId.slice(0, 8).toUpperCase()}`
-    if (paymentMethod === 'pix') {
+    if (paymentMethod === 'pix' && resolvedFulfillment !== 'dine_in') {
       if (!payload.pix?.copyPaste || !payload.pix?.qrCodeDataUrl) {
         setSubmitting(false)
         setError(
@@ -308,9 +308,6 @@ export function WhatsAppCheckoutButton({
     }
     if (!customerName.trim()) return 'Indica o teu nome.'
     if (!tableMesa.trim()) return 'Indica o número ou nome da mesa.'
-    if (paymentMethod === 'cash' && !trocoPara.trim()) {
-      return 'Preenche o campo «troco para quanto?».'
-    }
     return null
   }
 
@@ -338,7 +335,7 @@ export function WhatsAppCheckoutButton({
           addressCasa: addressCasa.trim(),
           addressReferencia: addressReferencia.trim(),
           addressBairro: addressBairro.trim(),
-        paymentMethod: pixAvailableForCheckout ? paymentMethod : 'cash',
+          paymentMethod: pixAvailableForCheckout ? paymentMethod : 'cash',
           notes: buildNotesPayload(),
           items: items.map((i) => ({
             productId: i.productId,
@@ -441,8 +438,7 @@ export function WhatsAppCheckoutButton({
           table: tableMesa.trim(),
           customerName,
           customerPhone,
-          paymentMethod,
-          notes: buildNotesPayload(),
+          notes: notes.trim() || null,
           items: items.map((i) => ({
             productId: i.productId,
             name: i.name,
@@ -474,10 +470,7 @@ export function WhatsAppCheckoutButton({
         `*Mesa:* ${tableMesa.trim()}`,
         `*Nome:* ${customerName.trim()}`,
         `*Telefone:* ${customerPhone.trim()}`,
-        `*Pagamento:* ${paymentLabel(paymentMethod)}`,
-        paymentMethod === 'cash' && trocoPara.trim()
-          ? `*Troco para quanto:* ${trocoPara.trim()}`
-          : '',
+        '*Pagamento:* A acertar com o garçom ou no caixa',
         notes.trim() ? `*Observações:* ${notes.trim()}` : '',
         '',
         `*Total:* ${money.format(finalTotal)}`,
@@ -916,60 +909,68 @@ export function WhatsAppCheckoutButton({
                           </label>
                         ) : null}
 
-                        <div className="flex flex-col gap-3 sm:col-span-1">
-                          <label className="block">
-                            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-vyria-navy-muted">
-                              Pagamento
-                            </span>
-                            <select
-                              value={paymentMethod}
-                              onChange={(e) => {
-                                const v = e.target.value as 'pix' | 'card' | 'cash'
-                                setPaymentMethod(v)
-                                if (v !== 'cash') setTrocoPara('')
-                              }}
-                              className="w-full rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm outline-none focus:border-[#25D366]"
-                            >
-                              {pixAvailableForCheckout ? (
-                                <option value="pix">PIX</option>
-                              ) : null}
-                              <option value="card">Cartão</option>
-                              <option value="cash">Dinheiro</option>
-                            </select>
-                            {!pixAvailableForCheckout && !dineInSelfService ? (
-                              <p className="mt-1.5 text-[11px] leading-snug text-vyria-navy-muted">
-                                PIX automático (QR Code) disponível no plano Pro da loja.
-                              </p>
-                            ) : null}
-                            {paymentMethod === 'pix' && !pixAvailableForCheckout ? (
-                              <p className="mt-1.5 text-[11px] leading-snug text-amber-800">
-                                Esta loja ainda não configurou a chave PIX. O pedido será registado;
-                                combine o pagamento com a loja.
-                              </p>
-                            ) : paymentMethod === 'pix' && pixAvailableForCheckout ? (
-                              <p className="mt-1.5 text-[11px] leading-snug text-emerald-800">
-                                Após confirmar, verás o QR Code. O pedido só será enviado à loja
-                                quando o pagamento for confirmado automaticamente.
-                              </p>
-                            ) : null}
-                          </label>
-                          {paymentMethod === 'cash' ? (
+                        {resolvedFulfillment !== 'dine_in' ? (
+                          <div className="flex flex-col gap-3 sm:col-span-1">
                             <label className="block">
                               <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-vyria-navy-muted">
-                                Troco para quanto? <span className="text-red-600">*</span>
+                                Pagamento
                               </span>
-                              <input
-                                value={trocoPara}
-                                onChange={(e) => setTrocoPara(e.target.value)}
-                                placeholder="Ex.: 50,00 ou exato"
-                                inputMode="text"
-                                autoComplete="off"
+                              <select
+                                value={paymentMethod}
+                                onChange={(e) => {
+                                  const v = e.target.value as 'pix' | 'card' | 'cash'
+                                  setPaymentMethod(v)
+                                  if (v !== 'cash') setTrocoPara('')
+                                }}
                                 className="w-full rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm outline-none focus:border-[#25D366]"
-                              />
+                              >
+                                {pixAvailableForCheckout ? (
+                                  <option value="pix">PIX</option>
+                                ) : null}
+                                <option value="card">Cartão</option>
+                                <option value="cash">Dinheiro</option>
+                              </select>
+                              {!pixAvailableForCheckout && !dineInSelfService ? (
+                                <p className="mt-1.5 text-[11px] leading-snug text-vyria-navy-muted">
+                                  PIX automático (QR Code) disponível no plano Pro da loja.
+                                </p>
+                              ) : null}
+                              {paymentMethod === 'pix' && !pixAvailableForCheckout ? (
+                                <p className="mt-1.5 text-[11px] leading-snug text-amber-800">
+                                  Esta loja ainda não configurou a chave PIX. O pedido será registado;
+                                  combine o pagamento com a loja.
+                                </p>
+                              ) : paymentMethod === 'pix' && pixAvailableForCheckout ? (
+                                <p className="mt-1.5 text-[11px] leading-snug text-emerald-800">
+                                  Após confirmar, verás o QR Code. O pedido só será enviado à loja
+                                  quando o pagamento for confirmado automaticamente.
+                                </p>
+                              ) : null}
                             </label>
-                          ) : null}
-                        </div>
-                        <label className="sm:col-span-1">
+                            {paymentMethod === 'cash' ? (
+                              <label className="block">
+                                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-vyria-navy-muted">
+                                  Troco para quanto? <span className="text-red-600">*</span>
+                                </span>
+                                <input
+                                  value={trocoPara}
+                                  onChange={(e) => setTrocoPara(e.target.value)}
+                                  placeholder="Ex.: 50,00 ou exato"
+                                  inputMode="text"
+                                  autoComplete="off"
+                                  className="w-full rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm outline-none focus:border-[#25D366]"
+                                />
+                              </label>
+                            ) : null}
+                          </div>
+                        ) : null}
+                        <label
+                          className={
+                            resolvedFulfillment === 'dine_in'
+                              ? 'sm:col-span-2'
+                              : 'sm:col-span-1'
+                          }
+                        >
                           <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-vyria-navy-muted">
                             Observações{' '}
                             <span className="font-normal normal-case text-vyria-navy-muted/80">

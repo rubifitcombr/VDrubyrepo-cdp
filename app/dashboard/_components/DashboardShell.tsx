@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { BrandLogo } from '@/app/_components/BrandLogo'
 import { VyriaPanelModeSwitcher } from '@/app/_components/VyriaPanelModeSwitcher'
 import type { VyriaPanelMode } from '@/lib/vyria-panel-mode'
@@ -28,6 +28,7 @@ import {
   IconExternal,
   IconHome,
   IconKds,
+  IconMegaphone,
   IconMenuBook,
   IconPalette,
   IconPrinter,
@@ -43,6 +44,7 @@ const nav: Array<{
   menuKey: DashboardMenuKey
   /** Item secundário (menos destaque visual no sidebar). */
   quiet?: boolean
+  section?: string
 }> = [
   { href: '/dashboard', label: 'Dashboard', icon: IconHome, menuKey: 'dashboard' },
   {
@@ -92,6 +94,13 @@ const nav: Array<{
     label: 'Promoções',
     icon: IconTag,
     menuKey: 'promocoes',
+  },
+  {
+    href: '/dashboard/marketing',
+    label: 'Impulsionar',
+    icon: IconMegaphone,
+    menuKey: 'marketing',
+    section: 'Marketing',
   },
   {
     href: '/dashboard/reports',
@@ -200,7 +209,7 @@ function DashboardNavLinks({
 
   return (
     <nav className={navClass} aria-label="Navegação do painel">
-      {items.map(({ href, label, icon: Icon, quiet, menuKey }) => {
+      {items.map(({ href, label, icon: Icon, quiet, menuKey, section }) => {
         const active =
           href === '/dashboard'
             ? pathname === '/dashboard'
@@ -238,8 +247,13 @@ function DashboardNavLinks({
           }`
 
         return (
+          <Fragment key={href}>
+            {section && layout !== 'bottom' ? (
+              <p className="px-3 pt-3 text-[10px] font-bold uppercase tracking-[0.18em] text-white/35">
+                {section}
+              </p>
+            ) : null}
           <Link
-            key={href}
             href={href}
             className={
               layout === 'sidebar' ? linkSidebar : layout === 'drawer' ? linkDrawer : linkBottom
@@ -256,6 +270,7 @@ function DashboardNavLinks({
             />
             <span className="whitespace-nowrap">{label}</span>
           </Link>
+          </Fragment>
         )
       })}
     </nav>

@@ -293,20 +293,11 @@ export async function POST(req: NextRequest) {
 
     const deliveryFeeRow = fulfillment === 'delivery' ? deliveryCharge : 0
 
-    const paymentNorm = String(paymentMethod ?? '')
+    const paymentMethodForOrder = fulfillment === 'dine_in' ? null : paymentMethod
+    const paymentNorm = String(paymentMethodForOrder ?? '')
       .trim()
       .toLowerCase()
     const isPixPayment = paymentNorm === 'pix'
-
-    if (fulfillment === 'dine_in' && isPixPayment) {
-      return NextResponse.json(
-        {
-          error:
-            'PIX no checkout não está disponível no QR de autoatendimento. Escolhe cartão ou dinheiro.',
-        },
-        { status: 400 }
-      )
-    }
 
     const storeMetaEarly = storeRow as Record<string, unknown>
     const checkoutPlanEarly = parsePlan(readStorePlano(storeMetaEarly))
@@ -337,7 +328,7 @@ export async function POST(req: NextRequest) {
         customer_phone: customerPhone,
         delivery_address: normalizedDeliveryAddress,
         delivery_fee: deliveryFeeRow,
-        payment_method: paymentMethod,
+        payment_method: paymentMethodForOrder,
         payment_status: isPixPayment ? 'pending' : null,
         notes: orderNotes,
         total,

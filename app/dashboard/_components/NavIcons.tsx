@@ -194,6 +194,18 @@ export function IconTrendUp({ className }: { className?: string }) {
   )
 }
 
+export function IconMegaphone({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M10.34 15.84 9.28 19.6a1.5 1.5 0 0 1-2.85.15L4.8 15.2m5.54.64a3.75 3.75 0 0 1-4.34-.63M10.34 15.84l8.93 2.98a.75.75 0 0 0 .98-.71V5.89a.75.75 0 0 0-.98-.71L6 9.6a3.75 3.75 0 0 0 0 7.11l4.34-.87Zm9.91-7.46 1.5-1.13m-1.5 5.25 1.5 1.13"
+      />
+    </svg>
+  )
+}
+
 export function IconPencil({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
