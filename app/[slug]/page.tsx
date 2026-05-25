@@ -10,8 +10,17 @@ import { parsePlan, planTier } from '@/lib/plan'
 import { publicDineInCheckoutAllowed } from '@/lib/salao-attendance'
 import { getStoreOpenState, getTodayClosingDisplayHM } from '@/lib/business-hours'
 import { syncAutoCloseOutsideHoursForStore } from '@/services/store-hours-automation.server'
-import { effectiveProductPrice, hasActivePromotion } from '@/lib/product-pricing'
-import { MENU_PRODUCT_SELECT } from '@/lib/menu-product'
+import {
+  baseProductPriceForChannel,
+  effectiveProductPrice,
+  hasActivePromotion,
+  type ProductPriceChannel,
+} from '@/lib/product-pricing'
+import {
+  MENU_PRODUCT_SELECT,
+  normalizeMenuProductRow,
+  type MenuProductRow,
+} from '@/lib/menu-product'
 import { resolveStoreTheme } from '@/lib/store-theme'
 import { storePixCheckoutEnabled } from '@/lib/pix/key'
 import { notFound, redirect } from 'next/navigation'
@@ -43,18 +52,6 @@ type StoreRow = {
   location_lng?: number | null
   location_address?: string | null
   location_label?: string | null
-}
-
-type ProductRow = {
-  id: string
-  name: string
-  price: number | string | null
-  description?: string | null
-  category?: string | null
-  image_url?: string | null
-  sort_order?: number | null
-  promotional_price?: number | string | null
-  promotion_active?: boolean | null
 }
 
 const STORE_PUBLIC_SELECT = [
@@ -173,34 +170,21 @@ export default async function StorefrontPage({ params, searchParams }: Props) {
     .order('sort_order', { ascending: true, nullsFirst: false })
     .order('name', { ascending: true })
 
-  let list: ProductRow[] = (ordered.data as ProductRow[] | null) ?? []
+  let list: MenuProductRow[] =
+    ((ordered.data as Record<string, unknown>[] | null) ?? []).map(
+      normalizeMenuProductRow
+    )
   if (ordered.error) {
     const fallback = await supabase
       .from('products')
-      .select(MENU_PRODUCT_SELECT)
+      .select('*')
       .eq('store_id', s.id)
       .eq('active', true)
       .order('name', { ascending: true })
-    list = (fallback.data as ProductRow[] | null) ?? []
+    list = ((fallback.data as Record<string, unknown>[] | null) ?? []).map(
+      normalizeMenuProductRow
+    )
   }
-
-  const menuProducts: StorefrontMenuProduct[] = list.map((p) => {
-    const eff = effectiveProductPrice(p)
-    const promo = hasActivePromotion(p)
-    const base = Number(p.price)
-    const originalPrice =
-      promo && !Number.isNaN(base) ? base : null
-    return {
-      id: p.id,
-      name: p.name,
-      description: p.description ?? null,
-      category: (p.category || '').trim() || 'Sem categoria',
-      imageUrl: p.image_url?.trim() || null,
-      price: eff,
-      originalPrice,
-      popular: promo,
-    }
-  })
 
   const bannerUrl =
     typeof s.storefront_banner_url === 'string'
@@ -218,6 +202,25 @@ export default async function StorefrontPage({ params, searchParams }: Props) {
     publicDineInCheckoutAllowed(storePlan, s as Record<string, unknown>)
   const salaoAutoUnavailable =
     autoFlag === '1' && planTier(storePlan) >= planTier('GROWTH') && !selfServiceFromQr
+  const priceChannel: ProductPriceChannel = selfServiceFromQr
+    ? 'dine_in'
+    : 'delivery'
+  const menuProducts: StorefrontMenuProduct[] = list.map((p) => {
+    const eff = effectiveProductPrice(p, priceChannel)
+    const promo = hasActivePromotion(p, priceChannel)
+    const base = baseProductPriceForChannel(p, priceChannel)
+    const originalPrice = promo ? base : null
+    return {
+      id: p.id,
+      name: p.name,
+      description: p.description ?? null,
+      category: (p.category || '').trim() || 'Sem categoria',
+      imageUrl: p.image_url?.trim() || null,
+      price: eff,
+      originalPrice,
+      popular: promo,
+    }
+  })
   const canShowLocation = planTier(storePlan) >= planTier('GROWTH')
   const rawLat = s.location_lat != null ? Number(s.location_lat) : null
   const rawLng = s.location_lng != null ? Number(s.location_lng) : null

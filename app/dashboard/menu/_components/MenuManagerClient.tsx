@@ -12,6 +12,7 @@ import {
   IconTrash,
 } from '@/app/dashboard/_components/NavIcons'
 import type { MenuProductRow } from '@/lib/menu-product'
+import { effectiveProductPrice } from '@/lib/product-pricing'
 import type { Plan } from '@/lib/plan'
 import {
   hasAiMenuPhotoImport,
@@ -242,6 +243,19 @@ function AddonsEditor({
   )
 }
 
+function priceToInput(v: number | string | null | undefined): string {
+  if (v == null || v === '') return ''
+  return String(v).replace('.', ',')
+}
+
+function parsePriceInput(raw: string): number | null {
+  const t = raw.trim()
+  if (!t) return null
+  const n = Number(t.replace(',', '.'))
+  if (Number.isNaN(n) || n < 0) return null
+  return n
+}
+
 const money = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
   currency: 'BRL',
@@ -360,7 +374,12 @@ export function MenuManagerClient({
   const [productModalOpen, setProductModalOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [formName, setFormName] = useState('')
-  const [formPrice, setFormPrice] = useState('')
+  const [formDeliveryPrice, setFormDeliveryPrice] = useState('')
+  const [formDineInPrice, setFormDineInPrice] = useState('')
+  const [formDeliveryPromoActive, setFormDeliveryPromoActive] = useState(false)
+  const [formDeliveryPromoPrice, setFormDeliveryPromoPrice] = useState('')
+  const [formDineInPromoActive, setFormDineInPromoActive] = useState(false)
+  const [formDineInPromoPrice, setFormDineInPromoPrice] = useState('')
   const [formCategory, setFormCategory] = useState('')
   const [formDescription, setFormDescription] = useState('')
   const [formFile, setFormFile] = useState<File | null>(null)
@@ -392,14 +411,14 @@ export function MenuManagerClient({
 
   async function runAiDescription(withExisting: boolean) {
     const name = formName.trim()
-    const price = formPrice.trim()
+    const price = formDeliveryPrice.trim() || formDineInPrice.trim()
     if (!name) {
       alert('Preenche o nome do produto primeiro.')
       return
     }
-    const parsedPrice = Number(price.replace(',', '.'))
-    if (!price || Number.isNaN(parsedPrice) || parsedPrice < 0) {
-      alert('Preenche um preço válido.')
+    const parsedPrice = parsePriceInput(price)
+    if (parsedPrice == null) {
+      alert('Preenche um preço delivery ou presencial válido.')
       return
     }
     setAiDescBusy(true)
@@ -510,7 +529,12 @@ export function MenuManagerClient({
   function openCreateModal(prefillCategory?: string) {
     setEditingId(null)
     setFormName('')
-    setFormPrice('')
+    setFormDeliveryPrice('')
+    setFormDineInPrice('')
+    setFormDeliveryPromoActive(false)
+    setFormDeliveryPromoPrice('')
+    setFormDineInPromoActive(false)
+    setFormDineInPromoPrice('')
     setFormDescription('')
     setFormCategory(
       prefillCategory && prefillCategory !== 'Sem categoria'
@@ -526,11 +550,12 @@ export function MenuManagerClient({
   async function openEditModal(p: Product) {
     setEditingId(p.id)
     setFormName(p.name)
-    setFormPrice(
-      p.price != null && p.price !== ''
-        ? String(p.price).replace('.', ',')
-        : ''
-    )
+    setFormDeliveryPrice(priceToInput(p.delivery_price ?? p.price))
+    setFormDineInPrice(priceToInput(p.dine_in_price ?? p.price))
+    setFormDeliveryPromoActive(p.delivery_promotion_active === true)
+    setFormDeliveryPromoPrice(priceToInput(p.delivery_promotional_price))
+    setFormDineInPromoActive(p.dine_in_promotion_active === true)
+    setFormDineInPromoPrice(priceToInput(p.dine_in_promotional_price))
     setFormCategory(p.category?.trim() ?? '')
     setFormDescription(p.description?.trim() ?? '')
     setFormFile(null)
@@ -568,14 +593,36 @@ export function MenuManagerClient({
 
   async function submitProductForm() {
     const name = formName.trim()
-    const parsed = Number(formPrice.replace(',', '.'))
+    const delivery = parsePriceInput(formDeliveryPrice)
+    const dineIn = parsePriceInput(formDineInPrice)
     if (!name) {
       alert('Indica o nome do item.')
       return
     }
-    if (Number.isNaN(parsed) || parsed < 0) {
-      alert('Preço inválido.')
+    if (delivery == null && dineIn == null) {
+      alert('Indica ao menos o preço delivery ou presencial.')
       return
+    }
+    const legacyPrice = delivery ?? dineIn ?? 0
+    const deliveryPromo = parsePriceInput(formDeliveryPromoPrice)
+    const dineInPromo = parsePriceInput(formDineInPromoPrice)
+    if (formDeliveryPromoActive && deliveryPromo == null) {
+      alert('Preço promocional delivery inválido.')
+      return
+    }
+    if (formDineInPromoActive && dineInPromo == null) {
+      alert('Preço promocional presencial inválido.')
+      return
+    }
+
+    const channelPatch = {
+      price: legacyPrice,
+      delivery_price: delivery,
+      dine_in_price: dineIn,
+      delivery_promotional_price: formDeliveryPromoActive ? deliveryPromo : null,
+      delivery_promotion_active: formDeliveryPromoActive,
+      dine_in_promotional_price: formDineInPromoActive ? dineInPromo : null,
+      dine_in_promotion_active: formDineInPromoActive,
     }
 
     let uploadedUrl: string | null = null
@@ -609,9 +656,9 @@ export function MenuManagerClient({
     if (editingId) {
       const { error } = await updateProduct(editingId, {
         name,
-        price: parsed,
         category,
         description: desc,
+        ...channelPatch,
         ...(imageUrl != null ? { image_url: imageUrl } : {}),
       })
       if (error) {
@@ -640,7 +687,6 @@ export function MenuManagerClient({
     const { data: created, error } = await createMenuProduct({
       store_id: storeId,
       name,
-      price: parsed,
       category,
       image_url: imageUrl,
       description: desc,
@@ -648,6 +694,7 @@ export function MenuManagerClient({
       sort_order: sort,
       promotion_active: false,
       promotional_price: null,
+      ...channelPatch,
     })
     if (error) {
       setFormSaving(false)
@@ -1015,16 +1062,87 @@ export function MenuManagerClient({
               className="mt-1 w-full rounded-lg border border-[var(--card-border)] px-3 py-2 text-sm"
             />
           </label>
-          <label className="block text-sm font-medium text-vyria-navy">
-            Preço (R$)
-            <input
-              value={formPrice}
-              onChange={(e) => setFormPrice(e.target.value)}
-              inputMode="decimal"
-              className="mt-1 w-full rounded-lg border border-[var(--card-border)] px-3 py-2 text-sm"
-              placeholder="0,00"
-            />
-          </label>
+          <div className="rounded-xl border border-[var(--card-border)] bg-[#fafafa]/60 p-3 space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-vyria-navy-muted">
+              Preços por canal
+            </p>
+            <label className="block text-sm font-medium text-vyria-navy">
+              Preço Delivery / link público (R$)
+              <input
+                value={formDeliveryPrice}
+                onChange={(e) => setFormDeliveryPrice(e.target.value)}
+                inputMode="decimal"
+                className="mt-1 w-full rounded-lg border border-[var(--card-border)] px-3 py-2 text-sm"
+                placeholder="0,00"
+              />
+            </label>
+            <label className="block text-sm font-medium text-vyria-navy">
+              Preço Presencial / QR, garçom e PDV (R$)
+              <input
+                value={formDineInPrice}
+                onChange={(e) => setFormDineInPrice(e.target.value)}
+                inputMode="decimal"
+                className="mt-1 w-full rounded-lg border border-[var(--card-border)] px-3 py-2 text-sm"
+                placeholder="0,00"
+              />
+            </label>
+            <p className="text-xs text-vyria-navy-muted">
+              O preço base da loja usa o valor delivery quando definido; produtos
+              antigos sem canal usam o preço único como fallback.
+            </p>
+          </div>
+          <div className="rounded-xl border border-vyria-plum/15 bg-vyria-plum/[0.04] p-3 space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-vyria-plum">
+              Promoção Delivery
+            </p>
+            <label className="flex items-center gap-2 text-sm font-medium text-vyria-navy">
+              <input
+                type="checkbox"
+                checked={formDeliveryPromoActive}
+                onChange={(e) => setFormDeliveryPromoActive(e.target.checked)}
+                className="rounded border-[var(--card-border)]"
+              />
+              Promoção ativa no delivery
+            </label>
+            {formDeliveryPromoActive ? (
+              <label className="block text-sm font-medium text-vyria-navy">
+                Valor promocional delivery (R$)
+                <input
+                  value={formDeliveryPromoPrice}
+                  onChange={(e) => setFormDeliveryPromoPrice(e.target.value)}
+                  inputMode="decimal"
+                  className="mt-1 w-full rounded-lg border border-[var(--card-border)] px-3 py-2 text-sm"
+                  placeholder="0,00"
+                />
+              </label>
+            ) : null}
+          </div>
+          <div className="rounded-xl border border-emerald-600/15 bg-emerald-50/40 p-3 space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">
+              Promoção Presencial
+            </p>
+            <label className="flex items-center gap-2 text-sm font-medium text-vyria-navy">
+              <input
+                type="checkbox"
+                checked={formDineInPromoActive}
+                onChange={(e) => setFormDineInPromoActive(e.target.checked)}
+                className="rounded border-[var(--card-border)]"
+              />
+              Promoção ativa no presencial
+            </label>
+            {formDineInPromoActive ? (
+              <label className="block text-sm font-medium text-vyria-navy">
+                Valor promocional presencial (R$)
+                <input
+                  value={formDineInPromoPrice}
+                  onChange={(e) => setFormDineInPromoPrice(e.target.value)}
+                  inputMode="decimal"
+                  className="mt-1 w-full rounded-lg border border-[var(--card-border)] px-3 py-2 text-sm"
+                  placeholder="0,00"
+                />
+              </label>
+            ) : null}
+          </div>
           <label className="block text-sm font-medium text-vyria-navy">
             Categoria
             <input
@@ -1310,9 +1428,16 @@ export function MenuManagerClient({
                       </p>
                     )}
                     <div className="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-[var(--card-border)] pt-4">
-                      <span className="text-lg font-bold tabular-nums text-[var(--dash-primary)]">
-                        {money.format(Number(p.price) || 0)}
-                      </span>
+                      <div className="min-w-0 text-sm font-semibold tabular-nums text-[var(--dash-primary)]">
+                        <p>
+                          Delivery{' '}
+                          {money.format(effectiveProductPrice(p, 'delivery'))}
+                        </p>
+                        <p className="text-[#6b7280]">
+                          Presencial{' '}
+                          {money.format(effectiveProductPrice(p, 'dine_in'))}
+                        </p>
+                      </div>
                       <div className="flex items-center gap-1.5">
                         <ProductActiveSwitch
                           active={isProductActive(p)}

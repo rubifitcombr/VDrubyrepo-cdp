@@ -258,6 +258,8 @@ function MenuItemWizardContent() {
       const { error } = await updateProduct(editingProductId, {
         name: name.trim(),
         price: parsedPrice,
+        delivery_price: parsedPrice,
+        dine_in_price: parsedPrice,
         description: description.trim() || null,
         active: availability !== 'paused',
         category: resolvedCategory || null,
@@ -267,6 +269,16 @@ function MenuItemWizardContent() {
             ? parsedPromo
             : null,
         promotion_active: promotionActive,
+        delivery_promotional_price:
+          promotionActive && parsedPromo != null && !Number.isNaN(parsedPromo)
+            ? parsedPromo
+            : null,
+        delivery_promotion_active: promotionActive,
+        dine_in_promotional_price:
+          promotionActive && parsedPromo != null && !Number.isNaN(parsedPromo)
+            ? parsedPromo
+            : null,
+        dine_in_promotion_active: promotionActive,
         cardapio_meta: meta,
       })
       setSaving(false)
@@ -289,6 +301,8 @@ function MenuItemWizardContent() {
       store_id: storeId,
       name: name.trim(),
       price: parsedPrice,
+      delivery_price: parsedPrice,
+      dine_in_price: parsedPrice,
       description: description.trim() || null,
       active: availability !== 'paused',
       category: resolvedCategory || null,
@@ -299,6 +313,16 @@ function MenuItemWizardContent() {
           ? parsedPromo
           : null,
       promotion_active: promotionActive,
+      delivery_promotional_price:
+        promotionActive && parsedPromo != null && !Number.isNaN(parsedPromo)
+          ? parsedPromo
+          : null,
+      delivery_promotion_active: promotionActive,
+      dine_in_promotional_price:
+        promotionActive && parsedPromo != null && !Number.isNaN(parsedPromo)
+          ? parsedPromo
+          : null,
+      dine_in_promotion_active: promotionActive,
       cardapio_meta: meta,
     })
     setSaving(false)

@@ -1,15 +1,13 @@
-/** Colunas lidas pelo gestor de cardápio (alinhado com `scripts/supabase-menu-columns.sql`). */
+/** Colunas lidas pelo gestor de cardápio (alinhado com migrations de preço por canal). */
 export const MENU_PRODUCT_SELECT =
-  'id, name, category, price, promotional_price, promotion_active, image_url, active, description, sort_order'
+  'id, name, category, price, promotional_price, promotion_active, delivery_price, dine_in_price, delivery_promotional_price, delivery_promotion_active, dine_in_promotional_price, dine_in_promotion_active, image_url, active, description, sort_order'
 
 /**
- * PDV e listagens sem texto longo: omite `description` para menos payload JSON e
- * menos trabalho de rede/parse com muitos produtos (descrições IA).
+ * PDV e listagens sem texto longo: omite `description` para menos payload JSON.
  */
 export const MENU_PRODUCT_PDV_SELECT =
-  'id, name, category, price, promotional_price, promotion_active, image_url, active, sort_order'
+  'id, name, category, price, promotional_price, promotion_active, delivery_price, dine_in_price, delivery_promotional_price, delivery_promotion_active, dine_in_promotional_price, dine_in_promotion_active, image_url, active, sort_order'
 
-/** Cardápio no painel: `promotion_active` na BD corresponde a “is_promotion” na especificação. */
 export type MenuProductRow = {
   id: string
   name: string
@@ -17,13 +15,18 @@ export type MenuProductRow = {
   price: number | string | null
   promotional_price: number | string | null
   promotion_active: boolean | null
+  delivery_price: number | string | null
+  dine_in_price: number | string | null
+  delivery_promotional_price: number | string | null
+  delivery_promotion_active: boolean | null
+  dine_in_promotional_price: number | string | null
+  dine_in_promotion_active: boolean | null
   image_url: string | null
   active: boolean | null
   description: string | null
   sort_order: number | null
 }
 
-/** Mapeia linha `select('*')` quando ainda não existem colunas extra do cardápio. */
 export function normalizeMenuProductRow(
   row: Record<string, unknown>
 ): MenuProductRow {
@@ -39,6 +42,26 @@ export function normalizeMenuProductRow(
         : null,
     promotion_active:
       typeof row.promotion_active === 'boolean' ? row.promotion_active : null,
+    delivery_price:
+      row.delivery_price != null ? (row.delivery_price as number | string) : null,
+    dine_in_price:
+      row.dine_in_price != null ? (row.dine_in_price as number | string) : null,
+    delivery_promotional_price:
+      row.delivery_promotional_price != null
+        ? (row.delivery_promotional_price as number | string)
+        : null,
+    delivery_promotion_active:
+      typeof row.delivery_promotion_active === 'boolean'
+        ? row.delivery_promotion_active
+        : null,
+    dine_in_promotional_price:
+      row.dine_in_promotional_price != null
+        ? (row.dine_in_promotional_price as number | string)
+        : null,
+    dine_in_promotion_active:
+      typeof row.dine_in_promotion_active === 'boolean'
+        ? row.dine_in_promotion_active
+        : null,
     image_url: row.image_url != null ? String(row.image_url) : null,
     active:
       typeof row.active === 'boolean'

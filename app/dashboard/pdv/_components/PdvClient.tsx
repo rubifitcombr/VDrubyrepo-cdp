@@ -13,6 +13,7 @@ import {
 import { IconTrash } from '@/app/dashboard/_components/NavIcons'
 import type { MenuProductRow } from '@/lib/menu-product'
 import {
+  baseProductPriceForChannel,
   effectiveProductPrice,
   hasActivePromotion,
 } from '@/lib/product-pricing'
@@ -205,7 +206,7 @@ export function PdvClient({
   const addProduct = useCallback((p: MenuProductRow) => {
     setError(null)
     setSuccessKind(null)
-    const price = effectiveProductPrice(p)
+    const price = effectiveProductPrice(p, 'dine_in')
     const id = p.id
     setCart((prev) => {
       const i = prev.findIndex((l) => l.productId === id)
@@ -437,9 +438,9 @@ export function PdvClient({
           ) : (
             <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
               {filteredProducts.map((p) => {
-                const price = effectiveProductPrice(p)
-                const base = Number(p.price)
-                const promo = hasActivePromotion(p)
+                const price = effectiveProductPrice(p, 'dine_in')
+                const base = baseProductPriceForChannel(p, 'dine_in')
+                const promo = hasActivePromotion(p, 'dine_in')
                 const img = p.image_url?.trim()
                 return (
                   <li key={p.id}>

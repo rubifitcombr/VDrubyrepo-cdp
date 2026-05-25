@@ -17,6 +17,15 @@ import { buildItemsSummaryWithLineTotals } from '@/lib/print/items-summary-forma
 import { tryAutoThermalPrint } from '@/services/thermal-print.server'
 import { buildPixChargeForOrder } from '@/lib/pix/build-charge.server'
 import { storePixCheckoutEnabled } from '@/lib/pix/key'
+import {
+  effectiveProductPrice,
+  type ProductPriceChannel,
+} from '@/lib/product-pricing'
+import {
+  MENU_PRODUCT_SELECT,
+  normalizeMenuProductRow,
+  type MenuProductRow,
+} from '@/lib/menu-product'
 
 type CheckoutLine = {
   productId: string
@@ -206,7 +215,75 @@ export async function POST(req: NextRequest) {
       name?: string | null
     }
 
-    const subtotal = items.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0)
+    const priceChannel: ProductPriceChannel =
+      fulfillment === 'dine_in' ? 'dine_in' : 'delivery'
+
+    const productIds = [...new Set(items.map((l) => l.productId))]
+    let productRows: Record<string, unknown>[] | null = null
+    const pricedSelect = await supabase
+      .from('products')
+      .select(MENU_PRODUCT_SELECT)
+      .eq('store_id', String(storeRow.id))
+      .eq('active', true)
+      .in('id', productIds)
+
+    if (pricedSelect.error) {
+      const fallback = await supabase
+        .from('products')
+        .select('*')
+        .eq('store_id', String(storeRow.id))
+        .eq('active', true)
+        .in('id', productIds)
+      if (fallback.error) {
+        return NextResponse.json(
+          { error: 'Não foi possível validar os preços dos produtos.' },
+          { status: 503 }
+        )
+      }
+      productRows = (fallback.data as Record<string, unknown>[]) ?? []
+    } else {
+      productRows = (pricedSelect.data as Record<string, unknown>[]) ?? []
+    }
+
+    const productById = new Map<string, MenuProductRow>()
+    for (const raw of productRows ?? []) {
+      const row = normalizeMenuProductRow(raw)
+      if (row.id) productById.set(row.id, row)
+    }
+
+    const pricedItems: CheckoutLine[] = []
+    for (const line of items) {
+      const row = productById.get(line.productId)
+      if (!row) {
+        return NextResponse.json(
+          { error: 'Um dos produtos do carrinho não está mais disponível.' },
+          { status: 400 }
+        )
+      }
+      const serverUnit = effectiveProductPrice(row, priceChannel)
+      const clientUnit = Math.round(line.unitPrice * 100) / 100
+      const serverRounded = Math.round(serverUnit * 100) / 100
+      if (Math.abs(clientUnit - serverRounded) > 0.02) {
+        return NextResponse.json(
+          {
+            error:
+              'O preço de um item mudou. Atualiza o carrinho e tenta de novo.',
+          },
+          { status: 409 }
+        )
+      }
+      pricedItems.push({
+        productId: line.productId,
+        name: row.name?.trim() || line.name,
+        quantity: line.quantity,
+        unitPrice: serverRounded,
+      })
+    }
+
+    const subtotal = pricedItems.reduce(
+      (sum, l) => sum + l.unitPrice * l.quantity,
+      0
+    )
 
     let deliveryCharge = 0
     if (fulfillment === 'delivery') {
@@ -267,7 +344,7 @@ export async function POST(req: NextRequest) {
     const orderSource = plan === 'START' ? 'site_start' : 'site_live'
     const total = Math.round((subtotal + deliveryCharge) * 100) / 100
     const itemsSummary = buildItemsSummaryWithLineTotals(
-      items.map((l) => ({
+      pricedItems.map((l) => ({
         quantity: l.quantity,
         name: l.name,
         unit_price: l.unitPrice,
@@ -346,7 +423,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const rows = items.map((l) => ({
+    const rows = pricedItems.map((l) => ({
       order_id: String(order.id),
       product_id: l.productId,
       quantity: l.quantity,

@@ -87,6 +87,12 @@ export type MenuProductPayload = {
   sort_order?: number
   promotional_price?: number | null
   promotion_active?: boolean
+  delivery_price?: number | null
+  dine_in_price?: number | null
+  delivery_promotional_price?: number | null
+  delivery_promotion_active?: boolean
+  dine_in_promotional_price?: number | null
+  dine_in_promotion_active?: boolean
 }
 
 export async function getNextProductSortOrder(
@@ -143,6 +149,30 @@ export async function createMenuProduct(payload: MenuProductPayload) {
   if (typeof payload.promotion_active === 'boolean') {
     row.promotion_active = payload.promotion_active
   }
+  if (payload.delivery_price != null && !Number.isNaN(Number(payload.delivery_price))) {
+    row.delivery_price = Number(payload.delivery_price)
+  }
+  if (payload.dine_in_price != null && !Number.isNaN(Number(payload.dine_in_price))) {
+    row.dine_in_price = Number(payload.dine_in_price)
+  }
+  if (
+    payload.delivery_promotional_price != null &&
+    !Number.isNaN(Number(payload.delivery_promotional_price))
+  ) {
+    row.delivery_promotional_price = Number(payload.delivery_promotional_price)
+  }
+  if (typeof payload.delivery_promotion_active === 'boolean') {
+    row.delivery_promotion_active = payload.delivery_promotion_active
+  }
+  if (
+    payload.dine_in_promotional_price != null &&
+    !Number.isNaN(Number(payload.dine_in_promotional_price))
+  ) {
+    row.dine_in_promotional_price = Number(payload.dine_in_promotional_price)
+  }
+  if (typeof payload.dine_in_promotion_active === 'boolean') {
+    row.dine_in_promotion_active = payload.dine_in_promotion_active
+  }
   return supabase.from('products').insert(row).select('id').single()
 }
 
@@ -159,6 +189,12 @@ export async function updateProduct(
     sort_order: number
     promotional_price: number | null
     promotion_active: boolean
+    delivery_price: number | null
+    dine_in_price: number | null
+    delivery_promotional_price: number | null
+    delivery_promotion_active: boolean
+    dine_in_promotional_price: number | null
+    dine_in_promotion_active: boolean
   }>
 ) {
   const supabase = createClient()
