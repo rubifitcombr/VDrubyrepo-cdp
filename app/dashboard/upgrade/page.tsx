@@ -11,7 +11,7 @@ const FEATURE_LABEL: Record<string, { title: string; minPlan: string }> = {
   printing: { title: 'Impressão automática', minPlan: 'Pro' },
   kds: { title: 'KDS — monitor de cozinha', minPlan: 'Pro' },
   marketing_ai: {
-    title: 'Marketing com IA (descrições e imagens no plano Pro)',
+    title: 'IA para produtos (descrições e imagens no plano Pro)',
     minPlan: 'Pro',
   },
   inventory: { title: 'Gestão de estoque', minPlan: 'Pro' },
@@ -77,7 +77,7 @@ export default async function UpgradePage({
               Growth
             </p>
             <p className="mt-2 text-sm font-semibold text-vyria-navy">
-              Operação + marketing
+              Operação completa
             </p>
             <ul className="mt-3 space-y-1 text-sm text-vyria-navy-muted">
               <li>Pedidos em tempo real</li>

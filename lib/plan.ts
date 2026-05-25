@@ -28,8 +28,6 @@ export type Feature =
   | 'cashier'
   /** PIX no checkout público (QR / copia e cola) — exclusivo Pro. */
   | 'pix_checkout'
-  /** Marketing Meta Ads / impulsionamento — exclusivo Pro. */
-  | 'marketing_ads'
 
 const PLAN_FEATURES: Record<Plan, Record<Feature, boolean>> = {
   START: {
@@ -50,7 +48,6 @@ const PLAN_FEATURES: Record<Plan, Record<Feature, boolean>> = {
     waiter: false,
     cashier: false,
     pix_checkout: false,
-    marketing_ads: false,
   },
   GROWTH: {
     dashboard: true,
@@ -70,7 +67,6 @@ const PLAN_FEATURES: Record<Plan, Record<Feature, boolean>> = {
     waiter: false,
     cashier: false,
     pix_checkout: false,
-    marketing_ads: false,
   },
   PRO: {
     dashboard: true,
@@ -90,7 +86,6 @@ const PLAN_FEATURES: Record<Plan, Record<Feature, boolean>> = {
     waiter: true,
     cashier: true,
     pix_checkout: true,
-    marketing_ads: true,
   },
 }
 
@@ -193,7 +188,6 @@ const FEATURE_MIN_PLAN: Partial<Record<Feature, MinPlanForFeature>> = {
   waiter: 'PRO',
   cashier: 'PRO',
   pix_checkout: 'PRO',
-  marketing_ads: 'PRO',
 }
 
 export function minPlanForFeature(feature: Feature): MinPlanForFeature | null {

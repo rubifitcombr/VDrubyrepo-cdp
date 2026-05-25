@@ -28,7 +28,6 @@ import {
   IconExternal,
   IconHome,
   IconKds,
-  IconMegaphone,
   IconMenuBook,
   IconPalette,
   IconPrinter,
@@ -94,13 +93,6 @@ const nav: Array<{
     label: 'Promoções',
     icon: IconTag,
     menuKey: 'promocoes',
-  },
-  {
-    href: '/dashboard/marketing',
-    label: 'Impulsionar',
-    icon: IconMegaphone,
-    menuKey: 'marketing',
-    section: 'Marketing',
   },
   {
     href: '/dashboard/reports',

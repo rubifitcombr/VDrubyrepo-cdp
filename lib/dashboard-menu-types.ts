@@ -15,4 +15,3 @@ export type DashboardMenuKey =
   | 'pdv'
   | 'garcom'
   | 'automacoes'
-  | 'marketing'

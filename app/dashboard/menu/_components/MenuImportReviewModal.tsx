@@ -341,7 +341,7 @@ export function MenuImportReviewModal({
               {hasMarketingAiDescription(plan) && totalProducts > 0 ? (
                 <div className="rounded-xl border border-vyria-plum/25 bg-vyria-plum/[0.06] px-3 py-3 sm:px-4">
                   <p className="text-xs font-semibold text-vyria-plum sm:text-sm">
-                    IA de marketing (Growth+)
+                    IA de produtos (Growth+)
                   </p>
                   <button
                     type="button"
