@@ -297,6 +297,7 @@ function DashboardNavLinks({
             ) : null}
           <Link
             href={withHubContextHref(href, hubContext)}
+            prefetch={menuKey === 'pedidos' ? false : undefined}
             className={
               layout === 'sidebar' ? linkSidebar : layout === 'drawer' ? linkDrawer : linkBottom
             }

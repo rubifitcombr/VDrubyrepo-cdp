@@ -1,5 +1,5 @@
 // Bump quando as regras de cache mudarem — força clientes a largar caches antigos.
-const CACHE_NAME = 'vyria-v4';
+const CACHE_NAME = 'vyria-v5';
 const STATIC_ASSETS = ['/', '/dashboard', '/offline.html', '/manifest.json'];
 
 /** Segmentos que não são slugs de loja (alinhado a lib/app-reserved-routes + rotas técnicas). */
@@ -43,6 +43,12 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
 
@@ -74,20 +80,21 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  if (
-    sameOrigin &&
-    (path.startsWith('/_next/static') || path.startsWith('/_next/image'))
-  ) {
+  /**
+   * Assets do Next: rede primeiro para não servir JS/CSS antigo após deploy ou rebuild
+   * (cache-first aqui fazia a tela de Pedidos abrir com UI velha até F5).
+   */
+  if (sameOrigin && path.startsWith('/_next/')) {
     event.respondWith(
-      caches.match(event.request).then((cached) => {
-        if (cached) return cached;
-        return fetch(event.request).then((response) => {
-          if (!sameOrigin || !response.ok) return response;
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+      fetch(event.request)
+        .then((response) => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          }
           return response;
-        });
-      })
+        })
+        .catch(() => caches.match(event.request))
     );
     return;
   }

@@ -131,6 +131,7 @@ export function DashboardTopBar({
         <DashboardNotificationPrompt />
         <Link
           href="/dashboard/orders"
+          prefetch={false}
           className="relative inline-flex items-center gap-2 rounded-xl border border-[var(--card-border)] bg-white p-2 text-[#1a1614] shadow-sm transition-colors hover:bg-[#f8f9fa] sm:px-2.5 sm:py-2"
           aria-label={`Ver pedidos pendentes: ${pendingCount}`}
         >

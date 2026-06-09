@@ -12,6 +12,9 @@ import { getUser } from '@/services/auth.server'
 import { getStoreOrders } from '@/services/orders.server'
 import { getStoreByUser } from '@/services/store.server'
 
+/** Evita RSC em cache no router do Next ao navegar pelo painel. */
+export const dynamic = 'force-dynamic'
+
 export default async function OrdersPage() {
   const user = await getUser()
   if (!user) return null
