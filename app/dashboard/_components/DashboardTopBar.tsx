@@ -93,6 +93,7 @@ export function DashboardTopBar({
       })
 
     const poll = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return
       void refreshPendingCount()
     }, 15000)
 

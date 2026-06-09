@@ -12,7 +12,6 @@ import {
   type SalaoAttendanceMode,
 } from '@/lib/salao-attendance'
 import { effectiveProductPrice } from '@/lib/product-pricing'
-import type { MerchantOperationMode } from '@/lib/merchant-operation-mode'
 import {
   ORDER_SELECT,
   mapStoreOrderRow,
@@ -213,7 +212,6 @@ export function WaiterClient({
   storeSlug,
   origin,
   plan,
-  operationMode,
   initialSalaoAttendanceMode,
   initialProducts,
   initialOpenOrders,
@@ -221,18 +219,16 @@ export function WaiterClient({
   supportsTableSectors,
   initialTables,
   stockQuantityByProductId,
-  waiterExitPin,
   printAgentUrl,
   showThermalPrint,
   printing,
+  tablesOnlyView = false,
 }: {
   storeId: string
   storeName: string
   storeSlug: string
   origin: string
   plan: Plan
-  /** `null` = legado (comportamento anterior ao campo em loja). */
-  operationMode: MerchantOperationMode | null
   initialSalaoAttendanceMode: SalaoAttendanceMode
   initialProducts: MenuProductRow[]
   initialOpenOrders: StoreOrderRow[]
@@ -240,10 +236,10 @@ export function WaiterClient({
   supportsTableSectors: boolean
   initialTables: StoreTableDTO[]
   stockQuantityByProductId: Record<string, number>
-  waiterExitPin: string
   printAgentUrl: string
   showThermalPrint: boolean
   printing: StorePrintingState
+  tablesOnlyView?: boolean
 }) {
   const [tables, setTables] = useState(initialTables)
   const [sectorsEditText, setSectorsEditText] = useState(() => initialSectors.join('\n'))
@@ -300,9 +296,6 @@ export function WaiterClient({
   const [orderDrawerOpen, setOrderDrawerOpen] = useState(false)
   const [selectedTableKey, setSelectedTableKey] = useState<string | null>(null)
   const [tableActionSheetOpen, setTableActionSheetOpen] = useState(false)
-  const [pinExitOpen, setPinExitOpen] = useState(false)
-  const [pinAttempt, setPinAttempt] = useState('')
-  const [pinError, setPinError] = useState<string | null>(null)
   const router = useRouter()
   const [salaoMode, setSalaoMode] = useState<SalaoAttendanceMode>(initialSalaoAttendanceMode)
   const [salaoSaving, setSalaoSaving] = useState(false)
@@ -315,11 +308,6 @@ export function WaiterClient({
   const selfServiceSalonUi =
     planAllowsSalonSelfServiceQr(plan) &&
     (!planAllowsSalonStaffGarcom(plan) || salaoMode === 'self_service')
-  /** PIN ao sair do ecrã completo: Pro com mapa garçom; Growth presencial (QR mesa) não usa PIN. */
-  const pinRequiredForGarcomScreen =
-    planAllowsSalonStaffGarcom(plan) &&
-    !(plan === 'GROWTH' && operationMode === 'presencial')
-
   async function persistSalaoMode(next: SalaoAttendanceMode) {
     setSalaoSaving(true)
     try {
@@ -408,7 +396,7 @@ export function WaiterClient({
 
     const poll = window.setInterval(() => {
       if (document.visibilityState === 'visible') void pullOpenOrders()
-    }, 3000)
+    }, 15000)
 
     return () => {
       window.clearInterval(poll)
@@ -971,9 +959,6 @@ export function WaiterClient({
       } else {
         await (doc.exitFullscreen?.() ?? doc.webkitExitFullscreen?.())
       }
-      setPinExitOpen(false)
-      setPinAttempt('')
-      setPinError(null)
     } catch {
       setError('Não foi possível sair do ecrã completo.')
     }
@@ -984,21 +969,7 @@ export function WaiterClient({
     const onMobile = typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches
     const inScreenMode = isFullscreen || mobileScreenOpen
     if (inScreenMode) {
-      if (!pinRequiredForGarcomScreen) {
-        await exitGarcomScreenMode()
-        return
-      }
-      if (!waiterExitPin) {
-        setError('Configure o PIN do Garçom nas Configurações para sair do ecrã.')
-        return
-      }
-      setPinAttempt('')
-      setPinError(null)
-      setPinExitOpen(true)
-      return
-    }
-    if (pinRequiredForGarcomScreen && !waiterExitPin) {
-      setError('Defina o PIN do Garçom nas Configurações antes de abrir o ecrã.')
+      await exitGarcomScreenMode()
       return
     }
     if (onMobile) {
@@ -1017,18 +988,6 @@ export function WaiterClient({
     } catch {
       setError('Ecrã completo indisponível.')
     }
-  }
-
-  async function confirmExitWithPin() {
-    if (!waiterExitPin) {
-      setPinError('PIN do Garçom não configurado.')
-      return
-    }
-    if (pinAttempt !== waiterExitPin) {
-      setPinError('PIN inválido.')
-      return
-    }
-    await exitGarcomScreenMode()
   }
 
   async function saveTableConfig() {
@@ -1134,6 +1093,173 @@ export function WaiterClient({
     inScreenMode ? 'max-md:shrink-0 md:flex-1' : 'flex-1',
     'md:h-[min(1080px,calc(100dvh-7.5rem))] md:max-h-[calc(100dvh-7.5rem)]',
   ].join(' ')
+
+  if (tablesOnlyView) {
+    return (
+      <div className="-mx-4 flex min-h-0 flex-col bg-[var(--color-background-secondary)] px-4 pb-4 sm:-mx-5 sm:px-5 md:-mx-6 md:px-6">
+        <nav className="shrink-0 py-2 text-xs text-[#6b7280]">
+          <Link href="/dashboard" className="hover:text-[#1a1614]">
+            Início
+          </Link>
+          <span className="mx-1.5">/</span>
+          <span className="font-medium text-[#1a1614]">Mesas</span>
+        </nav>
+
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 pb-3">
+          <div>
+            <h1 className="text-lg font-bold tracking-tight text-[#1a1614]">
+              Mapa de mesas
+            </h1>
+            <p className="mt-1 text-sm text-[#6b7280]">
+              Visualização das mesas e comandas abertas do salão.
+            </p>
+          </div>
+          <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-[#374151] ring-1 ring-[var(--card-border)]">
+            {openOrders.length} comandas abertas
+          </span>
+        </div>
+
+        <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(22rem,0.65fr)]">
+          <section className="min-h-0 rounded-xl border border-[var(--card-border)] bg-white p-4 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-sm font-bold text-[#1a1614]">Mesas</h2>
+              <p className="text-[11px] text-[#6b7280]">
+                <span className="mr-2">Livre</span>
+                <span className="mr-2">Ocupada</span>
+                <span>Em preparo</span>
+              </p>
+            </div>
+
+            {tables.length === 0 ? (
+              <p className="mt-4 rounded-lg border border-dashed border-[var(--card-border)] bg-[#fafafa] p-4 text-sm text-[#6b7280]">
+                Ainda não há mesas configuradas.
+              </p>
+            ) : (
+              <div className="mt-4 space-y-6">
+                {Array.from(tablesByAmbiente.entries()).map(([amb, list]) => (
+                  <div key={amb}>
+                    <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[#9ca3af]">
+                      {amb}
+                    </p>
+                    <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
+                      {list.map((tb) => {
+                        const st = tableState(openOrders, tb.name, tb.ambiente, tables)
+                        const agg = aggregateTable(openOrders, tb.name, tb.ambiente, tables)
+                        const base =
+                          st === 'free'
+                            ? 'border-[var(--card-border)] bg-white'
+                            : st === 'pending_kitchen'
+                              ? 'border-sky-400 bg-sky-50'
+                              : 'border-amber-400 bg-amber-50/90'
+                        return (
+                          <li key={tb.id}>
+                            <div
+                              className={`flex min-h-32 w-full flex-col items-center justify-center rounded-lg border p-3 text-center ${base}`}
+                            >
+                              <span className="text-2xl font-bold tabular-nums text-[#1a1614]">
+                                {tb.name}
+                              </span>
+                              {st === 'free' ? (
+                                <span className="mt-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
+                                  Livre
+                                </span>
+                              ) : st === 'pending_kitchen' ? (
+                                <>
+                                  <span className="mt-2 rounded-full bg-sky-200 px-2 py-0.5 text-[10px] font-bold text-sky-900">
+                                    Em preparo
+                                  </span>
+                                  <span className="mt-1 text-xs font-semibold text-sky-900">
+                                    {money.format(agg.total)}
+                                  </span>
+                                  <span className="text-[10px] text-sky-800/90">
+                                    {agg.list.length} pedido{agg.list.length === 1 ? '' : 's'}
+                                    {agg.originSummary ? ` · ${agg.originSummary}` : ''}
+                                  </span>
+                                </>
+                              ) : (
+                                <>
+                                  <span className="mt-2 rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-bold text-amber-900">
+                                    Ocupada
+                                  </span>
+                                  <span className="mt-1 text-xs font-semibold text-amber-900">
+                                    {money.format(agg.total)}
+                                  </span>
+                                  <span className="text-[10px] text-amber-800/90">
+                                    {agg.itemsApprox} itens
+                                  </span>
+                                  <span className="text-[10px] text-amber-800/90">
+                                    {agg.list.length} pedido{agg.list.length === 1 ? '' : 's'}
+                                    {agg.originSummary ? ` · ${agg.originSummary}` : ''}
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="min-h-0 rounded-xl border border-[var(--card-border)] bg-white p-4 shadow-sm">
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-bold text-[#1a1614]">Comandas abertas</h2>
+              <span className="rounded-full bg-[#f3f4f6] px-2 py-0.5 text-xs font-bold text-[#374151]">
+                {openOrders.length}
+              </span>
+            </div>
+            {openOrders.length === 0 ? (
+              <p className="mt-3 text-sm text-[#6b7280]">Sem comandas em aberto.</p>
+            ) : (
+              <ul className="mt-3 max-h-[calc(100dvh-14rem)] space-y-3 overflow-y-auto pr-1">
+                {openOrders.map((order) => {
+                  const st = (order.status || '').toLowerCase()
+                  const badgeClass =
+                    st === 'pending'
+                      ? 'bg-amber-100 text-amber-900 ring-amber-200'
+                      : st === 'preparing'
+                        ? 'bg-sky-100 text-sky-900 ring-sky-200'
+                        : st === 'ready'
+                          ? 'bg-emerald-100 text-emerald-900 ring-emerald-200'
+                          : 'bg-zinc-100 text-zinc-700 ring-zinc-200'
+                  return (
+                    <li
+                      key={order.id}
+                      className="rounded-xl border border-[var(--card-border)] p-3 shadow-sm"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-1">
+                        <p className="text-xs font-semibold text-[#1a1614]">
+                          Mesa {parseTableFromNotes(order.notes) || '—'} ·{' '}
+                          {parseSectorFromNotes(order.notes)}
+                        </p>
+                        <div className="flex flex-wrap gap-1">
+                          <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-bold text-zinc-700 ring-1 ring-zinc-200">
+                            {orderSourceLabel(order.source)}
+                          </span>
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${badgeClass}`}>
+                            {statusLabel(order.status)}
+                          </span>
+                        </div>
+                      </div>
+                      <p className="mt-2 line-clamp-3 text-xs text-[#4b5563]">
+                        {order.items_summary || '—'}
+                      </p>
+                      <p className="mt-2 text-sm font-bold text-[var(--dash-primary)]">
+                        {money.format(Number(order.total) || 0)}
+                      </p>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </section>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div
@@ -2219,62 +2345,6 @@ export function WaiterClient({
         </div>
       ) : null}
 
-      {/* PIN para sair do ecrã */}
-      {pinExitOpen ? (
-        <div className="fixed inset-0 z-[96] flex items-center justify-center p-4" role="dialog">
-          <button
-            type="button"
-            className="absolute inset-0 bg-black/50"
-            onClick={() => {
-              setPinExitOpen(false)
-              setPinAttempt('')
-              setPinError(null)
-            }}
-          />
-          <div className="relative z-10 w-full max-w-sm rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-xl">
-            <p className="text-sm font-bold text-[#1a1614]">PIN para sair do ecrã</p>
-            <p className="mt-1 text-xs text-[#6b7280]">
-              O modo ecrã do Garçom exige PIN de segurança para fechar.
-            </p>
-            <input
-              type="password"
-              value={pinAttempt}
-              onChange={(e) => {
-                setPinAttempt(e.target.value.replace(/\D/g, '').slice(0, 4))
-                if (pinError) setPinError(null)
-              }}
-              placeholder="Digite 4 dígitos"
-              inputMode="numeric"
-              maxLength={4}
-              className="mt-3 w-full rounded-lg border border-[var(--card-border)] px-3 py-2 text-center text-lg tracking-[0.25em]"
-            />
-            {pinError ? (
-              <p className="mt-2 rounded-lg bg-red-50 px-2 py-1.5 text-xs text-red-700">{pinError}</p>
-            ) : null}
-            <div className="mt-4 flex gap-2">
-              <button
-                type="button"
-                className="flex-1 rounded-xl border border-[var(--card-border)] py-2 text-sm font-semibold"
-                onClick={() => {
-                  setPinExitOpen(false)
-                  setPinAttempt('')
-                  setPinError(null)
-                }}
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                className="flex-1 rounded-xl bg-[var(--dash-primary)] py-2 text-sm font-semibold text-white disabled:opacity-50"
-                disabled={pinAttempt.length !== 4}
-                onClick={() => void confirmExitWithPin()}
-              >
-                Confirmar
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </div>
   )
 }

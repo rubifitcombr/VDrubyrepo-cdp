@@ -5,13 +5,15 @@ import { RouteLoadingFallback } from '@/app/_components/RouteLoadingFallback'
 import Link from 'next/link'
 import { Suspense, useEffect, useState } from 'react'
 import { setRememberLoginPreference, signIn } from '@/services/auth'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 
 const inputClass =
   'mt-2 w-full rounded-xl border border-[var(--card-border)] bg-white px-4 py-3 text-sm text-vyria-navy outline-none transition-colors placeholder:text-vyria-navy-muted/70 focus:border-vyria-plum focus:ring-2 focus:ring-vyria-orange/20'
 
 function safeNextPath(raw: string | null): string {
   if (!raw || !raw.startsWith('/') || raw.startsWith('//')) return '/dashboard'
+  // Fluxo operacional: login -> hub -> atalho escolhido no hub.
+  if (raw === '/dashboard' || raw.startsWith('/dashboard/')) return '/dashboard'
   return raw
 }
 
@@ -22,7 +24,6 @@ function LoginForm() {
   const [showPassword, setShowPassword] = useState(false)
   const [isLoggingIn, setIsLoggingIn] = useState(false)
   const beginNavigation = useBeginNavigation()
-  const router = useRouter()
   const searchParams = useSearchParams()
 
   useEffect(() => {
@@ -33,7 +34,7 @@ function LoginForm() {
   async function handleLogin() {
     setIsLoggingIn(true)
     try {
-      const { error } = await signIn(email, password)
+      const { error } = await signIn(email.trim(), password)
 
       if (error) {
         alert(error.message)
@@ -45,7 +46,7 @@ function LoginForm() {
 
       const next = safeNextPath(searchParams.get('next'))
       beginNavigation()
-      router.push(next)
+      window.location.assign(next)
     } catch (err) {
       const message =
         err instanceof Error

@@ -10,24 +10,7 @@ import { PdvClient } from './_components/PdvClient'
 export default async function PdvPage() {
   const user = await getUser()
 
-  if (!user) {
-    return (
-      <div className="mx-auto max-w-md rounded-2xl border border-[var(--card-border)] bg-white p-10 text-center shadow-sm">
-        <h1 className="font-brand text-xl font-bold text-vyria-navy">
-          Sessão necessária
-        </h1>
-        <p className="mt-2 text-sm text-vyria-navy-muted">
-          Inicia sessão para usar o PDV.
-        </p>
-        <Link
-          href="/login"
-          className="btn-vyria-gradient mt-8 inline-flex rounded-xl px-5 py-2.5 text-sm font-semibold"
-        >
-          Ir para login
-        </Link>
-      </div>
-    )
-  }
+  if (!user) return null
 
   const store = await getStoreByUser(user.id)
   if (!store || typeof store !== 'object' || !('id' in store)) {

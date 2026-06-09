@@ -9,21 +9,7 @@ import { getStoreByUser } from '@/services/store.server'
 
 export default async function AssinaturaPage() {
   const user = await getUser()
-  if (!user) {
-    return (
-      <div className="mx-auto max-w-md rounded-2xl border border-[var(--card-border)] bg-white p-10 text-center shadow-sm">
-        <h1 className="font-brand text-xl font-bold text-vyria-navy">
-          Sessão necessária
-        </h1>
-        <Link
-          href="/login"
-          className="mt-6 inline-block rounded-xl bg-[var(--dash-primary)] px-6 py-3 text-sm font-semibold text-white"
-        >
-          Entrar
-        </Link>
-      </div>
-    )
-  }
+  if (!user) return null
 
   const store = await getStoreByUser(user.id)
   if (!store || typeof store !== 'object') {

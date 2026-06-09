@@ -11,31 +11,18 @@ import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
 import { parsePlan, planTier, hasFeature } from '@/lib/plan'
 import { parsePrintingFromStore } from '@/lib/store-printing'
 import { effectiveSalaoAttendanceMode } from '@/lib/salao-attendance'
-import {
-  parseOperationModeFromStore,
-} from '@/lib/merchant-operation-mode'
 import { WaiterClient } from './_components/WaiterClient'
 
-export default async function GarcomPage() {
+export default async function GarcomPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>
+}) {
   const user = await getUser()
-  if (!user) {
-    return (
-      <div className="mx-auto max-w-md rounded-2xl border border-[var(--card-border)] bg-white p-10 text-center shadow-sm">
-        <h1 className="font-brand text-xl font-bold text-vyria-navy">
-          Sessão necessária
-        </h1>
-        <p className="mt-2 text-sm text-vyria-navy-muted">
-          Inicia sessão para usar o módulo Garçom.
-        </p>
-        <Link
-          href="/login"
-          className="btn-vyria-gradient mt-8 inline-flex rounded-xl px-5 py-2.5 text-sm font-semibold"
-        >
-          Ir para login
-        </Link>
-      </div>
-    )
-  }
+  if (!user) return null
+  const params = searchParams ? await searchParams : {}
+  const hubParam = typeof params.hub === 'string' ? params.hub : null
+  const tablesOnlyView = hubParam === 'mesas'
 
   const store = await getStoreByUser(user.id)
   if (!store || typeof store !== 'object' || !('id' in store)) {
@@ -111,11 +98,8 @@ export default async function GarcomPage() {
         .map((x) => String(x ?? '').trim())
         .filter(Boolean)
     : ['Salão', 'Varanda']
-  const waiterExitPin =
-    typeof s.waiter_exit_pin === 'string' ? s.waiter_exit_pin.trim() : ''
   const storeSlug = typeof s.slug === 'string' ? s.slug.trim() : ''
   const salaoMode = effectiveSalaoAttendanceMode(plan, s.salao_attendance_mode)
-  const operationMode = parseOperationModeFromStore(s)
 
   const storeName =
     typeof s.name === 'string' && s.name.trim()
@@ -129,7 +113,6 @@ export default async function GarcomPage() {
       storeSlug={storeSlug}
       origin={origin}
       plan={plan}
-      operationMode={operationMode}
       initialSalaoAttendanceMode={salaoMode}
       initialProducts={products.filter((p) => p.active !== false)}
       initialOpenOrders={openOrders}
@@ -143,10 +126,10 @@ export default async function GarcomPage() {
         active: t.active,
       }))}
       stockQuantityByProductId={stockQuantityByProductId}
-      waiterExitPin={waiterExitPin}
       printAgentUrl={printing.print_agent_url}
       showThermalPrint={hasFeature(plan, 'printing')}
       printing={printing}
+      tablesOnlyView={tablesOnlyView}
     />
   )
 }

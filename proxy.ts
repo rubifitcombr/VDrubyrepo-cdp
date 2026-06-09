@@ -92,7 +92,6 @@ export async function proxy(request: NextRequest) {
     isVyriaAdminPanelUser(user.id) &&
     vyriaPanelMode === 'admin'
 
-  /** Com sessão normal, /login e /register redirecionam. Em recuperação de senha a sessão é temporária: a página /login/redefinir-senha tem de carregar. */
   if (isAuthPage && user && !isPasswordRedefinePage) {
     if (vyriaInAdminMode) {
       return NextResponse.redirect(new URL('/admin', request.url))
@@ -147,11 +146,11 @@ export async function proxy(request: NextRequest) {
   if (merchantShell && !user) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
-    url.searchParams.set('next', p)
+    url.search = ''
+    url.searchParams.set('next', '/dashboard')
     return NextResponse.redirect(url)
   }
 
-  /** Cardápio público /[slug]: evita CDN/browser servir 404 ou HTML antigo em mobile. */
   const slugSegments = p.split('/').filter(Boolean)
   if (
     slugSegments.length === 1 &&

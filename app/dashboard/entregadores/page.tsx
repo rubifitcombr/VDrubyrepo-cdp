@@ -9,9 +9,7 @@ import { getStoreByUser } from '@/services/store.server'
 
 export default async function EntregadoresPage() {
   const user = await getUser()
-  if (!user) {
-    redirect('/login')
-  }
+  if (!user) return null
 
   const store = await getStoreByUser(user.id)
   if (!store || typeof store !== 'object' || !('id' in store)) {

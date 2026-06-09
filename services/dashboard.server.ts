@@ -285,6 +285,29 @@ async function fetchTopProductsForStore(
   }))
 }
 
+/** Contagem leve de comandas pendentes (badge do hub). */
+export async function getPendingOrdersCount(
+  storeId: string,
+  options?: { slugChannelSourcesOnly?: boolean }
+): Promise<number> {
+  const supabase = await createClient()
+  let q = supabase
+    .from('orders')
+    .select('*', { count: 'exact', head: true })
+    .eq('store_id', storeId)
+    .eq('status', 'pending')
+  if (options?.slugChannelSourcesOnly) {
+    q = q.in('source', slugChannelSourcesForSupabaseIn())
+  }
+  const { count, error } = await q
+
+  if (error) {
+    console.error('[dashboard] pending orders count:', error.message)
+    return 0
+  }
+  return count ?? 0
+}
+
 /** Pedidos que precisam de atenção (badge no sino). */
 export async function getDashboardNotificationCount(
   storeId: string,

@@ -13,7 +13,7 @@ function parseDeliveryFee(row: Record<string, unknown>): number {
 
 export default async function PrintingPreviewPage() {
   const user = await getUser()
-  if (!user) redirect('/login')
+  if (!user) return null
 
   const store = await getStoreByUser(user.id)
   if (!store || typeof store !== 'object' || !('id' in store)) {

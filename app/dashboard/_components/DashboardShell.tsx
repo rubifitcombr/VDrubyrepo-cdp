@@ -1,7 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import dynamic from 'next/dynamic'
+import { usePathname, useSearchParams } from 'next/navigation'
 import { Fragment, useEffect, useState } from 'react'
 import { BrandLogo } from '@/app/_components/BrandLogo'
 import { VyriaPanelModeSwitcher } from '@/app/_components/VyriaPanelModeSwitcher'
@@ -10,13 +11,48 @@ import type { Plan } from '@/lib/plan'
 import type { DashboardMenuKey } from '@/lib/dashboard-menu'
 import { menuKeysForMerchant } from '@/lib/dashboard-menu'
 import type { MerchantOperationMode } from '@/lib/merchant-operation-mode'
+import {
+  hubContextLabel,
+  menuKeysForHubContext,
+  resolveOperationalHubContext,
+  shouldShowFocusedHubNavigation,
+  withHubContextHref,
+} from '@/lib/operational-hub-navigation'
+import {
+  hubPinUnlockStorageKey,
+  hubPinShortcutForAccess,
+  isHubPinActive,
+  type HubPinConfig,
+} from '@/lib/hub-shortcut-pin'
+import { HubPinAccessGate } from './HubPinAccessGate'
 import { DashboardLogoutButton } from './DashboardLogoutButton'
 import { DashboardPlanGuard } from './DashboardPlanGuard'
 import { DashboardTopBar } from './DashboardTopBar'
-import { InstallAppBanner } from './InstallAppBanner'
-import { DashboardOrderRealtimeNotifier } from './DashboardOrderRealtimeNotifier'
-import { DashboardAutoAcceptOrders } from './DashboardAutoAcceptOrders'
 import type { StorePrintingState } from '@/lib/store-printing'
+
+const DashboardOrderRealtimeNotifier = dynamic(
+  () =>
+    import('./DashboardOrderRealtimeNotifier').then((mod) => ({
+      default: mod.DashboardOrderRealtimeNotifier,
+    })),
+  { ssr: false }
+)
+
+const DashboardAutoAcceptOrders = dynamic(
+  () =>
+    import('./DashboardAutoAcceptOrders').then((mod) => ({
+      default: mod.DashboardAutoAcceptOrders,
+    })),
+  { ssr: false }
+)
+
+const InstallAppBanner = dynamic(
+  () =>
+    import('./InstallAppBanner').then((mod) => ({
+      default: mod.InstallAppBanner,
+    })),
+  { ssr: false }
+)
 import {
   IconBag,
   IconBolt,
@@ -45,7 +81,12 @@ const nav: Array<{
   quiet?: boolean
   section?: string
 }> = [
-  { href: '/dashboard', label: 'Dashboard', icon: IconHome, menuKey: 'dashboard' },
+  {
+    href: '/dashboard/visao',
+    label: 'Visão geral',
+    icon: IconHome,
+    menuKey: 'dashboard',
+  },
   {
     href: '/dashboard/menu',
     label: 'Produtos',
@@ -66,7 +107,7 @@ const nav: Array<{
   },
   {
     href: '/dashboard/garcom',
-    label: 'Garçom',
+    label: 'Salão / Mesas',
     icon: IconClipboard,
     menuKey: 'garcom',
   },
@@ -183,14 +224,23 @@ function DashboardNavLinks({
   plan,
   operationMode,
   layout,
+  hubContext = null,
 }: {
   pathname: string
   plan: Plan
   operationMode: MerchantOperationMode | null
   layout: 'sidebar' | 'bottom' | 'drawer'
+  hubContext?: ReturnType<typeof resolveOperationalHubContext>
 }) {
   const allowed = menuKeysForMerchant(plan, operationMode)
-  const items = nav.filter((item) => allowed.has(item.menuKey))
+  const focusedKeys = hubContext
+    ? new Set(menuKeysForHubContext(hubContext, allowed))
+    : null
+  const items = nav.filter((item) => {
+    if (!allowed.has(item.menuKey)) return false
+    if (!focusedKeys) return true
+    return focusedKeys.has(item.menuKey)
+  })
 
   const navClass =
     layout === 'sidebar'
@@ -246,7 +296,7 @@ function DashboardNavLinks({
               </p>
             ) : null}
           <Link
-            href={href}
+            href={withHubContextHref(href, hubContext)}
             className={
               layout === 'sidebar' ? linkSidebar : layout === 'drawer' ? linkDrawer : linkBottom
             }
@@ -303,6 +353,7 @@ export function DashboardShell({
   },
   manualClosed = false,
   autoAcceptStoreName = 'Meu estabelecimento',
+  hubPinConfig,
 }: {
   children: React.ReactNode
   storeName: string | null
@@ -331,17 +382,35 @@ export function DashboardShell({
   autoAcceptPrinting?: StorePrintingState
   manualClosed?: boolean
   autoAcceptStoreName?: string
+  hubPinConfig?: HubPinConfig
 }) {
   const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const hubParam = searchParams.get('hub')
+  const hubContext = resolveOperationalHubContext(pathname, hubParam)
+  const focusedHubNavigation = shouldShowFocusedHubNavigation(
+    pathname,
+    hubParam
+  )
+  const pinShortcut = hubPinShortcutForAccess(pathname, hubParam)
+  const pinEntry = pinShortcut && hubPinConfig ? hubPinConfig[pinShortcut] : null
+  const pinRequired = isHubPinActive(pinEntry ?? undefined)
+  const pinUnlockKey =
+    pinRequired && pinShortcut && storeId && pinEntry
+      ? hubPinUnlockStorageKey(storeId, pinShortcut, pinEntry.pin)
+      : null
+  const isOperationalHub = pathname === '/dashboard'
+  const sidebarCollapsed = focusedHubNavigation
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   useEffect(() => {
     const t = window.setTimeout(() => setMobileMenuOpen(false), 0)
     return () => window.clearTimeout(t)
-  }, [pathname])
+  }, [pathname, searchParams])
 
-  const mainInner =
-    billingBlock && isAuthenticated ? (
+  if (!isAuthenticated) return null
+
+  const mainInner = billingBlock && isAuthenticated ? (
       <div className="flex min-h-[min(28rem,70vh)] flex-col items-center justify-center gap-4 rounded-2xl border border-[var(--card-border)] bg-white p-8 text-center shadow-sm shadow-black/[0.04]">
         <p className="text-lg font-bold text-[#1a1614]">Acesso suspenso</p>
         <p className="max-w-md text-sm text-[#6b7280]">
@@ -361,12 +430,20 @@ export function DashboardShell({
       </div>
     ) : (
       <DashboardPlanGuard plan={plan} operationMode={operationMode ?? null}>
-        {children}
+        <HubPinAccessGate
+          pinUnlockKey={pinUnlockKey}
+          pinRequired={pinRequired}
+          shortcut={pinShortcut}
+          expectedPin={pinEntry?.pin ?? ''}
+        >
+          {children}
+        </HubPinAccessGate>
       </DashboardPlanGuard>
     )
 
   return (
     <div className="flex min-h-dvh flex-col bg-[var(--dash-surface)] md:flex-row">
+      {!isOperationalHub && !sidebarCollapsed ? (
       <aside className="hidden min-h-0 w-full flex-col border-b border-white/10 bg-[var(--dash-sidebar)] shadow-lg shadow-black/25 md:fixed md:inset-y-0 md:z-30 md:flex md:w-60 md:border-b-0 md:border-r md:border-white/10 md:shadow-xl lg:w-64">
         <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-white/10 px-3 py-2 md:h-auto md:flex-col md:items-stretch md:gap-3 md:px-4 md:py-5">
           <Link
@@ -387,11 +464,28 @@ export function DashboardShell({
           </Link>
         </div>
         <div className="hidden min-h-0 flex-1 overflow-y-auto overscroll-y-contain md:block">
+          {focusedHubNavigation && hubContext ? (
+            <div className="border-b border-white/10 px-4 py-3">
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/35">
+                Atalho do hub
+              </p>
+              <p className="mt-1 text-sm font-semibold text-white/88">
+                {hubContextLabel(hubContext)}
+              </p>
+              <Link
+                href="/dashboard"
+                className="mt-3 inline-flex rounded-full border border-white/15 px-3 py-1.5 text-xs font-semibold text-white/75 transition-colors hover:bg-white/10 hover:text-white"
+              >
+                Voltar ao hub
+              </Link>
+            </div>
+          ) : null}
           <DashboardNavLinks
             pathname={pathname}
             plan={plan}
             operationMode={operationMode ?? null}
             layout="sidebar"
+            hubContext={hubContext}
           />
         </div>
 
@@ -421,9 +515,14 @@ export function DashboardShell({
           {isAuthenticated ? <DashboardLogoutButton /> : null}
         </div>
       </aside>
+      ) : null}
 
-      <div className="flex min-h-dvh min-w-0 flex-1 flex-col md:min-h-dvh md:pl-60 lg:pl-64">
-        {isAuthenticated ? (
+      <div
+        className={`flex min-h-dvh min-w-0 flex-1 flex-col md:min-h-dvh ${
+          isOperationalHub || sidebarCollapsed ? '' : 'md:pl-60 lg:pl-64'
+        }`}
+      >
+        {isAuthenticated && notifyOnNewOrder && storeId ? (
           <DashboardOrderRealtimeNotifier
             storeId={storeId}
             notifyOnNewOrder={notifyOnNewOrder}
@@ -445,7 +544,7 @@ export function DashboardShell({
         ) : null}
         {billingBanner && isAuthenticated ? (
           <div className="shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-3 sm:px-5 md:px-6 lg:px-8 xl:px-10">
-            <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-3 sm:flex-row sm:items-center sm:justify-between xl:max-w-[1400px]">
+            <div className="mx-auto flex w-full max-w-none flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm text-amber-950">
                 Sua fatura de{' '}
                 <span className="font-semibold">{billingBanner.openInvoiceDateLabel}</span> está em
@@ -462,14 +561,18 @@ export function DashboardShell({
             </div>
           </div>
         ) : null}
-        <header className="sticky top-0 z-20 shrink-0 border-b border-[var(--card-border)] bg-white/95 shadow-sm shadow-black/[0.03] backdrop-blur-md">
-          <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-3 px-4 py-3 sm:px-5 md:flex-row md:items-center md:gap-4 md:px-6 md:py-3.5 lg:px-8 xl:max-w-[1400px] xl:px-10">
-            {isAuthenticated ? (
+        {!isOperationalHub ? (
+          <header className="sticky top-0 z-20 shrink-0 border-b border-[var(--card-border)] bg-white/95 shadow-sm shadow-black/[0.03] backdrop-blur-md">
+            <div
+              className="mx-auto flex w-full max-w-none flex-col gap-3 px-3 py-3 sm:px-4 md:flex-row md:items-center md:gap-4 md:px-4 md:py-3.5 lg:px-4 xl:px-5"
+            >
               <div className="flex w-full min-w-0 items-start gap-2 md:items-center">
                 <button
                   type="button"
                   onClick={() => setMobileMenuOpen(true)}
-                  className="mt-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--card-border)] bg-[#f3f4f6] text-[#374151] shadow-sm transition-colors hover:bg-[#e5e7eb] md:hidden"
+                  className={`mt-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--card-border)] bg-[#f3f4f6] text-[#374151] shadow-sm transition-colors hover:bg-[#e5e7eb] ${
+                    sidebarCollapsed ? '' : 'md:hidden'
+                  }`}
                   aria-label="Abrir menu"
                 >
                   <svg
@@ -494,39 +597,47 @@ export function DashboardShell({
                   />
                 </div>
               </div>
-            ) : (
-              <div className="flex w-full items-center justify-between">
-                <span className="text-sm font-medium text-[#6b7280]">
-                  Inicia sessão
-                </span>
-                <Link
-                  href="/login"
-                  className="rounded-full bg-[var(--dash-primary)] px-4 py-2 text-sm font-semibold text-white shadow-sm"
-                >
-                  Entrar
-                </Link>
-              </div>
-            )}
-          </div>
-        </header>
+            </div>
+          </header>
+        ) : null}
 
-        <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
-          <main className="mx-auto w-full max-w-[1280px] px-4 pb-8 pt-4 sm:px-5 sm:pt-5 md:px-6 md:pb-10 md:pt-6 lg:px-8 lg:pt-8 xl:max-w-[1400px] xl:px-10 xl:pb-12">
-            <InstallAppBanner />
+        <div
+          className={`min-h-0 min-w-0 flex-1 overflow-x-hidden ${
+            isOperationalHub ? 'overflow-y-auto lg:overflow-hidden' : 'overflow-y-auto'
+          }`}
+        >
+          <main
+            className={
+              isOperationalHub
+                ? 'min-h-full w-full lg:h-full'
+                : 'mx-auto w-full max-w-none px-3 pb-6 pt-3 sm:px-4 sm:pt-4 md:px-4 md:pb-8 md:pt-5 lg:px-4 lg:pt-6 xl:px-5 xl:pb-8'
+            }
+          >
+            {!isOperationalHub ? <InstallAppBanner /> : null}
             {mainInner}
           </main>
         </div>
       </div>
 
-      {mobileMenuOpen ? (
-        <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true">
+      {mobileMenuOpen && !isOperationalHub ? (
+        <div
+          className={`fixed inset-0 z-50 ${sidebarCollapsed ? '' : 'md:hidden'}`}
+          role="dialog"
+          aria-modal="true"
+        >
           <button
             type="button"
             className="absolute inset-0 bg-black/45 transition-colors active:bg-black/55"
             aria-label="Fechar menu"
             onClick={() => setMobileMenuOpen(false)}
           />
-          <aside className="absolute right-0 top-0 flex h-dvh min-h-0 w-[min(88vw,21rem)] flex-col border-l border-white/10 bg-[var(--dash-sidebar)] shadow-2xl shadow-black/40">
+          <aside
+            className={`absolute top-0 flex h-dvh min-h-0 w-[min(88vw,21rem)] flex-col bg-[var(--dash-sidebar)] shadow-2xl shadow-black/40 ${
+              sidebarCollapsed
+                ? 'left-0 border-r border-white/10'
+                : 'right-0 border-l border-white/10'
+            }`}
+          >
             <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
               <p className="text-sm font-semibold text-white/85">Menu</p>
               <button
@@ -548,16 +659,35 @@ export function DashboardShell({
             ) : null}
 
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
+              {focusedHubNavigation && hubContext ? (
+                <div className="border-b border-white/10 px-4 py-3">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/35">
+                    Atalho do hub
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-white/88">
+                    {hubContextLabel(hubContext)}
+                  </p>
+                  <Link
+                    href="/dashboard"
+                    className="mt-3 inline-flex rounded-full border border-white/15 px-3 py-1.5 text-xs font-semibold text-white/75 transition-colors hover:bg-white/10 hover:text-white"
+                  >
+                    Voltar ao hub
+                  </Link>
+                </div>
+              ) : null}
               <DashboardNavLinks
                 pathname={pathname}
                 plan={plan}
                 operationMode={operationMode ?? null}
                 layout="drawer"
+                hubContext={hubContext}
               />
             </div>
 
             <div className="flex shrink-0 flex-col gap-2 border-t border-white/10 p-3">
-              <PlansNavCta pathname={pathname} layout="drawer" />
+              {!focusedHubNavigation ? (
+                <PlansNavCta pathname={pathname} layout="drawer" />
+              ) : null}
               {deliveryPipelineEnabled && storeSlug ? (
                 <a
                   href={`/${storeSlug}`}
@@ -573,7 +703,7 @@ export function DashboardShell({
                   Cria a tua loja para veres o link público
                 </span>
               ) : null}
-              {isAuthenticated ? (
+              {isAuthenticated && !focusedHubNavigation ? (
                 <DashboardLogoutButton size="compact" className="w-full" />
               ) : null}
             </div>

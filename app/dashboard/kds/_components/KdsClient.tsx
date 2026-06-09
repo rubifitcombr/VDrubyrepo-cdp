@@ -148,6 +148,7 @@ export function KdsClient({
       })
 
     const poll = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return
       void pullOrders()
     }, 20000)
 

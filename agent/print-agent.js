@@ -1,4 +1,5 @@
 // agent/print-agent.js
+/* eslint-disable @typescript-eslint/no-require-imports */
 // Roda na loja: node print-agent.js
 // Requer: npm install
 

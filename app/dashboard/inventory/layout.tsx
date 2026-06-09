@@ -11,7 +11,7 @@ export default async function InventoryLayout({
   children: React.ReactNode
 }) {
   const user = await getUser()
-  if (!user) redirect('/login')
+  if (!user) return null
 
   const store = await getStoreByUser(user.id)
   const rawPlan =

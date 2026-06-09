@@ -1,5 +1,4 @@
 import Link from 'next/link'
-import { redirect } from 'next/navigation'
 import { getUser } from '@/services/auth.server'
 import { getProductStocksForStore } from '@/services/inventory.server'
 import { getMenuProductsForStore } from '@/services/menu.server'
@@ -8,7 +7,7 @@ import { InventoryClient } from './_components/InventoryClient'
 
 export default async function InventoryPage() {
   const user = await getUser()
-  if (!user) redirect('/login')
+  if (!user) return null
 
   const store = await getStoreByUser(user.id)
   if (!store || typeof store !== 'object' || !('id' in store)) {

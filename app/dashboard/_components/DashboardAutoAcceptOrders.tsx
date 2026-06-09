@@ -57,6 +57,7 @@ export function DashboardAutoAcceptOrders({
   slugChannelSourcesOnly?: boolean
 }) {
   const attemptedRef = useRef<Set<string>>(new Set())
+  const realtimeInsertedRef = useRef<Set<string>>(new Set())
   const runningRef = useRef(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   /** Último estado conhecido por pedido — para detectar transição → preparando sem `payload.old`. */
@@ -70,19 +71,39 @@ export function DashboardAutoAcceptOrders({
     }
 
     const orderStatusMap = lastOrderStatusRef.current
+    const automationStartedAt = Date.now()
+    const automationWindowMs = 7 * 86400000
+    const automationSnapshotLimit = 100
 
     const supabase = createClient()
     const trackPrint = printing.print_auto_on_confirm
 
+    function orderCreatedAfterAutomationStart(order: StoreOrderRow): boolean {
+      const createdAt = new Date(order.created_at).getTime()
+      return Number.isFinite(createdAt) && createdAt >= automationStartedAt - 5000
+    }
+
+    function shouldPrintAutoAcceptedOrder(order: StoreOrderRow): boolean {
+      return (
+        realtimeInsertedRef.current.has(order.id) ||
+        orderCreatedAfterAutomationStart(order)
+      )
+    }
+
     async function fetchOrdersSnapshot(): Promise<StoreOrderRow[]> {
+      const since = new Date(Date.now() - automationWindowMs).toISOString()
       let q = supabase
         .from('orders')
         .select(ORDER_SELECT)
         .eq('store_id', storeId)
+        .gte('created_at', since)
+        .in('status', ['pending', 'preparing'])
+        .order('created_at', { ascending: false })
+        .limit(automationSnapshotLimit)
       if (slugChannelSourcesOnly) {
         q = q.in('source', slugChannelSourcesForSupabaseIn())
       }
-      const { data, error } = await q.order('created_at', { ascending: false })
+      const { data, error } = await q
       if (error || !data?.length) return []
       return (data as Record<string, unknown>[])
         .map(mapStoreOrderRow)
@@ -93,7 +114,7 @@ export function DashboardAutoAcceptOrders({
       if (!trackPrint) return
       const rows = await fetchOrdersSnapshot()
       const m = lastOrderStatusRef.current
-      for (const r of rows.slice(0, 400)) {
+      for (const r of rows) {
         if (r.id) m.set(r.id, (r.status || '').trim() || 'pending')
       }
     }
@@ -189,11 +210,16 @@ export function DashboardAutoAcceptOrders({
       try {
         const rows = await fetchOrdersSnapshot()
         const m = lastOrderStatusRef.current
-        for (const r of rows.slice(0, 400)) {
+        for (const r of rows) {
           const id = r.id
           const st = (r.status || '').trim() || 'pending'
           const prev = m.get(id)
-          if (st === 'preparing' && prev !== 'preparing') {
+          if (
+            st === 'preparing' &&
+            prev &&
+            prev !== 'preparing' &&
+            shouldPrintAutoAcceptedOrder(r)
+          ) {
             void printOrderPreparing(id, undefined)
           }
           m.set(id, st)
@@ -233,7 +259,7 @@ export function DashboardAutoAcceptOrders({
             continue
           }
 
-          if (trackPrint) {
+          if (trackPrint && shouldPrintAutoAcceptedOrder(order)) {
             lastOrderStatusRef.current.set(order.id, 'preparing')
             const ref =
               displayById.get(order.id) ??
@@ -284,6 +310,7 @@ export function DashboardAutoAcceptOrders({
         const raw = payload.new
         const id = String(raw.id ?? '')
         if (!id) return
+        realtimeInsertedRef.current.add(id)
         const status =
           typeof raw.status === 'string' && raw.status.trim()
             ? raw.status.trim()
@@ -328,7 +355,12 @@ export function DashboardAutoAcceptOrders({
         const prevFromMap = lastOrderStatusRef.current.get(id)
         const prev = oldFromPayload ?? prevFromMap
 
-        if (newStatus === 'preparing' && prev !== 'preparing') {
+        const order = mapStoreOrderRow(raw)
+        if (
+          newStatus === 'preparing' &&
+          prev !== 'preparing' &&
+          shouldPrintAutoAcceptedOrder(order)
+        ) {
           void printOrderPreparing(id, raw)
         }
         lastOrderStatusRef.current.set(id, newStatus || prev || 'pending')
@@ -388,6 +420,7 @@ export function DashboardAutoAcceptOrders({
     const pollAccept =
       autoAcceptOrders ?
         window.setInterval(() => {
+          if (document.visibilityState !== 'visible') return
           scheduleAccept()
         }, 22000)
       : null
@@ -395,9 +428,12 @@ export function DashboardAutoAcceptOrders({
     const pollPrint =
       trackPrint ?
         window.setInterval(() => {
+          if (document.visibilityState !== 'visible') return
           void pollPrintCatchUp()
         }, 12000)
       : null
+
+    const realtimeInserted = realtimeInsertedRef.current
 
     return () => {
       if (autoAcceptOrders || trackPrint) {
@@ -408,6 +444,7 @@ export function DashboardAutoAcceptOrders({
       if (pollPrint != null) window.clearInterval(pollPrint)
       void supabase.removeChannel(channel)
       orderStatusMap.clear()
+      realtimeInserted.clear()
     }
   }, [
     storeId,

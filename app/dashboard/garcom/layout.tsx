@@ -12,7 +12,7 @@ export default async function GarcomLayout({
   children: React.ReactNode
 }) {
   const user = await getUser()
-  if (!user) redirect('/login')
+  if (!user) return null
 
   const store = await getStoreByUser(user.id)
   const row = store && typeof store === 'object' ? (store as Record<string, unknown>) : null

@@ -20,6 +20,11 @@ import { dashboardFetch } from '@/lib/dashboard-fetch.client'
 import { type Plan, hasFeature, merchantEntregadoresEnabled } from '@/lib/plan'
 import type { StoreEntregadorDTO } from '@/lib/entregas-types'
 import { slugChannelSourcesForSupabaseIn } from '@/lib/slug-channel-orders'
+import {
+  extractUserNotes,
+  parseSectorFromNotes,
+  parseTableFromNotes,
+} from '@/lib/waiter-order-notes'
 import { IconPrinter } from '@/app/dashboard/_components/NavIcons'
 
 function playNewOrderBeep() {
@@ -115,61 +120,77 @@ function statusLabel(status: string | null, deliveryPipeline: boolean): string {
   }
 }
 
-function statusBadgeClass(status: string | null): string {
-  switch (status) {
-    case 'pending':
-      return 'bg-amber-50 text-amber-900 ring-2 ring-amber-400/80'
-    case 'preparing':
-      return 'bg-orange-100 text-orange-900 ring-1 ring-orange-200/90'
-    case 'ready':
-      return 'bg-violet-100 text-violet-900 ring-1 ring-violet-200/90'
-    case 'confirmed':
-      return 'bg-sky-100 text-sky-900 ring-1 ring-sky-200/90'
-    case 'delivered':
-      return 'bg-emerald-100 text-emerald-900 ring-1 ring-emerald-200/90'
-    case 'cancelled':
-      return 'bg-[#f3f4f6] text-[#6b7280] ring-1 ring-[var(--card-border)]'
-    default:
-      return 'bg-[#f3f4f6] text-[#374151] ring-1 ring-[var(--card-border)]'
-  }
-}
-
 /**
- * Fundo e borda do cartão alinhados ao status (mobile e desktop).
- * No desktop largo (lg+) os cartões entram em grelha 3×n com proporção próxima do quadrado.
+ * Estrutura neutra preparada para uma futura visualização Kanban: o status aparece
+ * apenas na borda lateral, mantendo os cards densos e fáceis de comparar.
  */
 function statusCardSurfaceClass(status: string | null): string {
+  const base = 'border border-[#e8ecf1] border-l-[3px]'
   switch (status) {
     case 'pending':
-      return 'border-amber-200/80 bg-amber-50/95 border-l-4 border-l-amber-500 sm:bg-amber-50 sm:shadow-md'
+      return `${base} border-l-[#94a3b8]`
     case 'preparing':
-      return 'border-orange-200/70 bg-orange-50/95 border-l-4 border-l-orange-500 sm:bg-orange-50/90 sm:shadow-md'
+      return `${base} border-l-orange-500`
     case 'ready':
-      return 'border-violet-200/70 bg-violet-50/95 border-l-4 border-l-violet-500 sm:bg-violet-50/90 sm:shadow-md'
+      return `${base} border-l-blue-500`
     case 'confirmed':
-      return 'border-sky-200/70 bg-sky-50/95 border-l-4 border-l-sky-500 sm:bg-sky-50/90 sm:shadow-md'
+      return `${base} border-l-blue-500`
     case 'delivered':
-      return 'border-emerald-200/70 bg-emerald-50/95 border-l-4 border-l-emerald-500 sm:bg-emerald-50/90 sm:shadow-md'
+      return `${base} border-l-emerald-500`
     case 'cancelled':
-      return 'border-[var(--card-border)] bg-[#f3f4f6]/90 border-l-4 border-l-[#9ca3af] sm:shadow-sm'
+      return `${base} border-l-[#cbd5e1]`
     default:
-      return 'border-[var(--card-border)] bg-white border-l-4 border-l-[var(--card-border)] sm:shadow-sm'
+      return `${base} border-l-[#cbd5e1]`
   }
 }
 
-function IconChevronExpand({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      aria-hidden
-    >
-      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-    </svg>
-  )
+/** Remove totais por linha (`2x Item=12,50`) para exibição compacta no card. */
+function formatItemsSummaryForDisplay(summary: string | null | undefined): string {
+  const raw = summary?.trim()
+  if (!raw) return 'Itens não indicados neste pedido.'
+  return raw
+    .split(';')
+    .map((segment) => {
+      const line = segment.trim()
+      if (!line) return ''
+      const eq = line.lastIndexOf('=')
+      if (eq <= 0) return line
+      return line.slice(0, eq).trim()
+    })
+    .filter(Boolean)
+    .join(' · ')
+}
+
+function orderDisplayLocation(o: StoreOrderRow): {
+  title: string
+  detail?: string
+} {
+  const table = parseTableFromNotes(o.notes)
+  const sector = parseSectorFromNotes(o.notes)
+  const source = (o.source ?? '').trim().toLowerCase()
+  const address = o.delivery_address?.trim()
+
+  if (table) {
+    const normalizedTable = table.replace(/^mesa\s+/i, '').trim() || table
+    const detail =
+      sector && !/^sal[aã]o$/i.test(sector.trim()) ? sector.trim() : undefined
+    return { title: `Mesa ${normalizedTable}`, detail }
+  }
+
+  if (address && /^mesa\b/i.test(address)) {
+    return { title: address }
+  }
+  if (source === 'pdv') return { title: 'Balcão' }
+  if (source === 'site_pickup') return { title: 'Retirada' }
+  if (source === 'waiter' || source === 'autoatendimento') {
+    return { title: address || 'Salão' }
+  }
+  if (address && !/^retirada/i.test(address)) {
+    return {
+      title: address.length > 48 ? `${address.slice(0, 48).trim()}…` : address,
+    }
+  }
+  return { title: 'Sem local' }
 }
 
 function paymentLabel(raw: string | null | undefined): string {
@@ -216,6 +237,25 @@ function isDeliveryFlowOrder(o: StoreOrderRow): boolean {
   return true
 }
 
+function orderChannelLabel(source: string): string {
+  switch (source) {
+    case 'pdv':
+      return 'Balcão'
+    case 'waiter':
+      return 'Garçom'
+    case 'autoatendimento':
+      return 'QR mesa'
+    case 'site_pickup':
+      return 'Retirada'
+    case 'site':
+    case 'menu_link':
+    case 'site_delivery':
+      return 'Delivery'
+    default:
+      return source ? source.replace(/_/g, ' ') : 'Canal não informado'
+  }
+}
+
 function deliveryFeeNumber(o: StoreOrderRow): number {
   const v = o.delivery_fee
   if (v == null) return 0
@@ -241,14 +281,6 @@ function relativeTimePt(iso: string): string {
   const days = Math.floor(h / 24)
   if (days < 7) return `há ${days} dia${days > 1 ? 's' : ''}`
   return dateTime.format(d)
-}
-
-function customerInitials(name: string | null | undefined): string {
-  const t = name?.trim()
-  if (!t) return 'CL'
-  const p = t.split(/\s+/).filter(Boolean)
-  if (p.length >= 2) return (p[0][0] + p[1][0]).toUpperCase().slice(0, 2)
-  return t.slice(0, 2).toUpperCase()
 }
 
 function digitsPhone(phone: string | null | undefined): string | null {
@@ -339,8 +371,6 @@ export function OrdersClient({
   const [tab, setTab] = useState<TabId>('all')
   const [busyId, setBusyId] = useState<string | null>(null)
   const [liveOk, setLiveOk] = useState(false)
-  /** No mobile, só um cartão expandido por vez; em sm+ ignorado (sempre aberto). */
-  const [expandedMobileId, setExpandedMobileId] = useState<string | null>(null)
   const seenIdsRef = useRef<Set<string>>(
     new Set(initialOrders.map((o) => o.id))
   )
@@ -433,6 +463,7 @@ export function OrdersClient({
       })
 
     const poll = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return
       void pullOrders()
     }, 20000)
 
@@ -607,7 +638,6 @@ export function OrdersClient({
     )
     if (status === 'confirmed' && deliveryPipelineEnabled) {
       setTab('delivering')
-      setExpandedMobileId(orderId)
     }
     if (status === 'delivered') {
       setTab('delivered')
@@ -888,223 +918,159 @@ export function OrdersClient({
           Nenhum pedido neste filtro.
         </div>
       ) : (
-        <ul className="mt-8 flex flex-col gap-4 max-sm:gap-2">
+        <ul className="mt-6 flex flex-col gap-3" data-view="orders-list">
           {filtered.map((o) => {
             const busy = busyId === o.id
             const thermalBusy = thermalBusyId === o.id
             const st = o.status
             const ref = `#${displayNumberById.get(o.id) ?? '—'}`
-            const itemsLine =
-              o.items_summary?.trim() || 'Itens não indicados neste pedido.'
-            const address =
-              o.delivery_address?.trim() || 'Morada não indicada.'
+            const itemsLine = formatItemsSummaryForDisplay(o.items_summary)
             const phone = o.customer_phone
             const wa = phone ? waUrl(phone, o.customer_name, ref) : null
             const waOut =
               phone ? waOutForDeliveryUrl(phone, o.customer_name, ref) : null
-            const notes = o.notes?.trim()
-            const isTrocoNote = Boolean(notes && /troco/i.test(notes))
+            const userNotes = extractUserNotes(o.notes)
+            const isTrocoNote = Boolean(userNotes && /troco/i.test(userNotes))
             const payKind = paymentKind(o.payment_method)
             const showPaymentHighlight = payKind === 'pix' || payKind === 'card'
             const showPixProofWarning = pixNeedsWhatsAppProofCheck(o)
             const source = (o.source ?? '').trim().toLowerCase()
-            const isCounterOrder = source === 'pdv'
-            const isWaiterOrder = source === 'waiter'
-            const isSalaoQrOrder = source === 'autoatendimento'
-            const isPickupOrder = source === 'site_pickup'
-            const isDeliveryOrder =
-              !isCounterOrder && !isWaiterOrder && !isPickupOrder && !isSalaoQrOrder
 
-            const mobileExpanded = expandedMobileId === o.id
-            const customerName = o.customer_name?.trim() || 'Cliente'
+            const location = orderDisplayLocation(o)
+            const channelLabel = orderChannelLabel(source)
+            const totalLabel = money.format(Number(o.total) || 0)
+            const payment = paymentLabel(o.payment_method)
+            const showAlertPanel =
+              showPixProofWarning || showPaymentHighlight || Boolean(userNotes)
+            const primaryButtonClass =
+              'inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-[var(--dash-primary)] px-3.5 text-xs font-semibold text-white shadow-sm shadow-[var(--dash-primary)]/15 transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50'
+            const secondaryButtonClass =
+              'inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-[#e2e8f0] bg-white px-3 text-xs font-medium text-[#64748b] transition hover:border-[#cbd5e1] hover:bg-[#f8fafc] disabled:cursor-not-allowed disabled:opacity-50'
 
             return (
               <li
                 key={o.id}
-                className={`overflow-hidden rounded-2xl border shadow-sm shadow-black/[0.04] ${statusCardSurfaceClass(st)} ${
-                  st === 'cancelled' ? 'opacity-75' : ''
+                data-order-card
+                data-status={st ?? 'unknown'}
+                aria-label={`Pedido ${ref}, ${statusLabel(st, deliveryPipelineEnabled)}`}
+                className={`group overflow-hidden rounded-xl bg-white shadow-[0_1px_2px_rgba(15,23,42,0.05)] transition hover:shadow-[0_4px_16px_rgba(15,23,42,0.08)] ${statusCardSurfaceClass(st)} ${
+                  st === 'cancelled' ? 'opacity-70' : ''
                 }`}
               >
-                <button
-                  type="button"
-                  onClick={() =>
-                    setExpandedMobileId((id) => (id === o.id ? null : o.id))
-                  }
-                  className="flex w-full items-center gap-2 border-b border-black/[0.06] px-3 py-2.5 text-left sm:hidden"
-                  aria-expanded={mobileExpanded}
-                  aria-controls={`order-details-${o.id}`}
-                >
-                  <span className="shrink-0 text-sm font-bold text-[var(--dash-primary)]">
-                    {ref}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-sm font-bold text-[#1a1614]">
-                    {customerName}
-                  </span>
-                  <span
-                    className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-wide ${statusBadgeClass(st)}`}
-                  >
-                    {statusLabel(st, deliveryPipelineEnabled)}
-                  </span>
-                  <IconChevronExpand
-                    className={`h-5 w-5 shrink-0 text-[#9ca3af] transition-transform duration-200 ${
-                      mobileExpanded ? 'rotate-180' : ''
-                    }`}
-                  />
-                </button>
-
-                <div
-                  id={`order-details-${o.id}`}
-                  className={`gap-4 p-4 sm:gap-5 sm:p-5 ${
-                    mobileExpanded ? 'flex flex-col' : 'hidden'
-                  } sm:flex sm:flex-row sm:items-stretch`}
-                >
-                  <div className="flex shrink-0 justify-center sm:block">
-                    <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[#f3f4f6] text-base font-bold text-[#374151]">
-                      {customerInitials(o.customer_name)}
+                <div id={`order-details-${o.id}`} className="px-4 py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className="text-[15px] font-semibold tracking-tight text-[#0f172a]">
+                        Pedido {ref}
+                      </span>
+                      <span className="text-[#e2e8f0]">·</span>
+                      <span className="text-[13px] font-medium text-[#334155]">
+                        {location.title}
+                      </span>
+                      {location.detail ? (
+                        <span className="rounded-md bg-[#f1f5f9] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#64748b]">
+                          {location.detail}
+                        </span>
+                      ) : null}
+                    </div>
+                    <span className="shrink-0 text-[15px] font-semibold tabular-nums tracking-tight text-[#0f172a]">
+                      {totalLabel}
                     </span>
                   </div>
 
-                  <div className="min-w-0 flex-1 space-y-1.5">
-                    <p className="text-base font-bold text-[#1a1614]">
-                      <span className="text-[var(--dash-primary)]">{ref}</span>{' '}
-                      {customerName}
-                    </p>
-                    <p className="text-sm leading-snug text-[#374151]">
-                      {itemsLine}
-                    </p>
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      {isCounterOrder ? (
-                        <p className="inline-flex w-fit items-center rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-semibold text-sky-900 ring-1 ring-sky-200">
-                          Pedido balcão
+                  <p className="mt-1 line-clamp-1 text-[13px] leading-5 text-[#64748b]">
+                    {itemsLine}
+                  </p>
+
+                  <p className="mt-1.5 text-[12px] font-medium text-[#94a3b8]">
+                    <span>{relativeTimePt(o.created_at)}</span>
+                    <span className="mx-1.5 text-[#e2e8f0]">·</span>
+                    <span>{channelLabel}</span>
+                    {payment !== '—' ? (
+                      <>
+                        <span className="mx-1.5 text-[#e2e8f0]">·</span>
+                        <span>{payment}</span>
+                      </>
+                    ) : null}
+                  </p>
+
+                  {showAlertPanel ? (
+                    <div className="mt-2.5 space-y-1.5">
+                      {showPixProofWarning ? (
+                        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-amber-50 px-2.5 py-2 text-[11px] font-medium text-amber-900">
+                          <span>
+                            PIX informado pelo cliente. Confirme o comprovante antes de
+                            avançar.
+                          </span>
+                          {wa ? (
+                            <a
+                              href={wa}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md bg-[#25D366] px-2.5 text-[11px] font-semibold text-white"
+                            >
+                              <IconWhatsApp className="h-3.5 w-3.5" />
+                              WhatsApp
+                            </a>
+                          ) : null}
+                        </div>
+                      ) : null}
+                      {showPaymentHighlight && !showPixProofWarning ? (
+                        <p className="flex items-center gap-1.5 text-[11px] font-medium text-[#475569]">
+                          {payKind === 'card' ? (
+                            <IconCardPay className="h-3.5 w-3.5 shrink-0" />
+                          ) : (
+                            <IconPixPay className="h-3.5 w-3.5 shrink-0" />
+                          )}
+                          Pagamento: {payment}
                         </p>
                       ) : null}
-                      {isSalaoQrOrder ? (
-                        <p className="inline-flex w-fit items-center rounded-full bg-fuchsia-100 px-2 py-0.5 text-[11px] font-semibold text-fuchsia-900 ring-1 ring-fuchsia-200">
-                          QR autoatendimento
+                      {isTrocoNote ? (
+                        <p className="flex items-center gap-1.5 text-[11px] font-medium text-[#475569]">
+                          <IconCoin className="h-3.5 w-3.5 shrink-0" />
+                          {userNotes}
                         </p>
-                      ) : null}
-                      {isWaiterOrder ? (
-                        <p className="inline-flex w-fit items-center rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-semibold text-violet-900 ring-1 ring-violet-200">
-                          Pedido garçom
-                        </p>
-                      ) : null}
-                      {isDeliveryOrder ? (
-                        <p className="inline-flex w-fit items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900 ring-1 ring-amber-200">
-                          Para entrega
-                        </p>
-                      ) : null}
-                      {isPickupOrder ? (
-                        <p className="inline-flex w-fit items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-900 ring-1 ring-emerald-200">
-                          Retirada
+                      ) : userNotes ? (
+                        <p className="text-[11px] leading-relaxed text-[#64748b]">
+                          {userNotes}
                         </p>
                       ) : null}
                     </div>
-                    <p className="text-sm text-[#6b7280]">{address}</p>
-                    <p className="text-xs font-medium text-[#9ca3af]">
-                      {relativeTimePt(o.created_at)}
-                    </p>
-                    {showPaymentHighlight ? (
-                      <p className="flex items-center gap-1.5 text-sm font-semibold text-[var(--dash-primary)]">
-                        {payKind === 'card' ? (
-                          <IconCardPay className="h-4 w-4 shrink-0" />
-                        ) : (
-                          <IconPixPay className="h-4 w-4 shrink-0" />
-                        )}
-                        Pagamento: {paymentLabel(o.payment_method)}
-                      </p>
-                    ) : null}
-                    {showPixProofWarning ? (
-                      <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                        <p className="font-semibold">
-                          PIX informado pelo cliente.
-                        </p>
-                        <p className="mt-0.5 text-xs leading-relaxed">
-                          Confirme o comprovante no WhatsApp antes de preparar ou entregar o pedido.
-                        </p>
-                        {wa ? (
-                          <a
-                            href={wa}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-[#25D366] px-3 py-1.5 text-xs font-semibold text-white"
-                          >
-                            <IconWhatsApp className="h-4 w-4" />
-                            Abrir WhatsApp
-                          </a>
-                        ) : null}
-                      </div>
-                    ) : null}
-                    {isTrocoNote ? (
-                      <p className="flex items-center gap-1.5 text-sm font-semibold text-[var(--dash-primary)]">
-                        <IconCoin className="h-4 w-4 shrink-0" />
-                        {notes}
-                      </p>
-                    ) : notes ? (
-                      <p className="text-sm text-[#6b7280]">{notes}</p>
-                    ) : null}
+                  ) : null}
 
-                    {showManualComandaPrint && canPrintComandaStatus(st) ? (
-                      <div className="flex flex-wrap gap-2 pt-2">
-                        <button
-                          type="button"
-                          disabled={thermalBusy}
-                          onClick={() => void printOrderDefault(o)}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--card-border)] bg-white px-3 py-2 text-xs font-semibold text-[#374151] shadow-sm transition-colors hover:bg-[#fafafa] disabled:opacity-50"
-                          title="Térmica Wi‑Fi se configurada; senão abre a pré-visualização da comanda."
-                        >
-                          <IconPrinter className="h-4 w-4 shrink-0 text-[var(--dash-primary)]" />
-                          {thermalBusy ? '…' : 'Imprimir comanda'}
-                        </button>
-                      </div>
-                    ) : null}
-
+                  <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#f1f5f9] pt-3">
                     {st === 'pending' ? (
-                      <div className="flex flex-wrap items-center gap-2 pt-3 sm:hidden">
+                      <>
                         <button
                           type="button"
                           disabled={busy}
                           onClick={() => void patchStatus(o.id, 'preparing')}
-                          className="rounded-xl bg-[var(--dash-primary)] px-4 py-2.5 text-sm font-semibold text-white shadow-sm disabled:opacity-50"
+                          className={primaryButtonClass}
                         >
-                          Aceitar
+                          Aceitar pedido
                         </button>
                         <button
                           type="button"
                           disabled={busy}
                           onClick={() => confirmReject(o.id)}
-                          className="rounded-xl border-2 border-[var(--dash-primary)] bg-white px-4 py-2.5 text-sm font-semibold text-[var(--dash-primary)] disabled:opacity-50"
+                          className={secondaryButtonClass}
                         >
                           Recusar
                         </button>
-                        {wa ? (
-                          <a
-                            href={wa}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[#25D366] text-white shadow-sm"
-                            aria-label="WhatsApp"
-                          >
-                            <IconWhatsApp className="h-5 w-5" />
-                          </a>
-                        ) : null}
-                      </div>
+                      </>
                     ) : null}
-
                     {st === 'preparing' ? (
-                      <div className="flex flex-wrap gap-2 pt-2 sm:hidden">
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={() => void patchStatus(o.id, 'ready')}
-                          className="rounded-lg bg-[var(--dash-primary)] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
-                        >
-                          Pedido pronto
-                        </button>
-                      </div>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void patchStatus(o.id, 'ready')}
+                        className={primaryButtonClass}
+                      >
+                        Pedido pronto
+                      </button>
                     ) : null}
-
                     {st === 'ready' ? (
-                      <div className="flex flex-col gap-2 pt-2 sm:hidden">
+                      <>
                         <button
                           type="button"
                           disabled={busy}
@@ -1114,7 +1080,7 @@ export function OrdersClient({
                               deliveryPipelineEnabled ? 'confirmed' : 'delivered'
                             )
                           }
-                          className="rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                          className={primaryButtonClass}
                         >
                           {deliveryPipelineEnabled
                             ? 'Sair para entrega'
@@ -1125,22 +1091,21 @@ export function OrdersClient({
                             href={waOut}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center justify-center gap-1.5 rounded-lg border-2 border-[#25D366] bg-white px-3 py-1.5 text-xs font-semibold text-[#128C7E]"
+                            className={secondaryButtonClass}
                           >
                             <IconWhatsApp className="h-4 w-4" />
                             Avisar envio
                           </a>
                         ) : null}
-                      </div>
+                      </>
                     ) : null}
-
                     {st === 'confirmed' ? (
-                      <div className="flex flex-wrap gap-2 pt-2 sm:hidden">
+                      <>
                         <button
                           type="button"
                           disabled={busy}
                           onClick={() => onMarkDelivered(o)}
-                          className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                          className={primaryButtonClass}
                         >
                           Marcar entregue
                         </button>
@@ -1149,170 +1114,51 @@ export function OrdersClient({
                             href={waOut}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-[var(--card-border)] bg-[#f9fafb] px-3 py-1.5 text-xs font-semibold text-[#374151]"
+                            className={secondaryButtonClass}
                           >
                             <IconWhatsApp className="h-4 w-4" />
                             Avisar envio
                           </a>
                         ) : null}
-                      </div>
+                      </>
                     ) : null}
                     {st === 'delivered' &&
                     deliveryPipelineEnabled &&
                     merchantEntregadoresEnabled(plan) &&
                     isDeliveryFlowOrder(o) &&
                     !orderIdsComEntrega.has(o.id) ? (
-                      <div className="pt-2 sm:hidden">
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={() => setDeliveryModal({ mode: 'late', order: o })}
-                          className="rounded-lg border border-emerald-600 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-800 disabled:opacity-50"
-                        >
-                          Registar entrega
-                        </button>
-                      </div>
-                    ) : null}
-                  </div>
-
-                  <div className="flex shrink-0 flex-col items-stretch gap-3 border-t border-[var(--card-border)] pt-4 sm:w-52 sm:border-l sm:border-t-0 sm:pl-5 sm:pt-0">
-                    <div className="text-center sm:text-right">
-                      <p className="text-xl font-bold tabular-nums text-[#1a1614]">
-                        {money.format(Number(o.total) || 0)}
-                      </p>
-                      <p className="mt-0.5 text-xs font-medium text-[#6b7280]">
-                        {paymentLabel(o.payment_method)}
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap items-center justify-center gap-2 sm:flex-col sm:items-stretch">
-                      <span
-                        className={`hidden sm:inline-flex justify-center rounded-full px-3 py-1.5 text-center text-[10px] font-bold uppercase tracking-wide ${statusBadgeClass(st)}`}
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => setDeliveryModal({ mode: 'late', order: o })}
+                        className={primaryButtonClass}
                       >
-                        {statusLabel(st, deliveryPipelineEnabled)}
-                      </span>
-                      {st === 'pending' ? (
-                        <div className="hidden w-full flex-col gap-2 sm:flex">
-                          <button
-                            type="button"
-                            disabled={busy}
-                            onClick={() => void patchStatus(o.id, 'preparing')}
-                            className="w-full rounded-xl bg-[var(--dash-primary)] px-3 py-2.5 text-sm font-semibold text-white shadow-sm disabled:opacity-50"
-                          >
-                            Aceitar
-                          </button>
-                          <button
-                            type="button"
-                            disabled={busy}
-                            onClick={() => confirmReject(o.id)}
-                            className="w-full rounded-xl border-2 border-[var(--dash-primary)] bg-white py-2.5 text-sm font-semibold text-[var(--dash-primary)] disabled:opacity-50"
-                          >
-                            Recusar
-                          </button>
-                        </div>
-                      ) : null}
-                      {st === 'preparing' ? (
-                        <div className="hidden w-full flex-col gap-2 sm:flex">
-                          <button
-                            type="button"
-                            disabled={busy}
-                            onClick={() => void patchStatus(o.id, 'ready')}
-                            className="w-full rounded-lg bg-[var(--dash-primary)] py-2.5 text-sm font-semibold text-white disabled:opacity-50"
-                          >
-                            Pedido pronto
-                          </button>
-                        </div>
-                      ) : null}
-                      {st === 'ready' ? (
-                        <div className="hidden w-full flex-col gap-2 sm:flex">
-                          <button
-                            type="button"
-                            disabled={busy}
-                            onClick={() =>
-                              void patchStatus(
-                                o.id,
-                                deliveryPipelineEnabled ? 'confirmed' : 'delivered'
-                              )
-                            }
-                            className="w-full rounded-lg bg-sky-600 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
-                          >
-                            {deliveryPipelineEnabled
-                              ? 'Sair para entrega'
-                              : 'Marcar concluído'}
-                          </button>
-                          {deliveryPipelineEnabled && waOut ? (
-                            <a
-                              href={waOut}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex w-full items-center justify-center gap-2 rounded-lg border-2 border-[#25D366] bg-white py-2.5 text-sm font-semibold text-[#128C7E]"
-                            >
-                              <IconWhatsApp className="h-5 w-5" />
-                              Avisar envio
-                            </a>
-                          ) : null}
-                        </div>
-                      ) : null}
-                      {st === 'confirmed' ? (
-                        <div className="hidden w-full flex-col gap-2 sm:flex">
-                          <button
-                            type="button"
-                            disabled={busy}
-                            onClick={() => onMarkDelivered(o)}
-                            className="w-full rounded-lg bg-emerald-600 py-2 text-sm font-semibold text-white disabled:opacity-50"
-                          >
-                            Marcar entregue
-                          </button>
-                          {waOut ? (
-                            <a
-                              href={waOut}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--card-border)] bg-[#f9fafb] py-2 text-xs font-semibold text-[#374151]"
-                            >
-                              <IconWhatsApp className="h-4 w-4" />
-                              Avisar envio
-                            </a>
-                          ) : null}
-                        </div>
-                      ) : null}
-                      {st === 'delivered' &&
-                    deliveryPipelineEnabled &&
-                    merchantEntregadoresEnabled(plan) &&
-                    isDeliveryFlowOrder(o) &&
-                    !orderIdsComEntrega.has(o.id) ? (
-                        <div className="hidden w-full flex-col gap-2 sm:flex">
-                          <button
-                            type="button"
-                            disabled={busy}
-                            onClick={() => setDeliveryModal({ mode: 'late', order: o })}
-                            className="w-full rounded-lg border border-emerald-600 bg-white py-2 text-sm font-semibold text-emerald-800 disabled:opacity-50"
-                          >
-                            Registar entrega
-                          </button>
-                        </div>
-                      ) : null}
-                      {st === 'ready' || st === 'confirmed' ? (
-                        !wa && !(deliveryPipelineEnabled && waOut) ? (
-                          <p className="text-center text-[10px] text-[#9ca3af] sm:px-1">
-                            Sem telefone do cliente para WhatsApp
-                          </p>
-                        ) : null
-                      ) : wa ? (
-                        <a
-                          href={wa}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#25D366] text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#20BD5A]"
-                        >
-                          <IconWhatsApp className="h-5 w-5" />
-                          WhatsApp
-                        </a>
-                      ) : (
-                        <p className="text-center text-[10px] text-[#9ca3af] sm:px-1">
-                          Sem telefone do cliente para WhatsApp
-                        </p>
-                      )}
-                    </div>
+                        Registar entrega
+                      </button>
+                    ) : null}
+                    {showManualComandaPrint && canPrintComandaStatus(st) ? (
+                      <button
+                        type="button"
+                        disabled={thermalBusy}
+                        onClick={() => void printOrderDefault(o)}
+                        className={secondaryButtonClass}
+                        title="Térmica Wi‑Fi se configurada; senão abre a pré-visualização da comanda."
+                      >
+                        <IconPrinter className="h-4 w-4 shrink-0" />
+                        {thermalBusy ? '…' : 'Comanda'}
+                      </button>
+                    ) : null}
+                    {st !== 'ready' && st !== 'confirmed' && wa ? (
+                      <a
+                        href={wa}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={secondaryButtonClass}
+                      >
+                        <IconWhatsApp className="h-4 w-4" />
+                        WhatsApp
+                      </a>
+                    ) : null}
                   </div>
                 </div>
               </li>

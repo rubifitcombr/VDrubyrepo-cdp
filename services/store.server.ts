@@ -1,11 +1,12 @@
 import 'server-only'
 
+import { cache } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { tryCreateServiceRoleClient } from '@/lib/supabase/service-role.server'
 import { resolveUniqueStoreSlug } from '@/lib/store-slug.server'
 import { slugifyStoreSlug } from '@/lib/store-slug'
 
-export async function getStoreByUser(userId: string) {
+export const getStoreByUser = cache(async function getStoreByUser(userId: string) {
   const supabase = await createClient()
   const { data } = await supabase
     .from('stores')
@@ -36,4 +37,4 @@ export async function getStoreByUser(userId: string) {
   } catch {
     return data
   }
-}
+})

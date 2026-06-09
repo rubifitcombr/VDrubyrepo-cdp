@@ -12,6 +12,15 @@ import {
   parseOperationModeFromStore,
   type MerchantOperationMode,
 } from '@/lib/merchant-operation-mode'
+import {
+  createEmptyHubPinConfig,
+  HUB_PIN_FIELDS,
+  HUB_PIN_SHORTCUTS,
+  parseHubPinConfig,
+  storeSupportsHubPins,
+  type HubPinConfig,
+  type HubPinShortcut,
+} from '@/lib/hub-shortcut-pin'
 import { uploadStoreLogo } from '@/lib/storage-upload'
 import {
   detectPixKeyKind,
@@ -87,8 +96,10 @@ export default function SettingsPage() {
   const [locationMapsUrl, setLocationMapsUrl] = useState('')
   const [locationLat, setLocationLat] = useState<number | null>(null)
   const [locationLng, setLocationLng] = useState<number | null>(null)
-  const [supportsWaiterExitPin, setSupportsWaiterExitPin] = useState(true)
-  const [waiterExitPin, setWaiterExitPin] = useState('')
+  const [supportsHubPins, setSupportsHubPins] = useState(true)
+  const [hubPins, setHubPins] = useState<HubPinConfig>(() =>
+    createEmptyHubPinConfig()
+  )
   const [deliveryPipelineEnabled, setDeliveryPipelineEnabled] = useState(true)
   const [operationMode, setOperationMode] = useState<MerchantOperationMode | null>(null)
   const [userEmail, setUserEmail] = useState<string | null>(null)
@@ -152,8 +163,8 @@ export default function SettingsPage() {
       setPixEnabled(enabledFlag)
       setAddress(typeof s.address === 'string' ? s.address : '')
       setBusinessHours('business_hours' in s ? s.business_hours : null)
-      setSupportsWaiterExitPin('waiter_exit_pin' in s)
-      setWaiterExitPin(typeof s.waiter_exit_pin === 'string' ? s.waiter_exit_pin.trim().slice(0, 4) : '')
+      setSupportsHubPins(storeSupportsHubPins(s))
+      setHubPins(parseHubPinConfig(s))
       const hasLocationColumns =
         'location_enabled' in s ||
         'location_lat' in s ||
@@ -211,8 +222,6 @@ export default function SettingsPage() {
   const showGarcomPinQrSettings =
     operationMode !== 'delivery' && storePlan !== 'START'
   const isGrowthPresencial = storePlan === 'GROWTH' && operationMode === 'presencial'
-  /** PIN do ecrã: omitido em Growth presencial (só QR mesa / autoatendimento). */
-  const showWaiterPinInSettings = showGarcomPinQrSettings && !isGrowthPresencial
 
   async function handleChangeAccountPassword() {
     if (newAccountPassword.length < 6) {
@@ -239,6 +248,19 @@ export default function SettingsPage() {
     } finally {
       setAccountPassBusy(false)
     }
+  }
+
+  function updateHubPin(
+    key: HubPinShortcut,
+    patch: Partial<HubPinConfig[HubPinShortcut]>
+  ) {
+    setHubPins((prev) => ({
+      ...prev,
+      [key]: {
+        ...prev[key],
+        ...patch,
+      },
+    }))
   }
 
   async function handleSave() {
@@ -324,14 +346,19 @@ export default function SettingsPage() {
         }
       }
     }
-    if (supportsWaiterExitPin && showWaiterPinInSettings) {
-      const pin = waiterExitPin.replace(/\D/g, '').slice(0, 4)
-      if (pin.length > 0 && pin.length < 4) {
-        setSaving(false)
-        alert('O PIN do Garçom deve ter 4 dígitos.')
-        return
+    if (supportsHubPins) {
+      for (const { key, label } of HUB_PIN_SHORTCUTS) {
+        const pin = hubPins[key].pin.replace(/\D/g, '').slice(0, 4)
+        const enabled = hubPins[key].enabled
+        if (enabled && pin.length !== 4) {
+          setSaving(false)
+          alert(`O PIN de ${label} deve ter 4 dígitos para ficar ativo.`)
+          return
+        }
+        const fields = HUB_PIN_FIELDS[key]
+        patch[fields.enabled] = enabled && pin.length === 4
+        patch[fields.pin] = pin || null
       }
-      patch.waiter_exit_pin = pin || null
     }
 
     const attemptedPatch: Record<string, unknown> = { ...patch }
@@ -381,12 +408,16 @@ export default function SettingsPage() {
         setSupportsLocationFields(false)
         continue
       }
-      const canDropWaiterPin =
-        'waiter_exit_pin' in attemptedPatch && msg.includes('waiter_exit_pin')
-      if (canDropWaiterPin) {
-        delete attemptedPatch.waiter_exit_pin
-        droppedFields.push('waiter_exit_pin')
-        setSupportsWaiterExitPin(false)
+      const canDropHubPins =
+        Object.keys(attemptedPatch).some((k) => k.startsWith('hub_pin_')) &&
+        msg.includes('hub_pin_')
+      if (canDropHubPins) {
+        for (const fields of Object.values(HUB_PIN_FIELDS)) {
+          delete attemptedPatch[fields.enabled]
+          delete attemptedPatch[fields.pin]
+        }
+        droppedFields.push('hub_pins')
+        setSupportsHubPins(false)
         continue
       }
       const canDropPix =
@@ -433,6 +464,7 @@ export default function SettingsPage() {
     }
     setSavedToast(true)
     window.setTimeout(() => setSavedToast(false), 2400)
+    router.refresh()
   }
 
   function copyLink() {
@@ -866,12 +898,68 @@ export default function SettingsPage() {
         </section>
         ) : null}
 
+        <section className="rounded-2xl border border-[var(--card-border)] bg-white p-6 shadow-sm shadow-black/[0.04] md:p-8">
+          <h2 className="text-base font-bold text-[#1a1614]">
+            PIN dos atalhos do hub
+          </h2>
+          <p className="mt-1 text-sm text-[#6b7280]">
+            Ative um PIN de 4 números para pedir confirmação antes de abrir cada
+            área operacional.
+          </p>
+          {!supportsHubPins ? (
+            <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              As colunas dos PINs ainda não existem no banco. Execute a migration
+              dos PINs dos atalhos do hub.
+            </p>
+          ) : null}
+          <div className="mt-5 grid gap-3 md:grid-cols-2">
+            {HUB_PIN_SHORTCUTS.map(({ key, label, description }) => (
+              <div
+                key={key}
+                className="rounded-2xl border border-[var(--card-border)] bg-[#fafafa] p-4"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-bold text-[#1a1614]">{label}</p>
+                    <p className="mt-1 text-xs leading-relaxed text-[#6b7280]">
+                      {description}
+                    </p>
+                  </div>
+                  <StoreOpenSwitch
+                    open={hubPins[key].enabled}
+                    disabled={!supportsHubPins || saving}
+                    onToggle={() =>
+                      updateHubPin(key, { enabled: !hubPins[key].enabled })
+                    }
+                  />
+                </div>
+                <label className="mt-4 block text-sm font-medium text-[#374151]">
+                  PIN (4 números)
+                  <input
+                    className={inputClass}
+                    value={hubPins[key].pin}
+                    onChange={(e) =>
+                      updateHubPin(key, {
+                        pin: e.target.value.replace(/\D/g, '').slice(0, 4),
+                      })
+                    }
+                    placeholder="0000"
+                    inputMode="numeric"
+                    maxLength={4}
+                    disabled={!supportsHubPins || saving}
+                  />
+                </label>
+              </div>
+            ))}
+          </div>
+        </section>
+
         {showGarcomPinQrSettings ? (
           <section className="rounded-2xl border border-[var(--card-border)] bg-white p-6 shadow-sm shadow-black/[0.04] md:p-8">
             <h2 className="text-base font-bold text-[#1a1614]">
               {isGrowthPresencial
                 ? 'Autoatendimento (mesa): QR'
-                : 'Garçom: PIN do ecrã e QR de autoatendimento (mesa)'}
+                : 'Garçom: QR de autoatendimento (mesa)'}
             </h2>
             <p className="mt-1 text-sm text-[#6b7280]">
               Os <strong>setores de mesa</strong> passam a ser editados em{' '}
@@ -880,34 +968,8 @@ export default function SettingsPage() {
               </Link>
               , em «Configurar mesas».
             </p>
-            <div
-              className={`mt-5 grid gap-8 lg:items-start ${
-                showWaiterPinInSettings ? 'lg:grid-cols-2' : 'lg:grid-cols-1'
-              }`}
-            >
-              {showWaiterPinInSettings ? (
-                <div>
-                  <label className="block text-sm font-medium text-[#374151]">
-                    PIN (4 dígitos)
-                    <input
-                      className={inputClass}
-                      value={waiterExitPin}
-                      onChange={(e) => {
-                        const digits = e.target.value.replace(/\D/g, '').slice(0, 4)
-                        setWaiterExitPin(digits)
-                      }}
-                      placeholder="0000"
-                      inputMode="numeric"
-                      maxLength={4}
-                      disabled={!supportsWaiterExitPin}
-                    />
-                    <p className="mt-2 text-xs text-[#6b7280]">
-                      Quando o modo ecrã estiver aberto no Garçom, este PIN é exigido para sair.
-                    </p>
-                  </label>
-                </div>
-              ) : null}
-              <div className={showWaiterPinInSettings ? 'min-w-0' : 'min-w-0 lg:max-w-md'}>
+            <div className="mt-5 grid gap-8 lg:grid-cols-1 lg:items-start">
+              <div className="min-w-0 lg:max-w-md">
                 <StorePublicQrPanel
                   publicUrl={qrMesaAutoUrl}
                   storeSlug={slugParaQr || null}

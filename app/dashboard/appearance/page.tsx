@@ -1,4 +1,3 @@
-import { redirect } from 'next/navigation'
 import { getUser } from '@/services/auth.server'
 import { getStoreByUser } from '@/services/store.server'
 import { resolveStoreTheme } from '@/lib/store-theme'
@@ -13,7 +12,7 @@ export const dynamic = 'force-dynamic'
 
 export default async function AppearancePage() {
   const user = await getUser()
-  if (!user) redirect('/login')
+  if (!user) return null
 
   const store = await getStoreByUser(user.id)
   if (!store || typeof store !== 'object' || !('id' in store)) {

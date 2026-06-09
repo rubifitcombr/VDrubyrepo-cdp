@@ -22,10 +22,13 @@ import {
 } from '@/lib/merchant-operation-mode'
 import { parseAutomationsFromStore } from '@/lib/store-automations'
 import { parsePrintingFromStore } from '@/lib/store-printing'
+import { parseHubPinConfig } from '@/lib/hub-shortcut-pin'
 import { createClient } from '@/lib/supabase/server'
 import { syncAutoCloseOutsideHoursForStore } from '@/services/store-hours-automation.server'
 import { cookies } from 'next/headers'
+import { after } from 'next/server'
 import { redirect } from 'next/navigation'
+import { Suspense } from 'react'
 import { ServiceWorkerRegister } from '@/app/_components/ServiceWorkerRegister'
 import { DashboardShell } from './_components/DashboardShell'
 
@@ -35,6 +38,8 @@ export default async function DashboardLayout({
   children: React.ReactNode
 }) {
   const user = await getUser()
+  if (!user) redirect('/login?next=/dashboard')
+
   const store = user ? await getStoreByUser(user.id) : null
 
   const cookieStore = await cookies()
@@ -92,21 +97,21 @@ export default async function DashboardLayout({
     store && typeof store === 'object' && 'id' in store
       ? (store.id as string)
       : null
+
+  const storeRecord: Record<string, unknown> | null = storeRecordPreSync
+
+  if (storeRecord && user) {
+    after(async () => {
+      const supabase = await createClient()
+      await syncAutoCloseOutsideHoursForStore(storeRecord!, supabase)
+    })
+  }
+
   const notificationCount = storeId
     ? await getDashboardNotificationCount(storeId, {
         slugChannelSourcesOnly,
       })
     : 0
-
-  let storeRecord: Record<string, unknown> | null = storeRecordPreSync
-
-  if (storeRecord && user) {
-    const supabase = await createClient()
-    const synced = await syncAutoCloseOutsideHoursForStore(storeRecord, supabase)
-    if (typeof synced === 'boolean') {
-      storeRecord = { ...storeRecord, manual_closed: synced }
-    }
-  }
 
   const billingBlock = storeRecord
     ? getDashboardBillingBlock(storeRecord)
@@ -132,46 +137,53 @@ export default async function DashboardLayout({
     ? isDeliveryPipelineEnabled(operationMode)
     : true
 
+  const storeAutomations = storeRecord
+    ? parseAutomationsFromStore(storeRecord)
+    : null
+  const orderPipelineAutomationsEnabled = hasOrderPipelineAutomations(plan)
+  const autoAcceptPrinting = storeRecord
+    ? parsePrintingFromStore(storeRecord)
+    : parsePrintingFromStore({})
+
   return (
-    <DashboardShell
-      storeName={storeName}
-      storeSlug={storeSlug}
-      storeLogoUrl={storeLogoUrl}
-      storeId={storeId}
-      isAuthenticated={!!user}
-      plan={plan}
-      notificationCount={notificationCount}
-      slugChannelSourcesOnly={slugChannelSourcesOnly}
-      billingBanner={billingBanner}
-      billingBlock={billingBlock}
-      vyriaDualAccount={vyriaDualAccount}
-      operationMode={operationMode}
-      deliveryPipelineEnabled={deliveryPipelineEnabled}
-      disableAutoAccept={!!billingBlock}
-      notifyOnNewOrder={
-        !!(
-          storeRecord &&
-          hasOrderPipelineAutomations(plan) &&
-          parseAutomationsFromStore(storeRecord).auto_notify_new_order
-        )
-      }
-      autoAcceptOrders={
-        !!(
-          storeRecord &&
-          hasOrderPipelineAutomations(plan) &&
-          parseAutomationsFromStore(storeRecord).auto_accept_orders
-        )
-      }
-      autoAcceptPrinting={
-        storeRecord
-          ? parsePrintingFromStore(storeRecord)
-          : parsePrintingFromStore({})
-      }
-      manualClosed={storeRecord?.manual_closed === true}
-      autoAcceptStoreName={autoAcceptStoreName}
-    >
-      <ServiceWorkerRegister />
-      {children}
-    </DashboardShell>
+    <Suspense fallback={null}>
+      <DashboardShell
+        storeName={storeName}
+        storeSlug={storeSlug}
+        storeLogoUrl={storeLogoUrl}
+        storeId={storeId}
+        isAuthenticated={!!user}
+        plan={plan}
+        notificationCount={notificationCount}
+        slugChannelSourcesOnly={slugChannelSourcesOnly}
+        billingBanner={billingBanner}
+        billingBlock={billingBlock}
+        vyriaDualAccount={vyriaDualAccount}
+        operationMode={operationMode}
+        deliveryPipelineEnabled={deliveryPipelineEnabled}
+        disableAutoAccept={!!billingBlock}
+        notifyOnNewOrder={
+          !!(
+            storeRecord &&
+            orderPipelineAutomationsEnabled &&
+            storeAutomations?.auto_notify_new_order
+          )
+        }
+        autoAcceptOrders={
+          !!(
+            storeRecord &&
+            orderPipelineAutomationsEnabled &&
+            storeAutomations?.auto_accept_orders
+          )
+        }
+        autoAcceptPrinting={autoAcceptPrinting}
+        manualClosed={storeRecord?.manual_closed === true}
+        autoAcceptStoreName={autoAcceptStoreName}
+      hubPinConfig={parseHubPinConfig(storeRecord)}
+      >
+        <ServiceWorkerRegister />
+        {children}
+      </DashboardShell>
+    </Suspense>
   )
 }

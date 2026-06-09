@@ -133,7 +133,7 @@ function pathAllowedWithMenuKeys(
   for (const key of keys) {
     const prefix = MENU_KEY_TO_PATH_PREFIX[key]
     if (key === 'dashboard') {
-      if (n === '/dashboard') return true
+      if (n === '/dashboard' || n === '/dashboard/visao') return true
       continue
     }
     if (n === prefix || n.startsWith(`${prefix}/`)) return true

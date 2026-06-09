@@ -1,4 +1,3 @@
-import { redirect } from 'next/navigation'
 import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
 import { readStorePlano } from '@/lib/store-columns'
 import {
@@ -13,7 +12,7 @@ import { AutomationsClient } from './_components/AutomationsClient'
 
 export default async function AutomationsPage() {
   const user = await getUser()
-  if (!user) redirect('/login')
+  if (!user) return null
 
   const store = await getStoreByUser(user.id)
   if (!store || typeof store !== 'object' || !('id' in store)) {
