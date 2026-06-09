@@ -3,10 +3,6 @@ import { createClient } from '@/lib/supabase/server'
 import { gateMerchantMenuKey } from '@/lib/merchant-api-gate.server'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
 import { readStorePlano } from '@/lib/store-columns'
-import {
-  isDeliveryPipelineEnabled,
-  parseOperationModeFromStore,
-} from '@/lib/merchant-operation-mode'
 import { hasOrderPipelineAutomations, parsePlan } from '@/lib/plan'
 import { parseAutomationsFromStore } from '@/lib/store-automations'
 import { maybeSendOrderAcceptedWhatsApp } from '@/services/order-accepted-whatsapp.server'
@@ -109,11 +105,8 @@ export async function POST(req: NextRequest) {
       newStatus === 'delivered' &&
       ['pending', 'preparing', 'ready', 'confirmed'].includes(current)
 
-    const deliveryPipe = isDeliveryPipelineEnabled(
-      parseOperationModeFromStore(gate.ctx.store)
-    )
     const presencialReadyToDelivered =
-      !deliveryPipe &&
+      (src === 'pdv' || src === 'waiter' || src === 'autoatendimento') &&
       current === 'ready' &&
       newStatus === 'delivered'
 

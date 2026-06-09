@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import {
   ORDER_SELECT,
@@ -77,22 +77,26 @@ const dateTime = new Intl.DateTimeFormat('pt-BR', {
 })
 
 type TabId =
-  | 'all'
   | 'pending'
   | 'preparing'
   | 'ready'
   | 'delivering'
   | 'delivered'
 
+type ChannelFilter = 'delivery' | 'presencial'
+
 const TAB_DEF: {
   id: TabId
   label: string
   match: (s: string | null) => boolean
 }[] = [
-  { id: 'all', label: 'Todos', match: () => true },
-  { id: 'pending', label: 'Pendentes', match: (s) => s === 'pending' },
+  {
+    id: 'pending',
+    label: 'Aguardando preparação',
+    match: (s) => s === 'pending',
+  },
   { id: 'preparing', label: 'Preparando', match: (s) => s === 'preparing' },
-  { id: 'ready', label: 'Pronto', match: (s) => s === 'ready' },
+  { id: 'ready', label: 'Pronto para entrega', match: (s) => s === 'ready' },
   {
     id: 'delivering',
     label: 'A caminho',
@@ -101,14 +105,90 @@ const TAB_DEF: {
   { id: 'delivered', label: 'Entregues', match: (s) => s === 'delivered' },
 ]
 
-function statusLabel(status: string | null, deliveryPipeline: boolean): string {
-  switch (status) {
+const STATUS_TONE: Record<
+  TabId,
+  {
+    header: string
+    rail: string
+    dot: string
+    border: string
+    count: string
+  }
+> = {
+  pending: {
+    header: 'bg-amber-50 text-amber-950 ring-amber-200',
+    rail: 'border-t-amber-400',
+    dot: 'bg-amber-500',
+    border: 'border-l-amber-400',
+    count: 'bg-amber-500 text-white',
+  },
+  preparing: {
+    header: 'bg-blue-50 text-blue-950 ring-blue-200',
+    rail: 'border-t-blue-500',
+    dot: 'bg-blue-500',
+    border: 'border-l-blue-500',
+    count: 'bg-blue-500 text-white',
+  },
+  ready: {
+    header: 'bg-orange-50 text-orange-950 ring-orange-200',
+    rail: 'border-t-orange-500',
+    dot: 'bg-orange-500',
+    border: 'border-l-orange-500',
+    count: 'bg-orange-500 text-white',
+  },
+  delivering: {
+    header: 'bg-orange-50 text-orange-950 ring-orange-200',
+    rail: 'border-t-orange-500',
+    dot: 'bg-orange-500',
+    border: 'border-l-orange-500',
+    count: 'bg-orange-500 text-white',
+  },
+  delivered: {
+    header: 'bg-emerald-50 text-emerald-950 ring-emerald-200',
+    rail: 'border-t-emerald-500',
+    dot: 'bg-emerald-500',
+    border: 'border-l-emerald-500',
+    count: 'bg-emerald-500 text-white',
+  },
+}
+
+function kanbanLabel(id: TabId, channel: ChannelFilter): string {
+  if (channel === 'presencial') {
+    switch (id) {
+      case 'pending':
+        return 'Aguardando preparação'
+      case 'preparing':
+        return 'Produção'
+      case 'ready':
+        return 'Pronto para entrega'
+      case 'delivered':
+        return 'Fechadas'
+      case 'delivering':
+        return 'Em rota'
+    }
+  }
+  switch (id) {
     case 'pending':
-      return 'Pendente'
+      return 'Aguardando preparação'
     case 'preparing':
       return 'Preparando'
     case 'ready':
-      return deliveryPipeline ? 'Pronto p/ envio' : 'Pronto'
+      return 'Pronto para entrega'
+    case 'delivering':
+      return 'A caminho'
+    case 'delivered':
+      return 'Entregues'
+  }
+}
+
+function statusLabel(status: string | null, deliveryPipeline: boolean): string {
+  switch (status) {
+    case 'pending':
+      return 'Aguardando preparação'
+    case 'preparing':
+      return 'Preparando'
+    case 'ready':
+      return 'Pronto para entrega'
     case 'confirmed':
       return deliveryPipeline ? 'A caminho' : 'Em curso'
     case 'delivered':
@@ -125,22 +205,22 @@ function statusLabel(status: string | null, deliveryPipeline: boolean): string {
  * apenas na borda lateral, mantendo os cards densos e fáceis de comparar.
  */
 function statusCardSurfaceClass(status: string | null): string {
-  const base = 'border border-[#e8ecf1] border-l-[4px]'
+  const base = 'border border-slate-200 border-l-4 bg-white'
   switch (status) {
     case 'pending':
-      return `${base} border-l-[#94a3b8]`
+      return `${base} border-l-amber-500`
     case 'preparing':
-      return `${base} border-l-orange-500`
+      return `${base} border-l-blue-500`
     case 'ready':
-      return `${base} border-l-blue-500`
+      return `${base} border-l-orange-500`
     case 'confirmed':
-      return `${base} border-l-blue-500`
+      return `${base} border-l-orange-500`
     case 'delivered':
       return `${base} border-l-emerald-500`
     case 'cancelled':
-      return `${base} border-l-[#cbd5e1]`
+      return `${base} border-l-slate-400 opacity-70`
     default:
-      return `${base} border-l-[#cbd5e1]`
+      return `${base} border-l-slate-300`
   }
 }
 
@@ -256,6 +336,11 @@ function orderChannelLabel(source: string): string {
   }
 }
 
+function isInPersonOrder(o: StoreOrderRow): boolean {
+  const source = (o.source ?? '').trim().toLowerCase()
+  return source === 'pdv' || source === 'waiter' || source === 'autoatendimento'
+}
+
 function deliveryFeeNumber(o: StoreOrderRow): number {
   const v = o.delivery_fee
   if (v == null) return 0
@@ -281,6 +366,61 @@ function relativeTimePt(iso: string): string {
   const days = Math.floor(h / 24)
   if (days < 7) return `há ${days} dia${days > 1 ? 's' : ''}`
   return dateTime.format(d)
+}
+
+function orderAgeMinutes(iso: string): number {
+  const ms = Date.now() - new Date(iso).getTime()
+  if (!Number.isFinite(ms) || ms < 0) return 0
+  return Math.floor(ms / 60000)
+}
+
+function waitLabel(minutes: number): string {
+  if (minutes < 1) return 'agora'
+  if (minutes < 60) return `${minutes} min`
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  return m > 0 ? `${h}h ${m}min` : `${h}h`
+}
+
+function priorityTone(
+  minutes: number,
+  expectedMinutes = 20
+): {
+  label: string
+  className: string
+} {
+  const expected = Math.max(1, expectedMinutes)
+  if (minutes > expected * 1.2) {
+    return {
+      label: 'Atrasado',
+      className: 'bg-red-50 text-red-700 ring-red-200',
+    }
+  }
+  if (minutes > expected) {
+    return {
+      label: 'Atenção',
+      className: 'bg-amber-50 text-amber-700 ring-amber-200',
+    }
+  }
+  return {
+    label: 'Dentro do prazo',
+    className: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+  }
+}
+
+function itemCountLabel(summary: string | null | undefined): string {
+  const raw = summary?.trim()
+  if (!raw) return 'Itens não informados'
+  const segments = raw
+    .split(';')
+    .map((s) => s.trim())
+    .filter(Boolean)
+  let count = 0
+  for (const segment of segments) {
+    const match = segment.match(/^(\d+)\s*x/i)
+    count += match ? Number(match[1]) || 1 : 1
+  }
+  return `${count} item${count === 1 ? '' : 's'}`
 }
 
 function digitsPhone(phone: string | null | undefined): string | null {
@@ -343,75 +483,112 @@ function IconPixPay({ className }: { className?: string }) {
   )
 }
 
+function IconTablerBase({
+  className,
+  children,
+}: {
+  className?: string
+  children: ReactNode
+}) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      {children}
+    </svg>
+  )
+}
+
+function IconMapPin({ className }: { className?: string }) {
+  return (
+    <IconTablerBase className={className}>
+      <path d="M9 11a3 3 0 1 0 6 0a3 3 0 0 0 -6 0" />
+      <path d="M17.657 16.657L13.414 20.9a2 2 0 0 1 -2.827 0l-4.244 -4.243a8 8 0 1 1 11.314 0z" />
+    </IconTablerBase>
+  )
+}
+
+function IconClock({ className }: { className?: string }) {
+  return (
+    <IconTablerBase className={className}>
+      <path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0" />
+      <path d="M12 7v5l3 3" />
+    </IconTablerBase>
+  )
+}
+
+function IconCreditCard({ className }: { className?: string }) {
+  return (
+    <IconTablerBase className={className}>
+      <path d="M3 7a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v10a2 2 0 0 1 -2 2H5a2 2 0 0 1 -2 -2z" />
+      <path d="M3 10h18" />
+      <path d="M7 15h.01" />
+      <path d="M11 15h2" />
+    </IconTablerBase>
+  )
+}
+
+function IconShoppingCart({ className }: { className?: string }) {
+  return (
+    <IconTablerBase className={className}>
+      <path d="M6 19a2 2 0 1 0 0.01 0" />
+      <path d="M17 19a2 2 0 1 0 0.01 0" />
+      <path d="M17 17H6V3H4" />
+      <path d="M6 5l14 1l-1 7H6" />
+    </IconTablerBase>
+  )
+}
+
+function IconCurrencyDollar({ className }: { className?: string }) {
+  return (
+    <IconTablerBase className={className}>
+      <path d="M12 3v18" />
+      <path d="M17 7.5c0 -1.38 -2.24 -2.5 -5 -2.5s-5 1.12 -5 2.5s2.24 2.5 5 2.5s5 1.12 5 2.5s-2.24 2.5 -5 2.5s-5 -1.12 -5 -2.5" />
+    </IconTablerBase>
+  )
+}
+
+function IconBike({ className }: { className?: string }) {
+  return (
+    <IconTablerBase className={className}>
+      <path d="M5 18m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0" />
+      <path d="M19 18m-3 0a3 3 0 1 0 6 0a3 3 0 1 0 -6 0" />
+      <path d="M12 18l-3 -7l4 -3l2 3h3" />
+      <path d="M17 6l-2 2" />
+    </IconTablerBase>
+  )
+}
+
+function IconTool({ className }: { className?: string }) {
+  return (
+    <IconTablerBase className={className}>
+      <path d="M7 10h3V7L6.5 3.5a6 6 0 0 0 8 7.5l6 6a2 2 0 0 1 -3 3l-6 -6a6 6 0 0 0 -7.5 -8z" />
+    </IconTablerBase>
+  )
+}
+
 function canPrintComandaStatus(status: string | null | undefined): boolean {
   const s = String(status ?? '').trim().toLowerCase()
   return s === 'pending' || s === 'preparing' || s === 'ready' || s === 'confirmed'
 }
 
-export function OrdersClient({
-  initialOrders,
-  storeId,
-  storeName,
-  printing,
-  plan,
-  deliveryPipelineEnabled = true,
-  slugChannelSourcesOnly = false,
-}: {
-  initialOrders: StoreOrderRow[]
-  storeId: string
-  storeName: string
-  printing: StorePrintingState
-  plan: Plan
-  /** Slug / entregas / separador «A caminho»: só delivery e híbrido. */
-  deliveryPipelineEnabled?: boolean
-  /** Growth + delivery: só pedidos do cardápio público (slug/QR entrega ou retirada). */
-  slugChannelSourcesOnly?: boolean
-}) {
+function useOrdersRealtime(
+  storeId: string,
+  initialOrders: StoreOrderRow[],
+  slugChannelSourcesOnly: boolean
+) {
   const [orders, setOrders] = useState<StoreOrderRow[]>(initialOrders)
-  const [tab, setTab] = useState<TabId>('all')
-  const [busyId, setBusyId] = useState<string | null>(null)
   const [liveOk, setLiveOk] = useState(false)
   const seenIdsRef = useRef<Set<string>>(
     new Set(initialOrders.map((o) => o.id))
   )
-  const [waNotice, setWaNotice] = useState<string | null>(null)
-  const waNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  const [deliveryModal, setDeliveryModal] = useState<
-    null | { mode: 'dispatch' | 'on_deliver' | 'late'; order: StoreOrderRow }
-  >(null)
-  const [entregadoresOpts, setEntregadoresOpts] = useState<StoreEntregadorDTO[]>([])
-  const [deliveryEntLoading, setDeliveryEntLoading] = useState(false)
-  const [delSel, setDelSel] = useState('')
-  const [delNomeAvulso, setDelNomeAvulso] = useState('')
-  const [delValorCorrida, setDelValorCorrida] = useState('')
-  const [delClientePagou, setDelClientePagou] = useState(false)
-  const [delValorRecebido, setDelValorRecebido] = useState('')
-  const [delForma, setDelForma] = useState<'dinheiro' | 'pix' | 'cartao'>('dinheiro')
-  const [delObs, setDelObs] = useState('')
-  const [delSubmitting, setDelSubmitting] = useState(false)
-  const [orderIdsComEntrega, setOrderIdsComEntrega] = useState<Set<string>>(new Set())
-  const [thermalBusyId, setThermalBusyId] = useState<string | null>(null)
-
-  const tabList = useMemo(
-    () =>
-      deliveryPipelineEnabled
-        ? TAB_DEF
-        : TAB_DEF.filter((t) => t.id !== 'delivering'),
-    [deliveryPipelineEnabled]
-  )
-
-  /** Growth+ (módulo Pedidos): comanda manual sempre disponível, com ou sem automações. */
-  const showManualComandaPrint = hasFeature(plan, 'orders')
-
-  useEffect(() => {
-    return () => {
-      if (waNoticeTimerRef.current) {
-        clearTimeout(waNoticeTimerRef.current)
-        waNoticeTimerRef.current = null
-      }
-    }
-  }, [])
 
   useEffect(() => {
     const supabase = createClient()
@@ -473,14 +650,398 @@ export function OrdersClient({
     }
   }, [storeId, slugChannelSourcesOnly])
 
-  useEffect(() => {
-    if (!deliveryPipelineEnabled && tab === 'delivering') {
-      setTab('all')
-    }
-  }, [deliveryPipelineEnabled, tab])
+  return { orders, setOrders, liveOk }
+}
+
+type OrderCardActions = {
+  patchStatus: (orderId: string, status: string) => void
+  reject: (orderId: string) => void
+  dispatch: (order: StoreOrderRow) => void
+  markDelivered: (order: StoreOrderRow) => void
+  print: (order: StoreOrderRow) => void
+  late: (order: StoreOrderRow) => void
+}
+
+function OrderCard({
+  order,
+  orderRef,
+  plan,
+  deliveryPipelineEnabled,
+  busy,
+  thermalBusy,
+  showManualComandaPrint,
+  orderHasDeliveryRegistration,
+  onAction,
+}: {
+  order: StoreOrderRow
+  orderRef: string
+  plan: Plan
+  deliveryPipelineEnabled: boolean
+  busy: boolean
+  thermalBusy: boolean
+  showManualComandaPrint: boolean
+  orderHasDeliveryRegistration: boolean
+  onAction: OrderCardActions
+}) {
+  const st = order.status
+  const itemsLine = formatItemsSummaryForDisplay(order.items_summary)
+  const itemsCount = itemCountLabel(order.items_summary)
+  const age = orderAgeMinutes(order.created_at)
+  const priority = priorityTone(age, order.entrega_prazo_minutos ?? 20)
+  const phone = order.customer_phone
+  const wa = phone ? waUrl(phone, order.customer_name, orderRef) : null
+  const waOut =
+    phone ? waOutForDeliveryUrl(phone, order.customer_name, orderRef) : null
+  const userNotes = extractUserNotes(order.notes)
+  const isTrocoNote = Boolean(userNotes && /troco/i.test(userNotes))
+  const payKind = paymentKind(order.payment_method)
+  const showPaymentHighlight = payKind === 'pix' || payKind === 'card'
+  const showPixProofWarning = pixNeedsWhatsAppProofCheck(order)
+  const source = (order.source ?? '').trim().toLowerCase()
+  const location = orderDisplayLocation(order)
+  const channelLabel = orderChannelLabel(source)
+  const totalLabel = money.format(Number(order.total) || 0)
+  const payment = paymentLabel(order.payment_method)
+  const showAlertPanel =
+    showPixProofWarning || showPaymentHighlight || Boolean(userNotes)
+  const showDeliveryRegistration =
+    st === 'delivered' &&
+    deliveryPipelineEnabled &&
+    merchantEntregadoresEnabled(plan) &&
+    isDeliveryFlowOrder(order) &&
+    !orderHasDeliveryRegistration
+  const showManualPrintAction =
+    showManualComandaPrint && canPrintComandaStatus(st)
+  const isActiveStatus =
+    st === 'pending' || st === 'preparing' || st === 'ready' || st === 'confirmed'
+  const showPrimaryStatusAction = isActiveStatus
+  const showSecondaryWhatsapp = Boolean(st === 'ready' || st === 'confirmed' ? waOut || wa : wa)
+  const readyIsDelivery = deliveryPipelineEnabled && isDeliveryFlowOrder(order)
+
+  const primaryButtonBase =
+    'inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl px-3 text-sm font-extrabold text-white shadow-sm transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50'
+  const secondaryButtonClass =
+    'inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-bold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-50'
+
+  const primary =
+    st === 'pending'
+      ? {
+          label: '✓ Preparar',
+          className: 'bg-emerald-600 hover:bg-emerald-700',
+          run: () => onAction.patchStatus(order.id, 'preparing'),
+        }
+      : st === 'preparing'
+        ? {
+            label: '✓ Pronto',
+            className: 'bg-blue-600 hover:bg-blue-700',
+            run: () => onAction.patchStatus(order.id, 'ready'),
+          }
+        : st === 'ready'
+          ? {
+              label: readyIsDelivery ? '🛵 Sair para entrega' : '✓ Entregue',
+              className: 'bg-orange-600 hover:bg-orange-700',
+              run: () => onAction.dispatch(order),
+            }
+          : st === 'confirmed'
+            ? {
+                label: '✓ Marcar entregue',
+                className: 'bg-orange-600 hover:bg-orange-700',
+                run: () => onAction.markDelivered(order),
+              }
+            : null
+
+  return (
+    <li
+      id={`order-card-${order.id}`}
+      data-order-card
+      data-status={st ?? 'unknown'}
+      aria-label={`Pedido ${orderRef}, ${statusLabel(st, deliveryPipelineEnabled)}`}
+      className={`group scroll-mt-28 rounded-xl shadow-sm transition hover:border-slate-300 hover:shadow-md ${statusCardSurfaceClass(st)} ${
+        st === 'cancelled' ? 'opacity-70' : ''
+      }`}
+    >
+      <div id={`order-details-${order.id}`} className="p-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-base font-black tracking-tight text-slate-950">
+              Pedido {orderRef}
+            </p>
+            <div className="mt-1 flex flex-col items-start gap-1.5">
+              <span
+                className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-black uppercase tracking-wide ring-1 ${priority.className}`}
+              >
+                {priority.label}
+              </span>
+              <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-slate-600 ring-1 ring-slate-200">
+                {statusLabel(st, deliveryPipelineEnabled)}
+              </span>
+            </div>
+          </div>
+          <p className="shrink-0 text-lg font-black tabular-nums tracking-tight text-slate-950">
+            {totalLabel}
+          </p>
+        </div>
+
+        <div className="mt-3 space-y-2 border-y border-slate-100 py-2">
+          <p className="flex min-w-0 items-center gap-2 text-sm font-bold text-slate-950">
+            <IconMapPin className="h-4 w-4 shrink-0 text-slate-400" />
+            <span className="truncate">
+              {location.title}
+              {location.detail ? (
+                <span className="text-xs font-bold uppercase text-slate-500">
+                  {' · '}
+                  {location.detail}
+                </span>
+              ) : null}
+            </span>
+          </p>
+          <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-xs font-semibold leading-5 text-slate-500">
+            <IconClock className="h-4 w-4 shrink-0 text-slate-400" />
+            <span className="whitespace-nowrap">{waitLabel(age)} aguardando</span>
+            <span aria-hidden className="px-0.5 text-slate-300">
+              ·
+            </span>
+            <span className="whitespace-nowrap">{channelLabel}</span>
+            {payment !== '—' ? (
+              <>
+                <span aria-hidden className="px-0.5 text-slate-300">
+                  ·
+                </span>
+                <IconCreditCard className="h-4 w-4 shrink-0 text-slate-400" />
+                <span className="whitespace-nowrap">{payment}</span>
+              </>
+            ) : null}
+            {order.entregador_nome ? (
+              <>
+                <span aria-hidden className="px-0.5 text-slate-300">
+                  ·
+                </span>
+                <span className="whitespace-nowrap">{order.entregador_nome}</span>
+              </>
+            ) : null}
+          </p>
+          <div className="flex items-start justify-between gap-2">
+            <p className="line-clamp-2 text-sm leading-5 text-slate-700">
+              {itemsLine}
+            </p>
+            <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">
+              {itemsCount}
+            </span>
+          </div>
+        </div>
+
+        {showAlertPanel ? (
+          <div className="mt-3 space-y-2 rounded-xl bg-slate-50 px-3 py-2">
+            {showPixProofWarning ? (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-950">
+                <span>
+                  PIX informado pelo cliente. Confirme o comprovante antes de
+                  avançar.
+                </span>
+                {wa ? (
+                  <a
+                    href={wa}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md bg-[#25D366] px-2.5 text-xs font-bold text-white"
+                  >
+                    <IconWhatsApp className="h-3.5 w-3.5" />
+                    WhatsApp
+                  </a>
+                ) : null}
+              </div>
+            ) : null}
+            {showPaymentHighlight && !showPixProofWarning ? (
+              <p className="flex items-center gap-1.5 text-xs font-semibold text-[#475569]">
+                {payKind === 'card' ? (
+                  <IconCardPay className="h-4 w-4 shrink-0" />
+                ) : (
+                  <IconPixPay className="h-4 w-4 shrink-0" />
+                )}
+                Pagamento: {payment}
+              </p>
+            ) : null}
+            {isTrocoNote ? (
+              <p className="flex items-center gap-1.5 text-xs font-semibold text-[#475569]">
+                <IconCoin className="h-4 w-4 shrink-0" />
+                {userNotes}
+              </p>
+            ) : userNotes ? (
+              <p className="text-xs leading-relaxed text-[#64748b]">
+                {userNotes}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
+        {showPrimaryStatusAction || showDeliveryRegistration || showManualPrintAction || showSecondaryWhatsapp ? (
+          <div className="mt-3 grid gap-2 border-t border-slate-100 pt-3">
+            {primary ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={primary.run}
+                className={`${primaryButtonBase} ${primary.className}`}
+              >
+                {primary.label}
+              </button>
+            ) : null}
+            {showDeliveryRegistration ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onAction.late(order)}
+                className={`${primaryButtonBase} bg-orange-600 hover:bg-orange-700`}
+              >
+                ✓ Registar entrega
+              </button>
+            ) : null}
+            <div className="flex flex-wrap gap-1.5">
+              {showManualPrintAction ? (
+                <button
+                  type="button"
+                  disabled={thermalBusy}
+                  onClick={() => onAction.print(order)}
+                  className={secondaryButtonClass}
+                  title="Térmica Wi-Fi se configurada; senão abre a pré-visualização da comanda."
+                >
+                  <IconPrinter className="h-4 w-4 shrink-0" />
+                  {thermalBusy ? '…' : 'Comanda'}
+                </button>
+              ) : null}
+              {showSecondaryWhatsapp ? (
+                <a
+                  href={(st === 'ready' || st === 'confirmed' ? waOut || wa : wa) ?? undefined}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={secondaryButtonClass}
+                >
+                  <IconWhatsApp className="h-4 w-4" />
+                  WhatsApp
+                </a>
+              ) : null}
+              {isActiveStatus ? (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => onAction.reject(order.id)}
+                  className={secondaryButtonClass}
+                >
+                  Recusar
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </li>
+  )
+}
+
+function KanbanColumn({
+  title,
+  status,
+  orders,
+  color,
+  renderOrder,
+}: {
+  title: string
+  status: TabId
+  orders: StoreOrderRow[]
+  color: (typeof STATUS_TONE)[TabId]
+  renderOrder: (order: StoreOrderRow) => ReactNode
+}) {
+  return (
+    <section
+      data-kanban-status={status}
+      className={`max-h-[calc(100vh-220px)] min-h-[220px] overflow-y-auto rounded-2xl border border-l-4 border-slate-200 bg-slate-50/70 p-2.5 shadow-sm ${color.border}`}
+    >
+      <div className={`sticky top-0 z-10 mb-2 rounded-xl px-3 py-2 ring-1 backdrop-blur ${color.header}`}>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-extrabold">{title}</h2>
+          <span
+            className={`inline-flex min-w-8 items-center justify-center rounded-full px-2 py-1 text-sm font-black leading-none tabular-nums ${color.count}`}
+            aria-label={`${orders.length} pedidos em ${title}`}
+          >
+            {orders.length}
+          </span>
+        </div>
+      </div>
+
+      {orders.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-slate-200 bg-white/70 px-3 py-8 text-center text-xs font-semibold text-slate-400">
+          Sem comandas
+        </div>
+      ) : (
+        <ul className="flex flex-col gap-2.5">
+          {orders.map((order) => renderOrder(order))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
+export function OrdersClient({
+  initialOrders,
+  storeId,
+  storeName,
+  printing,
+  plan,
+  deliveryPipelineEnabled = true,
+  slugChannelSourcesOnly = false,
+}: {
+  initialOrders: StoreOrderRow[]
+  storeId: string
+  storeName: string
+  printing: StorePrintingState
+  plan: Plan
+  /** Slug / entregas / separador «A caminho»: só delivery e híbrido. */
+  deliveryPipelineEnabled?: boolean
+  /** Growth + delivery: só pedidos do cardápio público (slug/QR entrega ou retirada). */
+  slugChannelSourcesOnly?: boolean
+}) {
+  const { orders, setOrders, liveOk } = useOrdersRealtime(
+    storeId,
+    initialOrders,
+    slugChannelSourcesOnly
+  )
+  const [channelFilter, setChannelFilter] = useState<ChannelFilter>('delivery')
+  const [showActionQueue, setShowActionQueue] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
+  const [busyId, setBusyId] = useState<string | null>(null)
+  const [waNotice, setWaNotice] = useState<string | null>(null)
+  const waNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const [deliveryModal, setDeliveryModal] = useState<
+    null | { mode: 'dispatch' | 'on_deliver' | 'late'; order: StoreOrderRow }
+  >(null)
+  const [entregadoresOpts, setEntregadoresOpts] = useState<StoreEntregadorDTO[]>([])
+  const [deliveryEntLoading, setDeliveryEntLoading] = useState(false)
+  const [delSel, setDelSel] = useState('')
+  const [delNomeAvulso, setDelNomeAvulso] = useState('')
+  const [delValorCorrida, setDelValorCorrida] = useState('')
+  const [delClientePagou, setDelClientePagou] = useState(false)
+  const [delValorRecebido, setDelValorRecebido] = useState('')
+  const [delForma, setDelForma] = useState<'dinheiro' | 'pix' | 'cartao'>('dinheiro')
+  const [delObs, setDelObs] = useState('')
+  const [delSubmitting, setDelSubmitting] = useState(false)
+  const [orderIdsComEntrega, setOrderIdsComEntrega] = useState<Set<string>>(new Set())
+  const [thermalBusyId, setThermalBusyId] = useState<string | null>(null)
+
+  /** Growth+ (módulo Pedidos): comanda manual sempre disponível, com ou sem automações. */
+  const showManualComandaPrint = hasFeature(plan, 'orders')
 
   useEffect(() => {
-    if (!deliveryPipelineEnabled || tab !== 'delivered') return
+    return () => {
+      if (waNoticeTimerRef.current) {
+        clearTimeout(waNoticeTimerRef.current)
+        waNoticeTimerRef.current = null
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!deliveryPipelineEnabled) return
     let cancelled = false
     void (async () => {
       const res = await dashboardFetch('/api/entregas?period=7d')
@@ -493,7 +1054,7 @@ export function OrdersClient({
     return () => {
       cancelled = true
     }
-  }, [tab, orders, deliveryPipelineEnabled])
+  }, [orders, deliveryPipelineEnabled])
 
   useEffect(() => {
     if (!deliveryModal) return
@@ -553,21 +1114,81 @@ export function OrdersClient({
     return m
   }, [orders])
 
-  const counts = useMemo(() => {
-    const total = orders.length
-    const pending = orders.filter((o) => o.status === 'pending').length
-    const preparing = orders.filter((o) => o.status === 'preparing').length
-    const ready = orders.filter((o) => o.status === 'ready').length
-    const delivering = orders.filter((o) => o.status === 'confirmed').length
-    const delivered = orders.filter((o) => o.status === 'delivered').length
-    return { total, pending, preparing, ready, delivering, delivered }
+  const channelCounts = useMemo(() => {
+    const delivery = orders.filter((o) => !isInPersonOrder(o)).length
+    const presencial = orders.filter((o) => isInPersonOrder(o)).length
+    const deliveryActive = orders.filter(
+      (o) => !isInPersonOrder(o) && o.status !== 'delivered' && o.status !== 'cancelled'
+    ).length
+    const presencialActive = orders.filter(
+      (o) => isInPersonOrder(o) && o.status !== 'delivered' && o.status !== 'cancelled'
+    ).length
+    const lateActive = orders.filter((o) => {
+      if (o.status === 'delivered' || o.status === 'cancelled') return false
+      const expected = Math.max(1, o.entrega_prazo_minutos ?? 20)
+      return orderAgeMinutes(o.created_at) > expected * 1.2
+    }).length
+    const revenue = orders.reduce((sum, o) => sum + (Number(o.total) || 0), 0)
+    return {
+      all: orders.length,
+      delivery,
+      presencial,
+      deliveryActive,
+      presencialActive,
+      lateActive,
+      revenue,
+    }
   }, [orders])
 
-  const filtered = useMemo(() => {
-    const def = tabList.find((t) => t.id === tab)
-    const match = def?.match ?? (() => true)
-    return orders.filter((o) => match(o.status))
-  }, [orders, tab, tabList])
+  const channelFilteredOrders = useMemo(() => {
+    if (channelFilter === 'delivery') {
+      return orders.filter((o) => !isInPersonOrder(o))
+    }
+    return orders.filter((o) => isInPersonOrder(o))
+  }, [channelFilter, orders])
+
+  const counts = useMemo(() => {
+    const total = channelFilteredOrders.length
+    const pending = channelFilteredOrders.filter((o) => o.status === 'pending').length
+    const preparing = channelFilteredOrders.filter((o) => o.status === 'preparing').length
+    const ready = channelFilteredOrders.filter((o) => o.status === 'ready').length
+    const delivering = channelFilteredOrders.filter((o) => o.status === 'confirmed').length
+    const delivered = channelFilteredOrders.filter((o) => o.status === 'delivered').length
+    return { total, pending, preparing, ready, delivering, delivered }
+  }, [channelFilteredOrders])
+
+  const visibleColumns = useMemo(() => {
+    if (channelFilter === 'presencial') {
+      return TAB_DEF.filter((c) => c.id !== 'delivering' && c.id !== 'delivered')
+    }
+    if (!deliveryPipelineEnabled) {
+      return TAB_DEF.filter((c) => c.id !== 'delivering' && c.id !== 'delivered')
+    }
+    return TAB_DEF.filter((c) => c.id !== 'delivered')
+  }, [channelFilter, deliveryPipelineEnabled])
+
+  const kanbanColumns = useMemo(
+    () =>
+      visibleColumns.map((column) => ({
+        ...column,
+        label: kanbanLabel(column.id, channelFilter),
+        orders: channelFilteredOrders.filter((o) => column.match(o.status)),
+      })),
+    [channelFilter, channelFilteredOrders, visibleColumns]
+  )
+
+  const historyOrders = useMemo(
+    () => channelFilteredOrders.filter((o) => o.status === 'delivered'),
+    [channelFilteredOrders]
+  )
+
+  const actionOrders = useMemo(
+    () =>
+      channelFilteredOrders
+        .filter((o) => o.status !== 'delivered' && o.status !== 'cancelled')
+        .sort((a, b) => orderAgeMinutes(b.created_at) - orderAgeMinutes(a.created_at)),
+    [channelFilteredOrders]
+  )
 
   function flashWaNotice(message: string) {
     if (waNoticeTimerRef.current) {
@@ -645,12 +1266,6 @@ export function OrdersClient({
     setOrders((prev) =>
       prev.map((o) => (o.id === orderId ? { ...o, status } : o))
     )
-    if (status === 'confirmed' && deliveryPipelineEnabled) {
-      setTab('delivering')
-    }
-    if (status === 'delivered') {
-      setTab('delivered')
-    }
     if (deliveryNotified) {
       flashWaNotice('Aviso de entrega enviado ao cliente por WhatsApp.')
     }
@@ -683,6 +1298,10 @@ export function OrdersClient({
 
   function onDispatchForDelivery(o: StoreOrderRow) {
     if (o.status !== 'ready') return
+    if (!isDeliveryFlowOrder(o)) {
+      void patchStatus(o.id, 'delivered')
+      return
+    }
     if (!deliveryPipelineEnabled) {
       void patchStatus(o.id, 'delivered')
       return
@@ -749,7 +1368,6 @@ export function OrdersClient({
         )
       }
       setDeliveryModal(null)
-      setTab('delivering')
     } finally {
       setDelSubmitting(false)
     }
@@ -774,7 +1392,6 @@ export function OrdersClient({
         }
         setOrders((prev) => prev.map((x) => (x.id === o.id ? { ...x, status: 'delivered' } : x)))
         setDeliveryModal(null)
-        setTab('delivered')
         return
       }
 
@@ -849,7 +1466,6 @@ export function OrdersClient({
         setOrderIdsComEntrega((prev) => new Set(prev).add(o.id))
       }
       setDeliveryModal(null)
-      setTab('delivered')
     } finally {
       setDelSubmitting(false)
     }
@@ -860,27 +1476,17 @@ export function OrdersClient({
     void patchStatus(orderId, 'cancelled')
   }
 
-  const tabCount = (id: TabId): number => {
-    switch (id) {
-      case 'all':
-        return counts.total
-      case 'pending':
-        return counts.pending
-      case 'preparing':
-        return counts.preparing
-      case 'ready':
-        return counts.ready
-      case 'delivering':
-        return counts.delivering
-      case 'delivered':
-        return counts.delivered
-      default:
-        return 0
-    }
+  function scrollToOrder(orderId: string) {
+    setShowActionQueue(false)
+    window.requestAnimationFrame(() => {
+      document
+        .getElementById(`order-card-${orderId}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    })
   }
 
   return (
-    <div className="mx-auto w-full max-w-5xl">
+    <div className="mx-auto w-full max-w-6xl">
       <nav className="-ml-4 text-xs text-[#6b7280] sm:ml-0">
         <Link href="/dashboard" className="hover:text-[#1a1614]">
           Início
@@ -889,33 +1495,196 @@ export function OrdersClient({
         <span className="font-medium text-[#1a1614]">Pedidos</span>
       </nav>
 
-      <header className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-[28px] font-extrabold tracking-tight text-[#0f172a] md:text-[32px]">
-            Pedidos
-          </h1>
-          {liveOk ? (
-            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">
-              <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-              </span>
-              Ao vivo
-            </span>
-          ) : (
-            <span className="rounded-full bg-[#f3f4f6] px-2.5 py-0.5 text-xs font-medium text-[#6b7280]">
-              Atualização a cada ~20s
-            </span>
-          )}
+      <header className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-2xl font-extrabold tracking-tight text-slate-950">
+                Pedidos
+              </h1>
+              <button
+                type="button"
+                onClick={() => setShowActionQueue((v) => !v)}
+                className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700 ring-1 ring-emerald-200 transition hover:bg-emerald-100"
+              >
+                <span className="relative flex h-2 w-2">
+                  {liveOk ? (
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                  ) : null}
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                </span>
+                {liveOk ? `${actionOrders.length} pedidos aguardando ação` : 'Atualizando'}
+              </button>
+            </div>
+            <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
+              <div
+                className={`min-w-0 overflow-hidden rounded-xl border px-3 py-2 ${
+                  channelCounts.lateActive > 0
+                    ? 'border-amber-200 bg-amber-50'
+                    : 'border-slate-200 bg-slate-50'
+                }`}
+              >
+                <div className="flex min-w-0 items-center gap-2">
+                  <IconShoppingCart className="h-4 w-4 shrink-0 text-slate-500" />
+                  <p className="min-w-0 truncate text-xl font-semibold tabular-nums text-slate-950 sm:text-2xl">
+                    {channelCounts.all}
+                  </p>
+                </div>
+                <p className="mt-0.5 text-xs font-semibold text-slate-500">
+                  Pedidos hoje
+                </p>
+              </div>
+              <div className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                <div className="flex min-w-0 items-center gap-2">
+                  <IconCurrencyDollar className="h-4 w-4 shrink-0 text-slate-500" />
+                  <p className="min-w-0 truncate text-lg font-semibold tabular-nums text-slate-950 sm:text-xl">
+                    {money.format(channelCounts.revenue)}
+                  </p>
+                </div>
+                <p className="mt-0.5 text-xs font-semibold text-slate-500">
+                  Faturamento
+                </p>
+              </div>
+              <div className="min-w-0 overflow-hidden rounded-xl border border-orange-100 bg-orange-50/50 px-3 py-2">
+                <div className="flex min-w-0 items-center gap-2">
+                  <IconBike className="h-4 w-4 shrink-0 text-orange-700" />
+                  <p className="min-w-0 truncate text-xl font-semibold tabular-nums text-orange-950 sm:text-2xl">
+                    {channelCounts.deliveryActive}
+                  </p>
+                </div>
+                <p className="mt-0.5 text-xs font-semibold text-orange-700">
+                  Delivery ativo
+                </p>
+              </div>
+              <div className="min-w-0 overflow-hidden rounded-xl border border-orange-100 bg-orange-50/50 px-3 py-2">
+                <div className="flex min-w-0 items-center gap-2">
+                  <IconTool className="h-4 w-4 shrink-0 text-orange-700" />
+                  <p className="min-w-0 truncate text-xl font-semibold tabular-nums text-orange-950 sm:text-2xl">
+                    {channelCounts.presencialActive}
+                  </p>
+                </div>
+                <p className="mt-0.5 text-xs font-semibold text-orange-700">
+                  Presencial ativo
+                </p>
+              </div>
+            </div>
           </div>
-          <p className="mt-1 text-sm text-[#64748b]">
-            Acompanhe o fluxo dos pedidos em tempo real.
-          </p>
+
+          <div className="grid w-full gap-2 sm:grid-cols-2 xl:w-auto xl:min-w-[420px]">
+            <button
+              type="button"
+              onClick={() => setChannelFilter('delivery')}
+              className={`group relative min-w-0 rounded-2xl border-2 px-4 py-4 text-left shadow-sm transition-all active:scale-[0.98] ${
+                channelFilter === 'delivery'
+                  ? 'border-orange-500 bg-orange-50 text-orange-950 shadow-md shadow-orange-500/15 ring-2 ring-orange-200'
+                  : 'border-slate-200 bg-white text-slate-800 hover:-translate-y-0.5 hover:border-orange-300 hover:bg-orange-50 hover:shadow-md'
+              }`}
+            >
+              <span className="flex min-w-0 items-center justify-between gap-2 text-base font-extrabold">
+                <span className="min-w-0 truncate">Delivery</span>
+                <span
+                  className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${
+                    channelFilter === 'delivery'
+                      ? 'bg-orange-500 text-white'
+                      : 'bg-orange-100 text-orange-700 group-hover:bg-orange-200'
+                  }`}
+                >
+                  Abrir
+                </span>
+              </span>
+              <span
+                className={`mt-1 block text-xs font-bold ${
+                  channelFilter === 'delivery' ? 'text-orange-800' : 'text-slate-500'
+                }`}
+              >
+                {channelCounts.deliveryActive} pedidos ativos
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setChannelFilter('presencial')}
+              className={`group relative min-w-0 rounded-2xl border-2 px-4 py-4 text-left shadow-sm transition-all active:scale-[0.98] ${
+                channelFilter === 'presencial'
+                  ? 'border-orange-500 bg-orange-50 text-orange-950 shadow-md shadow-orange-500/15 ring-2 ring-orange-200'
+                  : 'border-slate-200 bg-white text-slate-800 hover:-translate-y-0.5 hover:border-orange-300 hover:bg-orange-50 hover:shadow-md'
+              }`}
+            >
+              <span className="flex min-w-0 items-center justify-between gap-2 text-base font-extrabold">
+                <span className="min-w-0 truncate">Presencial</span>
+                <span
+                  className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${
+                    channelFilter === 'presencial'
+                      ? 'bg-orange-500 text-white'
+                      : 'bg-orange-100 text-orange-700 group-hover:bg-orange-200'
+                  }`}
+                >
+                  Abrir
+                </span>
+              </span>
+              <span
+                className={`mt-1 block text-xs font-bold ${
+                  channelFilter === 'presencial' ? 'text-orange-800' : 'text-slate-500'
+                }`}
+              >
+                {channelCounts.presencialActive} comandas ativas
+              </span>
+            </button>
+          </div>
         </div>
-        <p className="text-xs font-medium text-[#94a3b8] sm:text-right">
-          Sync em segundo plano
-        </p>
+
+        <div
+          aria-hidden={!showActionQueue}
+          className={`mt-4 overflow-hidden rounded-2xl border bg-white shadow-sm transition-all duration-200 ${
+            showActionQueue
+              ? 'max-h-[560px] translate-y-0 border-emerald-200 opacity-100'
+              : 'max-h-0 -translate-y-2 border-transparent opacity-0'
+          }`}
+        >
+          <div className="px-4 py-3">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <p className="text-sm font-extrabold text-emerald-950">
+                Pedidos aguardando ação
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowActionQueue(false)}
+                className="shrink-0 rounded-lg px-2 py-1 text-xs font-bold text-emerald-800 transition hover:bg-emerald-50"
+              >
+                Fechar
+              </button>
+            </div>
+            {actionOrders.length === 0 ? (
+              <p className="mt-2 text-xs font-semibold text-emerald-800">
+                Nenhum pedido pendente de ação neste canal.
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
+                {actionOrders.slice(0, 6).map((o) => {
+                  const ref = `#${displayNumberById.get(o.id) ?? '—'}`
+                  const age = orderAgeMinutes(o.created_at)
+                  return (
+                    <div
+                      key={o.id}
+                      className="min-h-[86px] rounded-xl border border-slate-200 bg-white px-3 py-3 text-xs shadow-sm"
+                    >
+                      <p className="font-black text-slate-950">Pedido {ref}</p>
+                      <p className="font-semibold text-slate-500">
+                        {waitLabel(age)} aguardando
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => scrollToOrder(o.id)}
+                        className="mt-2 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[11px] font-black text-white transition hover:bg-emerald-700"
+                      >
+                        Ir para pedido
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </div>
       </header>
 
       {waNotice ? (
@@ -940,34 +1709,7 @@ export function OrdersClient({
         </div>
       ) : null}
 
-      <div
-        className="mt-6 flex flex-nowrap gap-1.5 overflow-x-auto overscroll-x-contain rounded-2xl border border-[#e8ecf1] bg-white p-1.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] [-ms-overflow-style:none] [scrollbar-width:none] sm:flex-wrap sm:overflow-visible [&::-webkit-scrollbar]:hidden"
-        role="tablist"
-        aria-label="Filtros de pedidos"
-      >
-        {tabList.map((t) => {
-          const selected = tab === t.id
-          const c = tabCount(t.id)
-          return (
-            <button
-              key={t.id}
-              type="button"
-              role="tab"
-              aria-selected={selected}
-              onClick={() => setTab(t.id)}
-              className={`shrink-0 rounded-xl px-3.5 py-2 text-sm font-semibold transition-colors ${
-                selected
-                  ? 'bg-[#0f172a] text-white shadow-sm'
-                  : 'text-[#64748b] hover:bg-[#f8fafc] hover:text-[#0f172a]'
-              }`}
-            >
-              {t.label} ({c})
-            </button>
-          )
-        })}
-      </div>
-
-      {counts.total === 0 ? (
+      {channelCounts.all === 0 ? (
         <div className="mt-8 rounded-2xl border border-dashed border-[var(--card-border)] bg-white px-8 py-16 text-center shadow-sm">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f3f4f6] text-[#9ca3af]">
             <svg
@@ -988,272 +1730,103 @@ export function OrdersClient({
             Nenhum pedido ainda
           </p>
         </div>
-      ) : filtered.length === 0 ? (
-        <div className="mt-8 rounded-2xl border border-[var(--card-border)] bg-white px-8 py-14 text-center text-sm text-[#6b7280] shadow-sm">
-          Nenhum pedido neste filtro.
+      ) : counts.total === 0 ? (
+        <div className="mt-8 rounded-2xl border border-slate-200 bg-white px-8 py-14 text-center text-sm text-slate-600 shadow-sm">
+          Nenhuma comanda em{' '}
+          <strong>
+            {channelFilter === 'delivery' ? 'Delivery' : 'Presencial'}
+          </strong>
+          .
         </div>
       ) : (
-        <ul className="mt-5 flex flex-col gap-3" data-view="orders-list">
-          {filtered.map((o) => {
-            const busy = busyId === o.id
-            const thermalBusy = thermalBusyId === o.id
-            const st = o.status
-            const ref = `#${displayNumberById.get(o.id) ?? '—'}`
-            const itemsLine = formatItemsSummaryForDisplay(o.items_summary)
-            const phone = o.customer_phone
-            const wa = phone ? waUrl(phone, o.customer_name, ref) : null
-            const waOut =
-              phone ? waOutForDeliveryUrl(phone, o.customer_name, ref) : null
-            const userNotes = extractUserNotes(o.notes)
-            const isTrocoNote = Boolean(userNotes && /troco/i.test(userNotes))
-            const payKind = paymentKind(o.payment_method)
-            const showPaymentHighlight = payKind === 'pix' || payKind === 'card'
-            const showPixProofWarning = pixNeedsWhatsAppProofCheck(o)
-            const source = (o.source ?? '').trim().toLowerCase()
-
-            const location = orderDisplayLocation(o)
-            const channelLabel = orderChannelLabel(source)
-            const totalLabel = money.format(Number(o.total) || 0)
-            const payment = paymentLabel(o.payment_method)
-            const showAlertPanel =
-              showPixProofWarning || showPaymentHighlight || Boolean(userNotes)
-            const showDeliveryRegistration =
-              st === 'delivered' &&
-              deliveryPipelineEnabled &&
-              merchantEntregadoresEnabled(plan) &&
-              isDeliveryFlowOrder(o) &&
-              !orderIdsComEntrega.has(o.id)
-            const showManualPrintAction =
-              showManualComandaPrint && canPrintComandaStatus(st)
-            const showGeneralWhatsapp =
-              st !== 'ready' && st !== 'confirmed' && Boolean(wa)
-            const hasPrimaryStatusAction =
-              st === 'pending' ||
-              st === 'preparing' ||
-              st === 'ready' ||
-              st === 'confirmed'
-            const hasActions =
-              hasPrimaryStatusAction ||
-              showDeliveryRegistration ||
-              showManualPrintAction ||
-              showGeneralWhatsapp
-            const primaryButtonClass =
-              'inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-[#0f172a] px-3.5 text-xs font-semibold text-white shadow-sm shadow-black/[0.08] transition hover:bg-[#1e293b] disabled:cursor-not-allowed disabled:opacity-50'
-            const secondaryButtonClass =
-              'inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-[#e2e8f0] bg-white px-3 text-xs font-semibold text-[#475569] transition hover:border-[#cbd5e1] hover:bg-[#f8fafc] hover:text-[#0f172a] disabled:cursor-not-allowed disabled:opacity-50'
-
-            return (
-              <li
-                key={o.id}
-                data-order-card
-                data-status={st ?? 'unknown'}
-                aria-label={`Pedido ${ref}, ${statusLabel(st, deliveryPipelineEnabled)}`}
-                className={`group overflow-hidden rounded-2xl bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04),0_10px_24px_rgba(15,23,42,0.035)] transition hover:-translate-y-px hover:shadow-[0_2px_4px_rgba(15,23,42,0.05),0_16px_34px_rgba(15,23,42,0.07)] ${statusCardSurfaceClass(st)} ${
-                  st === 'cancelled' ? 'opacity-70' : ''
-                }`}
-              >
-                <div id={`order-details-${o.id}`} className="px-4 py-3.5">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex flex-wrap items-center gap-x-2 gap-y-1">
-                      <span className="text-[15px] font-semibold tracking-tight text-[#0f172a]">
-                        Pedido {ref}
-                      </span>
-                      <span className="text-[#e2e8f0]">·</span>
-                      <span className="text-[13px] font-medium text-[#334155]">
-                        {location.title}
-                      </span>
-                      {location.detail ? (
-                        <span className="rounded-md bg-[#f1f5f9] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#64748b]">
-                          {location.detail}
-                        </span>
-                      ) : null}
-                    </div>
-                    <span className="shrink-0 text-[15px] font-semibold tabular-nums tracking-tight text-[#0f172a]">
-                      {totalLabel}
-                    </span>
-                  </div>
-
-                  <p className="mt-1.5 line-clamp-1 text-[13px] leading-5 text-[#475569]">
-                    {itemsLine}
-                  </p>
-
-                  <p className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12px] font-medium text-[#94a3b8]">
-                    <span>{relativeTimePt(o.created_at)}</span>
-                    <span className="text-[#e2e8f0]">·</span>
-                    <span>{channelLabel}</span>
-                    {payment !== '—' ? (
-                      <>
-                        <span className="text-[#e2e8f0]">·</span>
-                        <span>{payment}</span>
-                      </>
-                    ) : null}
-                  </p>
-
-                  {showAlertPanel ? (
-                    <div className="mt-2.5 space-y-1.5 rounded-xl bg-[#f8fafc] px-3 py-2">
-                      {showPixProofWarning ? (
-                        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-amber-50 px-2.5 py-2 text-[11px] font-medium text-amber-900">
-                          <span>
-                            PIX informado pelo cliente. Confirme o comprovante antes de
-                            avançar.
-                          </span>
-                          {wa ? (
-                            <a
-                              href={wa}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex h-7 shrink-0 items-center justify-center gap-1 rounded-md bg-[#25D366] px-2.5 text-[11px] font-semibold text-white"
-                            >
-                              <IconWhatsApp className="h-3.5 w-3.5" />
-                              WhatsApp
-                            </a>
-                          ) : null}
-                        </div>
-                      ) : null}
-                      {showPaymentHighlight && !showPixProofWarning ? (
-                        <p className="flex items-center gap-1.5 text-[11px] font-medium text-[#475569]">
-                          {payKind === 'card' ? (
-                            <IconCardPay className="h-3.5 w-3.5 shrink-0" />
-                          ) : (
-                            <IconPixPay className="h-3.5 w-3.5 shrink-0" />
-                          )}
-                          Pagamento: {payment}
-                        </p>
-                      ) : null}
-                      {isTrocoNote ? (
-                        <p className="flex items-center gap-1.5 text-[11px] font-medium text-[#475569]">
-                          <IconCoin className="h-3.5 w-3.5 shrink-0" />
-                          {userNotes}
-                        </p>
-                      ) : userNotes ? (
-                        <p className="text-[11px] leading-relaxed text-[#64748b]">
-                          {userNotes}
-                        </p>
-                      ) : null}
-                    </div>
-                  ) : null}
-
-                  {hasActions ? (
-                  <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#f1f5f9] pt-3">
-                    {st === 'pending' ? (
-                      <>
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={() => void patchStatus(o.id, 'preparing')}
-                          className={primaryButtonClass}
-                        >
-                          Aceitar pedido
-                        </button>
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={() => confirmReject(o.id)}
-                          className={secondaryButtonClass}
-                        >
-                          Recusar
-                        </button>
-                      </>
-                    ) : null}
-                    {st === 'preparing' ? (
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => void patchStatus(o.id, 'ready')}
-                        className={primaryButtonClass}
-                      >
-                        Pedido pronto
-                      </button>
-                    ) : null}
-                    {st === 'ready' ? (
-                      <>
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={() => onDispatchForDelivery(o)}
-                          className={primaryButtonClass}
-                        >
-                          {deliveryPipelineEnabled
-                            ? 'Sair para entrega'
-                            : 'Marcar concluído'}
-                        </button>
-                        {deliveryPipelineEnabled && waOut ? (
-                          <a
-                            href={waOut}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className={secondaryButtonClass}
-                          >
-                            <IconWhatsApp className="h-4 w-4" />
-                            Avisar envio
-                          </a>
-                        ) : null}
-                      </>
-                    ) : null}
-                    {st === 'confirmed' ? (
-                      <>
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={() => onMarkDelivered(o)}
-                          className={primaryButtonClass}
-                        >
-                          Marcar entregue
-                        </button>
-                        {waOut ? (
-                          <a
-                            href={waOut}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className={secondaryButtonClass}
-                          >
-                            <IconWhatsApp className="h-4 w-4" />
-                            Avisar envio
-                          </a>
-                        ) : null}
-                      </>
-                    ) : null}
-                    {showDeliveryRegistration ? (
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => setDeliveryModal({ mode: 'late', order: o })}
-                        className={primaryButtonClass}
-                      >
-                        Registar entrega
-                      </button>
-                    ) : null}
-                    {showManualPrintAction ? (
-                      <button
-                        type="button"
-                        disabled={thermalBusy}
-                        onClick={() => void printOrderDefault(o)}
-                        className={secondaryButtonClass}
-                        title="Térmica Wi‑Fi se configurada; senão abre a pré-visualização da comanda."
-                      >
-                        <IconPrinter className="h-4 w-4 shrink-0" />
-                        {thermalBusy ? '…' : 'Comanda'}
-                      </button>
-                    ) : null}
-                    {showGeneralWhatsapp && wa ? (
-                      <a
-                        href={wa}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className={secondaryButtonClass}
-                      >
-                        <IconWhatsApp className="h-4 w-4" />
-                        WhatsApp
-                      </a>
-                    ) : null}
-                  </div>
-                  ) : null}
-                </div>
-              </li>
-            )
-          })}
-        </ul>
+        <div
+          className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-3"
+          data-view="orders-kanban"
+        >
+          {kanbanColumns.map((column) => (
+            <KanbanColumn
+              key={column.id}
+              title={column.label}
+              status={column.id}
+              orders={column.orders}
+              color={STATUS_TONE[column.id]}
+              renderOrder={(order) => (
+                <OrderCard
+                  key={order.id}
+                  order={order}
+                  orderRef={`#${displayNumberById.get(order.id) ?? '—'}`}
+                  plan={plan}
+                  deliveryPipelineEnabled={deliveryPipelineEnabled}
+                  busy={busyId === order.id}
+                  thermalBusy={thermalBusyId === order.id}
+                  showManualComandaPrint={showManualComandaPrint}
+                  orderHasDeliveryRegistration={orderIdsComEntrega.has(order.id)}
+                  onAction={{
+                    patchStatus: (orderId, status) =>
+                      void patchStatus(orderId, status),
+                    reject: confirmReject,
+                    dispatch: onDispatchForDelivery,
+                    markDelivered: onMarkDelivered,
+                    print: (o) => void printOrderDefault(o),
+                    late: (o) => setDeliveryModal({ mode: 'late', order: o }),
+                  }}
+                />
+              )}
+            />
+          ))}
+        </div>
       )}
+
+      {channelCounts.all > 0 ? (
+        <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-sm font-extrabold text-slate-950">Histórico</p>
+              <p className="text-xs font-semibold text-slate-500">
+                {historyOrders.length} pedido{historyOrders.length === 1 ? '' : 's'} entregue
+                {historyOrders.length === 1 ? '' : 's'} neste canal
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowHistory((v) => !v)}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
+            >
+              {showHistory ? 'Ocultar histórico' : 'Ver histórico'}
+            </button>
+          </div>
+          {showHistory ? (
+            historyOrders.length === 0 ? (
+              <p className="mt-3 rounded-xl bg-slate-50 px-3 py-4 text-center text-xs font-semibold text-slate-500">
+                Nenhum pedido entregue neste canal.
+              </p>
+            ) : (
+              <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {historyOrders.slice(0, 12).map((o) => {
+                  const ref = `#${displayNumberById.get(o.id) ?? '—'}`
+                  const location = orderDisplayLocation(o)
+                  return (
+                    <div
+                      key={o.id}
+                      className="rounded-xl border border-emerald-100 bg-emerald-50/40 px-3 py-2"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="font-black text-slate-950">Pedido {ref}</p>
+                        <p className="font-black tabular-nums text-slate-950">
+                          {money.format(Number(o.total) || 0)}
+                        </p>
+                      </div>
+                      <p className="mt-1 truncate text-xs font-semibold text-slate-600">
+                        {location.title} · {relativeTimePt(o.created_at)}
+                      </p>
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          ) : null}
+        </section>
+      ) : null}
 
       {deliveryModal && merchantEntregadoresEnabled(plan) ? (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4" role="dialog">
