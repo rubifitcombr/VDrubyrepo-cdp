@@ -9,6 +9,7 @@ export type OperationalHubContext =
   | 'delivery'
   | 'mesas'
   | 'comandas'
+  | 'visao'
 
 const HUB_CONTEXTS = new Set<OperationalHubContext>([
   'balcao',
@@ -17,6 +18,7 @@ const HUB_CONTEXTS = new Set<OperationalHubContext>([
   'delivery',
   'mesas',
   'comandas',
+  'visao',
 ])
 
 const HUB_CONTEXT_MENU_KEYS: Record<
@@ -29,6 +31,7 @@ const HUB_CONTEXT_MENU_KEYS: Record<
   delivery: ['pedidos', 'entregadores'],
   mesas: ['garcom'],
   comandas: ['pedidos'],
+  visao: ['dashboard'],
 }
 
 const HUB_CONTEXT_LABELS: Record<OperationalHubContext, string> = {
@@ -38,6 +41,7 @@ const HUB_CONTEXT_LABELS: Record<OperationalHubContext, string> = {
   delivery: 'Delivery',
   mesas: 'Mesas',
   comandas: 'Comandas',
+  visao: 'Visão geral',
 }
 
 function normalizePathname(pathname: string): string {
@@ -62,8 +66,8 @@ export function resolveOperationalHubContext(
   hubParam: string | null | undefined
 ): OperationalHubContext | null {
   if (normalizePathname(pathname) === '/dashboard') return null
-  if (isAdministrationDashboardPath(pathname)) return null
   if (isOperationalHubContext(hubParam)) return hubParam
+  if (isAdministrationDashboardPath(pathname)) return null
   return null
 }
 

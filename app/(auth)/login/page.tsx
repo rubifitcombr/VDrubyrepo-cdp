@@ -4,7 +4,8 @@ import { useBeginNavigation } from '@/app/_components/NavigationProgressProvider
 import { RouteLoadingFallback } from '@/app/_components/RouteLoadingFallback'
 import Link from 'next/link'
 import { Suspense, useEffect, useState } from 'react'
-import { setRememberLoginPreference, signIn } from '@/services/auth'
+import { setRememberLoginPreference } from '@/services/auth'
+import { signInWithPasswordAction } from '@/services/auth.actions'
 import { useSearchParams } from 'next/navigation'
 
 const inputClass =
@@ -34,10 +35,10 @@ function LoginForm() {
   async function handleLogin() {
     setIsLoggingIn(true)
     try {
-      const { error } = await signIn(email.trim(), password)
+      const result = await signInWithPasswordAction(email.trim(), password)
 
-      if (error) {
-        alert(error.message)
+      if (!result.ok) {
+        alert(result.error)
         setIsLoggingIn(false)
         return
       }

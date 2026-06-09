@@ -15,10 +15,14 @@ export type StoreOrderRow = {
   items_summary?: string | null
   /** Pedido contabilizado neste turno de caixa (após «Receber e fechar»). */
   caixa_turno_id?: string | null
+  entregador_id?: string | null
+  entregador_nome?: string | null
+  entrega_despachada_em?: string | null
+  entrega_prazo_minutos?: number | null
 }
 
 export const ORDER_SELECT =
-  'id, customer_name, total, status, created_at, source, delivery_address, delivery_fee, payment_method, payment_status, notes, customer_phone, items_summary, caixa_turno_id'
+  'id, customer_name, total, status, created_at, source, delivery_address, delivery_fee, payment_method, payment_status, notes, customer_phone, items_summary, caixa_turno_id, entregador_id, entregador_nome, entrega_despachada_em, entrega_prazo_minutos'
 
 export function pixPaymentStatusIsConfirmed(
   status: string | null | undefined
@@ -79,5 +83,19 @@ export function mapStoreOrderRow(row: Record<string, unknown>): StoreOrderRow {
       typeof row.items_summary === 'string' ? row.items_summary : null,
     caixa_turno_id:
       typeof row.caixa_turno_id === 'string' ? row.caixa_turno_id : null,
+    entregador_id:
+      typeof row.entregador_id === 'string' ? row.entregador_id : null,
+    entregador_nome:
+      typeof row.entregador_nome === 'string' ? row.entregador_nome : null,
+    entrega_despachada_em:
+      typeof row.entrega_despachada_em === 'string'
+        ? row.entrega_despachada_em
+        : null,
+    entrega_prazo_minutos:
+      row.entrega_prazo_minutos == null
+        ? null
+        : typeof row.entrega_prazo_minutos === 'number'
+          ? row.entrega_prazo_minutos
+          : Number(row.entrega_prazo_minutos) || null,
   }
 }

@@ -33,6 +33,9 @@ function mapEntrega(row: Record<string, unknown>): EntregaDTO {
     observacao: typeof row.observacao === 'string' ? row.observacao : null,
     criado_em:
       typeof row.criado_em === 'string' ? row.criado_em : new Date().toISOString(),
+    acerto_movimentacao_id:
+      typeof row.acerto_movimentacao_id === 'string' ? row.acerto_movimentacao_id : null,
+    acertado_em: typeof row.acertado_em === 'string' ? row.acertado_em : null,
   }
 }
 
@@ -113,7 +116,9 @@ export async function listEntregasForStore(
   let rows = (data ?? []).map((r) => mapEntrega(r as Record<string, unknown>))
   if (filter.pendenteSaldo) {
     rows = rows.filter(
-      (e) => Math.abs(e.valor_recebido_cliente - e.valor_corrida) >= 0.005
+      (e) =>
+        !e.acertado_em &&
+        Math.abs(e.valor_recebido_cliente - e.valor_corrida) >= 0.005
     )
   }
   return rows
@@ -162,4 +167,26 @@ export async function deleteEntregaById(
 ): Promise<void> {
   const { error } = await svc.from('entregas').delete().eq('id', id).eq('store_id', storeId)
   if (error) throw new Error(error.message)
+}
+
+export async function markEntregasAsSettled(
+  svc: SupabaseClient,
+  storeId: string,
+  entregaIds: string[],
+  movimentacaoId: string
+): Promise<void> {
+  if (entregaIds.length === 0) return
+  const now = new Date().toISOString()
+  const { error } = await svc
+    .from('entregas')
+    .update({
+      acerto_movimentacao_id: movimentacaoId,
+      acertado_em: now,
+    })
+    .eq('store_id', storeId)
+    .in('id', entregaIds)
+
+  if (error && !/column.*does not exist/i.test(error.message)) {
+    throw new Error(error.message)
+  }
 }

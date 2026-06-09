@@ -101,8 +101,8 @@ export default async function DashboardLayout({
   const storeRecord: Record<string, unknown> | null = storeRecordPreSync
 
   if (storeRecord && user) {
+    const supabase = await createClient()
     after(async () => {
-      const supabase = await createClient()
       await syncAutoCloseOutsideHoursForStore(storeRecord!, supabase)
     })
   }

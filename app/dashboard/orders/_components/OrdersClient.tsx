@@ -125,7 +125,7 @@ function statusLabel(status: string | null, deliveryPipeline: boolean): string {
  * apenas na borda lateral, mantendo os cards densos e fáceis de comparar.
  */
 function statusCardSurfaceClass(status: string | null): string {
-  const base = 'border border-[#e8ecf1] border-l-[3px]'
+  const base = 'border border-[#e8ecf1] border-l-[4px]'
   switch (status) {
     case 'pending':
       return `${base} border-l-[#94a3b8]`
@@ -378,7 +378,7 @@ export function OrdersClient({
   const waNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const [deliveryModal, setDeliveryModal] = useState<
-    null | { mode: 'on_deliver' | 'late'; order: StoreOrderRow }
+    null | { mode: 'dispatch' | 'on_deliver' | 'late'; order: StoreOrderRow }
   >(null)
   const [entregadoresOpts, setEntregadoresOpts] = useState<StoreEntregadorDTO[]>([])
   const [deliveryEntLoading, setDeliveryEntLoading] = useState(false)
@@ -502,7 +502,8 @@ export function OrdersClient({
       return
     }
     const o = deliveryModal.order
-    setDelSel('')
+    const preAssigned = o.entregador_id?.trim() || ''
+    setDelSel(preAssigned || '')
     setDelNomeAvulso('')
     setDelValorCorrida('')
     setDelClientePagou(false)
@@ -528,6 +529,14 @@ export function OrdersClient({
       }
       const list = (json.entregadores ?? []).filter((e) => e.ativo)
       setEntregadoresOpts(list)
+      const assigned = preAssigned
+        ? list.find((e) => e.id === preAssigned)
+        : null
+      if (assigned?.valor_padrao_corrida && assigned.valor_padrao_corrida > 0) {
+        setDelValorCorrida(String(assigned.valor_padrao_corrida).replace('.', ','))
+      } else if (deliveryModal.mode === 'dispatch') {
+        setDelValorCorrida('')
+      }
       setDeliveryEntLoading(false)
     })()
   }, [deliveryModal, plan])
@@ -672,6 +681,19 @@ export function OrdersClient({
     }
   }
 
+  function onDispatchForDelivery(o: StoreOrderRow) {
+    if (o.status !== 'ready') return
+    if (!deliveryPipelineEnabled) {
+      void patchStatus(o.id, 'delivered')
+      return
+    }
+    if (!merchantEntregadoresEnabled(plan)) {
+      void patchStatus(o.id, 'confirmed')
+      return
+    }
+    setDeliveryModal({ mode: 'dispatch', order: o })
+  }
+
   function onMarkDelivered(o: StoreOrderRow) {
     if (o.status !== 'confirmed') return
     if (isDeliveryFlowOrder(o)) {
@@ -683,6 +705,54 @@ export function OrdersClient({
       return
     }
     void patchStatus(o.id, 'delivered')
+  }
+
+  async function submitDispatchModal() {
+    if (!deliveryModal || deliveryModal.mode !== 'dispatch') return
+    const o = deliveryModal.order
+    const avulso = delSel === '__avulso__'
+    const entregadorId = !avulso && delSel.trim() ? delSel.trim() : null
+    const nomeAvulso = avulso ? delNomeAvulso.trim() : ''
+    if (!entregadorId && !nomeAvulso) {
+      alert('Seleciona um entregador ou indica nome avulso.')
+      return
+    }
+    setDelSubmitting(true)
+    try {
+      const res = await dashboardFetch('/api/orders/assign-courier', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId: o.id,
+          entregadorId,
+          entregadorNomeAvulso: avulso ? nomeAvulso : undefined,
+          prazoMinutos: 45,
+        }),
+      })
+      const json = (await res.json().catch(() => ({}))) as {
+        error?: string
+        order?: Record<string, unknown>
+      }
+      if (!res.ok) {
+        alert(json.error || 'Não foi possível despachar o pedido.')
+        return
+      }
+      if (json.order) {
+        setOrders((prev) =>
+          prev.map((x) => (x.id === o.id ? mapStoreOrderRow(json.order!) : x))
+        )
+      } else {
+        setOrders((prev) =>
+          prev.map((x) =>
+            x.id === o.id ? { ...x, status: 'confirmed' } : x
+          )
+        )
+      }
+      setDeliveryModal(null)
+      setTab('delivering')
+    } finally {
+      setDelSubmitting(false)
+    }
   }
 
   async function submitDeliveryModal(skip: boolean) {
@@ -810,7 +880,7 @@ export function OrdersClient({
   }
 
   return (
-    <div className="mx-auto w-full max-w-4xl">
+    <div className="mx-auto w-full max-w-5xl">
       <nav className="-ml-4 text-xs text-[#6b7280] sm:ml-0">
         <Link href="/dashboard" className="hover:text-[#1a1614]">
           Início
@@ -819,13 +889,14 @@ export function OrdersClient({
         <span className="font-medium text-[#1a1614]">Pedidos</span>
       </nav>
 
-      <header className="mt-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-2xl font-bold tracking-tight text-[#1a1614] md:text-3xl">
+      <header className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+          <h1 className="text-[28px] font-extrabold tracking-tight text-[#0f172a] md:text-[32px]">
             Pedidos
           </h1>
           {liveOk ? (
-            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-800 ring-1 ring-emerald-200">
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">
               <span className="relative flex h-2 w-2">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
@@ -837,9 +908,13 @@ export function OrdersClient({
               Atualização a cada ~20s
             </span>
           )}
+          </div>
+          <p className="mt-1 text-sm text-[#64748b]">
+            Acompanhe o fluxo dos pedidos em tempo real.
+          </p>
         </div>
-        <p className="mt-1 text-sm text-[#6b7280]">
-          Novos pedidos aparecem automaticamente; também sincronizamos em segundo plano.
+        <p className="text-xs font-medium text-[#94a3b8] sm:text-right">
+          Sync em segundo plano
         </p>
       </header>
 
@@ -866,7 +941,7 @@ export function OrdersClient({
       ) : null}
 
       <div
-        className="mt-6 flex flex-nowrap gap-2 overflow-x-auto overscroll-x-contain pb-1 [-ms-overflow-style:none] [scrollbar-width:none] sm:flex-wrap sm:overflow-visible [&::-webkit-scrollbar]:hidden"
+        className="mt-6 flex flex-nowrap gap-1.5 overflow-x-auto overscroll-x-contain rounded-2xl border border-[#e8ecf1] bg-white p-1.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] [-ms-overflow-style:none] [scrollbar-width:none] sm:flex-wrap sm:overflow-visible [&::-webkit-scrollbar]:hidden"
         role="tablist"
         aria-label="Filtros de pedidos"
       >
@@ -880,10 +955,10 @@ export function OrdersClient({
               role="tab"
               aria-selected={selected}
               onClick={() => setTab(t.id)}
-              className={`shrink-0 rounded-full px-4 py-2.5 text-sm font-semibold transition-colors ${
+              className={`shrink-0 rounded-xl px-3.5 py-2 text-sm font-semibold transition-colors ${
                 selected
-                  ? 'bg-[var(--dash-primary)] text-white shadow-md shadow-[var(--dash-primary)]/20'
-                  : 'border border-[var(--card-border)] bg-white text-[#374151] shadow-sm hover:bg-[#f9fafb]'
+                  ? 'bg-[#0f172a] text-white shadow-sm'
+                  : 'text-[#64748b] hover:bg-[#f8fafc] hover:text-[#0f172a]'
               }`}
             >
               {t.label} ({c})
@@ -918,7 +993,7 @@ export function OrdersClient({
           Nenhum pedido neste filtro.
         </div>
       ) : (
-        <ul className="mt-6 flex flex-col gap-3" data-view="orders-list">
+        <ul className="mt-5 flex flex-col gap-3" data-view="orders-list">
           {filtered.map((o) => {
             const busy = busyId === o.id
             const thermalBusy = thermalBusyId === o.id
@@ -942,10 +1017,30 @@ export function OrdersClient({
             const payment = paymentLabel(o.payment_method)
             const showAlertPanel =
               showPixProofWarning || showPaymentHighlight || Boolean(userNotes)
+            const showDeliveryRegistration =
+              st === 'delivered' &&
+              deliveryPipelineEnabled &&
+              merchantEntregadoresEnabled(plan) &&
+              isDeliveryFlowOrder(o) &&
+              !orderIdsComEntrega.has(o.id)
+            const showManualPrintAction =
+              showManualComandaPrint && canPrintComandaStatus(st)
+            const showGeneralWhatsapp =
+              st !== 'ready' && st !== 'confirmed' && Boolean(wa)
+            const hasPrimaryStatusAction =
+              st === 'pending' ||
+              st === 'preparing' ||
+              st === 'ready' ||
+              st === 'confirmed'
+            const hasActions =
+              hasPrimaryStatusAction ||
+              showDeliveryRegistration ||
+              showManualPrintAction ||
+              showGeneralWhatsapp
             const primaryButtonClass =
-              'inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-[var(--dash-primary)] px-3.5 text-xs font-semibold text-white shadow-sm shadow-[var(--dash-primary)]/15 transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50'
+              'inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-[#0f172a] px-3.5 text-xs font-semibold text-white shadow-sm shadow-black/[0.08] transition hover:bg-[#1e293b] disabled:cursor-not-allowed disabled:opacity-50'
             const secondaryButtonClass =
-              'inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-[#e2e8f0] bg-white px-3 text-xs font-medium text-[#64748b] transition hover:border-[#cbd5e1] hover:bg-[#f8fafc] disabled:cursor-not-allowed disabled:opacity-50'
+              'inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-[#e2e8f0] bg-white px-3 text-xs font-semibold text-[#475569] transition hover:border-[#cbd5e1] hover:bg-[#f8fafc] hover:text-[#0f172a] disabled:cursor-not-allowed disabled:opacity-50'
 
             return (
               <li
@@ -953,11 +1048,11 @@ export function OrdersClient({
                 data-order-card
                 data-status={st ?? 'unknown'}
                 aria-label={`Pedido ${ref}, ${statusLabel(st, deliveryPipelineEnabled)}`}
-                className={`group overflow-hidden rounded-xl bg-white shadow-[0_1px_2px_rgba(15,23,42,0.05)] transition hover:shadow-[0_4px_16px_rgba(15,23,42,0.08)] ${statusCardSurfaceClass(st)} ${
+                className={`group overflow-hidden rounded-2xl bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04),0_10px_24px_rgba(15,23,42,0.035)] transition hover:-translate-y-px hover:shadow-[0_2px_4px_rgba(15,23,42,0.05),0_16px_34px_rgba(15,23,42,0.07)] ${statusCardSurfaceClass(st)} ${
                   st === 'cancelled' ? 'opacity-70' : ''
                 }`}
               >
-                <div id={`order-details-${o.id}`} className="px-4 py-3">
+                <div id={`order-details-${o.id}`} className="px-4 py-3.5">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex flex-wrap items-center gap-x-2 gap-y-1">
                       <span className="text-[15px] font-semibold tracking-tight text-[#0f172a]">
@@ -978,24 +1073,24 @@ export function OrdersClient({
                     </span>
                   </div>
 
-                  <p className="mt-1 line-clamp-1 text-[13px] leading-5 text-[#64748b]">
+                  <p className="mt-1.5 line-clamp-1 text-[13px] leading-5 text-[#475569]">
                     {itemsLine}
                   </p>
 
-                  <p className="mt-1.5 text-[12px] font-medium text-[#94a3b8]">
+                  <p className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12px] font-medium text-[#94a3b8]">
                     <span>{relativeTimePt(o.created_at)}</span>
-                    <span className="mx-1.5 text-[#e2e8f0]">·</span>
+                    <span className="text-[#e2e8f0]">·</span>
                     <span>{channelLabel}</span>
                     {payment !== '—' ? (
                       <>
-                        <span className="mx-1.5 text-[#e2e8f0]">·</span>
+                        <span className="text-[#e2e8f0]">·</span>
                         <span>{payment}</span>
                       </>
                     ) : null}
                   </p>
 
                   {showAlertPanel ? (
-                    <div className="mt-2.5 space-y-1.5">
+                    <div className="mt-2.5 space-y-1.5 rounded-xl bg-[#f8fafc] px-3 py-2">
                       {showPixProofWarning ? (
                         <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-amber-50 px-2.5 py-2 text-[11px] font-medium text-amber-900">
                           <span>
@@ -1038,6 +1133,7 @@ export function OrdersClient({
                     </div>
                   ) : null}
 
+                  {hasActions ? (
                   <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#f1f5f9] pt-3">
                     {st === 'pending' ? (
                       <>
@@ -1074,12 +1170,7 @@ export function OrdersClient({
                         <button
                           type="button"
                           disabled={busy}
-                          onClick={() =>
-                            void patchStatus(
-                              o.id,
-                              deliveryPipelineEnabled ? 'confirmed' : 'delivered'
-                            )
-                          }
+                          onClick={() => onDispatchForDelivery(o)}
                           className={primaryButtonClass}
                         >
                           {deliveryPipelineEnabled
@@ -1122,11 +1213,7 @@ export function OrdersClient({
                         ) : null}
                       </>
                     ) : null}
-                    {st === 'delivered' &&
-                    deliveryPipelineEnabled &&
-                    merchantEntregadoresEnabled(plan) &&
-                    isDeliveryFlowOrder(o) &&
-                    !orderIdsComEntrega.has(o.id) ? (
+                    {showDeliveryRegistration ? (
                       <button
                         type="button"
                         disabled={busy}
@@ -1136,7 +1223,7 @@ export function OrdersClient({
                         Registar entrega
                       </button>
                     ) : null}
-                    {showManualComandaPrint && canPrintComandaStatus(st) ? (
+                    {showManualPrintAction ? (
                       <button
                         type="button"
                         disabled={thermalBusy}
@@ -1148,7 +1235,7 @@ export function OrdersClient({
                         {thermalBusy ? '…' : 'Comanda'}
                       </button>
                     ) : null}
-                    {st !== 'ready' && st !== 'confirmed' && wa ? (
+                    {showGeneralWhatsapp && wa ? (
                       <a
                         href={wa}
                         target="_blank"
@@ -1160,6 +1247,7 @@ export function OrdersClient({
                       </a>
                     ) : null}
                   </div>
+                  ) : null}
                 </div>
               </li>
             )
@@ -1183,7 +1271,9 @@ export function OrdersClient({
               const title =
                 deliveryModal.mode === 'late'
                   ? `Registar entrega — ${ref}`
-                  : `Confirmar entrega — ${ref}`
+                  : deliveryModal.mode === 'dispatch'
+                    ? `Despachar pedido — ${ref}`
+                    : `Confirmar entrega — ${ref}`
               return (
                 <>
                   <h3 className="text-lg font-bold text-[#1a1614]">{title}</h3>
@@ -1232,6 +1322,8 @@ export function OrdersClient({
                         </label>
                       ) : null}
 
+                      {deliveryModal.mode !== 'dispatch' ? (
+                      <>
                       <label className="mt-4 block text-xs font-medium text-[#6b7280]">
                         Valor da corrida (R$)
                         <input
@@ -1310,6 +1402,14 @@ export function OrdersClient({
                           className="mt-1 block w-full rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm"
                         />
                       </label>
+                      </>
+                      ) : (
+                        <p className="mt-4 rounded-xl border border-[#e8ecf1] bg-[#f8fafc] px-3 py-2.5 text-xs text-[#64748b]">
+                          O entregador será vinculado ao pedido e aparecerá em{' '}
+                          <strong>Entregadores → Na rua</strong>. Os valores da corrida
+                          são registados ao marcar como entregue.
+                        </p>
+                      )}
 
                       <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                         <button
@@ -1320,7 +1420,16 @@ export function OrdersClient({
                         >
                           Cancelar
                         </button>
-                        {deliveryModal.mode === 'on_deliver' ? (
+                        {deliveryModal.mode === 'dispatch' ? (
+                          <button
+                            type="button"
+                            disabled={delSubmitting}
+                            onClick={() => void submitDispatchModal()}
+                            className="rounded-xl bg-[var(--dash-primary)] px-4 py-2.5 text-sm font-semibold text-white shadow-sm disabled:opacity-50"
+                          >
+                            {delSubmitting ? 'A despachar…' : 'Despachar pedido'}
+                          </button>
+                        ) : deliveryModal.mode === 'on_deliver' ? (
                           <button
                             type="button"
                             disabled={delSubmitting}
@@ -1330,6 +1439,7 @@ export function OrdersClient({
                             Pular por agora
                           </button>
                         ) : null}
+                        {deliveryModal.mode !== 'dispatch' ? (
                         <button
                           type="button"
                           disabled={delSubmitting}
@@ -1338,6 +1448,7 @@ export function OrdersClient({
                         >
                           {delSubmitting ? 'A guardar…' : 'Confirmar entrega'}
                         </button>
+                        ) : null}
                       </div>
                     </>
                   )}

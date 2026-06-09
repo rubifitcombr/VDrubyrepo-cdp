@@ -96,7 +96,7 @@ export default async function DashboardHub() {
     Number(showMesas) +
     Number(showComandas) +
     Number(showDigitalMenu) +
-    1
+    2
 
   const gridClass =
     showBalcao && centerTileCount > 0

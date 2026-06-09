@@ -6,7 +6,9 @@ import {
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
 import { getUser } from '@/services/auth.server'
 import { deleteEntregaById, insertEntrega } from '@/services/entregas.server'
+import { setEntregadorStatusOperacional } from '@/services/store-entregadores.server'
 import { createClient } from '@/lib/supabase/server'
+import { ORDER_SELECT, mapStoreOrderRow } from '@/lib/store-order'
 
 const ALLOWED_BEFORE = new Set(['confirmed'])
 
@@ -60,7 +62,7 @@ export async function POST(req: NextRequest) {
 
   const { data: order, error: fetchErr } = await supabase
     .from('orders')
-    .select('id, status, store_id')
+    .select('id, status, store_id, entregador_id, entregador_nome, delivery_fee')
     .eq('id', orderId)
     .eq('store_id', storeId)
     .maybeSingle()
@@ -100,18 +102,13 @@ export async function POST(req: NextRequest) {
   const entId =
     typeof body.entregadorId === 'string' && body.entregadorId.trim()
       ? body.entregadorId.trim()
-      : null
+      : typeof (order as { entregador_id?: string }).entregador_id === 'string'
+        ? (order as { entregador_id: string }).entregador_id
+        : null
   const avulso =
     typeof body.entregadorNomeAvulso === 'string'
       ? body.entregadorNomeAvulso.trim()
       : ''
-
-  if (!entId && !avulso) {
-    return NextResponse.json(
-      { error: 'Seleciona um entregador ou indica nome avulso.' },
-      { status: 400 }
-    )
-  }
 
   const valorCorrida = parseMoney(body.valorCorrida)
   const clientePagou = body.clientePagouTaxa === true
@@ -142,6 +139,17 @@ export async function POST(req: NextRequest) {
   }
 
   let nomeSnapshot = avulso
+  if (!entId && !avulso) {
+    const orderNome = String((order as { entregador_nome?: string }).entregador_nome ?? '').trim()
+    if (!orderNome) {
+      return NextResponse.json(
+        { error: 'Seleciona um entregador ou indica nome avulso.' },
+        { status: 400 }
+      )
+    }
+    nomeSnapshot = orderNome
+  }
+
   if (entId) {
     const { data: ent } = await supabase
       .from('store_entregadores')
@@ -219,17 +227,19 @@ export async function POST(req: NextRequest) {
     )
   }
 
+  if (entId) {
+    await setEntregadorStatusOperacional(supabase, storeId, entId, 'disponivel')
+  }
+
   const { data: fresh } = await supabase
     .from('orders')
-    .select(
-      'id, customer_name, total, status, created_at, source, delivery_address, payment_method, notes, customer_phone, items_summary, caixa_turno_id, delivery_fee'
-    )
+    .select(ORDER_SELECT)
     .eq('id', orderId)
     .single()
 
   return NextResponse.json({
     ok: true,
-    order: fresh ?? null,
+    order: fresh ? mapStoreOrderRow(fresh as Record<string, unknown>) : null,
     entregaId: insertedId,
   })
 }

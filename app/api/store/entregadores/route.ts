@@ -8,7 +8,10 @@ import {
   updateEntregador,
 } from '@/services/store-entregadores.server'
 import { createClient } from '@/lib/supabase/server'
-import type { EntregadorTipo } from '@/lib/entregas-types'
+import type {
+  EntregadorStatusOperacional,
+  EntregadorTipo,
+} from '@/lib/entregas-types'
 
 export async function GET() {
   const user = await getUser()
@@ -95,6 +98,8 @@ export async function PATCH(req: NextRequest) {
     telefone?: unknown
     tipo?: unknown
     ativo?: unknown
+    status_operacional?: unknown
+    valor_padrao_corrida?: unknown
   }
   try {
     body = (await req.json()) as typeof body
@@ -110,6 +115,8 @@ export async function PATCH(req: NextRequest) {
     telefone: string | null
     tipo: EntregadorTipo
     ativo: boolean
+    status_operacional: EntregadorStatusOperacional
+    valor_padrao_corrida: number
   }> = {}
   if (typeof body.nome === 'string') patch.nome = body.nome
   if (body.telefone === null || typeof body.telefone === 'string') {
@@ -119,6 +126,15 @@ export async function PATCH(req: NextRequest) {
     patch.tipo = body.tipo.toLowerCase() === 'autonomo' ? 'autonomo' : 'fixo'
   }
   if (typeof body.ativo === 'boolean') patch.ativo = body.ativo
+  if (typeof body.status_operacional === 'string') {
+    const s = body.status_operacional.trim().toLowerCase()
+    if (s === 'disponivel' || s === 'em_rota' || s === 'pausado' || s === 'indisponivel') {
+      patch.status_operacional = s
+    }
+  }
+  if (typeof body.valor_padrao_corrida === 'number' && Number.isFinite(body.valor_padrao_corrida)) {
+    patch.valor_padrao_corrida = Math.max(0, Math.round(body.valor_padrao_corrida * 100) / 100)
+  }
 
   const supabase = await createClient()
   try {

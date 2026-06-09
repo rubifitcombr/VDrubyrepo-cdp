@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import {
   IconBag,
   IconCart,
+  IconChartBars,
   IconClipboard,
   IconHome,
   IconKds,
@@ -316,6 +317,12 @@ export function OperationalHubClient({
                   />
                 )
               ) : null}
+              <SideShortcut
+                label="Visão geral do dia"
+                description="Abrir resumo diário, métricas e acompanhamento da operação."
+                icon={IconChartBars}
+                onOpen={() => openShortcut('/dashboard/visao?hub=visao')}
+              />
               <SideShortcut
                 label="Administração"
                 description="Abrir o painel completo com sidebar."
