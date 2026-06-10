@@ -233,12 +233,78 @@ function IconCartNav({ className }: { className?: string }) {
   )
 }
 
-function ProductThumbPlaceholder({ name }: { name: string }) {
-  const initial = name.trim().charAt(0).toUpperCase() || 'P'
-
+function IconArmchair({ className }: { className?: string }) {
   return (
-    <div className="flex h-full w-full items-center justify-center bg-[#f0f2f5] text-lg font-bold text-neutral-500">
-      <span aria-hidden>{initial}</span>
+    <svg
+      className={className}
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+      <path d="M5 11h14a2 2 0 0 1 2 2v4H3v-4a2 2 0 0 1 2-2Z" />
+      <path d="M5 17v3" />
+      <path d="M19 17v3" />
+    </svg>
+  )
+}
+
+function IconAlertTriangle({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+      <path d="M12 9v4" />
+      <path d="M12 17h.01" />
+    </svg>
+  )
+}
+
+function IconPhoto({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <rect width="18" height="18" x="3" y="3" rx="2" />
+      <circle cx="9" cy="9" r="2" />
+      <path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21" />
+    </svg>
+  )
+}
+
+function IconShoppingCart({ className }: { className?: string }) {
+  return <IconCartNav className={className} />
+}
+
+function ProductThumbPlaceholder() {
+  return (
+    <div className="flex h-full w-full items-center justify-center bg-neutral-100 text-neutral-400">
+      <IconPhoto className="h-7 w-7" />
     </div>
   )
 }
@@ -337,13 +403,21 @@ export function StorefrontMenuClient({
   salaoAutoUnavailable?: boolean
   merchantPixConfigured?: boolean
 }) {
-  const { items, itemCount, subtotal, removeItem, setQuantity } = useCart()
+  const { items, itemCount, subtotal, addItem, removeItem, setQuantity } = useCart()
   const searchRef = useRef<HTMLInputElement>(null)
   const [query, setQuery] = useState('')
   const deferredQuery = useDeferredValue(query)
   const [selectedCategory, setSelectedCategory] = useState('Todos')
   const [cartOpen, setCartOpen] = useState(false)
   const [checkoutOpenSignal, setCheckoutOpenSignal] = useState(0)
+  const [autoContextDismissed, setAutoContextDismissed] = useState(() => {
+    if (typeof window === 'undefined') return false
+    try {
+      return window.sessionStorage.getItem(`vyria:auto-chip:${storeSlug}`) === '1'
+    } catch {
+      return false
+    }
+  })
   const [detailProduct, setDetailProduct] =
     useState<StorefrontMenuProduct | null>(null)
 
@@ -389,6 +463,7 @@ export function StorefrontMenuClient({
   const heroSub =
     subtitle?.trim() ||
     'Os melhores pratos da região, com praticidade e sabor.'
+  const autoMode = selfServiceFromQr || salaoAutoUnavailable
 
   const storeStatusLine = useMemo(() => {
     if (!storeOpen) {
@@ -448,6 +523,36 @@ export function StorefrontMenuClient({
     })
   }
 
+  function handleDismissAutoContext() {
+    setAutoContextDismissed(true)
+    try {
+      window.sessionStorage.setItem(`vyria:auto-chip:${storeSlug}`, '1')
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function productQuantity(productId: string) {
+    return items
+      .filter((line) => line.productId === productId)
+      .reduce((sum, line) => sum + line.quantity, 0)
+  }
+
+  function decrementProduct(productId: string) {
+    const line = items.find((item) => item.productId === productId)
+    if (!line) return
+    setQuantity(line.id, line.quantity - 1)
+  }
+
+  function incrementProduct(product: StorefrontMenuProduct) {
+    addItem({
+      productId: product.id,
+      name: product.name,
+      price: product.price,
+      quantity: 1,
+    })
+  }
+
   useEffect(() => {
     if (!cartOpen) return
     const prev = document.body.style.overflow
@@ -465,9 +570,16 @@ export function StorefrontMenuClient({
     return products.some((p) => p.category === cat && p.popular)
   }
 
+  const autoFrameClass =
+    'mx-auto max-w-sm overflow-hidden bg-white shadow-[0_18px_50px_rgba(15,23,42,0.12)] ring-1 ring-black/10 sm:my-4 sm:rounded-[1.4rem]'
+
   return (
     <div
-      className="min-h-dvh bg-neutral-100 pb-[calc(9.5rem+env(safe-area-inset-bottom))]"
+      className={`min-h-dvh ${
+        autoMode
+          ? 'bg-[#f6f3ea] pb-[calc(1rem+env(safe-area-inset-bottom))] sm:py-3'
+          : 'bg-neutral-100 pb-[calc(9.5rem+env(safe-area-inset-bottom))]'
+      }`}
       style={
         {
           ['--store-primary' as string]: theme.primary,
@@ -475,137 +587,243 @@ export function StorefrontMenuClient({
         } as CSSProperties
       }
     >
-      <div className="mx-auto max-w-3xl overflow-visible bg-neutral-100">
-        {salaoAutoUnavailable ? (
-          <div className="mx-3 mt-3 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 sm:mx-4">
-            O link de mesa não está activo neste momento (a loja pode estar em modo garçom).
-            Podes usar o cardápio normal abaixo.
-          </div>
-        ) : null}
-        {selfServiceFromQr ? (
-          <div className="mx-3 mt-3 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-950 sm:mx-4">
-            <strong>Pedido na mesa:</strong> adiciona produtos ao carrinho e finaliza com mesa,
-            nome e telefone.
-          </div>
-        ) : null}
-        {/* Só o bloco da imagem usa overflow-hidden + cantos — a logo fica fora para não ser cortada */}
-        <div className="relative z-0 overflow-hidden rounded-t-3xl">
-          <div
-            className={
-              hasBanner
-                ? 'relative aspect-[5/3] min-h-[188px] w-full sm:min-h-[210px]'
-                : 'relative h-12 w-full sm:h-14'
-            }
-          >
-            {banner ? (
-              <Image
-                src={banner}
-                alt={`Capa do cardápio — ${storeName}`}
-                fill
-                priority
-                className="object-cover"
-                sizes="(max-width: 768px) 100vw, 48rem"
-              />
-            ) : (
+      <div className={autoMode ? autoFrameClass : 'mx-auto max-w-3xl overflow-visible bg-neutral-100'}>
+        {autoMode ? (
+          <>
+            <div className="relative z-0 overflow-hidden bg-neutral-200">
               <div
-                className="absolute inset-0"
-                style={{
-                  background: `linear-gradient(135deg, ${theme.primary} 0%, ${theme.secondary} 100%)`,
-                }}
-              />
-            )}
-            {hasBanner ? (
-              <div
-                className="absolute inset-0 bg-gradient-to-t from-black/40 via-black/10 to-black/15"
-                aria-hidden
-              />
-            ) : null}
-            {hasPromoDay ? (
-              <span
-                className={`absolute inline-flex w-fit items-center gap-1.5 rounded-full font-bold uppercase tracking-wide text-white shadow-md ${
-                  hasBanner
-                    ? 'left-4 top-4 px-3 py-1 text-[11px]'
-                    : 'left-2 top-1.5 px-2 py-0.5 text-[9px] sm:left-3 sm:top-2 sm:text-[10px]'
-                }`}
-                style={{ backgroundColor: theme.primary }}
+                className="relative h-[92px] w-full"
+                style={
+                  banner
+                    ? undefined
+                    : {
+                        background: `linear-gradient(135deg, ${theme.primary} 0%, ${theme.secondary} 100%)`,
+                      }
+                }
               >
-                <IconFlame className="h-3.5 w-3.5 opacity-95" />
-                Promo do dia
-              </span>
-            ) : null}
-          </div>
-        </div>
-
-        {/* Logo centrada na junção banner/cartão: margem negativa = metade da altura (fluxo, sem clip) */}
-        <div
-          className={`relative z-30 flex justify-center ${
-            hasBanner ? '-mt-[48px] sm:-mt-[50px]' : '-mt-[40px] sm:-mt-[44px]'
-          }`}
-        >
-          <div className="relative h-[96px] w-[96px] shrink-0 overflow-hidden rounded-full border-[5px] border-white bg-white shadow-[0_8px_30px_rgba(0,0,0,0.14)] ring-1 ring-black/[0.06] sm:h-[100px] sm:w-[100px]">
-            {logoUrl?.trim() ? (
-              <Image
-                src={logoUrl.trim()}
-                alt={storeName.trim() ? `Logo ${storeName}` : 'Logo'}
-                fill
-                className="object-cover"
-                sizes="100px"
-              />
-            ) : (
-              <div
-                className="flex h-full w-full items-center justify-center text-2xl font-bold text-white sm:text-[26px]"
-                style={{
-                  background: `linear-gradient(135deg, ${theme.primary}, ${theme.secondary})`,
-                }}
-              >
-                {storeName.trim().charAt(0).toUpperCase() || 'L'}
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div
-          className={`relative z-20 rounded-t-3xl bg-white px-4 pb-5 shadow-[0_-8px_32px_rgba(0,0,0,0.08)] sm:px-6 ${
-            hasBanner
-              ? '-mt-[68px] pt-16 sm:-mt-[72px] sm:pt-[3.5rem]'
-              : '-mt-[56px] pt-14 sm:-mt-[60px] sm:pt-[3.25rem]'
-          }`}
-        >
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <h2 className="text-[15px] font-extrabold uppercase leading-snug tracking-wide text-neutral-900 sm:text-base">
-                {storeName}
-              </h2>
-              <div className="mt-2 flex items-center gap-2 text-[13px] font-medium text-neutral-800">
-                <span
-                  className={`h-2 w-2 shrink-0 rounded-full ${
-                    storeOpen ? 'bg-emerald-500' : 'bg-neutral-400'
-                  }`}
+                {banner ? (
+                  <Image
+                    src={banner}
+                    alt={`Capa do cardápio — ${storeName}`}
+                    fill
+                    priority
+                    className="object-cover"
+                    sizes="(max-width: 768px) 100vw, 48rem"
+                  />
+                ) : (
+                  <div
+                    className="absolute inset-0 flex items-center justify-center text-white/80"
+                  >
+                    <IconPhoto className="h-8 w-8 opacity-75" />
+                  </div>
+                )}
+                <div
+                  className="absolute inset-0 bg-gradient-to-t from-black/10 via-transparent to-transparent"
                   aria-hidden
                 />
-                <span>{storeStatusLine}</span>
-              </div>
-              <div className="mt-3.5 flex flex-wrap gap-x-6 gap-y-2 text-[12px] font-semibold text-neutral-600">
-                {offersDelivery ? (
-                  <span className="inline-flex items-center gap-2">
-                    <IconTruck className="shrink-0 text-neutral-500" />
-                    Entrega
+                <div
+                  className="absolute inset-x-0 bottom-0 h-2"
+                  style={{
+                    background: `linear-gradient(90deg, ${theme.primary} 0%, ${theme.secondary} 100%)`,
+                  }}
+                  aria-hidden
+                />
+                {hasPromoDay ? (
+                  <span
+                    className="absolute left-3 top-3 inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-white shadow-md"
+                    style={{ backgroundColor: theme.primary }}
+                  >
+                    <IconFlame className="h-3.5 w-3.5 opacity-95" />
+                    Promo do dia
                   </span>
                 ) : null}
-                <span className="inline-flex items-center gap-2">
-                  <IconStorePickup className="shrink-0 text-neutral-500" />
-                  Retirada
-                </span>
               </div>
-              <p className="mt-3 text-[13px] leading-relaxed text-neutral-500">
-                {heroSub}
-              </p>
             </div>
-            <div className="shrink-0 pt-0.5 text-neutral-300" aria-hidden>
-              <IconChevronRight className="h-5 w-5" />
+
+            <div className="relative z-20 bg-white px-2.5 pb-2 pt-2">
+              <button
+                type="button"
+                onClick={scrollToTop}
+                className="flex w-full items-center gap-2 text-left"
+              >
+                <span
+                  className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full text-xs font-extrabold text-white shadow-sm"
+                  style={{ backgroundColor: theme.primary }}
+                >
+                  {logoUrl?.trim() ? (
+                    <Image
+                      src={logoUrl.trim()}
+                      alt={storeName.trim() ? `Logo ${storeName}` : 'Logo'}
+                      fill
+                      className="object-cover"
+                      sizes="36px"
+                    />
+                  ) : (
+                    storeName.trim().slice(0, 2).toUpperCase() || 'LO'
+                  )}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[12px] font-extrabold leading-tight text-neutral-950">
+                    {storeName}
+                  </span>
+                  <span className="mt-0.5 block truncate text-[10px] font-semibold text-neutral-600">
+                    {storeStatusLine}
+                  </span>
+                </span>
+              </button>
+
+              {!autoContextDismissed ? (
+                <div
+                  className={`mt-2 flex items-center gap-1.5 rounded-full border px-2 py-1.5 text-[10px] font-bold ${
+                    salaoAutoUnavailable
+                      ? 'border-red-200 bg-red-50 text-red-900'
+                      : 'border-[#EBD19A] bg-[#FAEEDA] text-[#633806]'
+                  }`}
+                >
+                  {salaoAutoUnavailable ? (
+                    <IconAlertTriangle className="h-4 w-4 shrink-0" />
+                  ) : (
+                    <IconArmchair className="h-4 w-4 shrink-0" />
+                  )}
+                  <span className="min-w-0 flex-1 truncate">
+                    {salaoAutoUnavailable
+                      ? 'Autoatendimento indisponível — chame o garçom'
+                      : 'Pedido na mesa · Autoatendimento'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleDismissAutoContext}
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-black/5 text-xs leading-none active:bg-black/10"
+                    aria-label="Fechar aviso"
+                  >
+                    ×
+                  </button>
+                </div>
+              ) : null}
             </div>
-          </div>
-        </div>
+          </>
+        ) : (
+          <>
+            {/* Só o bloco da imagem usa overflow-hidden + cantos — a logo fica fora para não ser cortada */}
+            <div className="relative z-0 overflow-hidden rounded-t-3xl">
+              <div
+                className={
+                  hasBanner
+                    ? 'relative aspect-[5/3] min-h-[188px] w-full sm:min-h-[210px]'
+                    : 'relative h-12 w-full sm:h-14'
+                }
+              >
+                {banner ? (
+                  <Image
+                    src={banner}
+                    alt={`Capa do cardápio — ${storeName}`}
+                    fill
+                    priority
+                    className="object-cover"
+                    sizes="(max-width: 768px) 100vw, 48rem"
+                  />
+                ) : (
+                  <div
+                    className="absolute inset-0"
+                    style={{
+                      background: `linear-gradient(135deg, ${theme.primary} 0%, ${theme.secondary} 100%)`,
+                    }}
+                  />
+                )}
+                {hasBanner ? (
+                  <div
+                    className="absolute inset-0 bg-gradient-to-t from-black/40 via-black/10 to-black/15"
+                    aria-hidden
+                  />
+                ) : null}
+                {hasPromoDay ? (
+                  <span
+                    className={`absolute inline-flex w-fit items-center gap-1.5 rounded-full font-bold uppercase tracking-wide text-white shadow-md ${
+                      hasBanner
+                        ? 'left-4 top-4 px-3 py-1 text-[11px]'
+                        : 'left-2 top-1.5 px-2 py-0.5 text-[9px] sm:left-3 sm:top-2 sm:text-[10px]'
+                    }`}
+                    style={{ backgroundColor: theme.primary }}
+                  >
+                    <IconFlame className="h-3.5 w-3.5 opacity-95" />
+                    Promo do dia
+                  </span>
+                ) : null}
+              </div>
+            </div>
+
+            {/* Logo centrada na junção banner/cartão: margem negativa = metade da altura (fluxo, sem clip) */}
+            <div
+              className={`relative z-30 flex justify-center ${
+                hasBanner ? '-mt-[48px] sm:-mt-[50px]' : '-mt-[40px] sm:-mt-[44px]'
+              }`}
+            >
+              <div className="relative h-[96px] w-[96px] shrink-0 overflow-hidden rounded-full border-[5px] border-white bg-white shadow-[0_8px_30px_rgba(0,0,0,0.14)] ring-1 ring-black/[0.06] sm:h-[100px] sm:w-[100px]">
+                {logoUrl?.trim() ? (
+                  <Image
+                    src={logoUrl.trim()}
+                    alt={storeName.trim() ? `Logo ${storeName}` : 'Logo'}
+                    fill
+                    className="object-cover"
+                    sizes="100px"
+                  />
+                ) : (
+                  <div
+                    className="flex h-full w-full items-center justify-center text-2xl font-bold text-white sm:text-[26px]"
+                    style={{
+                      background: `linear-gradient(135deg, ${theme.primary}, ${theme.secondary})`,
+                    }}
+                  >
+                    {storeName.trim().charAt(0).toUpperCase() || 'L'}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div
+              className={`relative z-20 rounded-t-3xl bg-white px-4 pb-5 shadow-[0_-8px_32px_rgba(0,0,0,0.08)] sm:px-6 ${
+                hasBanner
+                  ? '-mt-[68px] pt-16 sm:-mt-[72px] sm:pt-[3.5rem]'
+                  : '-mt-[56px] pt-14 sm:-mt-[60px] sm:pt-[3.25rem]'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-[15px] font-extrabold uppercase leading-snug tracking-wide text-neutral-900 sm:text-base">
+                    {storeName}
+                  </h2>
+                  <div className="mt-2 flex items-center gap-2 text-[13px] font-medium text-neutral-800">
+                    <span
+                      className={`h-2 w-2 shrink-0 rounded-full ${
+                        storeOpen ? 'bg-emerald-500' : 'bg-neutral-400'
+                      }`}
+                      aria-hidden
+                    />
+                    <span>{storeStatusLine}</span>
+                  </div>
+                  <div className="mt-3.5 flex flex-wrap gap-x-6 gap-y-2 text-[12px] font-semibold text-neutral-600">
+                    {offersDelivery ? (
+                      <span className="inline-flex items-center gap-2">
+                        <IconTruck className="shrink-0 text-neutral-500" />
+                        Entrega
+                      </span>
+                    ) : null}
+                    <span className="inline-flex items-center gap-2">
+                      <IconStorePickup className="shrink-0 text-neutral-500" />
+                      Retirada
+                    </span>
+                  </div>
+                  <p className="mt-3 text-[13px] leading-relaxed text-neutral-500">
+                    {heroSub}
+                  </p>
+                </div>
+                <div className="shrink-0 pt-0.5 text-neutral-300" aria-hidden>
+                  <IconChevronRight className="h-5 w-5" />
+                </div>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {hoursMode === 'manual' && !storeOpen ? (
@@ -619,37 +837,69 @@ export function StorefrontMenuClient({
         </div>
       ) : null}
 
-      <header className="sticky top-0 z-20 border-b border-neutral-200/90 bg-white/95 backdrop-blur-md">
-        <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
+      <header
+        className={
+          autoMode
+            ? 'mx-auto max-w-sm border-b border-neutral-200/80 bg-white shadow-sm sm:-mt-4'
+            : 'sticky top-0 z-20 border-b border-neutral-200/90 bg-white/95 backdrop-blur-md'
+        }
+      >
+        <div
+          className={
+            autoMode
+              ? 'mx-auto flex max-w-sm items-center justify-between gap-2 px-2.5 py-1.5'
+              : 'mx-auto flex max-w-3xl items-center justify-between gap-3 px-4 py-3 sm:px-6'
+          }
+        >
           <div className="min-w-0 flex-1">
-            <h1 className="truncate text-[17px] font-bold leading-tight text-neutral-900">
+            <button
+              type="button"
+              onClick={scrollToTop}
+              className="block max-w-full text-left"
+            >
+              <h1
+                className={
+                  autoMode
+                    ? 'sr-only'
+                    : 'truncate text-[17px] font-bold leading-tight text-neutral-900'
+                }
+              >
               {storeName}
-            </h1>
+              </h1>
+            </button>
           </div>
-          <div className="flex shrink-0 items-center gap-1">
+          <div className={autoMode ? 'flex shrink-0 items-center gap-0.5' : 'flex shrink-0 items-center gap-1'}>
             <button
               type="button"
               onClick={() => searchRef.current?.focus()}
-              className="flex h-10 w-10 items-center justify-center rounded-full text-neutral-700 transition-colors hover:bg-neutral-100 active:bg-neutral-200"
+              className={
+                autoMode
+                  ? 'flex h-7 w-7 items-center justify-center rounded-full text-neutral-500 transition-colors active:bg-neutral-100'
+                  : 'flex h-10 w-10 items-center justify-center rounded-full text-neutral-700 transition-colors hover:bg-neutral-100 active:bg-neutral-200'
+              }
               aria-label="Buscar no cardápio"
             >
-              <IconSearch className="h-5 w-5" />
+              <IconSearch className={autoMode ? 'h-4 w-4' : 'h-5 w-5'} />
             </button>
             <button
               type="button"
               onClick={handleShareClick}
-              className="flex h-10 w-10 items-center justify-center rounded-full text-neutral-700 transition-colors hover:bg-neutral-100 active:bg-neutral-200"
+              className={
+                autoMode
+                  ? 'flex h-7 w-7 items-center justify-center rounded-full text-neutral-500 transition-colors active:bg-neutral-100'
+                  : 'flex h-10 w-10 items-center justify-center rounded-full text-neutral-700 transition-colors hover:bg-neutral-100 active:bg-neutral-200'
+              }
               aria-label="Partilhar link do cardápio desta loja"
             >
-              <IconShare className="h-5 w-5" />
+              <IconShare className={autoMode ? 'h-4 w-4' : 'h-5 w-5'} />
             </button>
           </div>
         </div>
 
-        <div className="mx-auto max-w-3xl px-4 pb-3 sm:px-6">
+        <div className={autoMode ? 'mx-auto max-w-sm px-2.5 pb-1.5' : 'mx-auto max-w-3xl px-4 pb-3 sm:px-6'}>
           <label className="relative flex items-center">
             <span className="pointer-events-none absolute left-3.5 text-neutral-400">
-              <IconSearch className="h-[18px] w-[18px]" />
+              <IconSearch className={autoMode ? 'h-3.5 w-3.5' : 'h-[18px] w-[18px]'} />
             </span>
             <input
               ref={searchRef}
@@ -657,14 +907,27 @@ export function StorefrontMenuClient({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Buscar no cardápio…"
-              className="w-full rounded-xl border border-neutral-200 bg-neutral-50 py-2.5 pl-10 pr-3 text-sm text-neutral-900 placeholder:text-neutral-400 outline-none transition-shadow focus:border-neutral-300 focus:bg-white focus:shadow-sm"
+              className={
+                autoMode
+                  ? 'w-full rounded-md border border-neutral-200 bg-neutral-50 py-1.5 pl-8 pr-2 text-xs text-neutral-900 placeholder:text-neutral-400 outline-none transition-shadow focus:border-neutral-300 focus:bg-white focus:shadow-sm'
+                  : 'w-full rounded-xl border border-neutral-200 bg-neutral-50 py-2.5 pl-10 pr-3 text-sm text-neutral-900 placeholder:text-neutral-400 outline-none transition-shadow focus:border-neutral-300 focus:bg-white focus:shadow-sm'
+              }
               autoComplete="off"
             />
           </label>
         </div>
 
-        <div className="border-t border-neutral-100 bg-white">
-          <div className="flex gap-1 overflow-x-auto px-4 pb-0 pt-1 sm:px-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div
+          className={
+            autoMode
+              ? 'sticky top-0 z-10 border-t border-neutral-100 bg-white shadow-sm'
+              : 'border-t border-neutral-100 bg-white'
+          }
+        >
+          <div className="pointer-events-none absolute right-0 top-0 z-[1] flex h-full w-8 items-center justify-end bg-gradient-to-l from-white via-white/85 to-transparent pr-1.5 text-xs font-bold text-neutral-400">
+            →
+          </div>
+          <div className={autoMode ? 'flex snap-x snap-mandatory gap-1.5 overflow-x-auto whitespace-nowrap px-2.5 py-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden' : 'flex snap-x snap-mandatory gap-2 overflow-x-auto whitespace-nowrap px-4 py-2 sm:px-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'}>
             {categories.map((cat) => {
               const active = selectedCategory === cat
               const promoTab = categoryHasPromo(cat)
@@ -673,29 +936,24 @@ export function StorefrontMenuClient({
                   key={cat}
                   type="button"
                   onClick={() => setSelectedCategory(cat)}
-                  className={`relative inline-flex shrink-0 items-center gap-1 rounded-lg px-3 pb-2.5 pt-1 text-[13px] font-semibold transition-colors active:bg-neutral-200/90 ${
+                  className={`relative inline-flex shrink-0 snap-start items-center gap-1 rounded-full font-semibold transition-colors active:bg-neutral-200/90 ${
+                    autoMode ? 'px-2.5 py-1 text-[10px]' : 'px-4 py-2 text-[13px]'
+                  } ${
                     active
-                      ? ''
+                      ? 'text-white shadow-sm'
                       : 'text-neutral-500 hover:text-neutral-800'
                   }`}
-                  style={active ? { color: theme.primary } : undefined}
+                  style={active ? { backgroundColor: theme.primary } : undefined}
                 >
                   {promoTab ? (
                     <IconFlame
                       className="h-3.5 w-3.5 shrink-0 opacity-90"
-                      style={{ color: active ? theme.primary : '#9ca3af' }}
+                      style={{ color: active ? '#ffffff' : '#9ca3af' }}
                     />
                   ) : null}
                   <span className="whitespace-nowrap uppercase tracking-wide">
                     {cat === 'Todos' ? 'Todos' : cat}
                   </span>
-                  {active ? (
-                    <span
-                      className="absolute bottom-0 left-2 right-2 h-[3px] rounded-full"
-                      style={{ backgroundColor: theme.primary }}
-                      aria-hidden
-                    />
-                  ) : null}
                 </button>
               )
             })}
@@ -703,7 +961,7 @@ export function StorefrontMenuClient({
         </div>
       </header>
 
-      <main className="mx-auto max-w-3xl px-4 py-5 sm:px-6">
+      <main className={autoMode ? 'mx-auto max-w-sm bg-white px-2.5 py-2.5' : 'mx-auto max-w-3xl px-4 py-5 sm:px-6'}>
         {products.length === 0 ? (
           <div className="mt-2 rounded-2xl border border-dashed border-neutral-200 bg-neutral-50 px-6 py-16 text-center">
             <p className="text-sm font-medium text-neutral-800">
@@ -718,52 +976,68 @@ export function StorefrontMenuClient({
             Nenhum item encontrado. Tenta outra busca ou categoria.
           </p>
         ) : (
-          <div className="space-y-8">
+          <div className={autoMode ? 'space-y-4' : 'space-y-8'}>
             {sectionBlocks.map((block) => (
-              <section key={block.title} className="scroll-mt-28">
+              <section key={block.title} className={autoMode ? 'scroll-mt-20' : 'scroll-mt-28'}>
                 <h2
-                  className="mb-3 text-lg font-bold tracking-tight sm:text-xl"
+                  className={
+                    autoMode
+                      ? 'mb-1.5 text-[11px] font-extrabold tracking-tight'
+                      : 'mb-3 text-lg font-bold tracking-tight sm:text-xl'
+                  }
                   style={{ color: theme.primary }}
                 >
                   {block.title}
                 </h2>
-                <ul className="divide-y divide-neutral-200 border-t border-neutral-200">
+                <ul className={autoMode ? 'divide-y divide-neutral-100' : 'divide-y divide-neutral-200 border-t border-neutral-200'}>
                   {block.items.map((p) => {
                     const pct =
                       p.originalPrice != null
                         ? discountPercent(p.originalPrice, p.price)
                         : 0
+                    const qtyInCart = productQuantity(p.id)
                     return (
                       <li key={p.id} className="first:pt-0">
-                        <button
-                          type="button"
+                        <div
+                          role="button"
+                          tabIndex={0}
                           onClick={() => setDetailProduct(p)}
-                          className="flex w-full gap-3 py-4 text-left first:pt-3 transition-colors active:bg-neutral-100"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault()
+                              setDetailProduct(p)
+                            }
+                          }}
+                          className={
+                            autoMode
+                              ? 'grid w-full grid-cols-[3rem_minmax(0,1fr)_auto] items-center gap-2 py-2 text-left transition-colors active:bg-neutral-50'
+                              : 'flex w-full gap-3 py-4 text-left first:pt-3 transition-colors active:bg-neutral-100'
+                          }
                         >
-                          <div className="min-w-0 flex-1">
-                            <h3 className="text-[15px] font-bold leading-snug text-neutral-900">
+                          <div className={autoMode ? 'order-2 min-w-0 flex-1' : 'min-w-0 flex-1'}>
+                            <h3 className={autoMode ? 'text-[11px] font-bold leading-snug text-neutral-950' : 'text-[15px] font-bold leading-snug text-neutral-900'}>
                               {p.name}
                             </h3>
                             {p.description ? (
-                              <p className="mt-1 line-clamp-3 text-[13px] leading-relaxed text-neutral-500">
+                              <p className={autoMode ? 'mt-0.5 line-clamp-1 text-[9px] leading-snug text-neutral-600' : 'mt-1 line-clamp-3 text-[13px] leading-relaxed text-neutral-500'}>
                                 {p.description}
                               </p>
                             ) : null}
-                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <div className={autoMode ? 'mt-1 flex flex-wrap items-center gap-1.5' : 'mt-2 flex flex-wrap items-center gap-2'}>
                               {p.originalPrice != null ? (
-                                <span className="text-[13px] tabular-nums text-neutral-400 line-through">
+                                <span className={autoMode ? 'text-[9px] tabular-nums text-neutral-400 line-through' : 'text-[13px] tabular-nums text-neutral-400 line-through'}>
                                   {money.format(p.originalPrice)}
                                 </span>
                               ) : null}
                               <span
-                                className="text-base font-bold tabular-nums"
+                                className={autoMode ? 'text-[11px] font-extrabold tabular-nums' : 'text-base font-bold tabular-nums'}
                                 style={{ color: theme.primary }}
                               >
                                 {money.format(p.price)}
                               </span>
                               {pct > 0 ? (
                                 <span
-                                  className="rounded px-1.5 py-0.5 text-[11px] font-bold text-white"
+                                  className={autoMode ? 'rounded px-1 py-0.5 text-[9px] font-bold text-white' : 'rounded px-1.5 py-0.5 text-[11px] font-bold text-white'}
                                   style={{ backgroundColor: theme.primary }}
                                 >
                                   {pct}%
@@ -771,7 +1045,7 @@ export function StorefrontMenuClient({
                               ) : null}
                             </div>
                           </div>
-                          <div className="relative h-[88px] w-[88px] shrink-0">
+                          <div className={autoMode ? 'order-1 relative h-12 w-12 shrink-0' : 'relative h-[88px] w-[88px] shrink-0'}>
                             <div className="relative h-full w-full overflow-hidden rounded-xl bg-neutral-100 ring-1 ring-neutral-200/80">
                               {p.popular ? (
                                 <span className="absolute left-1 top-1 z-[1] rounded bg-red-500 px-1 py-0.5 text-[9px] font-bold uppercase leading-none text-white">
@@ -784,25 +1058,107 @@ export function StorefrontMenuClient({
                                   alt=""
                                   fill
                                   className="object-cover"
-                                  sizes="88px"
+                                  sizes={autoMode ? '48px' : '88px'}
                                   loading="lazy"
                                   decoding="async"
                                 />
                               ) : (
-                                <ProductThumbPlaceholder name={p.name} />
+                                <ProductThumbPlaceholder />
                               )}
                             </div>
-                            <span
-                              className="absolute -bottom-1 -right-1 flex h-10 w-10 items-center justify-center rounded-full text-xl font-light leading-none text-white shadow-lg ring-2 ring-white"
-                              style={{
-                                background: `linear-gradient(135deg, ${theme.primary}, ${theme.secondary})`,
-                              }}
-                              aria-hidden
-                            >
-                              +
-                            </span>
+                            {!autoMode && qtyInCart > 0 ? (
+                              <span
+                                className={autoMode ? 'absolute -bottom-1 -right-1 inline-flex min-h-7 items-center rounded-full bg-white p-0.5 shadow ring-1 ring-neutral-200' : 'absolute -bottom-2 -right-2 inline-flex min-h-10 items-center rounded-full bg-white p-1 shadow-lg ring-2 ring-white'}
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    decrementProduct(p.id)
+                                  }}
+                                  className={autoMode ? 'flex h-6 w-6 items-center justify-center rounded-full text-sm font-bold text-neutral-700 active:bg-neutral-100' : 'flex h-8 w-8 items-center justify-center rounded-full text-lg font-bold text-neutral-700 active:bg-neutral-100'}
+                                  aria-label={`Remover uma unidade de ${p.name}`}
+                                >
+                                  −
+                                </button>
+                                <span className={autoMode ? 'min-w-5 text-center text-[10px] font-extrabold tabular-nums text-neutral-900' : 'min-w-7 text-center text-sm font-extrabold tabular-nums text-neutral-900'}>
+                                  {qtyInCart}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    incrementProduct(p)
+                                  }}
+                                  className={autoMode ? 'flex h-6 w-6 items-center justify-center rounded-full text-sm font-bold text-white active:brightness-90' : 'flex h-8 w-8 items-center justify-center rounded-full text-lg font-bold text-white active:brightness-90'}
+                                  style={{ backgroundColor: theme.primary }}
+                                  aria-label={`Adicionar mais uma unidade de ${p.name}`}
+                                >
+                                  +
+                                </button>
+                              </span>
+                            ) : !autoMode ? (
+                              <span
+                                className={autoMode ? 'absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 bg-white text-sm font-bold leading-none shadow-sm' : 'absolute -bottom-1 -right-1 flex h-10 w-10 items-center justify-center rounded-full text-xl font-light leading-none text-white shadow-lg ring-2 ring-white'}
+                                style={autoMode ? { color: theme.primary } : { backgroundColor: theme.primary }}
+                                aria-hidden
+                              >
+                                +
+                              </span>
+                            ) : null}
                           </div>
-                        </button>
+                          {autoMode ? (
+                            <div
+                              className="order-3 flex min-w-[2rem] justify-end"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {qtyInCart > 0 ? (
+                                <div className="inline-flex items-center rounded-full border border-neutral-200 bg-white p-0.5 shadow-sm">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      decrementProduct(p.id)
+                                    }}
+                                    className="flex h-6 w-6 items-center justify-center rounded-full text-sm font-bold text-neutral-700 active:bg-neutral-100"
+                                    aria-label={`Remover uma unidade de ${p.name}`}
+                                  >
+                                    −
+                                  </button>
+                                  <span className="min-w-5 text-center text-[10px] font-extrabold tabular-nums text-neutral-900">
+                                    {qtyInCart}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      incrementProduct(p)
+                                    }}
+                                    className="flex h-6 w-6 items-center justify-center rounded-full text-sm font-bold text-white active:brightness-90"
+                                    style={{ backgroundColor: theme.primary }}
+                                    aria-label={`Adicionar mais uma unidade de ${p.name}`}
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    incrementProduct(p)
+                                  }}
+                                  className="flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 bg-white text-base font-bold shadow-sm active:bg-neutral-100"
+                                  style={{ color: theme.primary }}
+                                  aria-label={`Adicionar ${p.name}`}
+                                >
+                                  +
+                                </button>
+                              )}
+                            </div>
+                          ) : null}
+                        </div>
                       </li>
                     )
                   })}
@@ -812,7 +1168,7 @@ export function StorefrontMenuClient({
           </div>
         )}
 
-        {locationEnabled ? (
+        {!autoMode && locationEnabled ? (
           <section className="mt-10 rounded-2xl border border-neutral-200 bg-[#f8fafc] p-4 sm:p-5">
             <div className="flex items-center gap-2">
               <IconMapPin className="h-5 w-5 text-neutral-700" />
@@ -847,12 +1203,14 @@ export function StorefrontMenuClient({
           </section>
         ) : null}
 
+        {!autoMode ? (
         <div className="mt-12 flex justify-center pb-2">
           <PublicSlugPathPill
             slug={storeSlug}
             className="max-w-[min(100%,18rem)] shadow-sm"
           />
         </div>
+        ) : null}
       </main>
 
       {detailProduct ? (
@@ -1044,11 +1402,8 @@ export function StorefrontMenuClient({
         </div>
       ) : null}
 
-      <div
-        id="checkout"
-        className="fixed bottom-0 left-0 right-0 z-30 border-t border-neutral-200 bg-white pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_24px_rgba(0,0,0,0.06)]"
-      >
-        <div className="mx-auto max-w-lg px-3 pt-3">
+      {autoMode ? (
+        <>
           <WhatsAppCheckoutButton
             storeName={storeName}
             storeSlug={storeSlug}
@@ -1065,41 +1420,96 @@ export function StorefrontMenuClient({
             openSignal={checkoutOpenSignal}
             dineInSelfService={selfServiceFromQr}
             merchantPixConfigured={merchantPixConfigured}
+            primaryColor={theme.primary}
+            hideTrigger
           />
-        </div>
-        <nav
-          className="mx-auto grid max-w-lg grid-cols-2 border-t border-neutral-100 px-2 pb-1 pt-0.5"
-          aria-label="Navegação principal"
-        >
-          <button
-            type="button"
-            onClick={scrollToTop}
-            className="flex min-h-[48px] flex-col items-center justify-center gap-0.5 rounded-xl py-2 text-[11px] font-semibold transition-colors active:bg-neutral-200/90"
-            style={{ color: theme.primary }}
-          >
-            <IconHome className="h-6 w-6" style={{ color: theme.primary }} />
-            Início
-          </button>
-          <button
-            type="button"
-            onClick={() => setCartOpen(true)}
-            className="relative flex min-h-[48px] flex-col items-center justify-center gap-0.5 rounded-xl py-2 text-[11px] font-semibold text-neutral-400 transition-colors hover:text-neutral-600 active:bg-neutral-200/90 active:text-neutral-600"
-          >
-            <span className="relative inline-flex">
-              <IconCartNav className="h-6 w-6" />
-              {itemCount > 0 ? (
-                <span
-                  className="absolute -right-2 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold leading-none text-white"
-                  style={{ backgroundColor: theme.primary }}
+          {itemCount > 0 && selfServiceFromQr ? (
+            <div
+              id="checkout"
+              className="sticky bottom-0 z-30 border-t border-neutral-300 bg-white pb-[env(safe-area-inset-bottom)]"
+            >
+              <div className="mx-auto grid h-14 max-w-sm grid-cols-[1fr_auto_auto] items-center gap-2 px-2.5">
+                <div className="flex min-w-0 items-center gap-1.5 text-[10px] font-bold leading-tight text-neutral-950">
+                  <IconShoppingCart className="h-4 w-4 shrink-0" />
+                  <span className="min-w-0">
+                    <span className="block">{itemCount}</span>
+                    <span className="block">{itemCount === 1 ? 'item' : 'itens'}</span>
+                  </span>
+                </div>
+                <div className="text-[10px] font-extrabold leading-tight text-neutral-950">
+                  <span className="block">R$</span>
+                  <span className="block tabular-nums">{money.format(subtotal).replace('R$', '').trim()}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCheckoutOpenSignal((v) => v + 1)}
+                  className="h-11 min-w-[86px] shrink-0 rounded-lg border border-neutral-900 bg-white px-3 text-[12px] font-extrabold leading-tight text-neutral-950 active:bg-neutral-100"
                 >
-                  {itemCount > 99 ? '99+' : itemCount}
-                </span>
-              ) : null}
-            </span>
-            Carrinho
-          </button>
-        </nav>
-      </div>
+                  Finalizar<br />→
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </>
+      ) : (
+        <div
+          id="checkout"
+          className="fixed bottom-0 left-0 right-0 z-30 border-t border-neutral-200 bg-white pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_24px_rgba(0,0,0,0.06)]"
+        >
+          <div className="mx-auto max-w-lg px-3 pt-3">
+            <WhatsAppCheckoutButton
+              storeName={storeName}
+              storeSlug={storeSlug}
+              storePlan={storePlan}
+              phone={phone}
+              deliveryFee={deliveryFee ?? null}
+              deliveryFreeAbove={deliveryFreeAbove ?? null}
+              deliveryMaxKm={deliveryMaxKm ?? null}
+              locationEnabled={locationEnabled}
+              locationLat={locationLat ?? null}
+              locationLng={locationLng ?? null}
+              locationAddress={locationAddress ?? null}
+              locationLabel={locationLabel ?? null}
+              openSignal={checkoutOpenSignal}
+              dineInSelfService={selfServiceFromQr}
+              merchantPixConfigured={merchantPixConfigured}
+              primaryColor={theme.primary}
+            />
+          </div>
+          <nav
+            className="mx-auto grid max-w-lg grid-cols-2 border-t border-neutral-100 px-2 pb-1 pt-0.5"
+            aria-label="Navegação principal"
+          >
+            <button
+              type="button"
+              onClick={scrollToTop}
+              className="flex min-h-[48px] flex-col items-center justify-center gap-0.5 rounded-xl py-2 text-[11px] font-semibold transition-colors active:bg-neutral-200/90"
+              style={{ color: theme.primary }}
+            >
+              <IconHome className="h-6 w-6" style={{ color: theme.primary }} />
+              Início
+            </button>
+            <button
+              type="button"
+              onClick={() => setCartOpen(true)}
+              className="relative flex min-h-[48px] flex-col items-center justify-center gap-0.5 rounded-xl py-2 text-[11px] font-semibold text-neutral-400 transition-colors hover:text-neutral-600 active:bg-neutral-200/90 active:text-neutral-600"
+            >
+              <span className="relative inline-flex">
+                <IconCartNav className="h-6 w-6" />
+                {itemCount > 0 ? (
+                  <span
+                    className="absolute -right-2 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold leading-none text-white"
+                    style={{ backgroundColor: theme.primary }}
+                  >
+                    {itemCount > 99 ? '99+' : itemCount}
+                  </span>
+                ) : null}
+              </span>
+              Carrinho
+            </button>
+          </nav>
+        </div>
+      )}
     </div>
   )
 }

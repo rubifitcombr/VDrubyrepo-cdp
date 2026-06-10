@@ -86,6 +86,8 @@ export function WhatsAppCheckoutButton({
   openSignal,
   dineInSelfService = false,
   merchantPixConfigured = false,
+  primaryColor = '#25D366',
+  hideTrigger = false,
 }: {
   storeName: string
   storeSlug: string
@@ -105,6 +107,8 @@ export function WhatsAppCheckoutButton({
   openSignal?: number
   /** Cardápio aberto com `?auto=1`: checkout só mesa + nome + telefone. */
   dineInSelfService?: boolean
+  primaryColor?: string
+  hideTrigger?: boolean
 }) {
   void _storePlan
   void _deliveryMaxKm
@@ -128,6 +132,18 @@ export function WhatsAppCheckoutButton({
   const [notes, setNotes] = useState('')
   const [fulfillment, setFulfillment] = useState<FulfillmentType | null>(null)
   const [tableMesa, setTableMesa] = useState('')
+  const [dineInStep, setDineInStep] = useState<1 | 2>(1)
+  const [dineInFieldErrors, setDineInFieldErrors] = useState<{
+    customerName?: string
+    customerPhone?: string
+    tableMesa?: string
+  }>({})
+  const [dineInSuccess, setDineInSuccess] = useState<{
+    orderId: string
+    orderRef: string
+    table: string
+    whatsappText: string
+  } | null>(null)
   const lastOpenSignalRef = useRef<number | null>(null)
 
   const pixAvailableForCheckout = merchantPixConfigured && !dineInSelfService
@@ -153,6 +169,8 @@ export function WhatsAppCheckoutButton({
     const tid = window.setTimeout(() => {
       setError(null)
       setFulfillment(dineInSelfService ? 'dine_in' : null)
+      setDineInStep(1)
+      setDineInSuccess(null)
       setOpen(true)
     }, 0)
     return () => window.clearTimeout(tid)
@@ -253,6 +271,9 @@ export function WhatsAppCheckoutButton({
     setFulfillment(null)
     setPixStep(null)
     setTableMesa('')
+    setDineInStep(1)
+    setDineInFieldErrors({})
+    setDineInSuccess(null)
   }
 
   function finishCheckoutAfterApi(
@@ -303,12 +324,30 @@ export function WhatsAppCheckoutButton({
 
   function validateDineInCheckout(): string | null {
     const phoneDigits = digitsOnly(customerPhone)
+    const nextErrors: {
+      customerName?: string
+      customerPhone?: string
+      tableMesa?: string
+    } = {}
     if (phoneDigits.length < 10) {
-      return 'Telefone é obrigatório (mínimo 10 dígitos).'
+      nextErrors.customerPhone = 'Telefone é obrigatório (mínimo 10 dígitos).'
     }
-    if (!customerName.trim()) return 'Indica o teu nome.'
-    if (!tableMesa.trim()) return 'Indica o número ou nome da mesa.'
-    return null
+    if (!customerName.trim()) nextErrors.customerName = 'Indica o teu nome.'
+    if (!tableMesa.trim()) nextErrors.tableMesa = 'Indica o número ou nome da mesa.'
+    setDineInFieldErrors(nextErrors)
+    return (
+      nextErrors.customerName ||
+      nextErrors.customerPhone ||
+      nextErrors.tableMesa ||
+      null
+    )
+  }
+
+  function continueDineInCheckout() {
+    setError(null)
+    const validationError = validateDineInCheckout()
+    if (validationError) return
+    setDineInStep(2)
   }
 
   async function submitDeliveryOrder() {
@@ -409,10 +448,13 @@ export function WhatsAppCheckoutButton({
       ]
         .filter(Boolean)
         .join('\n')
-      finishCheckoutAfterApi(
-        { orderId: payload.orderId, pix: payload.pix },
-        finalText
-      )
+      setSubmitting(false)
+      setDineInSuccess({
+        orderId: payload.orderId,
+        orderRef: ref,
+        table: tableMesa.trim(),
+        whatsappText: finalText,
+      })
     } catch (e) {
       setSubmitting(false)
       setError(e instanceof Error ? e.message : 'Erro ao finalizar pedido.')
@@ -569,8 +611,317 @@ export function WhatsAppCheckoutButton({
     }
   }
 
+  if (dineInSelfService) {
+    return (
+      <>
+        {!hideTrigger ? (
+          <button
+            type="button"
+            onClick={() => {
+              setError(null)
+              setFulfillment('dine_in')
+              setDineInStep(1)
+              setDineInSuccess(null)
+              setOpen(true)
+            }}
+            disabled={items.length === 0}
+            className="flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3.5 text-sm font-semibold text-white shadow-lg ring-2 ring-offset-2 ring-offset-white transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+            style={{ backgroundColor: primaryColor }}
+          >
+            Pedir na mesa
+          </button>
+        ) : null}
+
+        {open && typeof window !== 'undefined'
+          ? createPortal(
+              <div
+                className="fixed inset-0 z-[100] bg-black/35"
+                role="presentation"
+                onClick={(e) => {
+                  if (e.target === e.currentTarget && !submitting) {
+                    setOpen(false)
+                  }
+                }}
+              >
+                <div className="flex min-h-dvh items-center justify-center p-4">
+                  <div
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="checkout-modal-title"
+                    className="w-full max-w-[320px] overflow-hidden rounded-[1.35rem] border border-neutral-200 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.22)] ring-1 ring-black/5"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {dineInSuccess ? (
+                      <div className="relative px-5 py-6 text-center">
+                        <button
+                          type="button"
+                          onClick={() => setOpen(false)}
+                          className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full text-neutral-400 transition-colors active:bg-neutral-100 active:text-neutral-700"
+                          aria-label="Fechar confirmação"
+                        >
+                          ×
+                        </button>
+                        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#E4F2D6] text-[#537D13]">
+                          <svg
+                            className="h-8 w-8"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2.4"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            aria-hidden
+                          >
+                            <path d="M20 6 9 17l-5-5" />
+                          </svg>
+                        </div>
+                        <h3
+                          id="checkout-modal-title"
+                          className="mt-5 text-sm font-extrabold text-neutral-950"
+                        >
+                          Pedido enviado!
+                        </h3>
+                        <p className="mt-1 text-[11px] font-medium text-neutral-950">
+                          Seu pedido {dineInSuccess.orderRef} foi recebido.
+                        </p>
+                        <p className="text-[11px] font-semibold text-neutral-950">
+                          Mesa {dineInSuccess.table} · aguarde na mesa.
+                        </p>
+                        <div className="mt-5 grid gap-2">
+                          <button
+                            type="button"
+                            onClick={() => openWhatsAppWithText(dineInSuccess.whatsappText)}
+                            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-neutral-900 bg-white px-3 py-2 text-[12px] font-extrabold leading-tight text-neutral-950 active:bg-neutral-100"
+                          >
+                            <svg
+                              className="h-5 w-5"
+                              viewBox="0 0 24 24"
+                              fill="currentColor"
+                              aria-hidden
+                            >
+                              <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347" />
+                            </svg>
+                            Acompanhar pelo WhatsApp
+                          </button>
+                          <button
+                            type="button"
+                            onClick={resetCheckoutModal}
+                            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-neutral-900 bg-white px-3 py-2 text-[12px] font-extrabold leading-tight text-neutral-950 active:bg-neutral-100"
+                          >
+                            ← Fazer mais pedidos
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="px-4 pb-2.5 pt-3.5">
+                          <div className="flex items-start gap-2.5">
+                            <div className="min-w-0">
+                              <p className="text-[9px] font-bold leading-none text-neutral-950">
+                                Passo {dineInStep} de 2
+                              </p>
+                              <h3
+                                id="checkout-modal-title"
+                                className="mt-2 text-[13px] font-extrabold tracking-tight text-neutral-950"
+                              >
+                                {dineInStep === 1
+                                  ? 'Seus dados'
+                                  : 'Revise seu pedido'}
+                              </h3>
+                            </div>
+                            <span className="mt-1.5 h-1 flex-1 rounded-full bg-neutral-200">
+                              <span
+                                className="block h-full rounded-full"
+                                style={{
+                                  width: dineInStep === 1 ? '50%' : '100%',
+                                  backgroundColor: primaryColor,
+                                }}
+                              />
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setOpen(false)}
+                              className="-mr-1 -mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-neutral-400 transition-colors active:bg-neutral-100 active:text-neutral-700"
+                              aria-label="Fechar"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="max-h-[70dvh] overflow-y-auto px-4 pb-3 pt-1">
+                          {dineInStep === 1 ? (
+                            <div className="grid grid-cols-1 gap-2.5">
+                              <label>
+                                <span className="mb-1 block text-[10px] font-bold text-neutral-950">
+                                  Nome <span className="text-red-600">*</span>
+                                </span>
+                                <input
+                                  value={customerName}
+                                  onChange={(e) => {
+                                    setCustomerName(e.target.value)
+                                    setDineInFieldErrors((prev) => ({
+                                      ...prev,
+                                      customerName: undefined,
+                                    }))
+                                  }}
+                                  placeholder="Seu nome"
+                                  autoComplete="name"
+                                  className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm font-semibold text-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] outline-none transition-colors focus:border-[#25D366]"
+                                />
+                                {dineInFieldErrors.customerName ? (
+                                  <p className="mt-1 text-[10px] font-medium text-red-700">
+                                    {dineInFieldErrors.customerName}
+                                  </p>
+                                ) : null}
+                              </label>
+                              <label>
+                                <span className="mb-1 block text-[10px] font-bold text-neutral-950">
+                                  Telefone <span className="text-red-600">*</span>
+                                </span>
+                                <input
+                                  type="tel"
+                                  inputMode="tel"
+                                  value={customerPhone}
+                                  onChange={(e) => {
+                                    setCustomerPhone(e.target.value)
+                                    setDineInFieldErrors((prev) => ({
+                                      ...prev,
+                                      customerPhone: undefined,
+                                    }))
+                                  }}
+                                  placeholder="Ex.: 62999999999"
+                                  autoComplete="tel"
+                                  className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm font-semibold text-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] outline-none transition-colors focus:border-[#25D366]"
+                                />
+                                {dineInFieldErrors.customerPhone ? (
+                                  <p className="mt-1 text-[10px] font-medium text-red-700">
+                                    {dineInFieldErrors.customerPhone}
+                                  </p>
+                                ) : null}
+                              </label>
+                              <label>
+                                <span className="mb-1 block text-[10px] font-bold text-neutral-950">
+                                  Mesa / lugar <span className="text-red-600">*</span>
+                                </span>
+                                <input
+                                  value={tableMesa}
+                                  onChange={(e) => {
+                                    setTableMesa(e.target.value)
+                                    setDineInFieldErrors((prev) => ({
+                                      ...prev,
+                                      tableMesa: undefined,
+                                    }))
+                                  }}
+                                  placeholder="Ex.: 12, Balcão, Varanda 2"
+                                  autoComplete="off"
+                                  className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm font-semibold text-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] outline-none transition-colors focus:border-[#25D366]"
+                                />
+                                {dineInFieldErrors.tableMesa ? (
+                                  <p className="mt-1 text-[10px] font-medium text-red-700">
+                                    {dineInFieldErrors.tableMesa}
+                                  </p>
+                                ) : null}
+                              </label>
+                              <label>
+                                <span className="mb-1 block text-[10px] font-bold text-neutral-950">
+                                  Obs.{' '}
+                                  <span className="font-normal normal-case text-vyria-navy-muted/80">
+                                    (opcional)
+                                  </span>
+                                </span>
+                                <textarea
+                                  value={notes}
+                                  onChange={(e) => setNotes(e.target.value)}
+                                  placeholder="Ex.: sem cebola"
+                                  rows={3}
+                                  className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm font-semibold text-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] outline-none transition-colors focus:border-[#25D366]"
+                                />
+                              </label>
+                            </div>
+                          ) : (
+                            <div className="space-y-3">
+                              <ul className="space-y-1">
+                                {items.map((line) => (
+                                  <li
+                                    key={line.id}
+                                    className="flex items-start justify-between gap-3 text-[10px]"
+                                  >
+                                    <span className="min-w-0 font-semibold text-neutral-950">
+                                      {line.quantity}x {line.name}
+                                    </span>
+                                    <span className="shrink-0 font-extrabold tabular-nums text-neutral-950">
+                                      {money.format(line.price * line.quantity)}
+                                    </span>
+                                  </li>
+                                ))}
+                              </ul>
+                              <p className="text-[10px] font-semibold text-neutral-950">
+                                Mesa {tableMesa.trim()} · {customerName.trim()}
+                              </p>
+                              <div className="border-t border-neutral-300 pt-2">
+                                <p className="flex justify-between text-[12px] font-extrabold text-neutral-950">
+                                  <span>Total</span>
+                                  <span className="tabular-nums">{money.format(subtotal)}</span>
+                                </p>
+                                <p className="mt-2 inline-flex rounded bg-[#EAF8D8] px-2 py-1 text-[10px] font-bold text-[#46620D]">
+                                  Pagamento: acertar no caixa
+                                </p>
+                              </div>
+                            </div>
+                          )}
+
+                          {error ? (
+                            <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                              {error}
+                            </p>
+                          ) : null}
+                        </div>
+
+                        <div className="border-t border-neutral-100 bg-white px-4 py-3.5">
+                          {dineInStep === 1 ? (
+                            <button
+                              type="button"
+                              onClick={continueDineInCheckout}
+                              className="w-full rounded-xl border border-neutral-900 bg-white px-4 py-2.5 text-sm font-extrabold text-neutral-950 shadow-sm active:bg-neutral-100"
+                            >
+                              Continuar →
+                            </button>
+                          ) : (
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setDineInStep(1)}
+                                className="w-full rounded-xl border border-neutral-900 bg-white px-4 py-2.5 text-sm font-extrabold leading-tight text-neutral-950 shadow-sm transition-colors active:bg-neutral-100"
+                              >
+                                ←<br />Voltar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void submitDineInOrder()}
+                                disabled={submitting || items.length === 0}
+                                className="w-full rounded-xl border border-neutral-900 bg-white px-4 py-2.5 text-sm font-extrabold leading-tight text-neutral-950 shadow-sm transition-colors disabled:opacity-60 enabled:active:bg-neutral-100"
+                              >
+                                {submitting ? 'Enviando…' : <>Enviar<br />pedido</>}
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>,
+              document.body
+            )
+          : null}
+      </>
+    )
+  }
+
   return (
     <>
+      {!hideTrigger ? (
       <button
         type="button"
         onClick={() => {
@@ -597,6 +948,7 @@ export function WhatsAppCheckoutButton({
         ) : null}
         {dineInSelfService ? 'Pedir na mesa' : 'Finalizar pedido'}
       </button>
+      ) : null}
 
       {open && typeof window !== 'undefined'
         ? createPortal(
