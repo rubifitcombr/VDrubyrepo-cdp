@@ -592,7 +592,7 @@ export function StorefrontMenuClient({
           <>
             <div className="relative z-0 overflow-hidden bg-neutral-200">
               <div
-                className="relative h-[92px] w-full"
+                className="relative h-[112px] w-full"
                 style={
                   banner
                     ? undefined
@@ -607,7 +607,7 @@ export function StorefrontMenuClient({
                     alt={`Capa do cardápio — ${storeName}`}
                     fill
                     priority
-                    className="object-cover"
+                    className="object-cover object-[center_46%]"
                     sizes="(max-width: 768px) 100vw, 48rem"
                   />
                 ) : (
@@ -1010,34 +1010,34 @@ export function StorefrontMenuClient({
                           }}
                           className={
                             autoMode
-                              ? 'grid w-full grid-cols-[3rem_minmax(0,1fr)_auto] items-center gap-2 py-2 text-left transition-colors active:bg-neutral-50'
+                              ? 'grid w-full grid-cols-[3.75rem_minmax(0,1fr)_auto] items-center gap-2.5 py-2.5 text-left transition-colors active:bg-neutral-50'
                               : 'flex w-full gap-3 py-4 text-left first:pt-3 transition-colors active:bg-neutral-100'
                           }
                         >
                           <div className={autoMode ? 'order-2 min-w-0 flex-1' : 'min-w-0 flex-1'}>
-                            <h3 className={autoMode ? 'text-[11px] font-bold leading-snug text-neutral-950' : 'text-[15px] font-bold leading-snug text-neutral-900'}>
+                            <h3 className={autoMode ? 'text-xs font-bold leading-snug text-neutral-950' : 'text-[15px] font-bold leading-snug text-neutral-900'}>
                               {p.name}
                             </h3>
                             {p.description ? (
-                              <p className={autoMode ? 'mt-0.5 line-clamp-1 text-[9px] leading-snug text-neutral-600' : 'mt-1 line-clamp-3 text-[13px] leading-relaxed text-neutral-500'}>
+                              <p className={autoMode ? 'mt-0.5 line-clamp-1 text-[10px] leading-snug text-neutral-600' : 'mt-1 line-clamp-3 text-[13px] leading-relaxed text-neutral-500'}>
                                 {p.description}
                               </p>
                             ) : null}
-                            <div className={autoMode ? 'mt-1 flex flex-wrap items-center gap-1.5' : 'mt-2 flex flex-wrap items-center gap-2'}>
+                            <div className={autoMode ? 'mt-1.5 flex flex-wrap items-center gap-1.5' : 'mt-2 flex flex-wrap items-center gap-2'}>
                               {p.originalPrice != null ? (
-                                <span className={autoMode ? 'text-[9px] tabular-nums text-neutral-400 line-through' : 'text-[13px] tabular-nums text-neutral-400 line-through'}>
+                                <span className={autoMode ? 'text-[10px] tabular-nums text-neutral-400 line-through' : 'text-[13px] tabular-nums text-neutral-400 line-through'}>
                                   {money.format(p.originalPrice)}
                                 </span>
                               ) : null}
                               <span
-                                className={autoMode ? 'text-[11px] font-extrabold tabular-nums' : 'text-base font-bold tabular-nums'}
+                                className={autoMode ? 'text-xs font-extrabold tabular-nums' : 'text-base font-bold tabular-nums'}
                                 style={{ color: theme.primary }}
                               >
                                 {money.format(p.price)}
                               </span>
                               {pct > 0 ? (
                                 <span
-                                  className={autoMode ? 'rounded px-1 py-0.5 text-[9px] font-bold text-white' : 'rounded px-1.5 py-0.5 text-[11px] font-bold text-white'}
+                                  className={autoMode ? 'rounded px-1 py-0.5 text-[10px] font-bold text-white' : 'rounded px-1.5 py-0.5 text-[11px] font-bold text-white'}
                                   style={{ backgroundColor: theme.primary }}
                                 >
                                   {pct}%
@@ -1045,7 +1045,7 @@ export function StorefrontMenuClient({
                               ) : null}
                             </div>
                           </div>
-                          <div className={autoMode ? 'order-1 relative h-12 w-12 shrink-0' : 'relative h-[88px] w-[88px] shrink-0'}>
+                          <div className={autoMode ? 'order-1 relative h-[60px] w-[60px] shrink-0' : 'relative h-[88px] w-[88px] shrink-0'}>
                             <div className="relative h-full w-full overflow-hidden rounded-xl bg-neutral-100 ring-1 ring-neutral-200/80">
                               {p.popular ? (
                                 <span className="absolute left-1 top-1 z-[1] rounded bg-red-500 px-1 py-0.5 text-[9px] font-bold uppercase leading-none text-white">
@@ -1058,7 +1058,7 @@ export function StorefrontMenuClient({
                                   alt=""
                                   fill
                                   className="object-cover"
-                                  sizes={autoMode ? '48px' : '88px'}
+                                  sizes={autoMode ? '60px' : '88px'}
                                   loading="lazy"
                                   decoding="async"
                                 />
