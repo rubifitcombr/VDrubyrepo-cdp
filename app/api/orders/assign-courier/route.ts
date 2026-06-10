@@ -3,6 +3,7 @@ import { gateMerchantDeliveryPipeline } from '@/lib/merchant-api-gate.server'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
 import { ORDER_SELECT } from '@/lib/store-order'
 import { mapStoreOrderRow } from '@/lib/store-order'
+import { isSlugChannelOrderSource } from '@/lib/slug-channel-orders'
 import { getUser } from '@/services/auth.server'
 import {
   listEntregadoresAtivos,
@@ -62,7 +63,7 @@ export async function POST(req: NextRequest) {
 
   const { data: order, error: fetchErr } = await supabase
     .from('orders')
-    .select('id, status, store_id')
+    .select('id, status, store_id, source')
     .eq('id', orderId)
     .eq('store_id', storeId)
     .maybeSingle()
@@ -72,6 +73,16 @@ export async function POST(req: NextRequest) {
   }
 
   const current = String((order as { status?: string }).status ?? '')
+  const source = String((order as { source?: string | null }).source ?? '')
+  if (!isSlugChannelOrderSource(source)) {
+    return NextResponse.json(
+      {
+        error:
+          'A janela de entregadores aceita apenas pedidos do link público (entrega ou retirada).',
+      },
+      { status: 409 }
+    )
+  }
   if (!ALLOWED_BEFORE.has(current)) {
     return NextResponse.json(
       { error: 'Só é possível despachar pedidos no estado «Pronto».' },

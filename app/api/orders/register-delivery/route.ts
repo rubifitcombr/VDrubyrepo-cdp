@@ -9,6 +9,7 @@ import { deleteEntregaById, insertEntrega } from '@/services/entregas.server'
 import { setEntregadorStatusOperacional } from '@/services/store-entregadores.server'
 import { createClient } from '@/lib/supabase/server'
 import { ORDER_SELECT, mapStoreOrderRow } from '@/lib/store-order'
+import { isSlugChannelOrderSource } from '@/lib/slug-channel-orders'
 
 const ALLOWED_BEFORE = new Set(['confirmed'])
 
@@ -62,7 +63,7 @@ export async function POST(req: NextRequest) {
 
   const { data: order, error: fetchErr } = await supabase
     .from('orders')
-    .select('id, status, store_id, entregador_id, entregador_nome, delivery_fee')
+    .select('id, status, store_id, source, entregador_id, entregador_nome, delivery_fee')
     .eq('id', orderId)
     .eq('store_id', storeId)
     .maybeSingle()
@@ -72,6 +73,16 @@ export async function POST(req: NextRequest) {
   }
 
   const current = String((order as { status?: string }).status ?? '')
+  const source = String((order as { source?: string | null }).source ?? '')
+  if (!isSlugChannelOrderSource(source)) {
+    return NextResponse.json(
+      {
+        error:
+          'A janela de entregadores aceita apenas pedidos do link público (entrega ou retirada).',
+      },
+      { status: 409 }
+    )
+  }
   if (current === 'delivered') {
     return NextResponse.json({ error: 'Pedido já está entregue.' }, { status: 409 })
   }

@@ -10,6 +10,7 @@ import {
   saldoEntregaLinha,
   type StoreEntregadorDTO,
 } from '@/lib/entregas-types'
+import { slugChannelSourcesForSupabaseIn } from '@/lib/slug-channel-orders'
 import { mapStoreOrderRow, ORDER_SELECT } from '@/lib/store-order'
 import { listEntregasForStore } from '@/services/entregas.server'
 import { listEntregadoresForStore } from '@/services/store-entregadores.server'
@@ -105,6 +106,26 @@ function groupBalances(
   return [...map.values()].sort((a, b) => a.nome.localeCompare(b.nome, 'pt'))
 }
 
+async function filterEntregasFromSlugOrders(
+  svc: SupabaseClient,
+  storeId: string,
+  entregas: Awaited<ReturnType<typeof listEntregasForStore>>
+) {
+  const orderIds = [...new Set(entregas.map((e) => e.order_id).filter(Boolean))]
+  if (orderIds.length === 0) return []
+
+  const { data, error } = await svc
+    .from('orders')
+    .select('id')
+    .eq('store_id', storeId)
+    .in('id', orderIds)
+    .in('source', slugChannelSourcesForSupabaseIn())
+
+  if (error || !data) return []
+  const allowed = new Set(data.map((row) => String(row.id)))
+  return entregas.filter((e) => allowed.has(e.order_id))
+}
+
 export async function getDeliveryOpsPayload(
   svc: SupabaseClient,
   storeId: string
@@ -117,12 +138,18 @@ export async function getDeliveryOpsPayload(
     listEntregadoresForStore(svc, storeId),
     listEntregasForStore(svc, storeId, { fromMs }),
   ])
+  const entregasSlugHoje = await filterEntregasFromSlugOrders(
+    svc,
+    storeId,
+    entregasHoje
+  )
 
   const { data: onRouteRows, error: onRouteErr } = await svc
     .from('orders')
     .select(ORDER_SELECT)
     .eq('store_id', storeId)
     .eq('status', 'confirmed')
+    .in('source', slugChannelSourcesForSupabaseIn())
     .order('entrega_despachada_em', { ascending: true, nullsFirst: false })
 
   let missingColumns = false
@@ -165,7 +192,7 @@ export async function getDeliveryOpsPayload(
       !activeCourierIds.has(c.id)
   ).length
 
-  const balances = groupBalances(entregasHoje, entregadores)
+  const balances = groupBalances(entregasSlugHoje, entregadores)
   let saldo_loja_deve = 0
   let saldo_entregador_deve = 0
   for (const g of balances) {
