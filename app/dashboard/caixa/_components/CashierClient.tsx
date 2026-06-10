@@ -50,7 +50,9 @@ function sourceLabel(k: SourceKey, opts?: { proDelivery?: boolean }): string {
   return 'Link de cardápio'
 }
 
-function periodStart(period: 'today' | '7d' | '30d' | 'all'): number {
+type CaixaMetricsPeriod = 'turno' | 'today' | '7d' | '30d' | 'all'
+
+function periodStart(period: Exclude<CaixaMetricsPeriod, 'turno'>): number {
   if (period === 'all') return 0
   const now = Date.now()
   if (period === 'today') {
@@ -134,7 +136,7 @@ export function CashierClient({
   const [turno, setTurno] = useState<CaixaTurnoDTO | null>(initialTurno)
   const [historico, setHistorico] = useState(initialHistorico)
   const [movMap, setMovMap] = useState(initialMovimentacoesPorTurno)
-  const [period, setPeriod] = useState<'today' | '7d' | '30d' | 'all'>('today')
+  const [period, setPeriod] = useState<CaixaMetricsPeriod>('turno')
   const [sourceFilter, setSourceFilter] = useState<'all' | SourceKey>('all')
   const [openingCashInput, setOpeningCashInput] = useState('')
   const [paymentDraftByOrder, setPaymentDraftByOrder] = useState<Record<string, PaymentDraft>>({})
@@ -278,29 +280,6 @@ export function CashierClient({
   )
 
   useEffect(() => {
-    if (!storeId) return
-    const supabase = createClient()
-    const ch = supabase
-      .channel(`cashier-orders-${storeId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'orders',
-          filter: `store_id=eq.${storeId}`,
-        },
-        () => {
-          router.refresh()
-        }
-      )
-      .subscribe()
-    return () => {
-      void supabase.removeChannel(ch)
-    }
-  }, [storeId, router])
-
-  useEffect(() => {
     if (!deliveryPipelineEnabled && sourceFilter === 'menu_link') {
       setSourceFilter('all')
     }
@@ -313,7 +292,11 @@ export function CashierClient({
   }, [caixaProDeliveryOnly, sourceFilter])
 
   const filteredOrders = useMemo(() => {
-    const from = periodStart(period)
+    if (period === 'turno' && (!turno || turno.status !== 'aberto')) return []
+    const from =
+      period === 'turno'
+        ? new Date(turno!.aberto_em).getTime()
+        : periodStart(period)
     return orders.filter((o) => {
       const created = new Date(o.created_at).getTime()
       if (period !== 'all' && (!Number.isFinite(created) || created < from)) return false
@@ -321,7 +304,7 @@ export function CashierClient({
       if (sourceFilter === 'all') return true
       return mapSource(o.source) === sourceFilter
     })
-  }, [orders, period, sourceFilter])
+  }, [orders, period, sourceFilter, turno])
 
   const summary = useMemo(() => {
     const base: Record<SourceKey, { count: number; total: number }> = {
@@ -413,6 +396,67 @@ export function CashierClient({
   useEffect(() => {
     void reloadEntregas()
   }, [reloadEntregas])
+
+  useEffect(() => {
+    if (!storeId) return
+    const supabase = createClient()
+    let refreshTimer: number | null = null
+
+    function scheduleRefresh() {
+      if (refreshTimer) window.clearTimeout(refreshTimer)
+      refreshTimer = window.setTimeout(() => {
+        refreshTimer = null
+        router.refresh()
+        void reloadEntregas()
+      }, 350)
+    }
+
+    const ch = supabase
+      .channel(`cashier-ops-${storeId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'orders',
+          filter: `store_id=eq.${storeId}`,
+        },
+        scheduleRefresh
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'caixas_turnos',
+          filter: `store_id=eq.${storeId}`,
+        },
+        scheduleRefresh
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'caixa_movimentacoes',
+          filter: `store_id=eq.${storeId}`,
+        },
+        scheduleRefresh
+      )
+      .subscribe()
+
+    const poll = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return
+      router.refresh()
+      void reloadEntregas()
+    }, 20000)
+
+    return () => {
+      if (refreshTimer) window.clearTimeout(refreshTimer)
+      window.clearInterval(poll)
+      void supabase.removeChannel(ch)
+    }
+  }, [storeId, router, reloadEntregas])
 
   const entregasTabela = useMemo(() => {
     if (entFilterQuick === 'by_driver' && !entDriverKey) return []
@@ -1495,6 +1539,7 @@ export function CashierClient({
         <div className="flex flex-wrap items-center gap-2">
           {(
             [
+              ['turno', 'Este turno'],
               ['today', 'Hoje'],
               ['7d', 'Últimos 7 dias'],
               ['30d', 'Últimos 30 dias'],

@@ -119,21 +119,6 @@ function formatPctVsPrevious(current: number, previous: number): string | null {
   return 'Igual ao mês anterior'
 }
 
-function formatDayOverDay(
-  current: number,
-  previous: number,
-  suffix: string
-): string | null {
-  if (previous <= 0) {
-    if (current <= 0) return null
-    return `Novo ${suffix}`
-  }
-  const p = Math.round(((current - previous) / previous) * 100)
-  if (p > 0) return `+${p}% ${suffix}`
-  if (p < 0) return `${p}% ${suffix}`
-  return `0% ${suffix}`
-}
-
 export default async function Dashboard() {
   const user = await getUser()
 
@@ -186,17 +171,6 @@ export default async function Dashboard() {
   const alerts = homeData ? buildDashboardAlerts(homeData.activeProducts) : []
   const ov = homeData?.overview
 
-  const avgYesterday =
-    ov && ov.ordersYesterday > 0
-      ? ov.revenueYesterday / ov.ordersYesterday
-      : 0
-  const ticketDayDelta =
-    ov && avgYesterday > 0 && ov.avgTicketToday > 0
-      ? formatDayOverDay(ov.avgTicketToday, avgYesterday, 'vs ontem')
-      : ov && ov.avgTicketToday > 0
-        ? '—'
-        : null
-
   const monthPct = ov
     ? formatPctVsPrevious(ov.monthRevenue, ov.prevMonthRevenue)
     : null
@@ -233,26 +207,14 @@ export default async function Dashboard() {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
-                    Pedidos hoje
+                    Pedidos do turno
                   </p>
                   <p className="mt-2 text-3xl font-bold tabular-nums text-[#1a1614]">
                     {ov.ordersToday}
                   </p>
-                  {formatDayOverDay(
-                    ov.ordersToday,
-                    ov.ordersYesterday,
-                    'vs ontem'
-                  ) ? (
-                    <p className="mt-1 text-xs font-medium text-[var(--dash-success)]">
-                      {formatDayOverDay(
-                        ov.ordersToday,
-                        ov.ordersYesterday,
-                        'vs ontem'
-                      )}
-                    </p>
-                  ) : (
-                    <p className="mt-1 text-xs text-[#9ca3af]">—</p>
-                  )}
+                  <p className="mt-1 text-xs text-[#9ca3af]">
+                    Reseta ao fechar o caixa
+                  </p>
                 </div>
                 <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-red-50 text-red-600">
                   <IconClipboard className="h-6 w-6" />
@@ -264,26 +226,14 @@ export default async function Dashboard() {
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
-                    Faturamento hoje
+                    Faturamento do turno
                   </p>
                   <p className="mt-2 truncate text-2xl font-bold tabular-nums text-[#1a1614] sm:text-3xl">
                     {money.format(ov.revenueToday)}
                   </p>
-                  {formatDayOverDay(
-                    ov.revenueToday,
-                    ov.revenueYesterday,
-                    'vs ontem'
-                  ) ? (
-                    <p className="mt-1 text-xs font-medium text-[var(--dash-success)]">
-                      {formatDayOverDay(
-                        ov.revenueToday,
-                        ov.revenueYesterday,
-                        'vs ontem'
-                      )}
-                    </p>
-                  ) : (
-                    <p className="mt-1 text-xs text-[#9ca3af]">—</p>
-                  )}
+                  <p className="mt-1 text-xs text-[#9ca3af]">
+                    Reseta ao fechar o caixa
+                  </p>
                 </div>
                 <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
                   <IconCurrency className="h-6 w-6" />
@@ -314,18 +264,14 @@ export default async function Dashboard() {
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
-                    Ticket médio hoje
+                    Ticket médio do turno
                   </p>
                   <p className="mt-2 truncate text-2xl font-bold tabular-nums text-[#1a1614] sm:text-3xl">
                     {money.format(ov.avgTicketToday)}
                   </p>
-                  {ticketDayDelta && ticketDayDelta !== '—' ? (
-                    <p className="mt-1 text-xs font-medium text-[var(--dash-success)]">
-                      {ticketDayDelta}
-                    </p>
-                  ) : (
-                    <p className="mt-1 text-xs text-[#9ca3af]">—</p>
-                  )}
+                  <p className="mt-1 text-xs text-[#9ca3af]">
+                    Reseta ao fechar o caixa
+                  </p>
                 </div>
                 <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-pink-50 text-pink-600">
                   <IconTrendUp className="h-6 w-6" />

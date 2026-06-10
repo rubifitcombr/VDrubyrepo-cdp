@@ -76,6 +76,30 @@ function sumTotals(rows: { total: number | string | null }[] | null): number {
   return sum
 }
 
+async function getOpenCashierTurnStartIso(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  storeId: string
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('caixas_turnos')
+    .select('aberto_em')
+    .eq('store_id', storeId)
+    .eq('status', 'aberto')
+    .maybeSingle()
+
+  if (error) {
+    if (/relation|does not exist|schema cache/i.test(error.message)) return null
+    console.error('[dashboard] open cashier turn:', error.message)
+    return null
+  }
+
+  const openedAt =
+    data && typeof data === 'object' && typeof data.aberto_em === 'string'
+      ? data.aberto_em
+      : null
+  return openedAt?.trim() || null
+}
+
 export type DashboardMetrics = {
   ordersToday: number
   revenueToday: number
@@ -98,7 +122,9 @@ export async function getDashboardMetrics(
   if (!storeId) return { ...emptyMetrics }
 
   const supabase = await createClient()
-  const { startIso, endExclusiveIso } = saoPauloDayBounds()
+  const { endExclusiveIso } = saoPauloDayBounds()
+  const operationalStartIso =
+    (await getOpenCashierTurnStartIso(supabase, storeId)) ?? endExclusiveIso
 
   const [
     ordersTodayCountRes,
@@ -111,13 +137,13 @@ export async function getDashboardMetrics(
       .from('orders')
       .select('*', { count: 'exact', head: true })
       .eq('store_id', storeId)
-      .gte('created_at', startIso)
+      .gte('created_at', operationalStartIso)
       .lt('created_at', endExclusiveIso),
     supabase
       .from('orders')
       .select('total')
       .eq('store_id', storeId)
-      .gte('created_at', startIso)
+      .gte('created_at', operationalStartIso)
       .lt('created_at', endExclusiveIso),
     supabase
       .from('products')
@@ -358,10 +384,12 @@ export async function getDashboardHomeData(
 }> {
   const supabase = await createClient()
   const now = new Date()
-  const { startIso, endExclusiveIso } = saoPauloDayBounds(now)
+  const { endExclusiveIso } = saoPauloDayBounds(now)
   const yBounds = saoPauloDayBounds(new Date(now.getTime() - 86400000))
   const monthB = saoPauloMonthPair(now)
   const slugF = options?.slugChannelSourcesOnly
+  const operationalStartIso =
+    (await getOpenCashierTurnStartIso(supabase, storeId)) ?? endExclusiveIso
 
   const [
     ordersRes,
@@ -380,7 +408,7 @@ export async function getDashboardHomeData(
         .from('orders')
         .select('id, created_at, total, status, customer_name')
         .eq('store_id', storeId)
-        .gte('created_at', startIso)
+        .gte('created_at', operationalStartIso)
         .lt('created_at', endExclusiveIso),
       slugF
     )
@@ -396,7 +424,7 @@ export async function getDashboardHomeData(
         .from('orders')
         .select('*', { count: 'exact', head: true })
         .eq('store_id', storeId)
-        .gte('created_at', startIso)
+        .gte('created_at', operationalStartIso)
         .lt('created_at', endExclusiveIso),
       slugF
     ),
@@ -405,7 +433,7 @@ export async function getDashboardHomeData(
         .from('orders')
         .select('total')
         .eq('store_id', storeId)
-        .gte('created_at', startIso)
+        .gte('created_at', operationalStartIso)
         .lt('created_at', endExclusiveIso),
       slugF
     ),

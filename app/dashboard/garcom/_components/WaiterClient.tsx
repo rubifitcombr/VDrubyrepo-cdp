@@ -356,6 +356,29 @@ export function WaiterClient({
     )
   }, [storeId, sortOpenOrders])
 
+  const pullTables = useCallback(async () => {
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from('store_tables')
+      .select('id, name, ambiente, sort_order, active')
+      .eq('store_id', storeId)
+      .eq('active', true)
+      .order('ambiente', { ascending: true })
+      .order('sort_order', { ascending: true })
+      .order('name', { ascending: true })
+
+    if (error || !data) return
+    setTables(
+      (data as Record<string, unknown>[]).map((row) => ({
+        id: String(row.id ?? ''),
+        name: String(row.name ?? '').trim() || '—',
+        ambiente: String(row.ambiente ?? 'Salão').trim() || 'Salão',
+        sort_order: Math.round(Number(row.sort_order) || 0),
+        active: row.active !== false,
+      }))
+    )
+  }, [storeId])
+
   useEffect(() => {
     setOpenOrders((prev) => {
       const byId = new Map<string, StoreOrderRow>()
@@ -403,6 +426,37 @@ export function WaiterClient({
       void supabase.removeChannel(channel)
     }
   }, [storeId, pullOpenOrders])
+
+  useEffect(() => {
+    const supabase = createClient()
+
+    const tablesChannel = supabase
+      .channel(`waiter-tables-${storeId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'store_tables',
+          filter: `store_id=eq.${storeId}`,
+        },
+        () => {
+          void pullTables()
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') void pullTables()
+      })
+
+    const poll = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void pullTables()
+    }, 30000)
+
+    return () => {
+      window.clearInterval(poll)
+      void supabase.removeChannel(tablesChannel)
+    }
+  }, [storeId, pullTables])
 
   const displayNumberById = useMemo(() => {
     const sorted = [...openOrders].sort(

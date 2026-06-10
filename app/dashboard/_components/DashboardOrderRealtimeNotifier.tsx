@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { isSlugChannelOrderSource } from '@/lib/slug-channel-orders'
 
@@ -133,6 +134,7 @@ export function DashboardOrderRealtimeNotifier({
   /** Growth + delivery: só alerta para pedidos do cardápio público (slug/QR). */
   slugChannelSourcesOnly?: boolean
 }) {
+  const router = useRouter()
   const seenIdsRef = useRef<Set<string>>(new Set())
   const notificationsEnabledRef = useRef(true)
 
@@ -144,6 +146,15 @@ export function DashboardOrderRealtimeNotifier({
 
     const supabase = createClient()
     notificationsEnabledRef.current = notificationsEnabled()
+    let refreshTimer: number | null = null
+
+    function scheduleRefresh() {
+      if (refreshTimer) window.clearTimeout(refreshTimer)
+      refreshTimer = window.setTimeout(() => {
+        refreshTimer = null
+        router.refresh()
+      }, 350)
+    }
 
     async function ensurePushSubscription() {
       try {
@@ -231,6 +242,36 @@ export function DashboardOrderRealtimeNotifier({
       .on(
         'postgres_changes',
         {
+          event: '*',
+          schema: 'public',
+          table: 'orders',
+          filter: `store_id=eq.${storeId}`,
+        },
+        scheduleRefresh
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'caixas_turnos',
+          filter: `store_id=eq.${storeId}`,
+        },
+        scheduleRefresh
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'caixa_movimentacoes',
+          filter: `store_id=eq.${storeId}`,
+        },
+        scheduleRefresh
+      )
+      .on(
+        'postgres_changes',
+        {
           event: 'INSERT',
           schema: 'public',
           table: 'orders',
@@ -264,6 +305,7 @@ export function DashboardOrderRealtimeNotifier({
       .subscribe()
 
     return () => {
+      if (refreshTimer) window.clearTimeout(refreshTimer)
       void supabase.removeChannel(channel)
       window.removeEventListener('pointerdown', onInteraction as EventListener)
       window.removeEventListener('touchstart', onInteraction as EventListener)
@@ -276,7 +318,7 @@ export function DashboardOrderRealtimeNotifier({
       )
       w.__vyriaGlobalOrderNotifierActive = false
     }
-  }, [storeId, notifyOnNewOrder, slugChannelSourcesOnly])
+  }, [storeId, notifyOnNewOrder, router, slugChannelSourcesOnly])
 
   return null
 }

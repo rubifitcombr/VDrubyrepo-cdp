@@ -15,9 +15,15 @@ import { getStoreByUser } from '@/services/store.server'
 /** Evita RSC em cache no router do Next ao navegar pelo painel. */
 export const dynamic = 'force-dynamic'
 
-export default async function OrdersPage() {
+export default async function OrdersPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>
+}) {
   const user = await getUser()
   if (!user) return null
+  const params = searchParams ? await searchParams : {}
+  const hubParam = typeof params.hub === 'string' ? params.hub : null
 
   const store = await getStoreByUser(user.id)
   if (!store || typeof store !== 'object' || !('id' in store)) {
@@ -65,6 +71,7 @@ export default async function OrdersPage() {
       plan={plan}
       deliveryPipelineEnabled={deliveryPipelineEnabled}
       slugChannelSourcesOnly={slugChannelSourcesOnly}
+      initialChannelFilter={hubParam === 'comandas' ? 'presencial' : 'delivery'}
     />
   )
 }

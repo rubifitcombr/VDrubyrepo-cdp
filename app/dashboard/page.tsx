@@ -123,6 +123,7 @@ export default async function DashboardHub() {
       digitalMenuHref={digitalMenuHref}
       digitalMenuExternal={!!storeSlug}
       pendingOrders={pendingOrders}
+      slugChannelSourcesOnly={slugChannelSourcesOnly}
       gridClass={gridClass}
       centerTileCount={centerTileCount}
       sideShortcutCount={sideShortcutCount}

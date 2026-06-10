@@ -989,6 +989,7 @@ export function OrdersClient({
   plan,
   deliveryPipelineEnabled = true,
   slugChannelSourcesOnly = false,
+  initialChannelFilter = 'delivery',
 }: {
   initialOrders: StoreOrderRow[]
   storeId: string
@@ -999,13 +1000,15 @@ export function OrdersClient({
   deliveryPipelineEnabled?: boolean
   /** Growth + delivery: só pedidos do cardápio público (slug/QR entrega ou retirada). */
   slugChannelSourcesOnly?: boolean
+  /** Hub `?hub=comandas` abre direto no canal presencial. */
+  initialChannelFilter?: ChannelFilter
 }) {
   const { orders, setOrders, liveOk } = useOrdersRealtime(
     storeId,
     initialOrders,
     slugChannelSourcesOnly
   )
-  const [channelFilter, setChannelFilter] = useState<ChannelFilter>('delivery')
+  const [channelFilter, setChannelFilter] = useState<ChannelFilter>(initialChannelFilter)
   const [showActionQueue, setShowActionQueue] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -1115,22 +1118,25 @@ export function OrdersClient({
   }, [orders])
 
   const channelCounts = useMemo(() => {
+    const isActive = (o: StoreOrderRow) =>
+      o.status !== 'delivered' && o.status !== 'cancelled'
+    const activeOrders = orders.filter(isActive)
     const delivery = orders.filter((o) => !isInPersonOrder(o)).length
     const presencial = orders.filter((o) => isInPersonOrder(o)).length
     const deliveryActive = orders.filter(
-      (o) => !isInPersonOrder(o) && o.status !== 'delivered' && o.status !== 'cancelled'
+      (o) => !isInPersonOrder(o) && isActive(o)
     ).length
     const presencialActive = orders.filter(
-      (o) => isInPersonOrder(o) && o.status !== 'delivered' && o.status !== 'cancelled'
+      (o) => isInPersonOrder(o) && isActive(o)
     ).length
     const lateActive = orders.filter((o) => {
-      if (o.status === 'delivered' || o.status === 'cancelled') return false
+      if (!isActive(o)) return false
       const expected = Math.max(1, o.entrega_prazo_minutos ?? 20)
       return orderAgeMinutes(o.created_at) > expected * 1.2
     }).length
-    const revenue = orders.reduce((sum, o) => sum + (Number(o.total) || 0), 0)
+    const revenue = activeOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0)
     return {
-      all: orders.length,
+      all: activeOrders.length,
       delivery,
       presencial,
       deliveryActive,
@@ -1531,7 +1537,7 @@ export function OrdersClient({
                   </p>
                 </div>
                 <p className="mt-0.5 text-xs font-semibold text-slate-500">
-                  Pedidos hoje
+                  Pedidos ativos
                 </p>
               </div>
               <div className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
@@ -1542,7 +1548,7 @@ export function OrdersClient({
                   </p>
                 </div>
                 <p className="mt-0.5 text-xs font-semibold text-slate-500">
-                  Faturamento
+                  Faturamento ativo
                 </p>
               </div>
               <div className="min-w-0 overflow-hidden rounded-xl border border-orange-100 bg-orange-50/50 px-3 py-2">

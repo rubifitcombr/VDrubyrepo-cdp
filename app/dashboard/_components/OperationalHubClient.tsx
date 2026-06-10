@@ -1,6 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { createClient } from '@/lib/supabase/client'
+import { orderIsVisibleAfterPixConfirmation } from '@/lib/store-order'
+import { slugChannelSourcesForSupabaseIn } from '@/lib/slug-channel-orders'
 import {
   IconBag,
   IconCart,
@@ -153,6 +156,7 @@ export function OperationalHubClient({
   digitalMenuHref,
   digitalMenuExternal,
   pendingOrders,
+  slugChannelSourcesOnly = false,
   gridClass,
   centerTileCount,
   sideShortcutCount,
@@ -171,6 +175,7 @@ export function OperationalHubClient({
   digitalMenuHref: string
   digitalMenuExternal: boolean
   pendingOrders: number
+  slugChannelSourcesOnly?: boolean
   gridClass: string
   centerTileCount: number
   sideShortcutCount: number
@@ -178,10 +183,74 @@ export function OperationalHubClient({
   const [pendingShortcut, setPendingShortcut] = useState<PendingShortcut | null>(
     null
   )
+  const [livePendingOrders, setLivePendingOrders] = useState(pendingOrders)
+
+  useEffect(() => {
+    setLivePendingOrders(pendingOrders)
+  }, [pendingOrders])
 
   useEffect(() => {
     clearHubPinUnlocks(storeId)
   }, [storeId])
+
+  useEffect(() => {
+    if (!storeId) return
+    const supabase = createClient()
+    let disposed = false
+
+    async function refreshPendingCount() {
+      let q = supabase
+        .from('orders')
+        .select('id, payment_method, payment_status')
+        .eq('store_id', storeId)
+        .eq('status', 'pending')
+      if (slugChannelSourcesOnly) {
+        q = q.in('source', slugChannelSourcesForSupabaseIn())
+      }
+      const { data, error } = await q
+      if (!disposed && !error) {
+        setLivePendingOrders(
+          (data ?? []).filter((row) =>
+            orderIsVisibleAfterPixConfirmation({
+              payment_method:
+                typeof row.payment_method === 'string' ? row.payment_method : null,
+              payment_status:
+                typeof row.payment_status === 'string' ? row.payment_status : null,
+            })
+          ).length
+        )
+      }
+    }
+
+    const channel = supabase
+      .channel(`hub-pending-${storeId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'orders',
+          filter: `store_id=eq.${storeId}`,
+        },
+        () => {
+          void refreshPendingCount()
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') void refreshPendingCount()
+      })
+
+    const poll = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return
+      void refreshPendingCount()
+    }, 15000)
+
+    return () => {
+      disposed = true
+      window.clearInterval(poll)
+      void supabase.removeChannel(channel)
+    }
+  }, [storeId, slugChannelSourcesOnly])
 
   function navigateToShortcut(href: string) {
     window.location.assign(href)
@@ -282,7 +351,9 @@ export function OperationalHubClient({
                   label="Comandas"
                   description="Ver pedidos e comandas abertas."
                   icon={IconCart}
-                  badge={pendingOrders > 0 ? String(pendingOrders) : undefined}
+                  badge={
+                    livePendingOrders > 0 ? String(livePendingOrders) : undefined
+                  }
                   onOpen={() => openShortcut('/dashboard/orders?hub=comandas')}
                 />
               ) : null}
