@@ -3,6 +3,7 @@ import 'server-only'
 import type {
   ReportHourRow,
   ReportPaymentMix,
+  ReportFinanceData,
   ReportProductRow,
   ReportPromoSnapshot,
   ReportSeriesPoint,
@@ -87,6 +88,168 @@ const money = new Intl.NumberFormat('pt-BR', {
   currency: 'BRL',
 })
 
+function round2(n: number): number {
+  return Math.round(n * 100) / 100
+}
+
+function emptyFinanceData(missingTable = false): ReportFinanceData {
+  const zero = { receitas: 0, despesas: 0, saldo: 0, contasPendentes: 0 }
+  return {
+    hasData: false,
+    missingTable,
+    today: zero,
+    d7: zero,
+    d30: zero,
+    allPending: 0,
+    recentEntries: [],
+    topPendingSuppliers: [],
+  }
+}
+
+function reportMoney(v: unknown): number {
+  if (typeof v === 'number' && Number.isFinite(v)) return round2(v)
+  if (typeof v === 'string' && v.trim()) {
+    const n = Number(v.replace(',', '.'))
+    return Number.isFinite(n) ? round2(n) : 0
+  }
+  return 0
+}
+
+function isMissingFinanceTable(message: string): boolean {
+  return /financial_entries|suppliers|relation|does not exist|schema cache|42P01/i.test(message)
+}
+
+async function fetchFinanceDataForReports(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  storeId: string
+): Promise<ReportFinanceData> {
+  const [{ data: suppliers, error: suppliersErr }, { data: entries, error: entriesErr }] =
+    await Promise.all([
+      supabase.from('suppliers').select('id, nome, categoria').eq('store_id', storeId),
+      supabase
+        .from('financial_entries')
+        .select('tipo, categoria, supplier_id, descricao, valor, status, created_at')
+        .eq('store_id', storeId)
+        .order('created_at', { ascending: false })
+        .limit(3000),
+    ])
+
+  const errMsg = suppliersErr?.message || entriesErr?.message
+  if (errMsg) {
+    if (isMissingFinanceTable(errMsg)) return emptyFinanceData(true)
+    console.error('[reports] finance:', errMsg)
+    return emptyFinanceData()
+  }
+
+  const supplierRows = (suppliers ?? []) as Record<string, unknown>[]
+  const supplierNames = new Map<string, { nome: string; categoria: string | null }>()
+  for (const s of supplierRows) {
+    const id = String(s.id ?? '')
+    if (!id) continue
+    supplierNames.set(id, {
+      nome: String(s.nome ?? '').trim() || '—',
+      categoria: typeof s.categoria === 'string' && s.categoria.trim() ? s.categoria.trim() : null,
+    })
+  }
+
+  type Entry = {
+    tipo: 'receita' | 'despesa'
+    categoria: string
+    supplierId: string | null
+    descricao: string
+    valor: number
+    status: 'pendente' | 'pago'
+    dateKey: string
+  }
+
+  const mapped: Entry[] = []
+  for (const row of (entries ?? []) as Record<string, unknown>[]) {
+    const tipo = String(row.tipo ?? '').trim().toLowerCase() === 'receita' ? 'receita' : 'despesa'
+    const status = String(row.status ?? '').trim().toLowerCase() === 'pago' ? 'pago' : 'pendente'
+    const created =
+      typeof row.created_at === 'string' && row.created_at
+        ? row.created_at
+        : new Date().toISOString()
+    mapped.push({
+      tipo,
+      categoria: String(row.categoria ?? '').trim() || 'Sem categoria',
+      supplierId:
+        typeof row.supplier_id === 'string' && row.supplier_id.trim()
+          ? row.supplier_id.trim()
+          : null,
+      descricao: String(row.descricao ?? '').trim() || '—',
+      valor: reportMoney(row.valor),
+      status,
+      dateKey: spDateKey(created),
+    })
+  }
+
+  if (mapped.length === 0) return emptyFinanceData()
+
+  const today = spTodayYmd()
+  const summarize = (fromKey: string) => {
+    let receitas = 0
+    let despesas = 0
+    let contasPendentes = 0
+    for (const entry of mapped) {
+      if (entry.dateKey < fromKey || entry.dateKey > today) continue
+      if (entry.tipo === 'receita') receitas += entry.valor
+      else {
+        despesas += entry.valor
+        if (entry.status === 'pendente') contasPendentes += entry.valor
+      }
+    }
+    return {
+      receitas: round2(receitas),
+      despesas: round2(despesas),
+      saldo: round2(receitas - despesas),
+      contasPendentes: round2(contasPendentes),
+    }
+  }
+
+  const pendingBySupplier = new Map<string, number>()
+  let allPending = 0
+  for (const entry of mapped) {
+    if (entry.tipo !== 'despesa' || entry.status !== 'pendente') continue
+    allPending += entry.valor
+    const key = entry.supplierId ?? '__sem_fornecedor__'
+    pendingBySupplier.set(key, round2((pendingBySupplier.get(key) ?? 0) + entry.valor))
+  }
+
+  const topPendingSuppliers = [...pendingBySupplier.entries()]
+    .map(([supplierId, contasPendentes]) => {
+      const supplier = supplierNames.get(supplierId)
+      return {
+        nome: supplier?.nome ?? 'Sem fornecedor',
+        categoria: supplier?.categoria ?? null,
+        contasPendentes,
+      }
+    })
+    .sort((a, b) => b.contasPendentes - a.contasPendentes)
+    .slice(0, 6)
+
+  const recentEntries = mapped.slice(0, 8).map((entry) => ({
+    tipo: entry.tipo,
+    categoria: entry.categoria,
+    fornecedor: entry.supplierId ? supplierNames.get(entry.supplierId)?.nome ?? null : null,
+    descricao: entry.descricao,
+    valor: entry.valor,
+    status: entry.status,
+    dateKey: entry.dateKey,
+  }))
+
+  return {
+    hasData: true,
+    missingTable: false,
+    today: summarize(today),
+    d7: summarize(addCalendarDaysSp(today, -6)),
+    d30: summarize(addCalendarDaysSp(today, -29)),
+    allPending: round2(allPending),
+    recentEntries,
+    topPendingSuppliers,
+  }
+}
+
 async function fetchOrderLines(
   supabase: Awaited<ReturnType<typeof createClient>>,
   orderIds: string[]
@@ -156,6 +319,7 @@ function emptyData(): ReportsDashboardData {
     products: { topByQty: [], topByRevenue: [], slowMovers: [] },
     payment: { pix: 0, card: 0, cash: 0, other: 0, pixPct: 0 },
     promo: null,
+    finance: emptyFinanceData(),
     conversionAvailable: false,
     advanced: undefined,
   }
@@ -168,6 +332,7 @@ export async function getReportsDashboardData(
   if (!storeId) return emptyData()
 
   const supabase = await createClient()
+  const financePromise = fetchFinanceDataForReports(supabase, storeId)
   const lookbackDays = options?.advanced === true ? 70 : 42
   const since = new Date(Date.now() - lookbackDays * 86400000).toISOString()
 
@@ -185,12 +350,13 @@ export async function getReportsDashboardData(
 
   if (error) {
     console.error('[reports] orders:', error.message)
-    return emptyData()
+    return { ...emptyData(), finance: await financePromise }
   }
 
   const orders = (ordRaw ?? []).filter((r) => !isCancelled(r.status as string))
+  const finance = await financePromise
   if (orders.length < 3) {
-    return { ...emptyData(), hasEnoughData: false }
+    return { ...emptyData(), finance, hasEnoughData: false }
   }
 
   const todayKey = spTodayYmd()
@@ -329,6 +495,21 @@ export async function getReportsDashboardData(
     insights.push(`PIX representa cerca de ${pixPct}% do faturamento (últimos 30 dias, por método registado).`)
   }
 
+  if (finance.hasData) {
+    if (finance.d30.saldo < 0) {
+      insights.push(
+        `O financeiro dos últimos 30 dias está negativo em ${money.format(Math.abs(finance.d30.saldo))}.`
+      )
+    } else if (finance.d30.saldo > 0) {
+      insights.push(
+        `O resultado operacional dos últimos 30 dias está positivo em ${money.format(finance.d30.saldo)}.`
+      )
+    }
+    if (finance.allPending > 0) {
+      insights.push(`Há ${money.format(finance.allPending)} em contas pendentes no Financeiro do Caixa.`)
+    }
+  }
+
   if (minC <= 2 && orders.length >= 15) {
     insights.push(`Há pouco movimento às ${deadHourLabel} — pode ser boa janela para promoção.`)
   }
@@ -458,6 +639,11 @@ export async function getReportsDashboardData(
       'PIX domina o mix — cupom ou cashback em app pode fidelizar sem complicar o PDV.'
     )
   }
+  if (finance.hasData && finance.allPending > 0) {
+    recommendations.push(
+      `Revê as contas pendentes no Caixa Financeiro: há ${money.format(finance.allPending)} em aberto.`
+    )
+  }
 
   try {
     const sug = await getPromotionSuggestionsForStore(storeId, {
@@ -510,6 +696,7 @@ export async function getReportsDashboardData(
     products: { topByQty, topByRevenue, slowMovers },
     payment,
     promo,
+    finance,
     conversionAvailable: false,
     advanced,
   }

@@ -141,6 +141,38 @@ function buildPdf(data: ReportsDashboardData): jsPDF {
   ])
   y += 4
 
+  addHeading('Financeiro do Caixa')
+  if (data.finance.missingTable) {
+    addLines(['Migração do Financeiro ainda não aplicada no banco de dados.'])
+  } else if (!data.finance.hasData) {
+    addLines(['Sem lançamentos financeiros cadastrados ainda.'])
+  } else {
+    addLines([
+      `Hoje: receitas ${moneyFmt.format(data.finance.today.receitas)}, despesas ${moneyFmt.format(data.finance.today.despesas)}, saldo ${moneyFmt.format(data.finance.today.saldo)}.`,
+      `7 dias: receitas ${moneyFmt.format(data.finance.d7.receitas)}, despesas ${moneyFmt.format(data.finance.d7.despesas)}, saldo ${moneyFmt.format(data.finance.d7.saldo)}.`,
+      `30 dias: receitas ${moneyFmt.format(data.finance.d30.receitas)}, despesas ${moneyFmt.format(data.finance.d30.despesas)}, saldo ${moneyFmt.format(data.finance.d30.saldo)}.`,
+      `Contas pendentes em aberto: ${moneyFmt.format(data.finance.allPending)}.`,
+    ])
+    if (data.finance.topPendingSuppliers.length > 0) {
+      y = ensureSpace(doc, y, pageH, m, 30)
+      autoTable(doc, {
+        startY: y,
+        head: [['Fornecedor', 'Categoria', 'Contas pendentes']],
+        body: data.finance.topPendingSuppliers.map((s) => [
+          s.nome,
+          s.categoria ?? '—',
+          moneyFmt.format(s.contasPendentes),
+        ]),
+        margin: { left: m, right: m },
+        headStyles: { fillColor: [234, 88, 12], textColor: 255 },
+        styles: { fontSize: 8 },
+        theme: 'striped',
+      })
+      y = nextAfterTable(doc, 10)
+    }
+  }
+  y += 4
+
   addHeading('Horários')
   addLines([
     `Pico: ${data.peakRangeLabel}`,

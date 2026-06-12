@@ -18,6 +18,7 @@ import type { StorePrintingState } from '@/lib/store-printing'
 import type { StoreOrderRow } from '@/lib/store-order'
 import { createClient } from '@/lib/supabase/client'
 import { IconPrinter } from '@/app/dashboard/_components/NavIcons'
+import { FinanceiroView } from './FinanceiroView'
 
 type SourceKey = 'waiter' | 'pdv' | 'menu_link'
 type PaymentDraft = 'cash' | 'pix' | 'card'
@@ -94,25 +95,7 @@ function movTipoLabel(t: CaixaMovimentacaoDTO['tipo']): string {
   return 'Acerto entregador'
 }
 
-export function CashierClient({
-  storeId,
-  storeName,
-  printPaperMm,
-  initialOrders,
-  operatorLabel,
-  initialTurno,
-  initialHistorico,
-  initialMovimentacoesPorTurno,
-  initialEntregadores = [],
-  initialEntregasTurno = [],
-  deliveryPipelineEnabled = true,
-  /** Secção entregas / entregadores e chamadas à API de entregas — Growth+ com pipeline de entregas. */
-  entregasCaixaEnabled = false,
-  caixaProDeliveryOnly = false,
-  showThermalPrint = false,
-  printAgentUrl = '',
-  printing,
-}: {
+type CashierClientProps = {
   storeId: string
   storeName: string
   printPaperMm: PaperMm
@@ -130,7 +113,61 @@ export function CashierClient({
   showThermalPrint?: boolean
   printAgentUrl?: string
   printing: StorePrintingState
-}) {
+}
+
+type CashierTab = 'operacao' | 'financeiro'
+
+export function CashierClient(props: CashierClientProps) {
+  const [activeTab, setActiveTab] = useState<CashierTab>('operacao')
+
+  return (
+    <div className="mx-auto w-full max-w-7xl pb-10">
+      <div className="mb-5 inline-flex rounded-2xl border border-[var(--card-border)] bg-white p-1 shadow-sm">
+        {(
+          [
+            ['operacao', 'Operação'],
+            ['financeiro', 'Financeiro'],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setActiveTab(id)}
+            className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
+              activeTab === id
+                ? 'bg-[var(--dash-primary)] text-white shadow-sm'
+                : 'text-[#374151] hover:bg-[#f9fafb]'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'operacao' ? <OperacaoView {...props} /> : <FinanceiroView storeId={props.storeId} />}
+    </div>
+  )
+}
+
+function OperacaoView({
+  storeId,
+  storeName,
+  printPaperMm,
+  initialOrders,
+  operatorLabel,
+  initialTurno,
+  initialHistorico,
+  initialMovimentacoesPorTurno,
+  initialEntregadores = [],
+  initialEntregasTurno = [],
+  deliveryPipelineEnabled = true,
+  /** Secção entregas / entregadores e chamadas à API de entregas — Growth+ com pipeline de entregas. */
+  entregasCaixaEnabled = false,
+  caixaProDeliveryOnly = false,
+  showThermalPrint = false,
+  printAgentUrl = '',
+  printing,
+}: CashierClientProps) {
   const router = useRouter()
   const [orders, setOrders] = useState(initialOrders)
   const [turno, setTurno] = useState<CaixaTurnoDTO | null>(initialTurno)

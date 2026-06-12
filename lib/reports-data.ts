@@ -47,6 +47,40 @@ export type ReportsAdvancedSummary = {
   }
 }
 
+export type ReportFinancePeriodSummary = {
+  receitas: number
+  despesas: number
+  saldo: number
+  contasPendentes: number
+}
+
+export type ReportFinanceEntryRow = {
+  tipo: 'receita' | 'despesa'
+  categoria: string
+  fornecedor: string | null
+  descricao: string
+  valor: number
+  status: 'pendente' | 'pago'
+  dateKey: string
+}
+
+export type ReportFinanceSupplierRow = {
+  nome: string
+  categoria: string | null
+  contasPendentes: number
+}
+
+export type ReportFinanceData = {
+  hasData: boolean
+  missingTable: boolean
+  today: ReportFinancePeriodSummary
+  d7: ReportFinancePeriodSummary
+  d30: ReportFinancePeriodSummary
+  allPending: number
+  recentEntries: ReportFinanceEntryRow[]
+  topPendingSuppliers: ReportFinanceSupplierRow[]
+}
+
 export type ReportsDashboardData = {
   hasEnoughData: boolean
   insights: string[]
@@ -74,6 +108,7 @@ export type ReportsDashboardData = {
   }
   payment: ReportPaymentMix
   promo: ReportPromoSnapshot | null
+  finance: ReportFinanceData
   conversionAvailable: false
   /** Plano Pro — comparativo extra e export PDF quando `reports_advanced` está ativo. */
   advanced?: ReportsAdvancedSummary | null

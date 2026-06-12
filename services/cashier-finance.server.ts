@@ -1,0 +1,194 @@
+import 'server-only'
+
+import type { SupabaseClient } from '@supabase/supabase-js'
+import type {
+  FinancialEntryDTO,
+  FinancialEntryStatus,
+  FinancialEntryType,
+  SupplierDTO,
+} from '@/lib/financial-types'
+
+const SUPPLIER_SELECT = 'id, store_id, nome, telefone, email, categoria, created_at'
+const ENTRY_SELECT =
+  'id, store_id, tipo, categoria, supplier_id, descricao, valor, vencimento, data_pagamento, status, created_at'
+
+function moneyNumber(v: unknown): number {
+  if (typeof v === 'number' && Number.isFinite(v)) return Math.round(v * 100) / 100
+  if (typeof v === 'string' && v.trim()) {
+    const n = Number(v.replace(',', '.'))
+    return Number.isFinite(n) ? Math.round(n * 100) / 100 : 0
+  }
+  return 0
+}
+
+function parseEntryType(v: unknown): FinancialEntryType {
+  return String(v ?? '').trim().toLowerCase() === 'receita' ? 'receita' : 'despesa'
+}
+
+function parseEntryStatus(v: unknown): FinancialEntryStatus {
+  return String(v ?? '').trim().toLowerCase() === 'pago' ? 'pago' : 'pendente'
+}
+
+function cleanOptional(v: unknown): string | null {
+  return typeof v === 'string' && v.trim() ? v.trim() : null
+}
+
+function mapSupplier(row: Record<string, unknown>, pendingBySupplier: Map<string, number>): SupplierDTO {
+  const id = String(row.id ?? '')
+  return {
+    id,
+    store_id: String(row.store_id ?? ''),
+    nome: String(row.nome ?? '').trim() || '—',
+    telefone: cleanOptional(row.telefone),
+    email: cleanOptional(row.email),
+    categoria: cleanOptional(row.categoria),
+    created_at: typeof row.created_at === 'string' ? row.created_at : new Date().toISOString(),
+    contas_pendentes: pendingBySupplier.get(id) ?? 0,
+  }
+}
+
+function mapEntry(row: Record<string, unknown>, supplierNames: Map<string, string>): FinancialEntryDTO {
+  const supplierId = cleanOptional(row.supplier_id)
+  return {
+    id: String(row.id ?? ''),
+    store_id: String(row.store_id ?? ''),
+    tipo: parseEntryType(row.tipo),
+    categoria: String(row.categoria ?? '').trim() || 'Sem categoria',
+    supplier_id: supplierId,
+    supplier_nome: supplierId ? supplierNames.get(supplierId) ?? null : null,
+    descricao: String(row.descricao ?? '').trim() || '—',
+    valor: moneyNumber(row.valor),
+    vencimento: cleanOptional(row.vencimento),
+    data_pagamento: cleanOptional(row.data_pagamento),
+    status: parseEntryStatus(row.status),
+    created_at: typeof row.created_at === 'string' ? row.created_at : new Date().toISOString(),
+  }
+}
+
+export async function getFinanceiroSnapshot(
+  svc: SupabaseClient,
+  storeId: string
+): Promise<{ suppliers: SupplierDTO[]; entries: FinancialEntryDTO[] }> {
+  const [{ data: suppliers, error: suppliersErr }, { data: entries, error: entriesErr }] =
+    await Promise.all([
+      svc.from('suppliers').select(SUPPLIER_SELECT).eq('store_id', storeId).order('nome'),
+      svc
+        .from('financial_entries')
+        .select(ENTRY_SELECT)
+        .eq('store_id', storeId)
+        .order('created_at', { ascending: false }),
+    ])
+
+  if (suppliersErr) throw new Error(suppliersErr.message)
+  if (entriesErr) throw new Error(entriesErr.message)
+
+  const supplierRows = (suppliers ?? []) as Record<string, unknown>[]
+  const entryRows = (entries ?? []) as Record<string, unknown>[]
+  const supplierNames = new Map(
+    supplierRows.map((s) => [String(s.id ?? ''), String(s.nome ?? '').trim() || '—'])
+  )
+  const pendingBySupplier = new Map<string, number>()
+  for (const e of entryRows) {
+    const supplierId = cleanOptional(e.supplier_id)
+    if (!supplierId || parseEntryType(e.tipo) !== 'despesa' || parseEntryStatus(e.status) !== 'pendente') {
+      continue
+    }
+    pendingBySupplier.set(supplierId, (pendingBySupplier.get(supplierId) ?? 0) + moneyNumber(e.valor))
+  }
+
+  return {
+    suppliers: supplierRows.map((s) => mapSupplier(s, pendingBySupplier)),
+    entries: entryRows.map((e) => mapEntry(e, supplierNames)),
+  }
+}
+
+export async function insertSupplier(
+  svc: SupabaseClient,
+  storeId: string,
+  input: { nome: string; telefone: string | null; email: string | null; categoria: string | null }
+): Promise<SupplierDTO> {
+  const { data, error } = await svc
+    .from('suppliers')
+    .insert({
+      store_id: storeId,
+      nome: input.nome.trim(),
+      telefone: input.telefone,
+      email: input.email,
+      categoria: input.categoria,
+    })
+    .select(SUPPLIER_SELECT)
+    .single()
+
+  if (error || !data) throw new Error(error?.message ?? 'Erro ao criar fornecedor.')
+  return mapSupplier(data as Record<string, unknown>, new Map())
+}
+
+export async function upsertFinancialEntry(
+  svc: SupabaseClient,
+  storeId: string,
+  input: {
+    id?: string | null
+    tipo: FinancialEntryType
+    categoria: string
+    supplier_id: string | null
+    descricao: string
+    valor: number
+    vencimento: string | null
+    data_pagamento: string | null
+    status: FinancialEntryStatus
+    created_at?: string | null
+  }
+): Promise<FinancialEntryDTO> {
+  const row = {
+    store_id: storeId,
+    tipo: input.tipo,
+    categoria: input.categoria.trim(),
+    supplier_id: input.supplier_id,
+    descricao: input.descricao.trim(),
+    valor: input.valor,
+    vencimento: input.vencimento,
+    data_pagamento: input.status === 'pago' ? input.data_pagamento ?? new Date().toISOString() : null,
+    status: input.status,
+    ...(input.created_at ? { created_at: input.created_at } : {}),
+  }
+
+  const query = input.id
+    ? svc
+        .from('financial_entries')
+        .update(row)
+        .eq('store_id', storeId)
+        .eq('id', input.id)
+        .select(ENTRY_SELECT)
+        .single()
+    : svc.from('financial_entries').insert(row).select(ENTRY_SELECT).single()
+
+  const { data, error } = await query
+  if (error || !data) throw new Error(error?.message ?? 'Erro ao guardar lançamento.')
+  return mapEntry(data as Record<string, unknown>, new Map())
+}
+
+export async function markFinancialEntryPaid(
+  svc: SupabaseClient,
+  storeId: string,
+  id: string
+): Promise<FinancialEntryDTO> {
+  const { data, error } = await svc
+    .from('financial_entries')
+    .update({ status: 'pago', data_pagamento: new Date().toISOString() })
+    .eq('store_id', storeId)
+    .eq('id', id)
+    .select(ENTRY_SELECT)
+    .single()
+
+  if (error || !data) throw new Error(error?.message ?? 'Erro ao marcar como pago.')
+  return mapEntry(data as Record<string, unknown>, new Map())
+}
+
+export async function deleteFinancialEntry(
+  svc: SupabaseClient,
+  storeId: string,
+  id: string
+): Promise<void> {
+  const { error } = await svc.from('financial_entries').delete().eq('store_id', storeId).eq('id', id)
+  if (error) throw new Error(error.message)
+}

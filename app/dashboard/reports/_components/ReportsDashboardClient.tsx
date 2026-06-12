@@ -22,6 +22,11 @@ const money = new Intl.NumberFormat('pt-BR', {
   currency: 'BRL',
 })
 
+function dateLabel(dateKey: string): string {
+  if (!dateKey || dateKey.length < 10) return '—'
+  return `${dateKey.slice(8, 10)}/${dateKey.slice(5, 7)}`
+}
+
 type PerfRange = 'today' | '7d' | '30d'
 
 function InsightList({ items }: { items: string[] }) {
@@ -88,6 +93,139 @@ function PaymentMixBlock({ data }: { data: ReportsDashboardData }) {
             </BarChart>
           </ResponsiveContainer>
         </div>
+      )}
+    </section>
+  )
+}
+
+function FinanceBlock({ data }: { data: ReportsDashboardData }) {
+  const { finance } = data
+  const periods = [
+    ['Hoje', finance.today],
+    ['7 dias', finance.d7],
+    ['30 dias', finance.d30],
+  ] as const
+
+  return (
+    <section className="rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-sm md:p-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className="text-base font-bold text-[#1a1614] md:text-lg">Financeiro do Caixa</h2>
+          <p className="mt-1 text-xs text-[#6b7280]">
+            Receitas, despesas, saldo operacional e contas pendentes cadastradas na aba Financeiro.
+          </p>
+        </div>
+        <span className="rounded-full bg-[#f3f4f6] px-3 py-1 text-xs font-bold text-[#374151]">
+          Pendentes: {money.format(finance.allPending)}
+        </span>
+      </div>
+
+      {finance.missingTable ? (
+        <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          Aplica a migração do Financeiro para os relatórios exibirem lançamentos e fornecedores.
+        </p>
+      ) : !finance.hasData ? (
+        <p className="mt-4 text-sm text-[#9ca3af]">Sem lançamentos financeiros cadastrados ainda.</p>
+      ) : (
+        <>
+          <div className="mt-5 grid gap-4 md:grid-cols-3">
+            {periods.map(([label, summary]) => (
+              <div key={label} className="rounded-xl border border-[var(--card-border)] bg-[#fafafa] p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">{label}</p>
+                <div className="mt-3 space-y-1.5 text-sm text-[#374151]">
+                  <div className="flex justify-between gap-3">
+                    <span>Receitas</span>
+                    <span className="font-semibold tabular-nums text-emerald-700">
+                      {money.format(summary.receitas)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <span>Despesas</span>
+                    <span className="font-semibold tabular-nums text-red-600">
+                      {money.format(summary.despesas)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between gap-3 border-t border-[var(--card-border)] pt-2">
+                    <span>Saldo</span>
+                    <span
+                      className={`font-bold tabular-nums ${
+                        summary.saldo >= 0 ? 'text-emerald-700' : 'text-red-600'
+                      }`}
+                    >
+                      {money.format(summary.saldo)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between gap-3 text-xs text-[#6b7280]">
+                    <span>Contas pendentes</span>
+                    <span className="font-semibold tabular-nums">
+                      {money.format(summary.contasPendentes)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-5 grid gap-4 lg:grid-cols-2">
+            <div className="rounded-xl border border-[var(--card-border)] bg-white p-4">
+              <h3 className="text-sm font-bold text-[#1a1614]">Fornecedores com pendência</h3>
+              {finance.topPendingSuppliers.length === 0 ? (
+                <p className="mt-3 text-xs text-[#9ca3af]">Nenhuma conta pendente por fornecedor.</p>
+              ) : (
+                <ul className="mt-3 space-y-2">
+                  {finance.topPendingSuppliers.map((supplier) => (
+                    <li
+                      key={`${supplier.nome}-${supplier.contasPendentes}`}
+                      className="flex justify-between gap-3 border-b border-[var(--card-border)] pb-2 text-sm last:border-0 last:pb-0"
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate font-medium text-[#374151]">{supplier.nome}</span>
+                        <span className="text-xs text-[#9ca3af]">{supplier.categoria ?? 'Sem categoria'}</span>
+                      </span>
+                      <span className="shrink-0 font-semibold tabular-nums text-[#1a1614]">
+                        {money.format(supplier.contasPendentes)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="rounded-xl border border-[var(--card-border)] bg-white p-4">
+              <h3 className="text-sm font-bold text-[#1a1614]">Últimos lançamentos</h3>
+              {finance.recentEntries.length === 0 ? (
+                <p className="mt-3 text-xs text-[#9ca3af]">Sem lançamentos recentes.</p>
+              ) : (
+                <ul className="mt-3 space-y-2">
+                  {finance.recentEntries.map((entry, i) => (
+                    <li
+                      key={`${entry.dateKey}-${entry.descricao}-${i}`}
+                      className="flex justify-between gap-3 border-b border-[var(--card-border)] pb-2 text-sm last:border-0 last:pb-0"
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate font-medium text-[#374151]">
+                          {entry.descricao}
+                        </span>
+                        <span className="text-xs text-[#9ca3af]">
+                          {dateLabel(entry.dateKey)} · {entry.categoria}
+                          {entry.fornecedor ? ` · ${entry.fornecedor}` : ''}
+                        </span>
+                      </span>
+                      <span
+                        className={`shrink-0 font-semibold tabular-nums ${
+                          entry.tipo === 'receita' ? 'text-emerald-700' : 'text-red-600'
+                        }`}
+                      >
+                        {entry.tipo === 'despesa' ? '− ' : ''}
+                        {money.format(entry.valor)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </>
       )}
     </section>
   )
@@ -489,10 +627,13 @@ export function ReportsDashboardClient({
       </header>
 
       {!data.hasEnoughData ? (
-        <div className="rounded-2xl border border-dashed border-[var(--card-border)] bg-white px-6 py-14 text-center text-sm text-[#6b7280]">
-          Ainda há poucos pedidos para gerar relatórios. Com pelo menos{' '}
-          <strong>3 pedidos</strong> nos últimos dias, aparecem gráficos e insights aqui.
-        </div>
+        <>
+          <div className="rounded-2xl border border-dashed border-[var(--card-border)] bg-white px-6 py-14 text-center text-sm text-[#6b7280]">
+            Ainda há poucos pedidos para gerar relatórios. Com pelo menos{' '}
+            <strong>3 pedidos</strong> nos últimos dias, aparecem gráficos e insights aqui.
+          </div>
+          <FinanceBlock data={data} />
+        </>
       ) : (
         <>
           <section>
@@ -507,6 +648,8 @@ export function ReportsDashboardClient({
           {data.advanced ? <Rolling30Block advanced={data.advanced} /> : null}
 
           <PaymentMixBlock data={data} />
+
+          <FinanceBlock data={data} />
 
           <div className="grid gap-5 lg:grid-cols-2">
             <TicketBlock data={data} />
