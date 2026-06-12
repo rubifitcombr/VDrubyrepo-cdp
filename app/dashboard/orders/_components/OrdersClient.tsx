@@ -1357,6 +1357,7 @@ export function OrdersClient({
       const json = (await res.json().catch(() => ({}))) as {
         error?: string
         order?: Record<string, unknown>
+        deliveryNotified?: boolean
       }
       if (!res.ok) {
         alert(json.error || 'Não foi possível despachar o pedido.')
@@ -1372,6 +1373,9 @@ export function OrdersClient({
             x.id === o.id ? { ...x, status: 'confirmed' } : x
           )
         )
+      }
+      if (json.deliveryNotified) {
+        flashWaNotice('Aviso de entrega enviado ao cliente por WhatsApp.')
       }
       setDeliveryModal(null)
     } finally {

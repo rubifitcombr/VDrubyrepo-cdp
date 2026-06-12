@@ -94,13 +94,6 @@ const ROWS: Array<{
   Icon: (p: { className?: string }) => ReactNode
 }> = [
   {
-    key: 'auto_whatsapp_confirm',
-    title: 'Mensagem de confirmação',
-    description:
-      'Enviar mensagem automática no WhatsApp quando o pedido for confirmado.',
-    Icon: IconChat,
-  },
-  {
     key: 'auto_accept_orders',
     title: 'Aceitar pedidos automaticamente',
     description:

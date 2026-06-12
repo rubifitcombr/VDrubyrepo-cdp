@@ -2368,16 +2368,7 @@ export function WaiterClient({
                 type="button"
                 onClick={() => {
                   setTableActionSheetOpen(false)
-                  startNewOrderForTable(table, sector, true)
-                }}
-                className="rounded-xl bg-[var(--dash-primary)] py-2.5 text-sm font-semibold text-white"
-              >
-                Novo pedido
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setTableActionSheetOpen(false)
+                  startNewOrderForTable(table, sector, false)
                   setMenuSheetOpen(true)
                 }}
                 className="rounded-xl border border-[var(--card-border)] bg-white py-2.5 text-sm font-semibold text-[#1a1614]"
@@ -2390,9 +2381,9 @@ export function WaiterClient({
                   setTableActionSheetOpen(false)
                   setOrderDrawerOpen(true)
                 }}
-                className="rounded-xl border border-[var(--card-border)] bg-white py-2.5 text-sm font-semibold text-[#1a1614]"
+                className="rounded-xl bg-[var(--dash-primary)] py-2.5 text-sm font-semibold text-white"
               >
-                Pedido
+                Pedidos
               </button>
             </div>
           </div>

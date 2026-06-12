@@ -19,7 +19,6 @@ const STORE_ALLOWED_FIELDS = new Set([
   'store_geo_lng',
   'theme_preset',
   'storefront_banner_url',
-  'auto_whatsapp_confirm',
   'auto_accept_orders',
   'auto_notify_new_order',
   'auto_close_outside_hours',

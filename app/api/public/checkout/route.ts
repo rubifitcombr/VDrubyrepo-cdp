@@ -10,7 +10,6 @@ import { hasOrderPipelineAutomations, hasPixCheckout, parsePlan } from '@/lib/pl
 import { readStorePlano } from '@/lib/store-columns'
 import { publicDineInCheckoutAllowed } from '@/lib/salao-attendance'
 import { parseAutomationsFromStore } from '@/lib/store-automations'
-import { maybeSendOrderAcceptedWhatsApp } from '@/services/order-accepted-whatsapp.server'
 import { sendWebPushNewOrder } from '@/services/web-push.server'
 import { buildWaiterNotes } from '@/lib/waiter-order-notes'
 import { buildItemsSummaryWithLineTotals } from '@/lib/print/items-summary-format'
@@ -200,7 +199,7 @@ export async function POST(req: NextRequest) {
     const { data: store, error: storeErr } = await fetchStoreByPublicSlug(
       supabase,
       slug,
-      'id, name, plan, plano, address, delivery_fee, delivery_free_above, delivery_max_km, store_geo_lat, store_geo_lng, auto_accept_orders, manual_closed, business_hours, auto_whatsapp_confirm, auto_notify_new_order, salao_attendance_mode, operation_mode, pix_enabled, pix_key, pix_key_type, pix_receiver_name, pix_receiver_city'
+      'id, name, plan, plano, address, delivery_fee, delivery_free_above, delivery_max_km, store_geo_lat, store_geo_lng, auto_accept_orders, manual_closed, business_hours, auto_notify_new_order, salao_attendance_mode, operation_mode, pix_enabled, pix_key, pix_key_type, pix_receiver_name, pix_receiver_city'
     )
 
     if (storeErr || !store) {
@@ -468,22 +467,12 @@ export async function POST(req: NextRequest) {
     ) {
       const manualClosed = storeMeta.manual_closed === true
       if (!manualClosed) {
-        const { error: acceptErr } = await supabase
+        await supabase
           .from('orders')
           .update({ status: 'preparing' })
           .eq('id', order.id)
           .eq('store_id', String(storeRow.id))
           .eq('status', 'pending')
-
-        if (!acceptErr) {
-          await maybeSendOrderAcceptedWhatsApp(supabase, {
-            store: storeMeta,
-            storeId: String(storeRow.id),
-            orderId: String(order.id),
-            customerPhone,
-            customerName,
-          })
-        }
       }
     }
 

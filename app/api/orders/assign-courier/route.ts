@@ -10,6 +10,7 @@ import {
   setEntregadorStatusOperacional,
 } from '@/services/store-entregadores.server'
 import { createClient } from '@/lib/supabase/server'
+import { maybeSendOrderOutForDeliveryWhatsApp } from '@/services/order-delivery-whatsapp.server'
 
 const ALLOWED_BEFORE = new Set(['ready'])
 
@@ -63,7 +64,7 @@ export async function POST(req: NextRequest) {
 
   const { data: order, error: fetchErr } = await supabase
     .from('orders')
-    .select('id, status, store_id, source')
+    .select('id, status, store_id, source, customer_phone, customer_name')
     .eq('id', orderId)
     .eq('store_id', storeId)
     .maybeSingle()
@@ -151,6 +152,14 @@ export async function POST(req: NextRequest) {
     await setEntregadorStatusOperacional(supabase, storeId, entId, 'em_rota')
   }
 
+  const deliveryNotified = await maybeSendOrderOutForDeliveryWhatsApp(supabase, {
+    store: gate.ctx.store,
+    storeId,
+    orderId,
+    customerPhone: order.customer_phone as string | null | undefined,
+    customerName: order.customer_name as string | null | undefined,
+  })
+
   const { data: fresh } = await supabase
     .from('orders')
     .select(ORDER_SELECT)
@@ -159,6 +168,7 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     ok: true,
+    deliveryNotified,
     order: fresh ? mapStoreOrderRow(fresh as Record<string, unknown>) : null,
   })
 }

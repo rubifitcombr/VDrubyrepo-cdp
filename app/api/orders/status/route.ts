@@ -2,14 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { gateMerchantMenuKey } from '@/lib/merchant-api-gate.server'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
-import { readStorePlano } from '@/lib/store-columns'
-import { hasOrderPipelineAutomations, parsePlan } from '@/lib/plan'
-import { parseAutomationsFromStore } from '@/lib/store-automations'
-import { maybeSendOrderAcceptedWhatsApp } from '@/services/order-accepted-whatsapp.server'
-import {
-  sendWhatsAppMessage,
-  shouldSkipAutoReply,
-} from '@/services/whatsapp-sender.server'
+import { maybeSendOrderOutForDeliveryWhatsApp } from '@/services/order-delivery-whatsapp.server'
 
 export const dynamic = 'force-dynamic'
 
@@ -30,20 +23,6 @@ const ALLOWED_NEXT: Record<string, Set<string>> = {
   confirmed: new Set(['delivered', 'cancelled']),
   delivered: new Set(),
   cancelled: new Set(),
-}
-
-function digitsPhoneOk(phone: string | null | undefined): boolean {
-  const d = phone?.replace(/\D/g, '') ?? ''
-  return d.length >= 10
-}
-
-function buildOutForDeliveryMessage(
-  customerName: string | null,
-  orderRef: string
-): string {
-  const first = customerName?.trim().split(/\s+/)[0]
-  const greet = first ? `Olá ${first}! ` : 'Olá! '
-  return `${greet}O teu pedido ${orderRef} já saiu para entrega e está a caminho. Obrigado pela preferência!`
 }
 
 export async function POST(req: NextRequest) {
@@ -135,63 +114,18 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const storePlan = parsePlan(readStorePlano(gate.ctx.store))
+    let deliveryNotified = false
+    const wasReadyToConfirmed =
+      current === 'ready' && newStatus === 'confirmed'
 
-    const wasPendingToPreparing =
-      current === 'pending' && newStatus === 'preparing'
-    if (wasPendingToPreparing && hasOrderPipelineAutomations(storePlan)) {
-      await maybeSendOrderAcceptedWhatsApp(supabase, {
+    if (wasReadyToConfirmed) {
+      deliveryNotified = await maybeSendOrderOutForDeliveryWhatsApp(supabase, {
         store: gate.ctx.store,
         storeId,
         orderId,
         customerPhone: order.customer_phone as string | null | undefined,
         customerName: order.customer_name as string | null | undefined,
       })
-    }
-
-    let deliveryNotified = false
-    const wasReadyToConfirmed =
-      current === 'ready' && newStatus === 'confirmed'
-
-    if (
-      wasReadyToConfirmed &&
-      hasOrderPipelineAutomations(storePlan)
-    ) {
-      const automations = parseAutomationsFromStore(gate.ctx.store)
-      if (
-        automations.auto_whatsapp_delivery &&
-        digitsPhoneOk(order.customer_phone as string | null)
-      ) {
-        const { data: ordered } = await supabase
-          .from('orders')
-          .select('id')
-          .eq('store_id', storeId)
-          .order('created_at', { ascending: true })
-
-        const ids = (ordered ?? []).map((r) => String((r as { id: string }).id))
-        const idx = ids.indexOf(orderId)
-        const ref =
-          idx >= 0 ? `#${String(idx + 1).padStart(3, '0')}` : `#${orderId.slice(0, 6)}`
-
-        const spamKey = `delivery-out:${storeId}:${orderId}`
-        if (!shouldSkipAutoReply(spamKey, 90_000)) {
-          try {
-            await sendWhatsAppMessage({
-              storeId,
-              to: String(order.customer_phone),
-              text: buildOutForDeliveryMessage(
-                typeof order.customer_name === 'string'
-                  ? order.customer_name
-                  : null,
-                ref
-              ),
-            })
-            deliveryNotified = true
-          } catch (e) {
-            console.error('[orders/status] WhatsApp entrega:', e)
-          }
-        }
-      }
     }
 
     return NextResponse.json({ ok: true, deliveryNotified })
