@@ -10,6 +10,7 @@ export type OperationalHubContext =
   | 'mesas'
   | 'comandas'
   | 'visao'
+  | 'administracao'
 
 const HUB_CONTEXTS = new Set<OperationalHubContext>([
   'balcao',
@@ -19,7 +20,26 @@ const HUB_CONTEXTS = new Set<OperationalHubContext>([
   'mesas',
   'comandas',
   'visao',
+  'administracao',
 ])
+
+const ADMINISTRATION_MENU_KEYS: readonly DashboardMenuKey[] = [
+  'dashboard',
+  'produtos',
+  'pedidos',
+  'entregadores',
+  'caixa',
+  'configuracoes',
+  'assinatura',
+  'promocoes',
+  'relatorios',
+  'aparencia',
+  'impressao',
+  'kds',
+  'pdv',
+  'garcom',
+  'automacoes',
+]
 
 const HUB_CONTEXT_MENU_KEYS: Record<
   OperationalHubContext,
@@ -32,6 +52,7 @@ const HUB_CONTEXT_MENU_KEYS: Record<
   mesas: ['garcom'],
   comandas: ['pedidos'],
   visao: ['dashboard'],
+  administracao: ADMINISTRATION_MENU_KEYS,
 }
 
 const HUB_CONTEXT_LABELS: Record<OperationalHubContext, string> = {
@@ -42,6 +63,7 @@ const HUB_CONTEXT_LABELS: Record<OperationalHubContext, string> = {
   mesas: 'Mesas',
   comandas: 'Comandas',
   visao: 'Visão geral',
+  administracao: 'Administração',
 }
 
 function normalizePathname(pathname: string): string {
