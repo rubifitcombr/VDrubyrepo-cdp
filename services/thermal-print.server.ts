@@ -2,11 +2,13 @@ import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { gerarCupomPedido } from '@/lib/escpos'
+import type { PaperMm } from '@/lib/print/layout'
+import { orderTicketVariantFromSource } from '@/lib/print/order-ticket-variant'
 import { parseTableFromNotes } from '@/lib/waiter-order-notes'
 import {
-  thermalAutoSourceFromOrderSource,
-  type ThermalAutoSource,
-} from '@/lib/thermal-print-source'
+  shouldAutoThermalPrintForSource,
+  thermalAgentConfigured,
+} from '@/lib/thermal-print-policy'
 
 export type StoreThermalRow = {
   name: string | null
@@ -14,11 +16,29 @@ export type StoreThermalRow = {
   print_agent_token: string | null
   print_printer_ip: string | null
   print_printer_port: number | null
+  print_paper_mm: PaperMm
+  print_include_customer_details: boolean
+  print_delivery_copy: boolean
   print_auto_delivery: boolean
   print_auto_autoatendimento: boolean
   print_auto_pdv: boolean
   print_auto_garcom: boolean
 }
+
+export type ThermalPrintErrorCode =
+  | 'agent_not_configured'
+  | 'agent_offline'
+  | 'agent_http_error'
+  | 'printer_offline'
+  | 'printer_timeout'
+  | 'printer_connection_refused'
+  | 'unauthorized'
+  | 'order_not_found'
+  | 'build_failed'
+
+export type ThermalPrintResult =
+  | { ok: true }
+  | { ok: false; code: ThermalPrintErrorCode; message: string; detail?: string }
 
 function bool(v: unknown, fallback = false): boolean {
   if (typeof v === 'boolean') return v
@@ -47,6 +67,9 @@ export function parseStoreThermalRow(
         : null,
     print_printer_port:
       Number.isFinite(portN) && portN > 0 ? portN : 9100,
+    print_paper_mm: Number(row.print_paper_mm) === 58 ? 58 : 80,
+    print_include_customer_details: bool(row.print_include_customer_details, false),
+    print_delivery_copy: bool(row.print_delivery_copy, false),
     print_auto_delivery: bool(row.print_auto_delivery, false),
     print_auto_autoatendimento: bool(row.print_auto_autoatendimento, false),
     print_auto_pdv: bool(row.print_auto_pdv, false),
@@ -54,51 +77,34 @@ export function parseStoreThermalRow(
   }
 }
 
-function agentConfigured(s: StoreThermalRow): boolean {
-  return Boolean(
-    s.print_agent_url &&
-      s.print_printer_ip &&
-      /^https?:\/\//i.test(s.print_agent_url)
-  )
-}
-
-export function thermalToggleForCategory(
-  cat: ThermalAutoSource,
-  s: StoreThermalRow
-): boolean {
-  switch (cat) {
-    case 'delivery':
-      return s.print_auto_delivery
-    case 'autoatendimento':
-      return s.print_auto_autoatendimento
-    case 'pdv':
-      return s.print_auto_pdv
-    case 'garcom':
-      return s.print_auto_garcom
-    default:
-      return false
-  }
-}
-
 export function shouldAutoThermalPrint(
   orderSource: string | null | undefined,
   store: StoreThermalRow
 ): boolean {
-  if (!agentConfigured(store)) return false
-  const cat = thermalAutoSourceFromOrderSource(orderSource)
-  if (!cat) return false
-  return thermalToggleForCategory(cat, store)
+  return shouldAutoThermalPrintForSource(orderSource, store)
+}
+
+function agentConfigured(s: StoreThermalRow): boolean {
+  return thermalAgentConfigured(s)
 }
 
 async function postToAgent(
   store: StoreThermalRow,
   escposBase64: string
-): Promise<{ ok: true } | { ok: false; message: string }> {
+): Promise<ThermalPrintResult> {
   const base = String(store.print_agent_url ?? '').replace(/\/+$/, '')
   const token =
     store.print_agent_token?.trim() || 'vyria-agent-2026'
   const printerIp = String(store.print_printer_ip ?? '').trim()
   const printerPort = store.print_printer_port || 9100
+
+  if (!agentConfigured(store)) {
+    return {
+      ok: false,
+      code: 'agent_not_configured',
+      message: 'Agente ou IP da impressora não configurado.',
+    }
+  }
 
   try {
     const agentRes = await fetch(`${base}/print`, {
@@ -116,17 +122,32 @@ async function postToAgent(
     })
     const result = (await agentRes.json().catch(() => ({}))) as {
       error?: string
+      code?: ThermalPrintErrorCode
+      detail?: string
     }
     if (!agentRes.ok) {
       return {
         ok: false,
-        message: result.error || `HTTP ${agentRes.status}`,
+        code:
+          result.code ??
+          (agentRes.status === 401
+            ? 'unauthorized'
+            : agentRes.status === 504
+              ? 'printer_timeout'
+              : 'agent_http_error'),
+        message: result.error || `Agente respondeu HTTP ${agentRes.status}.`,
+        detail: result.detail,
       }
     }
     return { ok: true }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
-    return { ok: false, message: msg }
+    return {
+      ok: false,
+      code: 'agent_offline',
+      message: `Agente offline ou URL inacessível: ${msg}`,
+      detail: msg,
+    }
   }
 }
 
@@ -156,11 +177,11 @@ export async function buildEscPosForOrder(
   supabase: SupabaseClient,
   storeId: string,
   orderId: string,
-  storeName: string
+  store: StoreThermalRow
 ): Promise<{ ok: true; data: string } | { ok: false; message: string }> {
   const { data: pedido, error } = await supabase
     .from('orders')
-    .select('*, order_items(name, quantity, unit_price)')
+    .select('*, order_items(name, quantity, unit_price, price)')
     .eq('id', orderId)
     .eq('store_id', storeId)
     .maybeSingle()
@@ -176,10 +197,16 @@ export async function buildEscPosForOrder(
   const notes = typeof row.notes === 'string' ? row.notes : undefined
   const source =
     typeof row.source === 'string' ? row.source : undefined
+  const deliveryFee =
+    row.delivery_fee == null
+      ? null
+      : typeof row.delivery_fee === 'number'
+        ? row.delivery_fee
+        : String(row.delivery_fee)
 
   const data = gerarCupomPedido({
     id: String(row.id ?? orderId),
-    store_name: storeName || 'Loja',
+    store_name: store.name || 'Loja',
     customer_name:
       typeof row.customer_name === 'string' ? row.customer_name : undefined,
     customer_phone:
@@ -190,12 +217,30 @@ export async function buildEscPosForOrder(
         : undefined,
     payment_method:
       typeof row.payment_method === 'string' ? row.payment_method : undefined,
+    payment_status:
+      typeof row.payment_status === 'string' ? row.payment_status : null,
     notes,
+    delivery_fee: deliveryFee,
+    items_summary:
+      typeof row.items_summary === 'string' && row.items_summary.trim()
+        ? row.items_summary
+        : null,
     total: numTotal(row.total),
     items,
     source,
     source_mesa: parseTableFromNotes(notes ?? null) ?? undefined,
     created_at: created,
+    paper_mm: store.print_paper_mm,
+    variant: orderTicketVariantFromSource(source, {
+      delivery_address:
+        typeof row.delivery_address === 'string' ? row.delivery_address : null,
+      delivery_fee: deliveryFee,
+    }),
+    printing: {
+      print_include_customer_details: store.print_include_customer_details,
+      print_delivery_copy: store.print_delivery_copy,
+      print_paper_mm: store.print_paper_mm,
+    },
   })
 
   return { ok: true, data }
@@ -206,15 +251,30 @@ export async function sendThermalCupomForOrder(
   storeId: string,
   orderId: string,
   store: StoreThermalRow
-): Promise<{ ok: true } | { ok: false; message: string }> {
+): Promise<ThermalPrintResult> {
   const built = await buildEscPosForOrder(
     supabase,
     storeId,
     orderId,
-    store.name || 'Loja'
+    store
   )
-  if (!built.ok) return built
+  if (!built.ok) return { ok: false, code: 'build_failed', message: built.message }
   return postToAgent(store, built.data)
+}
+
+function logThermalPrint(
+  level: 'info' | 'warn',
+  payload: {
+    storeId: string
+    orderId: string
+    source: string | null | undefined
+    code?: string
+    message: string
+  }
+) {
+  const line = { service: 'thermal-print', ...payload }
+  if (level === 'warn') console.warn('[thermal-print]', line)
+  else console.info('[thermal-print]', line)
 }
 
 /**
@@ -228,7 +288,7 @@ export async function tryAutoThermalPrint(
   const { data: row, error } = await supabase
     .from('stores')
     .select(
-      'name, print_agent_url, print_agent_token, print_printer_ip, print_printer_port, print_auto_delivery, print_auto_autoatendimento, print_auto_pdv, print_auto_garcom'
+      'name, print_agent_url, print_agent_token, print_printer_ip, print_printer_port, print_paper_mm, print_include_customer_details, print_delivery_copy, print_auto_delivery, print_auto_autoatendimento, print_auto_pdv, print_auto_garcom'
     )
     .eq('id', opts.storeId)
     .maybeSingle()
@@ -248,9 +308,19 @@ export async function tryAutoThermalPrint(
     store
   )
   if (!r.ok) {
-    console.warn(
-      `[thermal-print] order ${opts.orderId}:`,
-      r.message
-    )
+    logThermalPrint('warn', {
+      storeId: opts.storeId,
+      orderId: opts.orderId,
+      source: opts.orderSource,
+      code: r.code,
+      message: r.message,
+    })
+    return
   }
+  logThermalPrint('info', {
+    storeId: opts.storeId,
+    orderId: opts.orderId,
+    source: opts.orderSource,
+    message: 'Impresso via Print Agent.',
+  })
 }

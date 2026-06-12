@@ -13,7 +13,7 @@ export function thermalAutoSourceFromOrderSource(
   raw: string | null | undefined
 ): ThermalAutoSource | null {
   const s = String(raw ?? '').trim().toLowerCase()
-  if (s === 'site_live' || s === 'site_start' || s === 'site_pickup') {
+  if (s === 'site_live' || s === 'site_start' || s === 'site_pickup' || s === 'menu_link') {
     return 'delivery'
   }
   if (s === 'autoatendimento') return 'autoatendimento'

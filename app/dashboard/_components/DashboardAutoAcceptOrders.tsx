@@ -9,7 +9,10 @@ import {
   type StoreOrderRow,
 } from '@/lib/store-order'
 import type { StorePrintingState } from '@/lib/store-printing'
-import { openOrderTicketPrintDeduped, orderTicketVariantFromSource } from '@/lib/order-print-window'
+import {
+  openOrderTicketAutoPrintOnConfirm,
+  orderTicketVariantFromSource,
+} from '@/lib/order-print-window'
 import { slugChannelSourcesForSupabaseIn, isSlugChannelOrderSource } from '@/lib/slug-channel-orders'
 import { updateOrderStatus } from '@/services/orders'
 
@@ -141,7 +144,7 @@ export function DashboardAutoAcceptOrders({
             const ref =
               displayById.get(orderId) ??
               orderId.replace(/-/g, '').slice(0, 8)
-            const opened = openOrderTicketPrintDeduped(orderId, {
+            const opened = openOrderTicketAutoPrintOnConfirm(orderId, {
               storeName,
               order,
               orderDisplayRef: ref,
@@ -152,7 +155,7 @@ export function DashboardAutoAcceptOrders({
                 print_paper_mm: printing.print_paper_mm,
               },
               variant: orderTicketVariantFromSource(order.source, order),
-            })
+            }, printing)
             if (opened) return
           }
         }
@@ -185,18 +188,22 @@ export function DashboardAutoAcceptOrders({
         const displayById = buildDisplayRefById(displayRows)
         const ref =
           displayById.get(orderId) ?? orderId.replace(/-/g, '').slice(0, 8)
-        openOrderTicketPrintDeduped(orderId, {
-          storeName,
-          order,
-          orderDisplayRef: ref,
-          printing: {
-            print_include_customer_details:
-              printing.print_include_customer_details,
-            print_delivery_copy: printing.print_delivery_copy,
-            print_paper_mm: printing.print_paper_mm,
+        openOrderTicketAutoPrintOnConfirm(
+          orderId,
+          {
+            storeName,
+            order,
+            orderDisplayRef: ref,
+            printing: {
+              print_include_customer_details:
+                printing.print_include_customer_details,
+              print_delivery_copy: printing.print_delivery_copy,
+              print_paper_mm: printing.print_paper_mm,
+            },
+            variant: orderTicketVariantFromSource(order.source, order),
           },
-          variant: orderTicketVariantFromSource(order.source, order),
-        })
+          printing
+        )
         return
       }
     }
@@ -264,18 +271,22 @@ export function DashboardAutoAcceptOrders({
             const ref =
               displayById.get(order.id) ??
               order.id.replace(/-/g, '').slice(0, 8)
-            openOrderTicketPrintDeduped(order.id, {
-              storeName,
-              order: { ...order, status: 'preparing' },
-              orderDisplayRef: ref,
-              printing: {
-                print_include_customer_details:
-                  printing.print_include_customer_details,
-                print_delivery_copy: printing.print_delivery_copy,
-                print_paper_mm: printing.print_paper_mm,
+            openOrderTicketAutoPrintOnConfirm(
+              order.id,
+              {
+                storeName,
+                order: { ...order, status: 'preparing' },
+                orderDisplayRef: ref,
+                printing: {
+                  print_include_customer_details:
+                    printing.print_include_customer_details,
+                  print_delivery_copy: printing.print_delivery_copy,
+                  print_paper_mm: printing.print_paper_mm,
+                },
+                variant: orderTicketVariantFromSource(order.source, order),
               },
-              variant: orderTicketVariantFromSource(order.source, order),
-            })
+              printing
+            )
           }
         }
       } finally {
@@ -452,10 +463,7 @@ export function DashboardAutoAcceptOrders({
     manualClosed,
     autoAcceptOrders,
     slugChannelSourcesOnly,
-    printing.print_auto_on_confirm,
-    printing.print_include_customer_details,
-    printing.print_delivery_copy,
-    printing.print_paper_mm,
+    printing,
   ])
 
   return null

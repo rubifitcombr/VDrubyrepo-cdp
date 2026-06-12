@@ -15,6 +15,23 @@ import { IconPrinter } from '@/app/dashboard/_components/NavIcons'
 import { ReceiptPreview } from './ReceiptPreview'
 import { dashboardFetch } from '@/lib/dashboard-fetch.client'
 
+type DiscoveredPrinter = {
+  ip: string
+  port: number
+  status?: string
+  model?: string | null
+}
+
+function diagnosticMessage(error: string | undefined, code?: string, detail?: string): string {
+  if (error) return detail ? `${error} (${detail})` : error
+  if (code === 'agent_offline') return 'Agente offline ou URL incorreta.'
+  if (code === 'printer_timeout') return 'Impressora não respondeu no tempo esperado. Confirma IP, porta e Wi-Fi.'
+  if (code === 'printer_connection_refused') return 'A impressora recusou a conexão. A porta pode estar errada.'
+  if (code === 'printer_offline') return 'Impressora offline ou IP fora da rede.'
+  if (code === 'unauthorized') return 'Palavra-passe do programa incorreta.'
+  return 'Falha de impressão sem detalhe.'
+}
+
 function PrintSwitch({
   on,
   disabled,
@@ -118,7 +135,7 @@ export function PrintingClient({
   const [busyHealth, setBusyHealth] = useState(false)
   const [busyTestPrint, setBusyTestPrint] = useState(false)
   const [discoverBusy, setDiscoverBusy] = useState(false)
-  const [discoveredPrinters, setDiscoveredPrinters] = useState<string[]>([])
+  const [discoveredPrinters, setDiscoveredPrinters] = useState<DiscoveredPrinter[]>([])
 
   useEffect(() => {
     setValues(initial)
@@ -249,16 +266,38 @@ export function PrintingClient({
     setBusyHealth(true)
     setError(null)
     try {
-      const res = await fetch(`${base}/health`, { method: 'GET' })
+      const token = values.print_agent_token.trim() || 'vyria-agent-2026'
+      const printerIp = values.print_printer_ip.trim()
+      const port = Number.isFinite(Number(values.print_printer_port))
+        ? Number(values.print_printer_port)
+        : 9100
+      const qs = printerIp
+        ? `?printerIp=${encodeURIComponent(printerIp)}&printerPort=${encodeURIComponent(String(port))}`
+        : ''
+      const res = await fetch(`${base}/health${qs}`, {
+        method: 'GET',
+        headers: printerIp ? { 'x-agent-token': token } : undefined,
+      })
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean
+        error?: string
+        code?: string
+        detail?: string
+        printer?: { ok?: boolean; ip?: string; port?: number } | null
+      }
       setAgentOnline(res.ok)
       if (!res.ok) {
-        showToast('Agente offline ou URL incorreta.')
+        const msg = diagnosticMessage(json.error, json.code, json.detail)
+        setError(msg)
+        showToast(msg)
       } else if (!opts?.quiet) {
-        showToast('Agente respondeu ao health check.')
+        showToast(json.printer?.ok ? 'Agente ligado e impressora acessível.' : 'Agente respondeu ao health check.')
       }
     } catch {
       setAgentOnline(false)
-      showToast('Não foi possível contactar o agente (rede / URL).')
+      const msg = 'Não foi possível contactar o agente. Confirma URL, túnel e rede.'
+      setError(msg)
+      showToast(msg)
     } finally {
       setBusyHealth(false)
     }
@@ -274,15 +313,20 @@ export function PrintingClient({
         body: JSON.stringify({ store_id: storeId, test: true }),
       })
       const json = (await res.json().catch(() => ({}))) as { error?: string; ok?: boolean }
+      const detailed = json as { error?: string; ok?: boolean; code?: string; detail?: string }
       if (!res.ok || !json.ok) {
-        showToast(json.error || 'Erro ao imprimir teste.')
+        const msg = diagnosticMessage(detailed.error, detailed.code, detailed.detail)
+        setError(msg)
+        showToast(msg)
         return
       }
       if (!opts?.quiet) {
         showToast('Cupom de teste enviado à impressora.')
       }
     } catch {
-      showToast('Erro de rede ao imprimir teste.')
+      const msg = 'Erro de rede ao imprimir teste. O agente pode estar offline.'
+      setError(msg)
+      showToast(msg)
     } finally {
       setBusyTestPrint(false)
     }
@@ -311,14 +355,31 @@ export function PrintingClient({
       }
       const json = (await res.json().catch(() => ({}))) as {
         ok?: boolean
-        printers?: string[]
+        printers?: Array<string | DiscoveredPrinter>
         error?: string
+        code?: string
+        detail?: string
       }
       if (!res.ok || !json.ok) {
-        showToast(json.error || 'Não foi possível procurar.')
+        const msg = diagnosticMessage(json.error || 'Não foi possível procurar impressoras.', json.code, json.detail)
+        setError(msg)
+        showToast(msg)
         return
       }
-      const list = Array.isArray(json.printers) ? json.printers : []
+      const list = Array.isArray(json.printers)
+        ? json.printers
+            .map((printer) =>
+              typeof printer === 'string'
+                ? { ip: printer, port, status: 'open', model: null }
+                : {
+                    ip: String(printer.ip ?? ''),
+                    port: Number(printer.port) || port,
+                    status: printer.status,
+                    model: printer.model ?? null,
+                  }
+            )
+            .filter((printer) => printer.ip)
+        : []
       setDiscoveredPrinters(list)
       if (list.length === 0) {
         showToast(
@@ -328,13 +389,15 @@ export function PrintingClient({
         )
       } else if (list.length === 1) {
         const only = list[0]!
-        setValues((v) => ({ ...v, print_printer_ip: only }))
-        showToast(`Encontrámos ${only} — já está no Campo 2.`)
+        setValues((v) => ({ ...v, print_printer_ip: only.ip, print_printer_port: only.port }))
+        showToast(`Encontrámos ${only.ip}:${only.port} — já está nos campos.`)
       } else {
         showToast(`Encontrámos ${list.length} máquinas. Escolhe uma em baixo.`)
       }
     } catch {
-      showToast('Não deu para falar com o programa. Mesma Wi-Fi que o Campo 1?')
+      const msg = 'Não deu para falar com o programa. Confirma se o Campo 1 está acessível.'
+      setError(msg)
+      showToast(msg)
     } finally {
       setDiscoverBusy(false)
     }
@@ -532,19 +595,24 @@ export function PrintingClient({
           </button>
           {discoveredPrinters.length > 1 ? (
             <ul className="mt-3 flex flex-wrap gap-2" aria-label="Impressoras encontradas">
-              {discoveredPrinters.map((ip) => (
-                <li key={ip}>
+              {discoveredPrinters.map((printer) => (
+                <li key={`${printer.ip}:${printer.port}`}>
                   <button
                     type="button"
                     disabled={linkWizardBusy || savingKey !== null}
                     onClick={() => {
-                      setValues((v) => ({ ...v, print_printer_ip: ip }))
+                      setValues((v) => ({
+                        ...v,
+                        print_printer_ip: printer.ip,
+                        print_printer_port: printer.port,
+                      }))
                       setDiscoveredPrinters([])
-                      showToast(`${ip} escolhido. Toca em «Guardar e testar impressão».`)
+                      showToast(`${printer.ip}:${printer.port} escolhido. Toca em «Guardar e testar impressão».`)
                     }}
                     className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-sky-950 ring-1 ring-sky-300 hover:bg-sky-100 disabled:opacity-50"
                   >
-                    {ip}
+                    {printer.ip}:{printer.port}
+                    {printer.model ? ` · ${printer.model}` : ''}
                   </button>
                 </li>
               ))}

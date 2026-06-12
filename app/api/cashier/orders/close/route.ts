@@ -11,7 +11,6 @@ import { readStorePlano } from '@/lib/store-columns'
 import { getUser } from '@/services/auth.server'
 import { createClient } from '@/lib/supabase/server'
 import { getOpenCaixaTurno } from '@/services/caixa-turnos.server'
-import { tryAutoThermalPrint } from '@/services/thermal-print.server'
 
 type PaymentMethod = 'cash' | 'pix' | 'card'
 
@@ -135,12 +134,6 @@ export async function POST(request: Request) {
       { status: 500 }
     )
   }
-
-  void tryAutoThermalPrint(supabase, {
-    storeId,
-    orderId,
-    orderSource: src,
-  })
 
   return NextResponse.json({
     ok: true,

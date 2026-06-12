@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
   const { data: storeRow, error: stErr } = await supabase
     .from('stores')
     .select(
-      'name, print_agent_url, print_agent_token, print_printer_ip, print_printer_port, print_auto_delivery, print_auto_autoatendimento, print_auto_pdv, print_auto_garcom'
+      'name, print_agent_url, print_agent_token, print_printer_ip, print_printer_port, print_paper_mm, print_include_customer_details, print_delivery_copy, print_auto_delivery, print_auto_autoatendimento, print_auto_pdv, print_auto_garcom'
     )
     .eq('id', storeId)
     .single()
@@ -80,6 +80,13 @@ export async function POST(req: NextRequest) {
       source: 'pdv',
       created_at: now,
       notes: 'Cupom de teste — impressao Wi-Fi.',
+      paper_mm: store.print_paper_mm,
+      variant: 'balcao',
+      printing: {
+        print_include_customer_details: store.print_include_customer_details,
+        print_delivery_copy: store.print_delivery_copy,
+        print_paper_mm: store.print_paper_mm,
+      },
     })
     const base = store.print_agent_url.replace(/\/+$/, '')
     const token = store.print_agent_token?.trim() || 'vyria-agent-2026'
@@ -99,9 +106,18 @@ export async function POST(req: NextRequest) {
       })
       const result = (await agentRes.json().catch(() => ({}))) as {
         error?: string
+        code?: string
+        detail?: string
       }
       if (!agentRes.ok) {
-        throw new Error(result.error || `HTTP ${agentRes.status}`)
+        return NextResponse.json(
+          {
+            error: result.error || `Falha ao imprimir teste (HTTP ${agentRes.status}).`,
+            code: result.code,
+            detail: result.detail,
+          },
+          { status: agentRes.status }
+        )
       }
       return NextResponse.json({ ok: true })
     } catch (err: unknown) {
@@ -127,7 +143,11 @@ export async function POST(req: NextRequest) {
   )
   if (!printRes.ok) {
     return NextResponse.json(
-      { error: `Falha ao imprimir: ${printRes.message}` },
+      {
+        error: `Falha ao imprimir: ${printRes.message}`,
+        code: printRes.code,
+        detail: printRes.detail,
+      },
       { status: 500 }
     )
   }

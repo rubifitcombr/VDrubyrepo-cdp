@@ -10,7 +10,7 @@ import {
   type StoreOrderRow,
 } from '@/lib/store-order'
 import type { StorePrintingState } from '@/lib/store-printing'
-import { openOrderTicketPrintDeduped } from '@/lib/order-print-window'
+import { openOrderTicketAutoPrintOnConfirm } from '@/lib/order-print-window'
 import { updateOrderStatus } from '@/services/orders'
 
 const money = new Intl.NumberFormat('pt-BR', {
@@ -201,18 +201,22 @@ export function KdsClient({
     ) {
       const ref =
         displayNumberById.get(orderId) ?? orderId.replace(/-/g, '').slice(0, 8)
-      const ok = openOrderTicketPrintDeduped(orderId, {
-        storeName,
-        order: { ...orderBefore, status: 'preparing' },
-        orderDisplayRef: ref,
-        printing: {
-          print_include_customer_details:
-            printing.print_include_customer_details,
-          print_delivery_copy: printing.print_delivery_copy,
-          print_paper_mm: printing.print_paper_mm,
+      const ok = openOrderTicketAutoPrintOnConfirm(
+        orderId,
+        {
+          storeName,
+          order: { ...orderBefore, status: 'preparing' },
+          orderDisplayRef: ref,
+          printing: {
+            print_include_customer_details:
+              printing.print_include_customer_details,
+            print_delivery_copy: printing.print_delivery_copy,
+            print_paper_mm: printing.print_paper_mm,
+          },
+          variant: 'kitchen',
         },
-        variant: 'kitchen',
-      })
+        printing
+      )
       if (!ok) {
         flashWaNotice(
           'Permite pop-ups neste site para a impressão automática funcionar.'

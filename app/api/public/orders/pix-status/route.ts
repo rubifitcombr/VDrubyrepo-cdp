@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { tryCreateServiceRoleClient } from '@/lib/supabase/service-role.server'
 import { fetchStoreByPublicSlug } from '@/lib/store-public-slug.server'
 import { pixPaymentStatusIsConfirmed } from '@/lib/store-order'
+import { tryAutoThermalPrint } from '@/services/thermal-print.server'
 
 function toText(v: unknown): string {
   return typeof v === 'string' ? v.trim() : ''
@@ -99,7 +100,7 @@ export async function POST(req: NextRequest) {
     const storeId = String((store as { id: string }).id)
     const { data: order, error: orderErr } = await supabase
       .from('orders')
-      .select('id, payment_method')
+      .select('id, payment_method, payment_status, source')
       .eq('id', orderId)
       .eq('store_id', storeId)
       .maybeSingle()
@@ -116,6 +117,10 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    const previousStatus =
+      typeof order.payment_status === 'string' ? order.payment_status : null
+    const alreadyConfirmed = pixPaymentStatusIsConfirmed(previousStatus)
+
     const now = new Date().toISOString()
     const { error: updateErr } = await supabase
       .from('orders')
@@ -131,6 +136,16 @@ export async function POST(req: NextRequest) {
         { error: updateErr.message || 'Erro ao actualizar pedido.' },
         { status: 500 }
       )
+    }
+
+    if (!alreadyConfirmed) {
+      const orderSource =
+        typeof order.source === 'string' ? order.source : null
+      void tryAutoThermalPrint(supabase, {
+        storeId,
+        orderId,
+        orderSource,
+      })
     }
 
     return NextResponse.json({

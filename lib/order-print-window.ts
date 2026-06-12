@@ -2,6 +2,7 @@
 
 import type { StoreOrderRow } from '@/lib/store-order'
 import type { StorePrintingState } from '@/lib/store-printing'
+import { shouldSkipBrowserAutoPrintOnConfirm } from '@/lib/thermal-print-policy'
 import { getPrintSerialBaud } from '@/lib/print/device-prefs'
 import {
   buildAsciiPreviewForPrint,
@@ -14,6 +15,10 @@ import {
   openThermalEscPosWindow,
   type ThermalOpenResult,
 } from '@/lib/thermal-print-window'
+import {
+  orderTicketVariantFromSource,
+  slugOrderUsesFullDeliveryTicket,
+} from '@/lib/print/order-ticket-variant'
 
 export type OrderTicketPrintOpts = {
   storeName: string
@@ -68,42 +73,7 @@ export function openOrderTicketPrint(opts: OrderTicketPrintOpts): ThermalOpenRes
   })
 }
 
-function deliveryFeePositive(
-  fee: number | string | null | undefined
-): boolean {
-  if (fee == null) return false
-  if (typeof fee === 'number' && Number.isFinite(fee)) return fee > 0
-  const n = Number.parseFloat(String(fee).replace(',', '.'))
-  return Number.isFinite(n) && n > 0
-}
-
-/** Pedido «pelo link» com envio: mantém variante delivery (2ª via entregador, etc.). */
-function slugOrderUsesFullDeliveryTicket(
-  order: Pick<StoreOrderRow, 'delivery_address' | 'delivery_fee'> | null | undefined
-): boolean {
-  if (!order) return false
-  if (!String(order.delivery_address ?? '').trim()) return false
-  return deliveryFeePositive(order.delivery_fee)
-}
-
-/**
- * Cupom térmico «balcão» (preset counter, mesmo bloco que garçom/PDV): pedidos pelo link
- * (`site_live` / `site_start` / `menu_link`), retirada e balcão. Só usa o layout «entrega
- * completa» (2ª via entregador, etc.) quando o pedido pelo link tiver morada e taxa de entrega.
- */
-export function orderTicketVariantFromSource(
-  source: string | null | undefined,
-  order?: Pick<StoreOrderRow, 'delivery_address' | 'delivery_fee'> | null
-): OrderTicketVariant {
-  const s = (source ?? '').trim().toLowerCase()
-  if (s === 'pdv' || s === 'waiter' || s === 'site_pickup' || s === 'autoatendimento')
-    return 'balcao'
-  if (s === 'site_live' || s === 'site_start' || s === 'menu_link') {
-    if (slugOrderUsesFullDeliveryTicket(order)) return 'delivery'
-    return 'balcao'
-  }
-  return 'delivery'
-}
+export { orderTicketVariantFromSource, slugOrderUsesFullDeliveryTicket }
 
 export function openOrderTicketPrintDeduped(
   orderId: string,
@@ -122,4 +92,19 @@ export function openOrderTicketPrintDeduped(
     return true
   }
   return false
+}
+
+/**
+ * Impressão automática ao aceitar (browser). Ignora se o Print Agent já imprime
+ * para a mesma origem (`print_auto_*` + agente configurado).
+ */
+export function openOrderTicketAutoPrintOnConfirm(
+  orderId: string,
+  opts: OrderTicketPrintOpts,
+  storePrinting: StorePrintingState
+): boolean {
+  if (shouldSkipBrowserAutoPrintOnConfirm(storePrinting, opts.order.source)) {
+    return true
+  }
+  return openOrderTicketPrintDeduped(orderId, opts)
 }
