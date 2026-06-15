@@ -33,6 +33,10 @@ import {
   openOrderTicketPrint,
   orderTicketVariantFromSource,
 } from '@/lib/order-print-window'
+import {
+  canUseConfiguredPrintAgent,
+  sendOrderTicketToPrintAgent,
+} from '@/lib/print-agent-client'
 import type { StorePrintingState } from '@/lib/store-printing'
 import { StorePublicQrPanel } from '@/app/dashboard/_components/StorePublicQrPanel'
 import { IconPrinter } from '@/app/dashboard/_components/NavIcons'
@@ -940,7 +944,31 @@ export function WaiterClient({
       setThermalBusyOrderId(order.id)
       setError(null)
       setSuccess('A imprimir…')
+      const orderRef =
+        displayNumberById.get(order.id) ?? order.id.replace(/-/g, '').slice(0, 8)
       try {
+        if (canUseConfiguredPrintAgent(printing)) {
+          const direct = await sendOrderTicketToPrintAgent(
+            {
+              storeName,
+              order,
+              orderDisplayRef: orderRef,
+              printing: {
+                print_include_customer_details:
+                  printing.print_include_customer_details,
+                print_delivery_copy: printing.print_delivery_copy,
+                print_paper_mm: printing.print_paper_mm,
+              },
+              variant: orderTicketVariantFromSource(order.source, order),
+            },
+            printing
+          )
+          if (direct.ok) {
+            setError(null)
+            setSuccess('Comanda enviada à impressora.')
+            return
+          }
+        }
         const res = await dashboardFetch('/api/print', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

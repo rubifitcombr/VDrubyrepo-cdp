@@ -9,6 +9,7 @@ import {
   setPrintSerialBaud,
 } from '@/lib/print/device-prefs'
 import type { PaperMm } from '@/lib/print/layout'
+import { sendOrderTicketToPrintAgent } from '@/lib/print-agent-client'
 import { openPrintingPreviewPopup } from '@/lib/printing-preview-window'
 import { updateStore } from '@/services/store'
 import { IconPrinter } from '@/app/dashboard/_components/NavIcons'
@@ -30,6 +31,14 @@ function diagnosticMessage(error: string | undefined, code?: string, detail?: st
   if (code === 'printer_offline') return 'Impressora offline ou IP fora da rede.'
   if (code === 'unauthorized') return 'Palavra-passe do programa incorreta.'
   return 'Falha de impressão sem detalhe.'
+}
+
+function subnetFromIp(ip: string): string | null {
+  const parts = ip.trim().split('.')
+  if (parts.length !== 4) return null
+  const nums = parts.map((p) => Number.parseInt(p, 10))
+  if (nums.some((n) => !Number.isFinite(n) || n < 0 || n > 255)) return null
+  return `${nums[0]}.${nums[1]}.${nums[2]}`
 }
 
 function PrintSwitch({
@@ -307,6 +316,42 @@ export function PrintingClient({
     setBusyTestPrint(true)
     setError(null)
     try {
+      const direct = await sendOrderTicketToPrintAgent(
+        {
+          storeName,
+          order: {
+            id: '00000000-0000-0000-0000-000000000099',
+            customer_name: 'Cliente teste',
+            customer_phone: null,
+            delivery_address: null,
+            delivery_fee: null,
+            payment_method: 'pix',
+            payment_status: null,
+            notes: 'Cupom de teste — impressao Wi-Fi/cabo.',
+            total: 1,
+            status: null,
+            created_at: new Date().toISOString(),
+            source: 'pdv',
+            items_summary: '1x Item de teste (un R$ 1,00)=R$ 1,00',
+          },
+          orderDisplayRef: 'TESTE',
+          printing: {
+            print_include_customer_details:
+              values.print_include_customer_details,
+            print_delivery_copy: values.print_delivery_copy,
+            print_paper_mm: values.print_paper_mm,
+          },
+          variant: 'balcao',
+        },
+        values
+      )
+      if (direct.ok) {
+        if (!opts?.quiet) {
+          showToast('Cupom de teste enviado à impressora.')
+        }
+        return
+      }
+
       const res = await dashboardFetch('/api/print', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -346,7 +391,10 @@ export function PrintingClient({
       const port = Number.isFinite(Number(values.print_printer_port))
         ? Number(values.print_printer_port)
         : 9100
-      const res = await fetch(`${base}/discover-printers?port=${port}`, {
+      const params = new URLSearchParams({ port: String(port) })
+      const manualSubnet = subnetFromIp(values.print_printer_ip)
+      if (manualSubnet) params.set('subnet', manualSubnet)
+      const res = await fetch(`${base}/discover-printers?${params.toString()}`, {
         headers: { 'x-agent-token': token },
       })
       if (res.status === 404) {

@@ -22,6 +22,36 @@ function normalizePort(raw, fallback = DEFAULT_PRINTER_PORT) {
   )
 }
 
+function listLocalInterfaces() {
+  const ifaces = os.networkInterfaces()
+  const list = []
+  for (const name of Object.keys(ifaces)) {
+    for (const addr of ifaces[name] || []) {
+      if ((addr.family !== 'IPv4' && addr.family !== 4) || addr.internal) continue
+      const parts = String(addr.address).split('.')
+      if (parts.length !== 4) continue
+      list.push({
+        name,
+        address: addr.address,
+        prefix: `${parts[0]}.${parts[1]}.${parts[2]}.`,
+        netmask: addr.netmask || null,
+        mac: addr.mac || null,
+      })
+    }
+  }
+  return list
+}
+
+function parseSubnetPrefix(raw) {
+  const value = String(raw || '').trim()
+  if (!value) return null
+  const m = value.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?:\.|\/24)?$/)
+  if (!m) return null
+  const parts = [m[1], m[2], m[3]].map((p) => Number.parseInt(p, 10))
+  if (parts.some((p) => !Number.isFinite(p) || p < 0 || p > 255)) return null
+  return `${parts[0]}.${parts[1]}.${parts[2]}.`
+}
+
 function normalizeSocketError(err, host, port) {
   const code = String(err?.code || '')
   if (code === 'ECONNREFUSED') {
@@ -47,16 +77,7 @@ function normalizeSocketError(err, host, port) {
 
 /** Prefixos tipo 192.168.1. a partir das IPv4 locais (não loopback). */
 function localSubnetPrefixes() {
-  const ifaces = os.networkInterfaces()
-  const prefixes = new Set()
-  for (const name of Object.keys(ifaces)) {
-    for (const addr of ifaces[name] || []) {
-      if ((addr.family !== 'IPv4' && addr.family !== 4) || addr.internal) continue
-      const parts = String(addr.address).split('.')
-      if (parts.length !== 4) continue
-      prefixes.add(`${parts[0]}.${parts[1]}.${parts[2]}.`)
-    }
-  }
+  const prefixes = new Set(listLocalInterfaces().map((iface) => iface.prefix))
   return [...prefixes]
 }
 
@@ -102,6 +123,7 @@ app.get('/health', (req, res) => {
       version: '1.2.0',
       agent: 'vyria-print-agent',
       printer: null,
+      interfaces: listLocalInterfaces(),
     })
   }
 
@@ -132,6 +154,14 @@ app.get('/health', (req, res) => {
   })
 })
 
+app.get('/interfaces', (req, res) => {
+  const token = req.headers['x-agent-token']
+  if (token !== agentToken) {
+    return res.status(401).json({ ok: false, code: 'unauthorized', error: 'unauthorized' })
+  }
+  res.json({ ok: true, interfaces: listLocalInterfaces() })
+})
+
 /**
  * Procura dispositivos com porta TCP aberta (térmicas ESC/POS costumam usar 9100).
  * Corre **no aparelho onde o agente está** (mesma Wi-Fi que a impressora).
@@ -146,7 +176,10 @@ app.get('/discover-printers', async (req, res) => {
   const timeoutMs = Math.min(2000, Math.max(80, Number.parseInt(String(req.query.timeoutMs || '240'), 10) || 240))
   const concurrency = Math.min(96, Math.max(8, Number.parseInt(String(req.query.concurrency || '56'), 10) || 56))
   try {
-    const prefixes = localSubnetPrefixes()
+    const manualPrefix = parseSubnetPrefix(req.query.subnet)
+    const prefixes = manualPrefix
+      ? [manualPrefix]
+      : localSubnetPrefixes()
     if (prefixes.length === 0) {
       return res.json({ ok: true, port, printers: [], hint: 'no-local-ipv4' })
     }
@@ -164,7 +197,7 @@ app.get('/discover-printers', async (req, res) => {
     printers.sort((a, b) =>
       a.ip.localeCompare(b.ip, undefined, { numeric: true })
     )
-    res.json({ ok: true, port, printers })
+    res.json({ ok: true, port, prefixes, interfaces: listLocalInterfaces(), printers })
   } catch (e) {
     res.status(500).json({ error: String(e?.message || e) })
   }
@@ -208,7 +241,7 @@ app.post('/test-printer', async (req, res) => {
     return res.status(401).json({ ok: false, code: 'unauthorized', error: 'unauthorized' })
   }
 
-  const { printerIp } = req.body
+  const printerIp = String(req.body?.printerIp || '').trim()
   const printerPort = normalizePort(req.body?.printerPort)
   if (!printerIp) {
     return res.status(400).json({ ok: false, code: 'bad_request', error: 'printerIp é obrigatório' })
@@ -230,7 +263,8 @@ app.post('/print', async (req, res) => {
     return res.status(401).json({ ok: false, code: 'unauthorized', error: 'unauthorized' })
   }
 
-  const { printerIp, data } = req.body
+  const printerIp = String(req.body?.printerIp || '').trim()
+  const { data } = req.body
   const printerPort = normalizePort(req.body?.printerPort)
 
   if (!printerIp || !data) {
@@ -239,7 +273,12 @@ app.post('/print', async (req, res) => {
       .json({ ok: false, code: 'bad_request', error: 'printerIp e data são obrigatórios' })
   }
 
-  const buffer = Buffer.from(data, 'base64')
+  let buffer
+  try {
+    buffer = Buffer.from(String(data), 'base64')
+  } catch {
+    return res.status(400).json({ ok: false, code: 'bad_request', error: 'data base64 inválido' })
+  }
   const result = await writeToPrinter({ printerIp, printerPort, buffer, timeoutMs: 5000 })
   if (!result.ok) {
     const status = result.code === 'printer_timeout' ? 504 : 502

@@ -14,6 +14,10 @@ import {
   openOrderTicketPrint,
   orderTicketVariantFromSource,
 } from '@/lib/order-print-window'
+import {
+  canUseConfiguredPrintAgent,
+  sendOrderTicketToPrintAgent,
+} from '@/lib/print-agent-client'
 import type { StorePrintingState } from '@/lib/store-printing'
 import type { StoreOrderRow } from '@/lib/store-order'
 import { createClient } from '@/lib/supabase/client'
@@ -290,7 +294,30 @@ function OperacaoView({
       if (useThermal) {
         setThermalBusyOrderId(o.id)
         showToast('A imprimir…')
+        const orderRef =
+          displayNumberById.get(o.id) ?? o.id.replace(/-/g, '').slice(0, 8)
         try {
+          if (canUseConfiguredPrintAgent(printing)) {
+            const direct = await sendOrderTicketToPrintAgent(
+              {
+                storeName,
+                order: o,
+                orderDisplayRef: orderRef,
+                printing: {
+                  print_include_customer_details:
+                    printing.print_include_customer_details,
+                  print_delivery_copy: printing.print_delivery_copy,
+                  print_paper_mm: printing.print_paper_mm,
+                },
+                variant: orderTicketVariantFromSource(o.source, o),
+              },
+              printing
+            )
+            if (direct.ok) {
+              showToast('Comanda enviada à impressora.')
+              return
+            }
+          }
           const res = await dashboardFetch('/api/print', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -313,7 +340,16 @@ function OperacaoView({
       }
       printComandaCaixa(o)
     },
-    [printAgentUrl, printComandaCaixa, showThermalPrint, showToast, storeId]
+    [
+      displayNumberById,
+      printAgentUrl,
+      printComandaCaixa,
+      printing,
+      showThermalPrint,
+      showToast,
+      storeId,
+      storeName,
+    ]
   )
 
   useEffect(() => {
