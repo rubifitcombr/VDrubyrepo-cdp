@@ -1,7 +1,7 @@
 'use client'
 
 import { uint8ToBase64 } from '@/lib/print/escpos'
-import { DEFAULT_PAPER_MM, type PaperMm } from '@/lib/print/layout'
+import { DEFAULT_PAPER_MM, charWidthForPaper, type PaperMm } from '@/lib/print/layout'
 import { logPrintJob } from '@/lib/print/logger'
 
 function escapeHtml(s: string): string {
@@ -340,7 +340,7 @@ ${loadB64Block}
   const paper = opts.paperMm === 58 ? 58 : 80
   const pageSize = paper === 58 ? '58mm auto' : '80mm auto'
   const bodyMax = paper === 58 ? '54mm' : '72mm'
-  const cols = paper === 58 ? 32 : 48
+  const cols = charWidthForPaper(paper)
 
   let previewSource = stripIllFormedPreviewChars(opts.asciiPreview)
   if (opts.thermalHost === 'embedded') {
