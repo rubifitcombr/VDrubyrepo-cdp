@@ -22,7 +22,10 @@ export function stripEscposControlFromUserText(s: string): string {
 }
 
 export function removeEmojis(s: string): string {
-  return String(s ?? '').replace(EMOJI_RE, '')
+  // `\p{Emoji}` inclui 0-9 (ex.: keycaps 0️⃣); preservar dígitos ASCII em preços e quantidades.
+  return String(s ?? '').replace(EMOJI_RE, (match) =>
+    /^[0-9]$/.test(match) ? match : ''
+  )
 }
 
 /**
