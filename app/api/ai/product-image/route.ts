@@ -80,12 +80,13 @@ export async function POST(req: NextRequest) {
     const imagePrompt = gerarPromptImagem(name, description, category)
 
     const image = await openai.images.generate({
-      model: 'dall-e-3',
+      model: 'gpt-image-1',
       prompt: imagePrompt,
       n: 1,
       size: '1024x1024',
-      quality: 'standard',
-      style: 'natural',
+      quality: 'high',
+      background: 'auto',
+      output_format: 'png',
     })
 
     const item = image.data?.[0]
@@ -165,7 +166,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           error:
-            'Modelo de imagem indisponível. Verifica se a tua conta OpenAI suporta dall-e-3.',
+            'Modelo de imagem indisponível. Verifica se a tua conta OpenAI tem acesso ao gpt-image-1.',
         },
         { status: 502 }
       )

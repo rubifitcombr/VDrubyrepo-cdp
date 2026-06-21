@@ -137,7 +137,6 @@ export function AutomationsClient({
   initialWhatsappAutomation: {
     is_active: boolean
     message_template: string
-    delay_seconds: number
   }
   deliveryPipelineEnabled?: boolean
 }) {
@@ -211,12 +210,10 @@ export function AutomationsClient({
     setError(null)
     setWaSaving(true)
     const template = waConfig.message_template.trim()
-    const delay = Math.max(0, Math.min(300, Number(waConfig.delay_seconds) || 0))
     const { error: upErr } = await upsertWhatsAppAutomation(storeId, {
       is_active: waConfig.is_active,
       message_template:
         template || 'Olá 👋 faça seu pedido aqui: {link}',
-      delay_seconds: delay,
     })
     setWaSaving(false)
     if (upErr) {
@@ -233,7 +230,6 @@ export function AutomationsClient({
       ...prev,
       message_template:
         template || 'Olá 👋 faça seu pedido aqui: {link}',
-      delay_seconds: delay,
     }))
   }
 
@@ -555,25 +551,6 @@ export function AutomationsClient({
               Use <code>{'{link}'}</code> para inserir o link do cardápio
               automaticamente.
             </p>
-          </label>
-
-          <label className="block text-sm font-medium text-vyria-navy">
-            Delay da resposta (segundos)
-            <input
-              type="number"
-              min={0}
-              max={300}
-              step={1}
-              value={waConfig.delay_seconds}
-              onChange={(e) =>
-                setWaConfig((prev) => ({
-                  ...prev,
-                  delay_seconds: Number(e.target.value),
-                }))
-              }
-              disabled={!hasAccess || waSaving}
-              className="mt-2 w-32 rounded-xl border border-[var(--card-border)] bg-white px-3 py-2 text-sm text-vyria-navy outline-none transition-all focus:border-[var(--dash-primary)]/40 focus:ring-2 focus:ring-[var(--dash-primary)]/12 disabled:opacity-60"
-            />
           </label>
         </div>
 

@@ -10,6 +10,7 @@ import {
   type StoreOrderRow,
 } from '@/lib/store-order'
 import type { StorePrintingState } from '@/lib/store-printing'
+import { toWhatsAppLinkNumber } from '@/lib/whatsapp-number'
 import {
   openOrderTicketPrint,
   openOrderTicketAutoPrintOnConfirm,
@@ -430,7 +431,7 @@ function itemCountLabel(summary: string | null | undefined): string {
 function digitsPhone(phone: string | null | undefined): string | null {
   const d = phone?.replace(/\D/g, '') ?? ''
   if (d.length < 10) return null
-  return d
+  return toWhatsAppLinkNumber(d)
 }
 
 function waUrl(phone: string, customerName: string | null, orderRef: string) {

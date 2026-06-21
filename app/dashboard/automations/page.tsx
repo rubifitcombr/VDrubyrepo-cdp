@@ -37,7 +37,7 @@ export default async function AutomationsPage() {
   const supabase = await createClient()
   const { data: whatsappRow } = await supabase
     .from('whatsapp_automations')
-    .select('is_active, message_template, delay_seconds')
+    .select('is_active, message_template')
     .eq('store_id', String(row.id))
     .maybeSingle()
 
@@ -51,7 +51,6 @@ export default async function AutomationsPage() {
         is_active: whatsappRow?.is_active ?? false,
         message_template:
           whatsappRow?.message_template || 'Olá 👋 faça seu pedido aqui: {link}',
-        delay_seconds: Number(whatsappRow?.delay_seconds ?? 3),
       }}
       deliveryPipelineEnabled={deliveryPipelineEnabled}
     />

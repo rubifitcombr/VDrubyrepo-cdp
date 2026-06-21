@@ -536,6 +536,17 @@ export function WaiterClient({
   )
   const total = Math.max(0, Math.round((subtotal - discountBrl) * 100) / 100)
 
+  const cartQtyByProduct = useMemo(() => {
+    const map: Record<string, number> = {}
+    for (const line of cart) map[line.productId] = line.quantity
+    return map
+  }, [cart])
+
+  const cartCount = useMemo(
+    () => cart.reduce((sum, line) => sum + line.quantity, 0),
+    [cart]
+  )
+
   const isOutOfStock = useCallback(
     (productId: string) =>
       Object.prototype.hasOwnProperty.call(stockQuantityByProductId, productId) &&
@@ -661,8 +672,18 @@ export function WaiterClient({
     })
     setError(null)
     setSuccess(null)
-    setCenterTab('order')
-    setOrderDrawerOpen(true)
+  }
+
+  function removeProductUnit(productId: string) {
+    setCart((prev) => {
+      const i = prev.findIndex((x) => x.productId === productId)
+      if (i < 0) return prev
+      const next = [...prev]
+      const q = next[i].quantity - 1
+      if (q <= 0) return next.filter((x) => x.productId !== productId)
+      next[i] = { ...next[i], quantity: q }
+      return next
+    })
   }
 
   function setLineQty(productId: string, qty: number) {
@@ -1519,19 +1540,27 @@ export function WaiterClient({
               {filteredProducts.map((p) => {
                 const price = effectiveProductPrice(p, 'dine_in')
                 const oos = isOutOfStock(p.id)
+                const qty = cartQtyByProduct[p.id] ?? 0
                 return (
                   <li key={p.id}>
                     <button
                       type="button"
                       disabled={oos}
                       onClick={() => addProduct(p)}
-                      className={`flex w-full flex-col rounded-lg border bg-white p-2 text-left transition duration-150 ${
+                      className={`relative flex w-full flex-col rounded-lg border p-2 text-left transition duration-150 ${
                         oos
-                          ? 'cursor-not-allowed border-[var(--card-border)] opacity-40'
-                          : 'border-[var(--card-border)] hover:border-[var(--dash-primary)] hover:shadow-sm active:scale-[0.98]'
+                          ? 'cursor-not-allowed border-[var(--card-border)] bg-white opacity-40'
+                          : qty > 0
+                            ? 'border-[var(--dash-primary)] bg-[var(--dash-primary)]/5 hover:shadow-sm active:scale-[0.98]'
+                            : 'border-[var(--card-border)] bg-white hover:border-[var(--dash-primary)] hover:shadow-sm active:scale-[0.98]'
                       }`}
                     >
-                      <span className="line-clamp-2 text-[13px] font-medium leading-snug text-[#1a1614]">
+                      {qty > 0 ? (
+                        <span className="absolute right-1.5 top-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--dash-primary)] px-1.5 text-[11px] font-bold text-white">
+                          {qty}
+                        </span>
+                      ) : null}
+                      <span className="line-clamp-2 pr-6 text-[13px] font-medium leading-snug text-[#1a1614]">
                         {p.name}
                       </span>
                       <span className="mt-0.5 text-[11px] text-[#6b7280]">
@@ -2288,36 +2317,68 @@ export function WaiterClient({
                 {filteredProducts.map((p) => {
                   const price = effectiveProductPrice(p, 'dine_in')
                   const oos = isOutOfStock(p.id)
+                  const qty = cartQtyByProduct[p.id] ?? 0
                   return (
                     <li key={p.id}>
-                      <button
-                        type="button"
-                        disabled={oos}
-                        onClick={() => {
-                          addProduct(p)
-                          setMenuSheetOpen(false)
-                        }}
-                        className={`flex w-full flex-col rounded-lg border bg-white p-2 text-left text-[13px] transition ${
+                      <div
+                        className={`relative flex h-full w-full flex-col rounded-lg border p-2 text-[13px] transition ${
                           oos
-                            ? 'cursor-not-allowed border-[var(--card-border)] opacity-40'
-                            : 'border-[var(--card-border)] active:scale-[0.98]'
+                            ? 'border-[var(--card-border)] opacity-40'
+                            : qty > 0
+                              ? 'border-[var(--dash-primary)] bg-[var(--dash-primary)]/5'
+                              : 'border-[var(--card-border)] bg-white'
                         }`}
                       >
-                        <span className="line-clamp-2 font-medium leading-snug text-[#1a1614]">
-                          {p.name}
-                        </span>
-                        <span className="mt-0.5 line-clamp-1 text-[11px] text-[#6b7280]">
-                          {(p.category || '').trim() || 'Sem categoria'}
-                        </span>
-                        <span className="mt-1 font-semibold text-[var(--dash-primary)]">
-                          {money.format(price)}
-                        </span>
-                        {oos ? (
-                          <span className="mt-1 inline-flex w-fit rounded bg-zinc-200 px-1.5 py-0.5 text-[9px] font-bold uppercase text-zinc-600">
-                            Sem estoque
+                        <button
+                          type="button"
+                          disabled={oos}
+                          onClick={() => addProduct(p)}
+                          className={`flex w-full flex-col text-left ${oos ? 'cursor-not-allowed' : 'active:scale-[0.98]'}`}
+                        >
+                          {qty > 0 ? (
+                            <span className="absolute right-1.5 top-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--dash-primary)] px-1.5 text-[11px] font-bold text-white">
+                              {qty}
+                            </span>
+                          ) : null}
+                          <span className="line-clamp-2 pr-6 font-medium leading-snug text-[#1a1614]">
+                            {p.name}
                           </span>
+                          <span className="mt-0.5 line-clamp-1 text-[11px] text-[#6b7280]">
+                            {(p.category || '').trim() || 'Sem categoria'}
+                          </span>
+                          <span className="mt-1 font-semibold text-[var(--dash-primary)]">
+                            {money.format(price)}
+                          </span>
+                          {oos ? (
+                            <span className="mt-1 inline-flex w-fit rounded bg-zinc-200 px-1.5 py-0.5 text-[9px] font-bold uppercase text-zinc-600">
+                              Sem estoque
+                            </span>
+                          ) : null}
+                        </button>
+                        {qty > 0 && !oos ? (
+                          <div className="mt-2 flex items-center justify-between gap-1">
+                            <button
+                              type="button"
+                              onClick={() => removeProductUnit(p.id)}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--card-border)] bg-white text-lg font-bold leading-none text-[#1a1614] active:scale-95"
+                              aria-label={`Remover um ${p.name}`}
+                            >
+                              −
+                            </button>
+                            <span className="min-w-6 text-center text-sm font-bold tabular-nums text-[#1a1614]">
+                              {qty}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => addProduct(p)}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--dash-primary)] text-lg font-bold leading-none text-white active:scale-95"
+                              aria-label={`Adicionar mais um ${p.name}`}
+                            >
+                              +
+                            </button>
+                          </div>
                         ) : null}
-                      </button>
+                      </div>
                     </li>
                   )
                 })}
@@ -2327,6 +2388,28 @@ export function WaiterClient({
                   Nenhum produto nesta categoria ou na busca.
                 </p>
               ) : null}
+            </div>
+            <div className="shrink-0 border-t border-[var(--card-border)] bg-white p-3">
+              <button
+                type="button"
+                disabled={cartCount === 0}
+                onClick={() => {
+                  setMenuSheetOpen(false)
+                  setOrderDrawerOpen(true)
+                }}
+                className={`flex w-full items-center justify-between gap-2 rounded-xl px-4 py-3 text-sm font-bold shadow-sm transition ${
+                  cartCount === 0
+                    ? 'cursor-not-allowed bg-[#e5e7eb] text-[#9ca3af]'
+                    : 'bg-[var(--dash-primary)] text-white active:scale-[0.99]'
+                }`}
+              >
+                <span>
+                  {cartCount === 0
+                    ? 'Selecione os produtos'
+                    : `Ver pedido (${cartCount} ${cartCount === 1 ? 'item' : 'itens'})`}
+                </span>
+                {cartCount > 0 ? <span>{money.format(subtotal)}</span> : null}
+              </button>
             </div>
           </div>
         </div>

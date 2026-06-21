@@ -192,7 +192,7 @@ export async function POST(req: NextRequest) {
 
     const { data: automation, error: automationError } = await supabase
       .from('whatsapp_automations')
-      .select('is_active, message_template, delay_seconds')
+      .select('is_active, message_template')
       .eq('store_id', storeId)
       .maybeSingle()
 
@@ -236,15 +236,8 @@ export async function POST(req: NextRequest) {
     const link = buildStoreLink(req, slug)
     const template = toText(automation.message_template) || 'Olá 👋 faça seu pedido aqui: {link}'
     const outgoingMessage = template.replaceAll('{link}', link)
-    /** No Vercel o tempo de função é limitado; evita sleep longo que corta antes do envio. */
-    const delaySeconds = Math.min(
-      25,
-      Math.min(300, Math.max(0, Number(automation.delay_seconds) || 0))
-    )
-
-    if (delaySeconds > 0) {
-      await new Promise((resolve) => setTimeout(resolve, delaySeconds * 1000))
-    }
+    /** Delay fixo de 1s antes de enviar a resposta automática com o link da loja. */
+    await new Promise((resolve) => setTimeout(resolve, 1000))
 
     await sendWhatsAppMessage({
       storeId,

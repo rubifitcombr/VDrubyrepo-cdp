@@ -33,24 +33,49 @@ export function gerarPromptImagem(
   }
 
   const catNorm = normalizeCategoryToken(categoria || '')
-  let estilo =
+  const estiloCategoria =
     estilosPorCategoria[catNorm] ||
     estilosPorCategoria[catNorm.split(/\s+/)[0] || ''] ||
     null
-  if (!estilo) {
-    estilo = 'beautifully plated, restaurant quality presentation'
-  }
 
+  const nomeLimpo = (nome || '').trim()
   const desc = (descricao || '').trim()
 
-  return `Professional food photography of "${nome}". ${desc ? `${desc}.` : ''}
-${estilo}.
-Clean light marble or white surface background.
-Soft natural lighting with subtle shadows, sharp focus.
-Vibrant and appetizing colors, high resolution.
-No text, no watermarks, no people, no hands.
-Commercial food photography style for a delivery app menu.
-Square format 1:1.`
-    .replace(/\n{3,}/g, '\n')
-    .trim()
+  // A descrição é a fonte de verdade do que aparece no prato. O estilo da
+  // categoria entra só como apoio de apresentação e nunca deve contradizer
+  // os ingredientes descritos.
+  const linhas: string[] = [
+    `Professional food photography of a dish called "${nomeLimpo}".`,
+  ]
+
+  if (desc) {
+    linhas.push(
+      `The dish is exactly: ${desc}.`,
+      'Depict every ingredient mentioned in this description faithfully and accurately, with realistic proportions and textures. Do not add or remove ingredients.'
+    )
+  } else {
+    linhas.push(
+      `Show a realistic and appetizing version of "${nomeLimpo}" as typically served.`
+    )
+  }
+
+  if (estiloCategoria) {
+    linhas.push(
+      `Presentation guideline (only if it does not contradict the dish above): ${estiloCategoria}.`
+    )
+  } else {
+    linhas.push('Beautifully plated, restaurant quality presentation.')
+  }
+
+  linhas.push(
+    'Clean light marble or white surface background.',
+    'Soft natural lighting with subtle shadows, sharp focus, shallow depth of field.',
+    'Vibrant and appetizing colors, high resolution, photorealistic.',
+    'A single original composition, not a collage, no duplicated plates.',
+    'No text, no labels, no watermarks, no logos, no people, no hands.',
+    'Commercial food photography style for a delivery app menu.',
+    'Square format 1:1.'
+  )
+
+  return linhas.join('\n').replace(/\n{3,}/g, '\n').trim()
 }

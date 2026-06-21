@@ -3,7 +3,6 @@ import { createClient } from '@/lib/supabase/client'
 export type WhatsAppAutomationSettings = {
   is_active: boolean
   message_template: string
-  delay_seconds: number
 }
 
 export async function upsertWhatsAppAutomation(
@@ -18,7 +17,6 @@ export async function upsertWhatsAppAutomation(
         store_id: storeId,
         is_active: settings.is_active,
         message_template: settings.message_template,
-        delay_seconds: settings.delay_seconds,
       },
       { onConflict: 'store_id' }
     )

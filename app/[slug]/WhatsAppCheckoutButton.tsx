@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useCart } from '@/app/context/CartContext'
 import { computeDeliveryCharge } from '@/lib/delivery-pricing'
+import { buildWhatsAppLink } from '@/lib/whatsapp-number'
 import { PixPaymentPanel } from './PixPaymentPanel'
 
 type CheckoutPixPayload = {
@@ -195,12 +196,8 @@ export function WhatsAppCheckoutButton({
     fulfillment ?? (dineInSelfService ? 'dine_in' : null)
 
   const waUrl = useMemo(() => {
-    const raw = phone?.trim()
-    if (!raw) return null
-    const n = digitsOnly(raw)
-    if (!n) return null
     const text = buildMessage(storeName, items, subtotal)
-    return `https://wa.me/${n}?text=${encodeURIComponent(text)}`
+    return buildWhatsAppLink(phone, text)
   }, [phone, storeName, items, subtotal])
 
   if (!dineInSelfService && !waUrl) {
@@ -255,9 +252,8 @@ export function WhatsAppCheckoutButton({
   }
 
   function openWhatsAppWithText(text: string) {
-    const n = digitsOnly(phone || '')
-    if (n) {
-      const link = `https://wa.me/${n}?text=${encodeURIComponent(text)}`
+    const link = buildWhatsAppLink(phone, text)
+    if (link) {
       window.open(link, '_blank', 'noopener,noreferrer')
     } else {
       window.alert('Pedido registado. A loja já recebeu o pedido no painel.')
