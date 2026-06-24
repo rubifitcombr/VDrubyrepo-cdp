@@ -1436,20 +1436,30 @@ export function WaiterClient({
         </div>
       ) : null}
 
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 pb-2">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold text-[#1a1614]">Operação salão</span>
-          <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-medium text-[#6b7280] ring-1 ring-[var(--card-border)]">
-            {openOrders.length} pedidos abertos
-          </span>
+      <div className="mb-3 flex shrink-0 flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--card-border)] bg-white px-3.5 py-3 shadow-sm">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
+          <div className="flex items-center gap-2">
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--dash-primary)]/10 text-[var(--dash-primary)]">
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M3 6h18M3 14h18M3 18h18" />
+              </svg>
+            </span>
+            <span className="text-[15px] font-bold tracking-tight text-[#1a1614]">Operação salão</span>
+            <span className="rounded-full bg-[var(--dash-primary)]/10 px-2 py-0.5 text-[11px] font-bold text-[var(--dash-primary)]">
+              {openOrders.length} {openOrders.length === 1 ? 'aberto' : 'abertos'}
+            </span>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           {!inScreenMode ? (
             <button
               type="button"
               onClick={() => void toggleFullscreen()}
-              className="rounded-lg border border-[var(--card-border)] bg-white px-3 py-1.5 text-xs font-semibold text-[#374151] shadow-sm transition hover:bg-[#f9fafb]"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--card-border)] bg-white px-3 py-1.5 text-xs font-semibold text-[#374151] shadow-sm transition hover:border-[var(--dash-primary)]/40 hover:bg-[#f9fafb] hover:text-[var(--dash-primary)]"
             >
+              <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4" />
+              </svg>
               Abrir ecrã
             </button>
           ) : null}
@@ -1463,16 +1473,27 @@ export function WaiterClient({
         <button
           type="button"
           onClick={() => setMenuSheetOpen(true)}
-          className="flex-1 rounded-xl border border-[var(--card-border)] bg-white py-2 text-sm font-semibold text-[#1a1614] shadow-sm"
+          className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-[var(--card-border)] bg-white py-2.5 text-sm font-semibold text-[#1a1614] shadow-sm transition active:scale-[0.98]"
         >
+          <svg className="h-4 w-4 text-[var(--dash-primary)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h10" />
+          </svg>
           Cardápio
         </button>
         <button
           type="button"
           onClick={() => setOrderDrawerOpen(true)}
-          className="flex-1 rounded-xl bg-[var(--dash-primary)] py-2 text-sm font-semibold text-white shadow-sm"
+          className="relative flex flex-1 items-center justify-center gap-2 rounded-xl bg-[var(--dash-primary)] py-2.5 text-sm font-semibold text-white shadow-sm shadow-[var(--dash-primary)]/25 transition active:scale-[0.98]"
         >
+          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 3h2l.4 2M7 13h10l3-8H6.4M7 13L5.4 5M7 13l-2 4h12m-7 4a1 1 0 11-2 0 1 1 0 012 0zm8 0a1 1 0 11-2 0 1 1 0 012 0z" />
+          </svg>
           Pedido
+          {cartCount > 0 ? (
+            <span className="absolute -right-1.5 -top-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-white px-1 text-[11px] font-bold text-[var(--dash-primary)] shadow ring-2 ring-[var(--dash-primary)]">
+              {cartCount}
+            </span>
+          ) : null}
         </button>
       </div>
 
@@ -1612,7 +1633,7 @@ export function WaiterClient({
             }
           >
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="text-sm font-bold text-[#1a1614]">Mesas</h2>
+                <h2 className="text-base font-bold tracking-tight text-[#1a1614]">Mesas</h2>
                 <button
                   type="button"
                   onClick={() => {
@@ -1621,16 +1642,25 @@ export function WaiterClient({
                     setConfigOpen(true)
                     setConfigAmbTab(sectors[0] || 'Salão')
                   }}
-                  className="rounded-lg border border-[var(--card-border)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#374151] shadow-sm hover:bg-[#f9fafb]"
+                  className="inline-flex items-center gap-1 rounded-lg border border-[var(--card-border)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#374151] shadow-sm transition hover:border-[var(--dash-primary)]/40 hover:bg-[#f9fafb] hover:text-[var(--dash-primary)]"
                 >
-                  + Configurar mesas
+                  <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14M5 12h14" />
+                  </svg>
+                  Configurar mesas
                 </button>
               </div>
-              <p className="mt-1 text-[11px] text-[#6b7280]">
-                <span className="mr-2">🟢 Livre</span>
-                <span className="mr-2">🟠 Ocupada</span>
-                <span>🔵 Em preparo (pendente cozinha)</span>
-              </p>
+              <div className="mt-1.5 flex flex-wrap items-center gap-2.5 text-[11px] font-medium text-[#6b7280]">
+                <span className="inline-flex items-center gap-1">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500" /> Livre
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <span className="h-2 w-2 rounded-full bg-amber-500" /> Ocupada
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <span className="h-2 w-2 rounded-full bg-sky-500" /> Em preparo
+                </span>
+              </div>
 
               {tables.length === 0 ? (
                 <p className="mt-4 rounded-lg border border-dashed border-[var(--card-border)] bg-[#fafafa] p-4 text-sm text-[#6b7280]">
@@ -1643,7 +1673,7 @@ export function WaiterClient({
                       <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[#9ca3af]">
                         {amb}
                       </p>
-                      <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                      <ul className="grid grid-cols-3 gap-2.5 sm:grid-cols-4">
                         {list.map((tb) => {
                           const st = tableState(openOrders, tb.name, tb.ambiente, tables)
                           const agg = aggregateTable(openOrders, tb.name, tb.ambiente, tables)
@@ -1653,32 +1683,41 @@ export function WaiterClient({
                             sector === tb.ambiente
                           const base =
                             st === 'free'
-                              ? 'border-[var(--card-border)] bg-white'
+                              ? 'border-[var(--card-border)] bg-white hover:border-[var(--dash-primary)]/40'
                               : st === 'pending_kitchen'
-                                ? 'border-sky-400 bg-sky-50'
-                                : 'border-amber-400 bg-amber-50/90'
+                                ? 'border-sky-300 bg-gradient-to-b from-sky-50 to-white'
+                                : 'border-amber-300 bg-gradient-to-b from-amber-50 to-white'
+                          const dot =
+                            st === 'free'
+                              ? 'bg-emerald-500'
+                              : st === 'pending_kitchen'
+                                ? 'bg-sky-500'
+                                : 'bg-amber-500'
                           return (
                             <li key={tb.id}>
                               <button
                                 type="button"
                                 onClick={() => void handleTablePress(tb)}
-                                className={`flex w-full flex-col items-center rounded-lg border p-3 text-center transition duration-150 ${base} ${
+                                className={`group relative flex min-h-[6rem] w-full flex-col items-center justify-center gap-1.5 rounded-xl border p-3 text-center transition duration-150 ${base} ${
                                   sel ? 'ring-2 ring-[var(--dash-primary)] ring-offset-2' : ''
-                                } hover:shadow-md`}
+                                } hover:-translate-y-0.5 hover:shadow-md`}
                               >
-                                <span className="text-2xl font-bold tabular-nums text-[#1a1614]">
+                                <span
+                                  className={`absolute right-2 top-2 h-2.5 w-2.5 rounded-full ${dot} ${st !== 'free' ? 'ring-2 ring-white' : ''}`}
+                                />
+                                <span className="text-[26px] font-extrabold leading-none tabular-nums text-[#1a1614]">
                                   {tb.name}
                                 </span>
                                 {st === 'free' ? (
-                                  <span className="mt-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
+                                  <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700">
                                     Livre
                                   </span>
                                 ) : st === 'pending_kitchen' ? (
                                   <>
-                                    <span className="mt-2 rounded-full bg-sky-200 px-2 py-0.5 text-[10px] font-bold text-sky-900">
+                                    <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-sky-700">
                                       Em preparo
                                     </span>
-                                    <span className="mt-1 text-xs font-semibold text-sky-900">
+                                    <span className="text-sm font-bold text-sky-900">
                                       {money.format(agg.total)}
                                     </span>
                                     {agg.list.length > 1 || agg.originSummary ? (
@@ -1690,21 +1729,18 @@ export function WaiterClient({
                                   </>
                                 ) : (
                                   <>
-                                    <span className="mt-2 rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-bold text-amber-900">
+                                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700">
                                       Ocupada
                                     </span>
-                                    <span className="mt-1 text-xs font-semibold text-amber-900">
+                                    <span className="text-sm font-bold text-amber-900">
                                       {money.format(agg.total)}
                                     </span>
                                     <span className="text-[10px] text-amber-800/90">
                                       {agg.itemsApprox} itens
+                                      {agg.list.length > 1 || agg.originSummary
+                                        ? ` · ${agg.list.length} ped.${agg.originSummary ? ` · ${agg.originSummary}` : ''}`
+                                        : ''}
                                     </span>
-                                    {agg.list.length > 1 || agg.originSummary ? (
-                                      <span className="text-[10px] text-amber-800/90">
-                                        {agg.list.length} pedidos
-                                        {agg.originSummary ? ` · ${agg.originSummary}` : ''}
-                                      </span>
-                                    ) : null}
                                   </>
                                 )}
                               </button>
@@ -2575,12 +2611,13 @@ function OrderPanelContent({
         {loadingOrder ? (
           <p className="text-sm text-[#6b7280]">A carregar…</p>
         ) : showEmpty ? (
-          <div className="flex flex-col items-center justify-center gap-2 py-12 text-center text-sm text-[#6b7280]">
-            <span className="text-3xl opacity-40">🍽️</span>
-            <p>
-              Selecione uma mesa no mapa
-              <br />
-              ou clique num produto para começar
+          <div className="flex flex-col items-center justify-center gap-3 px-4 py-14 text-center">
+            <span className="flex h-14 w-14 items-center justify-center rounded-full bg-[var(--dash-primary)]/10 text-2xl">
+              🍽️
+            </span>
+            <p className="text-sm font-semibold text-[#1a1614]">Nenhum pedido em edição</p>
+            <p className="max-w-[16rem] text-xs leading-relaxed text-[#6b7280]">
+              Selecione uma mesa no mapa ou toque num produto do cardápio para começar a comanda.
             </p>
           </div>
         ) : (
@@ -2617,7 +2654,8 @@ function OrderPanelContent({
                 className="mt-1 w-full resize-y rounded-lg border border-[var(--card-border)] px-2 py-1.5 text-sm"
               />
             </label>
-            <div className="mt-3 grid grid-cols-3 gap-1.5">
+            <p className="mt-3 text-[11px] font-medium text-[#6b7280]">Pagamento</p>
+            <div className="mt-1.5 grid grid-cols-3 gap-1.5">
               {(
                 [
                   { id: 'cash' as const, label: 'Dinheiro' },
@@ -2631,8 +2669,8 @@ function OrderPanelContent({
                   onClick={() => setPaymentMethod(opt.id)}
                   className={`rounded-lg border px-1 py-2 text-[11px] font-semibold transition duration-150 ${
                     paymentMethod === opt.id
-                      ? 'border-[var(--dash-primary)] bg-[var(--dash-primary)] text-white'
-                      : 'border-[var(--card-border)] bg-white text-[#374151]'
+                      ? 'border-[var(--dash-primary)] bg-[var(--dash-primary)] text-white shadow-sm shadow-[var(--dash-primary)]/25'
+                      : 'border-[var(--card-border)] bg-white text-[#374151] hover:border-[var(--dash-primary)]/40 hover:bg-[var(--dash-primary)]/5'
                   }`}
                 >
                   {opt.label}
@@ -2644,41 +2682,43 @@ function OrderPanelContent({
               {cart.length === 0 ? (
                 <p className="py-6 text-center text-sm text-[#9ca3af]">Nenhum item adicionado.</p>
               ) : (
-                <ul className="space-y-3">
+                <ul className="space-y-2">
                   {cart.map((line) => (
-                    <li key={line.productId} className="flex gap-2 border-b border-[var(--card-border)]/60 pb-2">
+                    <li key={line.productId} className="flex items-center gap-2 rounded-xl border border-[var(--card-border)] bg-white p-2.5 shadow-sm">
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-[#1a1614]">{line.name}</p>
+                        <p className="truncate text-sm font-semibold text-[#1a1614]">{line.name}</p>
                         <p className="text-[11px] text-[#9ca3af]">{money.format(line.unitPrice)} un.</p>
                       </div>
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1 rounded-lg bg-[#f4f5f7] p-0.5">
                         <button
                           type="button"
                           onClick={() => setLineQty(line.productId, line.quantity - 1)}
-                          className="h-7 w-7 rounded border border-[var(--card-border)] text-sm"
+                          className="flex h-7 w-7 items-center justify-center rounded-md bg-white text-base font-bold leading-none text-[#1a1614] shadow-sm transition active:scale-95"
+                          aria-label="Diminuir"
                         >
                           −
                         </button>
-                        <span className="w-6 text-center text-sm font-semibold">{line.quantity}</span>
+                        <span className="w-6 text-center text-sm font-bold tabular-nums">{line.quantity}</span>
                         <button
                           type="button"
                           onClick={() => setLineQty(line.productId, line.quantity + 1)}
-                          className="h-7 w-7 rounded border border-[var(--card-border)] text-sm"
+                          className="flex h-7 w-7 items-center justify-center rounded-md bg-[var(--dash-primary)] text-base font-bold leading-none text-white shadow-sm transition active:scale-95"
+                          aria-label="Aumentar"
                         >
                           +
                         </button>
                       </div>
-                      <div className="flex flex-col items-end gap-1">
-                        <span className="text-sm font-bold text-[#1a1614]">
+                      <div className="flex w-16 shrink-0 flex-col items-end gap-1">
+                        <span className="text-sm font-bold tabular-nums text-[#1a1614]">
                           {money.format(line.quantity * line.unitPrice)}
                         </span>
                         <button
                           type="button"
                           onClick={() => setLineQty(line.productId, 0)}
-                          className="text-[11px] text-[#9ca3af] hover:text-red-600"
+                          className="text-[11px] font-medium text-[#9ca3af] transition hover:text-red-600"
                           aria-label="Remover"
                         >
-                          ✕
+                          Remover
                         </button>
                       </div>
                     </li>
@@ -2768,7 +2808,7 @@ function OrderPanelContent({
                   type="button"
                   disabled={saving || cart.length === 0}
                   onClick={onSaveExisting}
-                  className="w-full rounded-xl bg-[var(--dash-primary)] py-2.5 text-sm font-bold text-white shadow-md disabled:opacity-50"
+                  className="w-full rounded-xl bg-[var(--dash-primary)] py-2.5 text-sm font-bold text-white shadow-md shadow-[var(--dash-primary)]/25 transition active:scale-[0.99] disabled:opacity-50 disabled:shadow-none"
                 >
                   {saving ? 'A guardar…' : 'Salvar alterações'}
                 </button>
@@ -2776,25 +2816,30 @@ function OrderPanelContent({
                   type="button"
                   disabled={saving}
                   onClick={onConfirmClose}
-                  className="mt-2 w-full rounded-xl border border-emerald-600 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-50"
+                  className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 py-2.5 text-sm font-bold text-white shadow-md shadow-emerald-600/25 transition hover:bg-emerald-700 active:scale-[0.99] disabled:opacity-50"
                 >
-                  Receber e fechar mesa / conta
+                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} aria-hidden>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M20 6 9 17l-5-5" />
+                  </svg>
+                  Receber e fechar mesa
                 </button>
-                <button
-                  type="button"
-                  disabled={saving || !table.trim()}
-                  onClick={onStartNewForTable}
-                  className="mt-2 w-full rounded-xl border border-[var(--card-border)] py-2 text-sm font-semibold text-[#1a1614] hover:bg-zinc-50 disabled:opacity-50"
-                >
-                  Novo pedido nesta mesa
-                </button>
-                <button
-                  type="button"
-                  onClick={onPrint}
-                  className="mt-2 w-full text-center text-xs font-semibold text-[#6b7280] underline"
-                >
-                  Imprimir comanda
-                </button>
+                <div className="mt-2 flex gap-2">
+                  <button
+                    type="button"
+                    disabled={saving || !table.trim()}
+                    onClick={onStartNewForTable}
+                    className="flex-1 rounded-xl border border-[var(--card-border)] py-2 text-xs font-semibold text-[#1a1614] transition hover:bg-zinc-50 disabled:opacity-50"
+                  >
+                    + Novo pedido
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onPrint}
+                    className="flex-1 rounded-xl border border-[var(--card-border)] py-2 text-xs font-semibold text-[#6b7280] transition hover:bg-zinc-50"
+                  >
+                    Imprimir comanda
+                  </button>
+                </div>
               </>
             ) : (
               <>
@@ -2802,14 +2847,14 @@ function OrderPanelContent({
                   type="button"
                   disabled={saving || !table.trim() || cart.length === 0}
                   onClick={onSubmitNew}
-                  className="w-full rounded-xl bg-[var(--dash-primary)] py-2.5 text-sm font-bold text-white shadow-md disabled:opacity-50"
+                  className="w-full rounded-xl bg-[var(--dash-primary)] py-2.5 text-sm font-bold text-white shadow-md shadow-[var(--dash-primary)]/25 transition active:scale-[0.99] disabled:opacity-50 disabled:shadow-none"
                 >
                   {saving ? 'A registar…' : 'Registrar pedido da mesa'}
                 </button>
                 <button
                   type="button"
                   onClick={onPrint}
-                  className="mt-2 w-full text-center text-xs font-semibold text-[#6b7280] underline"
+                  className="mt-2 w-full rounded-xl border border-[var(--card-border)] py-2 text-xs font-semibold text-[#6b7280] transition hover:bg-zinc-50"
                 >
                   Imprimir comanda
                 </button>
