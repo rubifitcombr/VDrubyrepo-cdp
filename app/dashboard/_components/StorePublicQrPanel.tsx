@@ -99,10 +99,19 @@ function cleanUrlForDisplay(url: string): string {
   return url.replace(/^https?:\/\//i, '').replace(/\/$/, '')
 }
 
+function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error('toBlob falhou'))),
+      'image/png'
+    )
+  })
+}
+
 async function buildBrandedPoster(
   publicUrl: string,
   isDineIn: boolean
-): Promise<string> {
+): Promise<Blob> {
   const qrSrc = await QRCode.toDataURL(publicUrl, {
     width: QR_SRC_PX,
     margin: 1,
@@ -197,7 +206,7 @@ async function buildBrandedPoster(
   ctx.font = '500 24px Helvetica, Arial, sans-serif'
   ctx.fillText('cardápio & pedidos digitais', POSTER_W / 2, POSTER_H - 58)
 
-  return canvas.toDataURL('image/png')
+  return canvasToBlob(canvas)
 }
 
 export function StorePublicQrPanel({
@@ -226,6 +235,7 @@ export function StorePublicQrPanel({
 
   useEffect(() => {
     let cancelled = false
+    let objectUrl: string | null = null
 
     if (!publicUrl) {
       setPosterUrl(null)
@@ -238,8 +248,10 @@ export function StorePublicQrPanel({
     setError(null)
     setPosterUrl(null)
     void buildBrandedPoster(publicUrl, isDineIn)
-      .then((url) => {
-        if (!cancelled) setPosterUrl(url)
+      .then((blob) => {
+        if (cancelled) return
+        objectUrl = URL.createObjectURL(blob)
+        setPosterUrl(objectUrl)
       })
       .catch(() => {
         if (!cancelled) {
@@ -250,6 +262,7 @@ export function StorePublicQrPanel({
 
     return () => {
       cancelled = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
   }, [publicUrl, isDineIn])
 
@@ -263,11 +276,16 @@ export function StorePublicQrPanel({
 
   function downloadPng() {
     if (!posterUrl || !storeSlug) return
-    const a = document.createElement('a')
-    a.href = posterUrl
     const prefix = isDineIn ? 'vyria-autoatendimento' : 'vyria-cardapio'
-    a.download = `${prefix}-${safeDownloadBasename(storeSlug)}.png`
+    const filename = `${prefix}-${safeDownloadBasename(storeSlug)}.png`
+    const a = document.createElement('a')
+    // Em navegadores in-app (Instagram, etc.) o atributo download costuma ser
+    // ignorado; abrir noutra aba deixa o utilizador guardar a imagem manualmente.
+    const supportsDownload = 'download' in a
+    a.href = posterUrl
+    a.download = filename
     a.rel = 'noopener'
+    if (!supportsDownload) a.target = '_blank'
     document.body.appendChild(a)
     a.click()
     a.remove()
@@ -346,17 +364,32 @@ export function StorePublicQrPanel({
               ) : null}
             </>
           ) : null}
-          <button
-            type="button"
-            onClick={downloadPng}
-            disabled={!posterUrl}
-            className="inline-flex items-center justify-center gap-2 rounded-lg border border-[var(--card-border)] bg-[#fafafa] px-4 py-2.5 text-sm font-semibold text-[#1a1614] transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14" />
-            </svg>
-            Baixar cartaz (PNG)
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={downloadPng}
+              disabled={!posterUrl}
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-[var(--card-border)] bg-[#fafafa] px-4 py-2.5 text-sm font-semibold text-[#1a1614] transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14" />
+              </svg>
+              Baixar cartaz (PNG)
+            </button>
+            {posterUrl ? (
+              <a
+                href={posterUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs font-semibold text-[var(--dash-primary)] underline-offset-2 hover:underline"
+              >
+                Abrir imagem
+              </a>
+            ) : null}
+          </div>
+          <p className="text-[11px] leading-relaxed text-[#9ca3af]">
+            Se estiver a abrir dentro do Instagram/Facebook, toca em «Abrir imagem» e guarda com um toque longo, ou abre este link no Chrome/Safari.
+          </p>
         </div>
       </div>
     </div>
