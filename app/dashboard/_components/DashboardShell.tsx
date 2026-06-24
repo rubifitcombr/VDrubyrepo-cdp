@@ -704,7 +704,7 @@ export function DashboardShell({
                   Cria a tua loja para veres o link público
                 </span>
               ) : null}
-              {isAuthenticated && !focusedHubNavigation ? (
+              {isAuthenticated ? (
                 <DashboardLogoutButton size="compact" className="w-full" />
               ) : null}
             </div>
