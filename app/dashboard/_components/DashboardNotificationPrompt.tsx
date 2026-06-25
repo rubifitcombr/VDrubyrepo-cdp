@@ -18,15 +18,19 @@ function currentPermission(): NotificationPermission | 'unsupported' {
 }
 
 export function DashboardNotificationPrompt() {
-  const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>(
-    currentPermission()
-  )
+  // Estado neutro e determinístico no primeiro render (igual no servidor e no
+  // cliente) para evitar hydration mismatch. Os valores reais — que dependem de
+  // APIs do navegador (Notification/localStorage) — só são lidos após montar.
+  const [mounted, setMounted] = useState(false)
+  const [permission, setPermission] =
+    useState<NotificationPermission | 'unsupported'>('unsupported')
   const [enabled, setEnabled] = useState(true)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
     setEnabled(readNotificationsEnabled())
     setPermission(currentPermission())
+    setMounted(true)
   }, [])
 
   async function setNotificationsState(nextEnabled: boolean) {
@@ -65,7 +69,7 @@ export function DashboardNotificationPrompt() {
         aria-checked={enabled}
         aria-label={enabled ? 'Desativar notificações' : 'Ativar notificações'}
         onClick={() => void setNotificationsState(!enabled)}
-        disabled={busy || permission === 'unsupported'}
+        disabled={!mounted || busy || permission === 'unsupported'}
         className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors duration-200 ${
           enabled ? 'bg-[var(--dash-primary)]' : 'bg-[#e5e7eb]'
         } disabled:cursor-not-allowed disabled:opacity-60`}
@@ -77,15 +81,17 @@ export function DashboardNotificationPrompt() {
         />
       </button>
       <span className="text-[11px] font-medium text-[#6b7280]">
-        {permission === 'unsupported'
-          ? 'Indisponível'
-          : busy
-            ? 'Salvando...'
-            : enabled
-              ? permission === 'denied'
-                ? 'Bloqueado'
-                : 'Ativo'
-              : 'Desativo'}
+        {!mounted
+          ? '...'
+          : permission === 'unsupported'
+            ? 'Indisponível'
+            : busy
+              ? 'Salvando...'
+              : enabled
+                ? permission === 'denied'
+                  ? 'Bloqueado'
+                  : 'Ativo'
+                : 'Desativo'}
       </span>
       {enabled && permission === 'denied' ? (
         <span className="hidden text-[11px] text-amber-700 sm:inline">
