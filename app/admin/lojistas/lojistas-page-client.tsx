@@ -1,6 +1,7 @@
 'use client'
 
 import { adminPlanOptionsForOperationMode } from '@/lib/admin-plans'
+import { AdminFiscalControl } from '@/app/admin/lojistas/_components/AdminFiscalControl'
 import { planMonthlyPriceLabel } from '@/lib/plan'
 import { createClient } from '@/lib/supabase/client'
 import type { MerchantStatus } from '@/lib/merchant-status'
@@ -2172,6 +2173,8 @@ export function LojistasPageClient() {
                       </ul>
                     )}
                   </section>
+
+                  <AdminFiscalControl lojistaId={drawerLojista.id} />
 
                   <section className="rounded-2xl border border-red-200/80 bg-red-50/40 p-4">
                     <h3 className="text-xs font-semibold uppercase tracking-wide text-red-800">
