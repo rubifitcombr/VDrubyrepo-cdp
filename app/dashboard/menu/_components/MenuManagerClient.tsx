@@ -466,7 +466,7 @@ export function MenuManagerClient({
       })
       const data = (await res.json()) as { imageUrl?: string; error?: string }
       if (!res.ok) {
-        alert(data.error || 'Erro ao gerar imagem.')
+        alert(data.error || 'Tokens esgotados, fale com suporte.')
         return
       }
       if (data.imageUrl) {
