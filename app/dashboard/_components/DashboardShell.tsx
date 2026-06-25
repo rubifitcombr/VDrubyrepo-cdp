@@ -405,7 +405,10 @@ export function DashboardShell({
       ? hubPinUnlockStorageKey(storeId, pinShortcut, pinEntry.pin)
       : null
   const isOperationalHub = pathname === '/dashboard'
-  const sidebarCollapsed = focusedHubNavigation
+  // "Administração" é o painel completo (descrição: "com sidebar"): mantém a
+  // sidebar persistente no desktop — onde fica o botão "Sair" — em vez de
+  // colapsar como os outros atalhos focados (operacionais) do hub.
+  const sidebarCollapsed = focusedHubNavigation && hubContext !== 'administracao'
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   useEffect(() => {
