@@ -26,6 +26,7 @@ import {
 } from '@/lib/hub-shortcut-pin'
 import { HubPinAccessGate } from './HubPinAccessGate'
 import { DashboardLogoutButton } from './DashboardLogoutButton'
+import { ImpersonationBanner } from './ImpersonationBanner'
 import { DashboardPlanGuard } from './DashboardPlanGuard'
 import { DashboardTopBar } from './DashboardTopBar'
 import type { StorePrintingState } from '@/lib/store-printing'
@@ -355,6 +356,7 @@ export function DashboardShell({
   manualClosed = false,
   autoAcceptStoreName = 'Meu estabelecimento',
   hubPinConfig,
+  impersonatingStoreName = null,
 }: {
   children: React.ReactNode
   storeName: string | null
@@ -384,6 +386,8 @@ export function DashboardShell({
   manualClosed?: boolean
   autoAcceptStoreName?: string
   hubPinConfig?: HubPinConfig
+  /** Quando definido, o admin Vyria está a aceder como este lojista. */
+  impersonatingStoreName?: string | null
 }) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -542,6 +546,9 @@ export function DashboardShell({
             printing={autoAcceptPrinting}
             slugChannelSourcesOnly={slugChannelSourcesOnly}
           />
+        ) : null}
+        {impersonatingStoreName ? (
+          <ImpersonationBanner storeName={impersonatingStoreName} />
         ) : null}
         {billingBanner && isAuthenticated ? (
           <div className="shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-3 sm:px-5 md:px-6 lg:px-8 xl:px-10">

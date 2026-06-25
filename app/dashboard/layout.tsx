@@ -23,6 +23,10 @@ import {
 import { parseAutomationsFromStore } from '@/lib/store-automations'
 import { parsePrintingFromStore } from '@/lib/store-printing'
 import { parseHubPinConfig } from '@/lib/hub-shortcut-pin'
+import {
+  IMPERSONATION_ACTIVE_COOKIE,
+  parseImpersonationContext,
+} from '@/lib/impersonation'
 import { createClient } from '@/lib/supabase/server'
 import { syncAutoCloseOutsideHoursForStore } from '@/services/store-hours-automation.server'
 import { cookies } from 'next/headers'
@@ -45,6 +49,9 @@ export default async function DashboardLayout({
   const cookieStore = await cookies()
   const vyriaPanelMode = parseVyriaPanelMode(
     cookieStore.get(VYRIA_PANEL_MODE_COOKIE)?.value
+  )
+  const impersonation = parseImpersonationContext(
+    cookieStore.get(IMPERSONATION_ACTIVE_COOKIE)?.value
   )
 
   if (
@@ -180,6 +187,7 @@ export default async function DashboardLayout({
         manualClosed={storeRecord?.manual_closed === true}
         autoAcceptStoreName={autoAcceptStoreName}
       hubPinConfig={parseHubPinConfig(storeRecord)}
+      impersonatingStoreName={impersonation?.storeName ?? null}
       >
         <ServiceWorkerRegister />
         {children}

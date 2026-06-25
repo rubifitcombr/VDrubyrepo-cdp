@@ -446,6 +446,7 @@ export function LojistasPageClient() {
   const [ownerPwdNew, setOwnerPwdNew] = useState('')
   const [ownerPwdConfirm, setOwnerPwdConfirm] = useState('')
   const [busyOwnerPwd, setBusyOwnerPwd] = useState(false)
+  const [busyImpersonate, setBusyImpersonate] = useState(false)
 
   useEffect(() => {
     if (!toast) return
@@ -892,6 +893,34 @@ export function LojistasPageClient() {
       await load(true)
     } finally {
       setBusyPurge(false)
+    }
+  }
+
+  async function impersonateLojista() {
+    if (!drawerId || busyImpersonate) return
+    setBusyImpersonate(true)
+    try {
+      const res = await fetch(`/api/admin/lojistas/${drawerId}/impersonate`, {
+        method: 'POST',
+        credentials: 'include',
+      })
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean
+        error?: string
+        redirectTo?: string
+      }
+      if (!res.ok || !data.ok) {
+        setToast({
+          type: 'err',
+          msg: data.error?.trim() || `Não foi possível aceder (${res.status}).`,
+        })
+        return
+      }
+      window.location.href = data.redirectTo || '/dashboard'
+    } catch {
+      setToast({ type: 'err', msg: 'Falha de rede ao aceder como lojista.' })
+    } finally {
+      setBusyImpersonate(false)
     }
   }
 
@@ -1828,6 +1857,40 @@ export function LojistasPageClient() {
                         </button>
                       </div>
                     )}
+                  </section>
+
+                  <section className="rounded-2xl border border-[var(--card-border)] bg-[#fafafa] p-4">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
+                      Acesso à conta
+                    </h3>
+                    <p className="mt-1 text-[11px] leading-snug text-[#9ca3af]">
+                      Entra no painel deste lojista sem precisar da senha dele, para
+                      configurar a conta. A tua sessão de admin é guardada e podes voltar
+                      a qualquer momento pelo botão «Voltar ao admin». A ação fica
+                      registada nos logs.
+                    </p>
+                    <button
+                      type="button"
+                      disabled={busyImpersonate}
+                      onClick={() => void impersonateLojista()}
+                      className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--dash-primary)] px-3 py-2.5 text-xs font-semibold text-white hover:brightness-105 disabled:opacity-50"
+                    >
+                      <svg
+                        className="h-4 w-4"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                        aria-hidden
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z M2.5 12C4 7.5 7.8 5 12 5s8 2.5 9.5 7c-1.5 4.5-5.3 7-9.5 7s-8-2.5-9.5-7Z"
+                        />
+                      </svg>
+                      {busyImpersonate ? 'A entrar…' : 'Acessar como lojista'}
+                    </button>
                   </section>
 
                   <section className="rounded-2xl border border-[var(--card-border)] bg-[#fafafa] p-4">
