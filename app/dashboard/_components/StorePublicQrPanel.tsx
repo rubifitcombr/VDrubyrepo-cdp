@@ -281,7 +281,8 @@ export function StorePublicQrPanel({
     const a = document.createElement('a')
     // Em navegadores in-app (Instagram, etc.) o atributo download costuma ser
     // ignorado; abrir noutra aba deixa o utilizador guardar a imagem manualmente.
-    const supportsDownload = 'download' in a
+    // Verifica no prototype para não estreitar o tipo de `a` (TS).
+    const supportsDownload = 'download' in HTMLAnchorElement.prototype
     a.href = posterUrl
     a.download = filename
     a.rel = 'noopener'
