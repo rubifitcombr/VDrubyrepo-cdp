@@ -37,13 +37,7 @@ export function FiscalUpsell({ status }: { status: FiscalStatus }) {
   return (
     <section className="overflow-hidden rounded-2xl border border-[var(--card-border)] bg-white shadow-sm shadow-black/[0.04]">
       <div className="bg-gradient-to-br from-[var(--dash-primary)] to-vyria-plum px-6 py-8 text-white md:px-10 md:py-10">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold ring-1 ring-white/25">
-          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.5l2.04 4.13 4.56.66-3.3 3.21.78 4.54-4.08-2.14-4.08 2.14.78-4.54-3.3-3.21 4.56-.66z" />
-          </svg>
-          Add-on premium
-        </span>
-        <h2 className="mt-4 font-brand text-2xl font-bold tracking-tight md:text-3xl">
+        <h2 className="font-brand text-2xl font-bold tracking-tight md:text-3xl">
           Módulo Vyria Fiscal
         </h2>
         <p className="mt-3 max-w-xl text-sm leading-relaxed text-white/90 md:text-base">
