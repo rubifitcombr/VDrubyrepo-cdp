@@ -303,6 +303,34 @@ export function buildStatusDistribution(rows: LojistaListRow[]): StatusSlice[] {
   }))
 }
 
+/**
+ * IDs de utilizadores que ainda existem em auth.users.
+ * Retorna `null` se a consulta falhar (nesse caso não filtramos nada,
+ * para evitar esconder lojas por engano).
+ */
+async function fetchExistingAuthUserIds(
+  svc: SupabaseClient
+): Promise<Set<string> | null> {
+  const ids = new Set<string>()
+  const perPage = 1000
+  let page = 1
+  while (true) {
+    const { data, error } = await svc.auth.admin.listUsers({ page, perPage })
+    if (error) {
+      console.error('[admin-lojistas] listUsers falhou:', error.message)
+      return null
+    }
+    const users = data?.users ?? []
+    for (const u of users) {
+      if (u?.id) ids.add(u.id)
+    }
+    if (users.length < perPage) break
+    page += 1
+    if (page > 100) break
+  }
+  return ids
+}
+
 export async function fetchLojistasForAdmin(
   svc: SupabaseClient,
   params: { filtro: string; q: string }
@@ -324,7 +352,22 @@ export async function fetchLojistasForAdmin(
   const { data: stores, error } = await svc.from('stores').select('*')
   if (error) throw new Error(error.message)
 
-  const list = (stores ?? []) as Record<string, unknown>[]
+  const rawList = (stores ?? []) as Record<string, unknown>[]
+
+  // Alinha o painel com o banco: oculta lojas cujo dono já não existe em
+  // auth.users (ex.: usuário apagado direto no Supabase Authentication).
+  const existingAuthIds = await fetchExistingAuthUserIds(svc)
+  const list =
+    existingAuthIds === null
+      ? rawList
+      : rawList.filter((s) => {
+          const ownerId = String(s.owner_id ?? '').trim()
+          // Mantém lojas sem dono (caso legado); oculta apenas quando o dono
+          // foi apagado de auth.users.
+          if (ownerId === '') return true
+          return existingAuthIds.has(ownerId)
+        })
+
   const ownerIds = [
     ...new Set(
       list.map((s) => String(s.owner_id ?? '')).filter(Boolean)
