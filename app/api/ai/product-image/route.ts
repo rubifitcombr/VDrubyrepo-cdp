@@ -161,16 +161,80 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ imageUrl })
   } catch (err) {
     console.error('[ai/product-image]', err)
+
+    if (err instanceof OpenAI.APIError) {
+      const apiMsg = err.message || ''
+      const lower = apiMsg.toLowerCase()
+      const status = err.status ?? 502
+
+      if (
+        lower.includes('must be verified') ||
+        lower.includes('verify organization') ||
+        lower.includes('organization must be verified')
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              'A sua organização na OpenAI precisa ser verificada para usar o gpt-image-1. Acesse platform.openai.com/settings/organization/general e clique em "Verify Organization".',
+          },
+          { status: 502 }
+        )
+      }
+
+      if (
+        status === 429 ||
+        lower.includes('quota') ||
+        lower.includes('billing') ||
+        lower.includes('insufficient_quota')
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              'Sem créditos/cota na conta OpenAI (ou limite de requisições atingido). Verifique o billing em platform.openai.com.',
+          },
+          { status: 502 }
+        )
+      }
+
+      if (lower.includes('content') && lower.includes('policy')) {
+        return NextResponse.json(
+          {
+            error:
+              'O pedido foi recusado pela política de conteúdo da OpenAI. Ajuste o nome/descrição do produto e tente novamente.',
+          },
+          { status: 422 }
+        )
+      }
+
+      if (lower.includes('model') || lower.includes('invalid')) {
+        return NextResponse.json(
+          {
+            error:
+              'Modelo de imagem indisponível. Verifique se a sua conta OpenAI tem acesso ao gpt-image-1.',
+          },
+          { status: 502 }
+        )
+      }
+
+      return NextResponse.json(
+        { error: `Falha na OpenAI: ${apiMsg || 'erro desconhecido'}` },
+        { status: status >= 400 && status < 600 ? status : 502 }
+      )
+    }
+
     const msg = err instanceof Error ? err.message : ''
     if (msg.includes('model') || msg.includes('invalid')) {
       return NextResponse.json(
         {
           error:
-            'Modelo de imagem indisponível. Verifica se a tua conta OpenAI tem acesso ao gpt-image-1.',
+            'Modelo de imagem indisponível. Verifique se a sua conta OpenAI tem acesso ao gpt-image-1.',
         },
         { status: 502 }
       )
     }
-    return NextResponse.json({ error: 'Erro ao gerar imagem.' }, { status: 500 })
+    return NextResponse.json(
+      { error: `Erro ao gerar imagem${msg ? `: ${msg}` : '.'}` },
+      { status: 500 }
+    )
   }
 }
