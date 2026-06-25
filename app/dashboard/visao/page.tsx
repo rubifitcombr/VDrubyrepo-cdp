@@ -149,7 +149,6 @@ export default async function Dashboard() {
 
   const deliveryFeeInitial = moneyInput(st?.delivery_fee)
   const deliveryFreeAboveInitial = moneyInput(st?.delivery_free_above)
-  const deliveryMaxKmInitial = moneyInput(st?.delivery_max_km)
 
   const h = await headers()
   const host = h.get('x-forwarded-host') ?? h.get('host') ?? ''
@@ -409,12 +408,11 @@ export default async function Dashboard() {
             <DashboardStoreControls storeSlug={storeSlug} origin={origin} />
           ) : null}
           <DashboardOperationCard
-            key={`${storeId}-${initialManualClosed}-${deliveryFeeInitial}-${deliveryFreeAboveInitial}-${deliveryMaxKmInitial}`}
+            key={`${storeId}-${initialManualClosed}-${deliveryFeeInitial}-${deliveryFreeAboveInitial}`}
             storeId={storeId}
             initialManualClosed={initialManualClosed}
             initialDeliveryFee={deliveryFeeInitial}
             initialDeliveryFreeAbove={deliveryFreeAboveInitial}
-            initialDeliveryMaxKm={deliveryMaxKmInitial}
             showDeliveryFeeSection={deliveryPipeline}
           />
         </div>
