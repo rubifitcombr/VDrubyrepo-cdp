@@ -227,6 +227,7 @@ export function WaiterClient({
   showThermalPrint,
   printing,
   tablesOnlyView = false,
+  forceWaiterView = false,
 }: {
   storeId: string
   storeName: string
@@ -244,6 +245,7 @@ export function WaiterClient({
   showThermalPrint: boolean
   printing: StorePrintingState
   tablesOnlyView?: boolean
+  forceWaiterView?: boolean
 }) {
   const [tables, setTables] = useState(initialTables)
   const [sectorsEditText, setSectorsEditText] = useState(() => initialSectors.join('\n'))
@@ -308,8 +310,10 @@ export function WaiterClient({
     setSalaoMode(initialSalaoAttendanceMode)
   }, [initialSalaoAttendanceMode])
 
-  const staffSalonUi = planAllowsSalonStaffGarcom(plan) && salaoMode === 'waiter'
+  const staffSalonUi =
+    planAllowsSalonStaffGarcom(plan) && (forceWaiterView || salaoMode === 'waiter')
   const selfServiceSalonUi =
+    !staffSalonUi &&
     planAllowsSalonSelfServiceQr(plan) &&
     (!planAllowsSalonStaffGarcom(plan) || salaoMode === 'self_service')
   async function persistSalaoMode(next: SalaoAttendanceMode) {

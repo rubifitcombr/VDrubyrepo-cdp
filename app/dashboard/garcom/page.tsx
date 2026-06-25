@@ -23,6 +23,7 @@ export default async function GarcomPage({
   const params = searchParams ? await searchParams : {}
   const hubParam = typeof params.hub === 'string' ? params.hub : null
   const tablesOnlyView = hubParam === 'mesas'
+  const forceWaiterView = hubParam === 'salao'
 
   const store = await getStoreByUser(user.id)
   if (!store || typeof store !== 'object' || !('id' in store)) {
@@ -130,6 +131,7 @@ export default async function GarcomPage({
       showThermalPrint={hasFeature(plan, 'printing')}
       printing={printing}
       tablesOnlyView={tablesOnlyView}
+      forceWaiterView={forceWaiterView}
     />
   )
 }
