@@ -15,6 +15,8 @@ export type FiscalInvoiceStatus =
   | 'cancelada'
   | 'erro'
 
+export type FiscalCertStatus = 'nao_enviado' | 'valido' | 'vencido' | 'invalido'
+
 export const FISCAL_STATUS_LABEL: Record<FiscalStatus, string> = {
   nao_configurado: 'Não configurado',
   pending_review: 'Aguardando aprovação',
@@ -30,6 +32,13 @@ export const FISCAL_INVOICE_STATUS_LABEL: Record<FiscalInvoiceStatus, string> = 
   erro: 'Erro',
 }
 
+export const FISCAL_CERT_STATUS_LABEL: Record<FiscalCertStatus, string> = {
+  nao_enviado: 'Certificado não enviado',
+  valido: 'Certificado válido',
+  vencido: 'Certificado vencido',
+  invalido: 'Certificado inválido',
+}
+
 export function parseFiscalStatus(raw: unknown): FiscalStatus {
   const v = String(raw ?? '').trim().toLowerCase()
   if (v === 'pending_review' || v === 'ativo' || v === 'bloqueado') return v
@@ -40,6 +49,12 @@ export function parseFiscalAmbiente(raw: unknown): FiscalAmbiente {
   return String(raw ?? '').trim().toLowerCase() === 'producao'
     ? 'producao'
     : 'homologacao'
+}
+
+export function parseFiscalCertStatus(raw: unknown): FiscalCertStatus {
+  const v = String(raw ?? '').trim().toLowerCase()
+  if (v === 'valido' || v === 'vencido' || v === 'invalido') return v
+  return 'nao_enviado'
 }
 
 /** O lojista só pode emitir NFC-e quando o add-on está ativo. */

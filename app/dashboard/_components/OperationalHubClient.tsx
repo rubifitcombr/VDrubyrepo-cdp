@@ -12,6 +12,7 @@ import {
   IconHome,
   IconKds,
   IconMenuBook,
+  IconReceipt,
   IconTruck,
 } from './NavIcons'
 import { HubShortcutPinModal } from './HubShortcutPinModal'
@@ -388,6 +389,12 @@ export function OperationalHubClient({
                   />
                 )
               ) : null}
+              <SideShortcut
+                label="Vyria Fiscal"
+                description="Emitir NFC-e, enviar certificado e configurar a nota fiscal."
+                icon={IconReceipt}
+                onOpen={() => openShortcut('/dashboard/fiscal')}
+              />
               <SideShortcut
                 label="Visão geral do dia"
                 description="Abrir resumo diário, métricas e acompanhamento da operação."

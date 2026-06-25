@@ -571,6 +571,16 @@ function IconBike({ className }: { className?: string }) {
   )
 }
 
+function IconReceipt({ className }: { className?: string }) {
+  return (
+    <IconTablerBase className={className}>
+      <path d="M5 21V5a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v16l-3 -2l-2 2l-2 -2l-2 2l-2 -2l-3 2" />
+      <path d="M9 7h6" />
+      <path d="M9 11h6" />
+    </IconTablerBase>
+  )
+}
+
 function IconTool({ className }: { className?: string }) {
   return (
     <IconTablerBase className={className}>
@@ -665,7 +675,10 @@ type OrderCardActions = {
   markDelivered: (order: StoreOrderRow) => void
   print: (order: StoreOrderRow) => void
   late: (order: StoreOrderRow) => void
+  emitNfce: (order: StoreOrderRow) => void
 }
+
+type NfceState = { status: string; nfeUrl?: string | null }
 
 function OrderCard({
   order,
@@ -676,6 +689,9 @@ function OrderCard({
   thermalBusy,
   showManualComandaPrint,
   orderHasDeliveryRegistration,
+  fiscalActive,
+  nfceBusy,
+  nfceState,
   onAction,
 }: {
   order: StoreOrderRow
@@ -686,6 +702,9 @@ function OrderCard({
   thermalBusy: boolean
   showManualComandaPrint: boolean
   orderHasDeliveryRegistration: boolean
+  fiscalActive: boolean
+  nfceBusy: boolean
+  nfceState?: NfceState
   onAction: OrderCardActions
 }) {
   const st = order.status
@@ -722,6 +741,8 @@ function OrderCard({
   const showPrimaryStatusAction = isActiveStatus
   const showSecondaryWhatsapp = Boolean(st === 'ready' || st === 'confirmed' ? waOut || wa : wa)
   const readyIsDelivery = deliveryPipelineEnabled && isDeliveryFlowOrder(order)
+  const showNfce = fiscalActive && st !== 'cancelled'
+  const nfceAuthorized = nfceState?.status === 'autorizada'
 
   const primaryButtonBase =
     'inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl px-3 text-sm font-extrabold text-white shadow-sm transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50'
@@ -879,7 +900,7 @@ function OrderCard({
           </div>
         ) : null}
 
-        {showPrimaryStatusAction || showDeliveryRegistration || showManualPrintAction || showSecondaryWhatsapp ? (
+        {showPrimaryStatusAction || showDeliveryRegistration || showManualPrintAction || showSecondaryWhatsapp || showNfce ? (
           <div className="mt-3 grid gap-2 border-t border-slate-100 pt-3">
             {primary ? (
               <button
@@ -934,6 +955,37 @@ function OrderCard({
                 >
                   Recusar
                 </button>
+              ) : null}
+              {showNfce ? (
+                nfceAuthorized ? (
+                  nfceState?.nfeUrl ? (
+                    <a
+                      href={nfceState.nfeUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`${secondaryButtonClass} border-emerald-200 bg-emerald-50 text-emerald-700`}
+                    >
+                      <IconReceipt className="h-4 w-4" />
+                      NFC-e ✓
+                    </a>
+                  ) : (
+                    <span className={`${secondaryButtonClass} border-emerald-200 bg-emerald-50 text-emerald-700`}>
+                      <IconReceipt className="h-4 w-4" />
+                      NFC-e ✓
+                    </span>
+                  )
+                ) : (
+                  <button
+                    type="button"
+                    disabled={nfceBusy}
+                    onClick={() => onAction.emitNfce(order)}
+                    className={secondaryButtonClass}
+                    title="Emitir Nota Fiscal de Consumidor (NFC-e) deste pedido"
+                  >
+                    <IconReceipt className="h-4 w-4 shrink-0" />
+                    {nfceBusy ? 'Emitindo…' : 'Emitir NFC-e'}
+                  </button>
+                )
               ) : null}
             </div>
           </div>
@@ -1035,6 +1087,9 @@ export function OrdersClient({
   const [delSubmitting, setDelSubmitting] = useState(false)
   const [orderIdsComEntrega, setOrderIdsComEntrega] = useState<Set<string>>(new Set())
   const [thermalBusyId, setThermalBusyId] = useState<string | null>(null)
+  const [fiscalActive, setFiscalActive] = useState(false)
+  const [nfceBusyId, setNfceBusyId] = useState<string | null>(null)
+  const [nfceStateById, setNfceStateById] = useState<Map<string, NfceState>>(new Map())
 
   /** Growth+ (módulo Pedidos): comanda manual sempre disponível, com ou sem automações. */
   const showManualComandaPrint = hasFeature(plan, 'orders')
@@ -1047,6 +1102,25 @@ export function OrdersClient({
       }
     }
   }, [])
+
+  // Só mostra o botão "Emitir NFC-e" quando o add-on fiscal está ativo.
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await fetch(`/api/store/fiscal?storeId=${encodeURIComponent(storeId)}`, {
+          credentials: 'include',
+        })
+        const json = (await res.json().catch(() => ({}))) as { fiscal?: { status?: string } }
+        if (!cancelled) setFiscalActive(json.fiscal?.status === 'ativo')
+      } catch {
+        if (!cancelled) setFiscalActive(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [storeId])
 
   useEffect(() => {
     if (!deliveryPipelineEnabled) return
@@ -1518,6 +1592,41 @@ export function OrdersClient({
     void patchStatus(orderId, 'cancelled')
   }
 
+  async function emitNfce(order: StoreOrderRow) {
+    const ref = `#${displayNumberById.get(order.id) ?? '—'}`
+    if (!confirm(`Emitir NFC-e do pedido ${ref}?`)) return
+    setNfceBusyId(order.id)
+    try {
+      const res = await dashboardFetch('/api/store/fiscal/emitir', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: order.id }),
+      })
+      const json = (await res.json().catch(() => ({}))) as {
+        error?: string
+        status?: string
+        chaveAcesso?: string
+        nfeUrl?: string
+      }
+      if (!res.ok) {
+        flashWaNotice(json.error || 'Não foi possível emitir a NFC-e.')
+        return
+      }
+      setNfceStateById((prev) => {
+        const next = new Map(prev)
+        next.set(order.id, { status: json.status || 'autorizada', nfeUrl: json.nfeUrl })
+        return next
+      })
+      flashWaNotice(
+        json.chaveAcesso
+          ? `NFC-e autorizada (${json.chaveAcesso}).`
+          : 'NFC-e emitida com sucesso.'
+      )
+    } finally {
+      setNfceBusyId(null)
+    }
+  }
+
   function scrollToOrder(orderId: string) {
     setShowActionQueue(false)
     window.requestAnimationFrame(() => {
@@ -1803,6 +1912,9 @@ export function OrdersClient({
                   thermalBusy={thermalBusyId === order.id}
                   showManualComandaPrint={showManualComandaPrint}
                   orderHasDeliveryRegistration={orderIdsComEntrega.has(order.id)}
+                  fiscalActive={fiscalActive}
+                  nfceBusy={nfceBusyId === order.id}
+                  nfceState={nfceStateById.get(order.id)}
                   onAction={{
                     patchStatus: (orderId, status) =>
                       void patchStatus(orderId, status),
@@ -1811,6 +1923,7 @@ export function OrdersClient({
                     markDelivered: onMarkDelivered,
                     print: (o) => void printOrderDefault(o),
                     late: (o) => setDeliveryModal({ mode: 'late', order: o }),
+                    emitNfce: (o) => void emitNfce(o),
                   }}
                 />
               )}

@@ -68,6 +68,7 @@ import {
   IconMenuBook,
   IconPalette,
   IconPrinter,
+  IconReceipt,
   IconTag,
   IconTrendUp,
   IconTruck,
@@ -146,6 +147,12 @@ const nav: Array<{
     href: '/dashboard/settings',
     label: 'Configurações',
     icon: IconCog,
+    menuKey: 'configuracoes',
+  },
+  {
+    href: '/dashboard/fiscal',
+    label: 'Vyria Fiscal',
+    icon: IconReceipt,
     menuKey: 'configuracoes',
   },
   {

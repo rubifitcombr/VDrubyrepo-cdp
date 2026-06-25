@@ -119,6 +119,8 @@ function pathAllowedWithMenuKeys(
   if (n === '/planos' || n.startsWith('/planos/')) return true
   if (n.startsWith('/dashboard/planos')) return true
   if (n.startsWith('/dashboard/upgrade')) return true
+  // Vyria Fiscal é add-on (gated por status no banco), não por plano.
+  if (n === '/dashboard/fiscal' || n.startsWith('/dashboard/fiscal/')) return true
 
   if (n.startsWith('/dashboard/products')) {
     return keys.has('produtos')

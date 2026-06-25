@@ -49,6 +49,9 @@ export async function GET(req: NextRequest) {
     fiscal: {
       status: cfg?.status ?? 'nao_configurado',
       ambiente: cfg?.ambiente ?? 'homologacao',
+      certStatus: cfg?.certStatus ?? 'nao_enviado',
+      certCn: cfg?.certCn ?? '',
+      certValidade: cfg?.certValidade ?? '',
       regimeTributario: cfg?.regimeTributario ?? 'simples_nacional',
       cnpj: cfg?.cnpj ?? '',
       razaoSocial: cfg?.razaoSocial ?? '',

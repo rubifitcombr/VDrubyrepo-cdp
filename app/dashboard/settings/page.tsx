@@ -1,7 +1,6 @@
 'use client'
 
 import { DashboardBusinessHoursCard } from '@/app/dashboard/_components/DashboardBusinessHoursCard'
-import { FiscalSettingsCard } from '@/app/dashboard/settings/_components/FiscalSettingsCard'
 import { StorePublicQrPanel } from '@/app/dashboard/_components/StorePublicQrPanel'
 import { StoreOpenSwitch } from '@/app/dashboard/_components/StoreOpenSwitch'
 import { PublicSlugPathPill } from '@/app/_components/PublicSlugPathPill'
@@ -1007,8 +1006,6 @@ export default function SettingsPage() {
             </div>
           </section>
         ) : null}
-
-        {storeId ? <FiscalSettingsCard storeId={storeId} /> : null}
 
         <div className="flex justify-end pt-2">
           <button

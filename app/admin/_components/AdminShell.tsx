@@ -56,7 +56,10 @@ export function AdminShell({
     router.refresh()
   }
 
-  const nav = [{ href: '/admin/lojistas', label: 'Lojistas' }]
+  const nav = [
+    { href: '/admin/lojistas', label: 'Lojistas' },
+    { href: '/admin/fiscal', label: 'Vyria Fiscal' },
+  ]
 
   const sidebarInner = (
     <>

@@ -39,6 +39,14 @@ export function IconCog({ className }: { className?: string }) {
   )
 }
 
+export function IconReceipt({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 3.75h3M5.25 21V4.5A1.5 1.5 0 016.75 3h10.5a1.5 1.5 0 011.5 1.5V21l-2.25-1.5L14.25 21 12 19.5 9.75 21 7.5 19.5 5.25 21z" />
+    </svg>
+  )
+}
+
 export function IconExternal({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">

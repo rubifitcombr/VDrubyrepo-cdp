@@ -1,11 +1,16 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
+  FISCAL_CERT_STATUS_LABEL,
   FISCAL_STATUS_LABEL,
+  isFiscalActive,
+  parseFiscalCertStatus,
   parseFiscalStatus,
+  type FiscalCertStatus,
   type FiscalStatus,
 } from '@/lib/fiscal'
+import { FiscalUpsell } from '@/app/dashboard/fiscal/_components/FiscalUpsell'
 
 const inputClass =
   'mt-1.5 w-full rounded-xl border border-[var(--card-border)] bg-white px-4 py-2.5 text-sm text-[#1a1614] outline-none transition-all placeholder:text-[#9ca3af] focus:border-[var(--dash-primary)]/40 focus:ring-2 focus:ring-[var(--dash-primary)]/12'
@@ -56,6 +61,12 @@ function statusTone(status: FiscalStatus): string {
   return 'bg-gray-100 text-gray-600 border-gray-200'
 }
 
+function certTone(status: FiscalCertStatus): string {
+  if (status === 'valido') return 'bg-emerald-50 text-emerald-700 border-emerald-200'
+  if (status === 'vencido' || status === 'invalido') return 'bg-red-50 text-red-700 border-red-200'
+  return 'bg-gray-100 text-gray-600 border-gray-200'
+}
+
 export function FiscalSettingsCard({ storeId }: { storeId: string }) {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -63,6 +74,13 @@ export function FiscalSettingsCard({ storeId }: { storeId: string }) {
   const [hasToken, setHasToken] = useState(false)
   const [form, setForm] = useState<FiscalForm>(EMPTY_FORM)
   const [msg, setMsg] = useState<string | null>(null)
+  const [certStatus, setCertStatus] = useState<FiscalCertStatus>('nao_enviado')
+  const [certCn, setCertCn] = useState('')
+  const [certValidade, setCertValidade] = useState('')
+  const [certSenha, setCertSenha] = useState('')
+  const [certUploading, setCertUploading] = useState(false)
+  const [certMsg, setCertMsg] = useState<string | null>(null)
+  const certFileRef = useRef<HTMLInputElement>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -75,6 +93,9 @@ export function FiscalSettingsCard({ storeId }: { storeId: string }) {
         const f = data.fiscal
         setStatus(parseFiscalStatus(f.status))
         setHasToken(Boolean(f.hasToken))
+        setCertStatus(parseFiscalCertStatus(f.certStatus))
+        setCertCn(String(f.certCn ?? ''))
+        setCertValidade(String(f.certValidade ?? ''))
         setForm({
           ambiente: String(f.ambiente ?? 'homologacao'),
           regimeTributario: String(f.regimeTributario ?? 'simples_nacional'),
@@ -129,6 +150,51 @@ export function FiscalSettingsCard({ storeId }: { storeId: string }) {
     }
   }
 
+  async function handleUploadCert() {
+    setCertMsg(null)
+    const file = certFileRef.current?.files?.[0]
+    if (!file) {
+      setCertMsg('Selecione o arquivo .pfx/.p12.')
+      return
+    }
+    if (!certSenha.trim()) {
+      setCertMsg('Informe a senha do certificado.')
+      return
+    }
+    setCertUploading(true)
+    try {
+      const fd = new FormData()
+      fd.append('storeId', storeId)
+      fd.append('senha', certSenha)
+      fd.append('file', file)
+      const res = await fetch('/api/store/fiscal/certificado', {
+        method: 'POST',
+        credentials: 'include',
+        body: fd,
+      })
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string
+        cn?: string
+        validade?: string
+      }
+      if (!res.ok) {
+        setCertMsg(data.error || 'Não foi possível enviar o certificado.')
+        return
+      }
+      setCertMsg('Certificado enviado com sucesso.')
+      setCertSenha('')
+      if (certFileRef.current) certFileRef.current.value = ''
+      await load()
+    } finally {
+      setCertUploading(false)
+    }
+  }
+
+  // Add-on pago: enquanto não estiver ativo, mostra o fluxo de ativação (upsell).
+  if (!loading && !isFiscalActive(status)) {
+    return <FiscalUpsell status={status} />
+  }
+
   return (
     <section className="rounded-2xl border border-[var(--card-border)] bg-white p-6 shadow-sm shadow-black/[0.04] md:p-8">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -147,9 +213,9 @@ export function FiscalSettingsCard({ storeId }: { storeId: string }) {
 
       <p className="mt-2 text-sm text-[#6b7280]">
         Emissão de NFC-e via Brasil NFe. Preencha os dados do emitente e o Token da sua
-        conta na Brasil NFe. O <strong>certificado digital (.pfx)</strong> deve ser enviado
-        no painel da própria Brasil NFe — a Vyria não armazena o certificado. Após salvar,
-        o status fica <strong>Aguardando aprovação</strong> até a Vyria ativar.
+        empresa. O <strong>certificado digital A1 (.pfx)</strong> é enviado aqui com segurança:
+        a Vyria apenas repassa o arquivo ao parceiro fiscal e <strong>não o armazena</strong>.
+        Após salvar, o status fica <strong>Aguardando aprovação</strong> até a Vyria ativar.
       </p>
 
       {loading ? (
@@ -198,6 +264,62 @@ export function FiscalSettingsCard({ storeId }: { storeId: string }) {
                 onChange={(e) => set('cscToken', e.target.value)}
                 autoComplete="off"
               />
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-[var(--card-border)] bg-[#fafafa] p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[#9ca3af]">
+                Certificado digital A1 (.pfx / .p12)
+              </p>
+              <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${certTone(certStatus)}`}>
+                {FISCAL_CERT_STATUS_LABEL[certStatus]}
+              </span>
+            </div>
+
+            {certCn || certValidade ? (
+              <p className="mt-2 text-xs text-[#6b7280]">
+                {certCn ? <>Titular: <strong>{certCn}</strong>. </> : null}
+                {certValidade ? (
+                  <>Válido até: <strong>{new Date(certValidade).toLocaleDateString('pt-BR')}</strong>.</>
+                ) : null}
+              </p>
+            ) : null}
+
+            <div className="mt-3 grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className={labelClass}>Arquivo do certificado</label>
+                <input
+                  ref={certFileRef}
+                  type="file"
+                  accept=".pfx,.p12"
+                  className="mt-1.5 w-full rounded-xl border border-[var(--card-border)] bg-white px-3 py-2 text-sm text-[#1a1614] file:mr-3 file:rounded-lg file:border-0 file:bg-[var(--dash-primary)]/10 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-[var(--dash-primary)]"
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Senha do certificado</label>
+                <input
+                  type="password"
+                  className={inputClass}
+                  placeholder="Senha do arquivo .pfx"
+                  value={certSenha}
+                  onChange={(e) => setCertSenha(e.target.value)}
+                  autoComplete="off"
+                />
+              </div>
+            </div>
+
+            {certMsg ? <p className="mt-2 text-sm text-[#374151]">{certMsg}</p> : null}
+
+            <div className="mt-3 flex justify-end">
+              <button
+                type="button"
+                onClick={() => void handleUploadCert()}
+                disabled={certUploading}
+                className="rounded-xl border border-[var(--dash-primary)]/30 bg-white px-4 py-2 text-sm font-semibold text-[var(--dash-primary)] transition hover:bg-[var(--dash-primary)]/5 disabled:opacity-50"
+              >
+                {certUploading ? 'Enviando…' : 'Enviar certificado'}
+              </button>
             </div>
           </div>
 
