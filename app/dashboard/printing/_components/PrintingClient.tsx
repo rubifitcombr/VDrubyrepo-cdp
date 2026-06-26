@@ -155,6 +155,7 @@ export function PrintingClient({
   const [discoverBusy, setDiscoverBusy] = useState(false)
   const [discoveredPrinters, setDiscoveredPrinters] = useState<DiscoveredPrinter[]>([])
   const [btSupported, setBtSupported] = useState(false)
+  const [btInsecure, setBtInsecure] = useState(false)
   const [btDeviceName, setBtDeviceName] = useState<string | null>(null)
   const [btConnected, setBtConnected] = useState(false)
   const [btBusy, setBtBusy] = useState(false)
@@ -166,8 +167,15 @@ export function PrintingClient({
   }, [initial])
 
   useEffect(() => {
-    setBtSupported(isWebBluetoothSupported())
+    const supported = isWebBluetoothSupported()
+    setBtSupported(supported)
+    setBtInsecure(
+      !supported &&
+        typeof window !== 'undefined' &&
+        window.isSecureContext === false
+    )
     setBtDeviceName(getBluetoothPrinterName())
+    if (!supported) return
     void (async () => {
       const ok = await tryReconnectKnownBluetoothPrinter()
       if (ok) {
@@ -848,10 +856,16 @@ export function PrintingClient({
           ) : null}
         </div>
 
-        {!btSupported ? (
+        {btInsecure ? (
+          <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            O Bluetooth do navegador só funciona em ligação segura (<strong>https://</strong>).
+            Abre o painel pelo endereço <strong>https</strong> do Vyria para usar esta opção.
+          </p>
+        ) : !btSupported ? (
           <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
             Este navegador não suporta Bluetooth Web. Abre o painel no <strong>Chrome</strong> ou{' '}
-            <strong>Edge</strong> (Android, Windows ou Mac) para usar esta opção.
+            <strong>Edge</strong> (Android, Windows ou Mac) para usar esta opção. No{' '}
+            <strong>iPhone/Safari</strong> não está disponível.
           </p>
         ) : (
           <>

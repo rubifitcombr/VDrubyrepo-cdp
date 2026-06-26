@@ -161,7 +161,9 @@ async function ensureConnection(): Promise<CachedPrinter> {
   const reconnected = await tryReconnectKnownBluetoothPrinter()
   if (reconnected && cached) return cached
 
-  throw new Error('Nenhuma impressora Bluetooth ligada. Liga uma em Impressão.')
+  throw new Error(
+    'Impressora Bluetooth não ligada. Carrega em «Ligar impressora Bluetooth» nesta janela primeiro.'
+  )
 }
 
 async function writeEscPos(
