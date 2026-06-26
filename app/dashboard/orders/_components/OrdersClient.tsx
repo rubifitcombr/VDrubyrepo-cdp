@@ -1594,13 +1594,22 @@ export function OrdersClient({
 
   async function emitNfce(order: StoreOrderRow) {
     const ref = `#${displayNumberById.get(order.id) ?? '—'}`
-    if (!confirm(`Emitir NFC-e do pedido ${ref}?`)) return
+    const cpfInput = window.prompt(
+      `Emitir NFC-e do pedido ${ref}.\n\nCPF na nota (opcional) — informe apenas os números ou deixe em branco:`,
+      ''
+    )
+    if (cpfInput === null) return // cancelado
+    const cpf = cpfInput.replace(/\D/g, '')
+    if (cpf && cpf.length !== 11) {
+      flashWaNotice('CPF inválido: use 11 dígitos ou deixe em branco.')
+      return
+    }
     setNfceBusyId(order.id)
     try {
       const res = await dashboardFetch('/api/store/fiscal/emitir', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: order.id }),
+        body: JSON.stringify({ orderId: order.id, cpf: cpf || undefined }),
       })
       const json = (await res.json().catch(() => ({}))) as {
         error?: string

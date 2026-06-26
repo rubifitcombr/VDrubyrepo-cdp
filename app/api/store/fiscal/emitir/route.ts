@@ -17,6 +17,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'orderId é obrigatório.' }, { status: 400 })
   }
 
+  const cpf = typeof body.cpf === 'string' ? body.cpf.replace(/\D/g, '') : ''
+  if (cpf && cpf.length !== 11) {
+    return NextResponse.json({ error: 'CPF inválido (use 11 dígitos ou deixe em branco).' }, { status: 400 })
+  }
+
   const user = await getUser()
   if (!user) {
     return NextResponse.json({ error: 'Sessão necessária.' }, { status: 401 })
@@ -38,7 +43,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Acesso negado ao pedido.' }, { status: 403 })
   }
 
-  const result = await emitirNfce(orderId)
+  const result = await emitirNfce(orderId, { cpf: cpf || undefined })
   if (!result.ok) {
     return NextResponse.json(
       { error: result.motivo || 'Falha ao emitir NFC-e.', status: result.status },

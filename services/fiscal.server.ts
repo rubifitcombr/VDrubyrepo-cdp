@@ -1,6 +1,13 @@
 import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { BrasilNFe } from 'brasilnfe'
+import type {
+  EmpresaEnvio,
+  NotaFiscalEnvio,
+  Pagamento as SdkPagamento,
+  Produto as SdkProduto,
+} from 'brasilnfe'
 import {
   parseFiscalAmbiente,
   parseFiscalCertStatus,
@@ -11,17 +18,16 @@ import {
   type FiscalStatus,
 } from '@/lib/fiscal'
 
-// Raiz dos serviços da Brasil NFe. Os módulos ficam em sub-rotas:
-//   /fiscal/*  -> emissão/consulta de documentos
-//   /empresa/* -> cadastro de empresas e certificados (requer UserToken)
-const DEFAULT_ROOT_URL = 'https://api.brasilnfe.com.br/services'
-const REQUEST_TIMEOUT_MS = 20_000
+// URL base dos serviços da Brasil NFe. O SDK já aponta para a oficial; a env só
+// é usada para sobrescrever (sandbox interno). O ambiente (produção/homologação)
+// é definido pelo campo TipoAmbiente de cada requisição, NÃO pela URL.
+const DEFAULT_SDK_URL = 'https://api.brasilnfe.com.br/services/'
 
-/** Normaliza a env para a raiz (aceita valores antigos terminados em /fiscal). */
-function resolveRootUrl(raw?: string): string {
+/** Normaliza a env para a base esperada pelo SDK (com barra final). */
+function resolveSdkUrl(raw?: string): string {
   const base = (raw || '').trim().replace(/\/+$/, '')
-  if (!base) return DEFAULT_ROOT_URL
-  return base.replace(/\/(fiscal|empresa)$/, '')
+  if (!base) return DEFAULT_SDK_URL
+  return `${base.replace(/\/(fiscal|empresa)$/, '')}/`
 }
 
 /* ------------------------------------------------------------------ */
@@ -75,6 +81,19 @@ export async function getStoreFiscalConfig(
   return mapFiscalConfig(data as Record<string, unknown>)
 }
 
+/** Converte o regime salvo na config para o código CRT da SEFAZ. */
+export function regimeToCrt(regime: string | null | undefined): number {
+  switch ((regime || '').trim()) {
+    case 'regime_normal':
+    case 'normal':
+      return 3
+    case 'simples_nacional_excesso':
+      return 2
+    default:
+      return 1 // simples_nacional
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* Contrato do serviço fiscal (isola o SaaS da API externa)            */
 /* ------------------------------------------------------------------ */
@@ -86,22 +105,38 @@ export type NfceClienteInput = {
 
 export type NfceProdutoInput = {
   nome: string
+  codigo?: string
   ncm: string
-  cfop: string
+  cfop: string | number
   quantidade: number
   valorUnitario: number
   unidade?: string
-  origem?: string
+  origem?: string | number
+  /** CSOSN (Simples) ou CST (Regime Normal) do ICMS. */
   cstCsosn?: string
   cest?: string
+}
+
+export type NfcePagamentoInput = {
+  /** Código SEFAZ (01 = Dinheiro, 03 = Crédito, 04 = Débito, 17 = PIX…). */
+  forma: string
+  valor: number
+  troco?: number
 }
 
 export type NfceEmitInput = {
   token: string
   ambiente: FiscalAmbiente
+  /** 1 = Simples Nacional, 2 = Simples (excesso), 3 = Regime Normal. */
+  crt?: number
   naturezaOperacao?: string
   cliente?: NfceClienteInput
   produtos: NfceProdutoInput[]
+  pagamentos?: NfcePagamentoInput[]
+  /** Total da nota; usado para o pagamento padrão quando não há detalhamento. */
+  valorTotal?: number
+  /** Correlaciona a nota com o pedido (usado na consulta posterior). */
+  identificadorInterno?: string
 }
 
 export type FiscalEmissionResult = {
@@ -110,10 +145,11 @@ export type FiscalEmissionResult = {
   chaveAcesso?: string
   protocolo?: string
   nfeUrl?: string
-  xml?: string
+  /** XML autorizado (base64), quando devolvido pelo gateway. */
+  xmlBase64?: string
+  /** DANFE/cupom em PDF (base64), quando devolvido pelo gateway. */
+  danfeBase64?: string
   motivo?: string
-  /** Identificador do documento no gateway, p/ consulta posterior. */
-  nfeId?: string
   raw?: unknown
 }
 
@@ -138,9 +174,10 @@ export type CertificadoInput = {
 
 export type CertificadoResult = {
   success: boolean
-  certId?: string
   cn?: string
   validade?: string
+  /** Certificado já vencido (a Brasil NFe sinaliza no retorno). */
+  expirado?: boolean
   motivo?: string
   raw?: unknown
 }
@@ -151,6 +188,13 @@ export type EmpresaInput = {
   nomeFantasia?: string
   inscricaoEstadual?: string
   crt?: number
+  /** CSC da NFC-e (por ambiente) — fica na configuração da empresa. */
+  csc?: {
+    idHomologacao?: string
+    tokenHomologacao?: string
+    idProducao?: string
+    tokenProducao?: string
+  }
   endereco?: {
     cep?: string
     uf?: string
@@ -170,157 +214,208 @@ export type EmpresaResult = {
   raw?: unknown
 }
 
+export type EmpresaListItem = { cnpj: string; token: string }
+
+export type EmpresaListResult = {
+  success: boolean
+  empresas: EmpresaListItem[]
+  motivo?: string
+}
+
 export interface FiscalService {
   emitirNfce(input: NfceEmitInput): Promise<FiscalEmissionResult>
   consultarStatus(nfeId: string, token: string): Promise<FiscalStatusResult>
   enviarCertificado(input: CertificadoInput): Promise<CertificadoResult>
   verificarCertificado(input: CertificadoInput): Promise<CertificadoResult>
   adicionarEmpresa(input: EmpresaInput): Promise<EmpresaResult>
+  /** Lista empresas da conta (UserToken) — usado para recuperar token por CNPJ. */
+  listarEmpresas(): Promise<EmpresaListResult>
 }
 
 /* ------------------------------------------------------------------ */
-/* Implementação Brasil NFe                                            */
+/* Implementação Brasil NFe (via SDK oficial)                          */
 /* ------------------------------------------------------------------ */
 
-function pickString(obj: Record<string, unknown>, ...keys: string[]): string | undefined {
-  for (const k of keys) {
-    const v = obj[k]
-    if (typeof v === 'string' && v.trim()) return v.trim()
-    if (typeof v === 'number') return String(v)
-  }
-  return undefined
+function toNum(v: unknown): number {
+  if (typeof v === 'number') return v
+  if (typeof v === 'string') return Number(v.replace(',', '.')) || 0
+  return 0
 }
 
-function toObject(raw: unknown): Record<string, unknown> {
-  return raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
+/** Formata data no padrão aceito pela Brasil NFe (sem timezone). */
+function fmtDate(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return (
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
+    `T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+  )
 }
 
-function mapInvoiceStatusFromObj(obj: Record<string, unknown>, httpOk: boolean): FiscalInvoiceStatus {
-  const chave = pickString(obj, 'ChaveAcesso', 'chaveAcesso', 'chave')
-  const protocolo = pickString(obj, 'Protocolo', 'protocolo', 'nProt')
-  if (httpOk && chave && protocolo) return 'autorizada'
-  const sit = (pickString(obj, 'Situacao', 'situacao', 'Status', 'status') || '').toLowerCase()
-  if (sit.includes('autoriz')) return 'autorizada'
-  if (sit.includes('cancel')) return 'cancelada'
-  if (sit.includes('rejeit') || sit.includes('denegad')) return 'rejeitada'
-  return httpOk ? 'pendente' : 'erro'
+function errorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message
+  return 'Falha de comunicação com a Brasil NFe.'
 }
 
 export class BrasilNfeService implements FiscalService {
-  private readonly root: string
-  private readonly userToken?: string
+  private readonly url: string
+  private readonly userToken: string
 
   constructor(opts?: { rootUrl?: string; userToken?: string }) {
-    this.root = resolveRootUrl(opts?.rootUrl)
-    this.userToken = opts?.userToken?.trim() || undefined
+    this.url = resolveSdkUrl(opts?.rootUrl)
+    this.userToken = opts?.userToken?.trim() || ''
   }
 
-  private async request(
-    path: string,
-    body: unknown,
-    headers: Record<string, string>
-  ): Promise<{ ok: boolean; httpStatus: number; raw: unknown }> {
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
-    try {
-      const res = await fetch(`${this.root}${path}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...headers },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      })
-      let raw: unknown = null
-      try {
-        raw = await res.json()
-      } catch {
-        raw = await res.text().catch(() => null)
-      }
-      return { ok: res.ok, httpStatus: res.status, raw }
-    } catch (err) {
-      const motivo = err instanceof Error ? err.message : 'Falha de rede.'
-      return { ok: false, httpStatus: 0, raw: { Mensagem: motivo } }
-    } finally {
-      clearTimeout(timer)
-    }
+  /** Instancia o SDK com o token da empresa (loja). */
+  private client(empresaToken: string): BrasilNFe {
+    return new BrasilNFe(empresaToken, this.userToken || undefined, this.url)
   }
 
   async emitirNfce(input: NfceEmitInput): Promise<FiscalEmissionResult> {
     if (!input.token?.trim()) {
-      return { success: false, status: 'erro', motivo: 'Token da Brasil NFe ausente.' }
+      return { success: false, status: 'erro', motivo: 'Token da empresa (loja) ausente.' }
     }
     if (!input.produtos.length) {
       return { success: false, status: 'erro', motivo: 'Nenhum produto para emitir.' }
     }
 
-    const payload = {
+    const crt = input.crt ?? 1 // padrão Simples Nacional
+    const cstIcmsPadrao = crt === 3 ? '00' : '102' // Normal usa CST; Simples usa CSOSN
+
+    const produtos: SdkProduto[] = input.produtos.map((p) => {
+      const quantidade = toNum(p.quantidade) || 1
+      const valorUnitario = toNum(p.valorUnitario)
+      return {
+        CodProdutoServico: p.codigo || undefined,
+        NmProduto: p.nome,
+        NCM: p.ncm,
+        CFOP: Number(p.cfop) || undefined,
+        CEST: p.cest || undefined,
+        Quantidade: quantidade,
+        UnidadeComercial: p.unidade || 'UN',
+        ValorUnitario: valorUnitario,
+        ValorTotal: Number((quantidade * valorUnitario).toFixed(2)),
+        OrigemProduto: Number(p.origem ?? 0) || 0,
+        Imposto: {
+          ICMS: { CodSituacaoTributaria: p.cstCsosn?.trim() || cstIcmsPadrao, AliquotaICMS: 0 },
+          PIS: { CodSituacaoTributaria: '99', Aliquota: 0 },
+          COFINS: { CodSituacaoTributaria: '99', Aliquota: 0 },
+        },
+      }
+    })
+
+    const total =
+      input.valorTotal != null
+        ? toNum(input.valorTotal)
+        : produtos.reduce((acc, p) => acc + (p.ValorTotal ?? 0), 0)
+
+    const pagamentos: SdkPagamento[] = (input.pagamentos?.length
+      ? input.pagamentos
+      : [{ forma: '01', valor: total }]
+    ).map((pg) => ({
+      IndicadorPagamento: 0,
+      FormaPagamento: pg.forma || '01',
+      VlPago: toNum(pg.valor),
+      ...(pg.troco ? { VlTroco: toNum(pg.troco) } : {}),
+    }))
+
+    const cpf = input.cliente?.cpf?.replace(/\D/g, '') || ''
+    const payload: NotaFiscalEnvio = {
+      TipoAmbiente: input.ambiente === 'producao' ? 1 : 2,
       ModeloDocumento: 65,
-      TipoAmbiente: input.ambiente === 'producao' ? '1' : '2',
-      NaturezaOperacao: input.naturezaOperacao || 'Venda ao Consumidor',
+      Finalidade: 1,
+      NaturezaOperacao: input.naturezaOperacao || 'VENDA AO CONSUMIDOR',
+      IndicadorPresenca: 1,
       ConsumidorFinal: true,
-      ...(input.cliente?.cpf
+      ...(input.identificadorInterno ? { IdentificadorInterno: input.identificadorInterno } : {}),
+      ...(cpf
         ? {
             Cliente: {
-              CpfCnpj: input.cliente.cpf.replace(/\D/g, ''),
-              ...(input.cliente.nome ? { NmCliente: input.cliente.nome } : {}),
+              CpfCnpj: cpf,
+              IndicadorIe: 9,
+              ...(input.cliente?.nome ? { NmCliente: input.cliente.nome } : {}),
             },
           }
         : {}),
-      Produtos: input.produtos.map((p) => ({
-        NmProduto: p.nome,
-        NCM: p.ncm,
-        CFOP: Number(p.cfop) || p.cfop,
-        Quantidade: p.quantidade,
-        ValorUnitario: p.valorUnitario,
-        Unidade: p.unidade || 'UN',
-        Origem: p.origem || '0',
-        ...(p.cstCsosn ? { CstCsosn: p.cstCsosn } : {}),
-        ...(p.cest ? { CEST: p.cest } : {}),
-      })),
+      Produtos: produtos,
+      Pagamentos: pagamentos,
     }
 
-    const { ok, httpStatus, raw } = await this.request('/fiscal/EnviarNotaFiscal', payload, {
-      Token: input.token,
-    })
-    const obj = toObject(raw)
-    const chaveAcesso = pickString(obj, 'ChaveAcesso', 'chaveAcesso', 'chave')
-    const protocolo = pickString(obj, 'Protocolo', 'protocolo', 'nProt')
-    const nfeUrl = pickString(obj, 'UrlQrCode', 'QrCodeUrl', 'urlDanfe', 'DanfeUrl', 'nfe_url')
-    const xml = pickString(obj, 'Xml', 'xml', 'XmlAssinado')
-    const nfeId = pickString(obj, 'Id', 'id', 'NfeId', 'DocumentoId', 'IdDocumento')
-    const motivo = pickString(obj, 'Mensagem', 'mensagem', 'Motivo', 'xMotivo', 'erro', 'error')
+    try {
+      const resp = await this.client(input.token).notaFiscal.enviarNotaFiscal(payload, crt)
+      const ret = resp.ReturnNF
+      const slimRaw = { ReturnNF: ret, Error: resp.Error, Avisos: resp.Avisos }
 
-    if (ok && chaveAcesso && protocolo) {
-      return { success: true, status: 'autorizada', chaveAcesso, protocolo, nfeUrl, xml, nfeId, raw }
+      if (ret?.Ok) {
+        return {
+          success: true,
+          status: 'autorizada',
+          chaveAcesso: ret.ChaveNF || undefined,
+          protocolo: ret.Numero != null ? String(ret.Numero) : undefined,
+          xmlBase64: resp.Base64Xml || undefined,
+          danfeBase64: resp.Base64File || undefined,
+          raw: slimRaw,
+        }
+      }
+
+      const motivo =
+        ret?.DsStatusRespostaSefaz ||
+        resp.Error ||
+        resp.Avisos?.join('; ') ||
+        'Nota rejeitada pela SEFAZ.'
+      return {
+        success: false,
+        status: ret?.CodStatusRespostaSefaz ? 'rejeitada' : 'erro',
+        chaveAcesso: ret?.ChaveNF || undefined,
+        motivo,
+        raw: slimRaw,
+      }
+    } catch (err) {
+      return { success: false, status: 'erro', motivo: errorMessage(err) }
     }
-    if (!ok) {
-      return { success: false, status: 'erro', motivo: motivo || `HTTP ${httpStatus}`, raw }
-    }
-    return { success: false, status: 'rejeitada', motivo: motivo || 'Nota rejeitada pela SEFAZ.', raw }
   }
 
   async consultarStatus(nfeId: string, token: string): Promise<FiscalStatusResult> {
     if (!token?.trim()) {
-      return { success: false, status: 'erro', motivo: 'Token da Brasil NFe ausente.' }
+      return { success: false, status: 'erro', motivo: 'Token da empresa (loja) ausente.' }
     }
     if (!nfeId?.trim()) {
       return { success: false, status: 'erro', motivo: 'Identificador da nota ausente.' }
     }
-    const { ok, httpStatus, raw } = await this.request(
-      '/fiscal/ConsultarNotaFiscal',
-      { Id: nfeId },
-      { Token: token }
-    )
-    const obj = toObject(raw)
-    const status = mapInvoiceStatusFromObj(obj, ok)
-    const motivo = pickString(obj, 'Mensagem', 'mensagem', 'Motivo', 'xMotivo', 'erro', 'error')
-    return {
-      success: ok && status === 'autorizada',
-      status,
-      chaveAcesso: pickString(obj, 'ChaveAcesso', 'chaveAcesso', 'chave'),
-      protocolo: pickString(obj, 'Protocolo', 'protocolo', 'nProt'),
-      nfeUrl: pickString(obj, 'UrlQrCode', 'QrCodeUrl', 'urlDanfe', 'DanfeUrl', 'nfe_url'),
-      motivo: ok ? undefined : motivo || `HTTP ${httpStatus}`,
-      raw,
+    try {
+      const dtFim = new Date()
+      const dtInicio = new Date(Date.now() - 92 * 24 * 60 * 60 * 1000)
+      const resp = await this.client(token).consultas.obterNotasFiscais({
+        TipoDocumentoFiscal: 1, // saídas
+        DtInicio: fmtDate(dtInicio),
+        DtFim: fmtDate(dtFim),
+      })
+      const nota = resp.Notas?.find(
+        (n) => n.Chave === nfeId || n.IdentificadorInterno === nfeId
+      )
+      if (!nota) {
+        return {
+          success: false,
+          status: 'pendente',
+          motivo: resp.Error || 'Nota não localizada na consulta.',
+        }
+      }
+      const status: FiscalInvoiceStatus =
+        nota.Status === 1
+          ? 'autorizada'
+          : nota.Status === 2
+            ? 'cancelada'
+            : nota.Status === 3
+              ? 'rejeitada'
+              : 'pendente'
+      return {
+        success: status === 'autorizada',
+        status,
+        chaveAcesso: nota.Chave || undefined,
+        protocolo: nota.NumeroProtocolo || undefined,
+        raw: nota,
+      }
+    } catch (err) {
+      return { success: false, status: 'erro', motivo: errorMessage(err) }
     }
   }
 
@@ -331,22 +426,23 @@ export class BrasilNfeService implements FiscalService {
     if (!input.token?.trim()) {
       return { success: false, motivo: 'Token da empresa (loja) ausente.' }
     }
-    const { ok, httpStatus, raw } = await this.request(
-      '/empresa/AlterarCertificado',
-      { Base64CertificateFile: input.base64, Senha: input.senha },
-      { Token: input.token, UserToken: this.userToken }
-    )
-    const obj = toObject(raw)
-    const motivo = pickString(obj, 'Mensagem', 'mensagem', 'Motivo', 'erro', 'error')
-    if (!ok) {
-      return { success: false, motivo: motivo || `HTTP ${httpStatus}`, raw }
-    }
-    return {
-      success: true,
-      certId: pickString(obj, 'CertId', 'CertificadoId', 'Id'),
-      cn: pickString(obj, 'CN', 'Cn', 'cn', 'NomeTitular'),
-      validade: pickString(obj, 'Validade', 'validade', 'DataValidade', 'ValidoAte'),
-      raw,
+    try {
+      const resp = await this.client(input.token).empresa.alterarCertificado({
+        Base64CertificateFile: input.base64,
+        Senha: input.senha,
+      })
+      if (resp.Error) {
+        return { success: false, motivo: resp.Error, raw: resp }
+      }
+      return {
+        success: resp.status !== false && !resp.Expirado,
+        validade: resp.DtExpiracao || undefined,
+        expirado: Boolean(resp.Expirado),
+        motivo: resp.Expirado ? 'Certificado vencido.' : undefined,
+        raw: resp,
+      }
+    } catch (err) {
+      return { success: false, motivo: errorMessage(err) }
     }
   }
 
@@ -354,21 +450,25 @@ export class BrasilNfeService implements FiscalService {
     if (!this.userToken) {
       return { success: false, motivo: 'BRASIL_NFE_USER_TOKEN não configurado.' }
     }
-    const { ok, httpStatus, raw } = await this.request(
-      '/empresa/VerificarCertificado',
-      input.base64 ? { Base64CertificateFile: input.base64, Senha: input.senha } : {},
-      { Token: input.token, UserToken: this.userToken }
-    )
-    const obj = toObject(raw)
-    const motivo = pickString(obj, 'Mensagem', 'mensagem', 'Motivo', 'erro', 'error')
-    if (!ok) {
-      return { success: false, motivo: motivo || `HTTP ${httpStatus}`, raw }
+    if (!input.token?.trim()) {
+      return { success: false, motivo: 'Token da empresa (loja) ausente.' }
     }
-    return {
-      success: true,
-      cn: pickString(obj, 'CN', 'Cn', 'cn', 'NomeTitular'),
-      validade: pickString(obj, 'Validade', 'validade', 'DataValidade', 'ValidoAte'),
-      raw,
+    try {
+      // Sem base64 → verifica o certificado já vinculado à empresa.
+      const resp = await this.client(input.token).empresa.verificarCertificado(
+        input.base64 ? { Base64CertificateFile: input.base64, Senha: input.senha } : {}
+      )
+      if (resp.Error) {
+        return { success: false, motivo: resp.Error, raw: resp }
+      }
+      return {
+        success: resp.status !== false && !resp.Expirado,
+        validade: resp.DtExpiracao || undefined,
+        expirado: Boolean(resp.Expirado),
+        raw: resp,
+      }
+    } catch (err) {
+      return { success: false, motivo: errorMessage(err) }
     }
   }
 
@@ -379,12 +479,24 @@ export class BrasilNfeService implements FiscalService {
     if (!input.cnpj?.trim() || !input.razaoSocial?.trim()) {
       return { success: false, motivo: 'CNPJ e Razão Social são obrigatórios.' }
     }
-    const payload = {
-      Cnpj: input.cnpj.replace(/\D/g, ''),
+    const payload: EmpresaEnvio = {
+      CNPJ: input.cnpj.replace(/\D/g, ''),
       RzSocial: input.razaoSocial,
       ...(input.nomeFantasia ? { NmFantasia: input.nomeFantasia } : {}),
-      ...(input.inscricaoEstadual ? { Ie: input.inscricaoEstadual } : {}),
-      ...(input.crt ? { Crt: input.crt } : {}),
+      ...(input.inscricaoEstadual ? { IE: input.inscricaoEstadual } : {}),
+      ...(input.crt ? { CRT: input.crt } : {}),
+      ...(input.csc
+        ? {
+            Configuracao: {
+              NFCe: {
+                ...(input.csc.idHomologacao ? { IdCSCHomologacao: input.csc.idHomologacao } : {}),
+                ...(input.csc.tokenHomologacao ? { CSCHomologacao: input.csc.tokenHomologacao } : {}),
+                ...(input.csc.idProducao ? { IdCSCProducao: input.csc.idProducao } : {}),
+                ...(input.csc.tokenProducao ? { CSCProducao: input.csc.tokenProducao } : {}),
+              },
+            },
+          }
+        : {}),
       ...(input.endereco
         ? {
             Endereco: {
@@ -399,15 +511,36 @@ export class BrasilNfeService implements FiscalService {
           }
         : {}),
     }
-    const { ok, httpStatus, raw } = await this.request('/empresa/AdicionarEmpresa', payload, {
-      UserToken: this.userToken,
-    })
-    const obj = toObject(raw)
-    const motivo = pickString(obj, 'Mensagem', 'mensagem', 'Motivo', 'erro', 'error')
-    if (!ok) {
-      return { success: false, motivo: motivo || `HTTP ${httpStatus}`, raw }
+    try {
+      // AdicionarEmpresa usa apenas o UserToken (Token da empresa não é exigido).
+      const resp = await new BrasilNFe('', this.userToken, this.url).empresa.adicionarEmpresa(
+        payload
+      )
+      if (resp.Error) {
+        return { success: false, motivo: resp.Error, raw: resp }
+      }
+      return { success: resp.status !== false, token: resp.token || undefined, raw: resp }
+    } catch (err) {
+      return { success: false, motivo: errorMessage(err) }
     }
-    return { success: true, token: pickString(obj, 'Token', 'token'), raw }
+  }
+
+  async listarEmpresas(): Promise<EmpresaListResult> {
+    if (!this.userToken) {
+      return { success: false, empresas: [], motivo: 'BRASIL_NFE_USER_TOKEN não configurado.' }
+    }
+    try {
+      const empresas = await new BrasilNFe('', this.userToken, this.url).empresa.buscarTodasEmpresas()
+      const items: EmpresaListItem[] = (empresas ?? [])
+        .map((e) => ({
+          cnpj: (e.CNPJ || '').replace(/\D/g, ''),
+          token: e.Token || '',
+        }))
+        .filter((e) => e.cnpj && e.token)
+      return { success: true, empresas: items }
+    } catch (err) {
+      return { success: false, empresas: [], motivo: errorMessage(err) }
+    }
   }
 }
 

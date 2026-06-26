@@ -11,6 +11,7 @@ import {
   type FiscalStatus,
 } from '@/lib/fiscal'
 import { FiscalUpsell } from '@/app/dashboard/fiscal/_components/FiscalUpsell'
+import { ProductFiscalTable } from '@/app/dashboard/fiscal/_components/ProductFiscalTable'
 
 const inputClass =
   'mt-1.5 w-full rounded-xl border border-[var(--card-border)] bg-white px-4 py-2.5 text-sm text-[#1a1614] outline-none transition-all placeholder:text-[#9ca3af] focus:border-[var(--dash-primary)]/40 focus:ring-2 focus:ring-[var(--dash-primary)]/12'
@@ -286,6 +287,13 @@ export function FiscalSettingsCard({ storeId }: { storeId: string }) {
               </p>
             ) : null}
 
+            {!hasToken ? (
+              <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                O cadastro da sua empresa na Brasil NFe ainda não foi concluído. Salve os dados do
+                emitente abaixo — a Vyria finaliza o cadastro e libera o envio do certificado.
+              </p>
+            ) : null}
+
             <div className="mt-3 grid gap-4 sm:grid-cols-2">
               <div>
                 <label className={labelClass}>Arquivo do certificado</label>
@@ -315,7 +323,8 @@ export function FiscalSettingsCard({ storeId }: { storeId: string }) {
               <button
                 type="button"
                 onClick={() => void handleUploadCert()}
-                disabled={certUploading}
+                disabled={certUploading || !hasToken}
+                title={!hasToken ? 'Disponível após o cadastro da empresa na Brasil NFe' : undefined}
                 className="rounded-xl border border-[var(--dash-primary)]/30 bg-white px-4 py-2 text-sm font-semibold text-[var(--dash-primary)] transition hover:bg-[var(--dash-primary)]/5 disabled:opacity-50"
               >
                 {certUploading ? 'Enviando…' : 'Enviar certificado'}
@@ -450,6 +459,8 @@ export function FiscalSettingsCard({ storeId }: { storeId: string }) {
               {saving ? 'A guardar…' : 'Salvar dados fiscais'}
             </button>
           </div>
+
+          <ProductFiscalTable storeId={storeId} />
         </div>
       )}
     </section>

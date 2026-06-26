@@ -1,10 +1,12 @@
 import 'server-only'
 
 import { createServiceRoleClient } from '@/lib/supabase/service-role.server'
-import { isFiscalActive, type FiscalInvoiceStatus } from '@/lib/fiscal'
+import { isFiscalActive, parseFiscalAmbiente, type FiscalInvoiceStatus } from '@/lib/fiscal'
 import {
   getFiscalService,
   getStoreFiscalConfig,
+  regimeToCrt,
+  type EmpresaInput,
   type FiscalStatusResult,
   type NfceProdutoInput,
   type StoreFiscalConfig,
@@ -70,7 +72,10 @@ function assertEmissionReady(cfg: StoreFiscalConfig | null): string | null {
  * `order_items` + dados fiscais do produto, chama o gateway e grava em
  * `fiscal_invoices` (idempotente por pedido: nota já autorizada não reemite).
  */
-export async function emitirNfce(orderId: string): Promise<EmitirNfceResult> {
+export async function emitirNfce(
+  orderId: string,
+  opts?: { cpf?: string }
+): Promise<EmitirNfceResult> {
   if (!orderId?.trim()) {
     return { ok: false, status: 'erro', motivo: 'Pedido inválido.' }
   }
@@ -153,11 +158,18 @@ export async function emitirNfce(orderId: string): Promise<EmitirNfceResult> {
     }
   }
 
+  const cpf = (opts?.cpf || '').replace(/\D/g, '')
+  const nome = order.customer_name ? String(order.customer_name) : undefined
+  const cliente = cpf ? { cpf, nome } : nome ? { nome } : undefined
+
   const result = await getFiscalService().emitirNfce({
     token: cfg.brasilnfeToken!,
     ambiente: cfg.ambiente,
-    cliente: order.customer_name ? { nome: String(order.customer_name) } : undefined,
+    crt: regimeToCrt(cfg.regimeTributario),
+    cliente,
     produtos,
+    valorTotal: toNumber(order.total) || undefined,
+    identificadorInterno: orderId,
   })
 
   const { data: inserted } = await svc
@@ -256,7 +268,12 @@ export async function uploadCertificado(params: {
 
   const gateway = getFiscalService()
   const sent = await gateway.enviarCertificado({ token: cfg.brasilnfeToken, base64, senha })
-  if (!sent.success) {
+
+  const validade = sent.validade ?? null
+  const vencido = sent.expirado || (validade ? new Date(validade).getTime() < Date.now() : false)
+
+  // Falha de envio (senha errada/arquivo inválido) → marca como inválido.
+  if (!sent.success && !vencido) {
     await svc
       .from('store_fiscal_config')
       .update({ cert_status: 'invalido', cert_updated_at: new Date().toISOString() })
@@ -264,22 +281,105 @@ export async function uploadCertificado(params: {
     return { ok: false, motivo: sent.motivo || 'Gateway recusou o certificado.' }
   }
 
-  // Confirma validade/CN no gateway (fonte da verdade dos metadados).
-  const verify = await gateway.verificarCertificado({ token: cfg.brasilnfeToken, base64: '', senha: '' })
-  const cn = verify.cn ?? sent.cn ?? null
-  const validade = verify.validade ?? sent.validade ?? null
-  const vencido = validade ? new Date(validade).getTime() < Date.now() : false
-
   await svc
     .from('store_fiscal_config')
     .update({
-      cert_id: sent.certId ?? null,
       cert_status: vencido ? 'vencido' : 'valido',
-      cert_cn: cn,
       cert_validade: validade,
       cert_updated_at: new Date().toISOString(),
     })
     .eq('store_id', storeId)
 
-  return { ok: !vencido, cn: cn ?? undefined, validade: validade ?? undefined, motivo: vencido ? 'Certificado vencido.' : undefined }
+  return {
+    ok: !vencido,
+    validade: validade ?? undefined,
+    motivo: vencido ? 'Certificado vencido.' : undefined,
+  }
+}
+
+export type CadastrarEmpresaResult = { ok: boolean; motivo?: string }
+
+/**
+ * Cadastra a loja como "Empresa" na Brasil NFe (modelo master: a Vyria possui o
+ * UserToken). Monta os dados do emitente a partir de `store_fiscal_config`,
+ * envia o CSC da NFC-e e guarda o Token retornado em `brasilnfe_token`.
+ *
+ * Idempotente: se a empresa já existir (CNPJ duplicado), recupera o token via
+ * listagem em vez de falhar.
+ */
+export async function cadastrarEmpresa(storeId: string): Promise<CadastrarEmpresaResult> {
+  if (!storeId?.trim()) return { ok: false, motivo: 'Loja inválida.' }
+
+  const svc = createServiceRoleClient()
+  const { data: row } = await svc
+    .from('store_fiscal_config')
+    .select(
+      'ambiente, regime_tributario, cnpj, razao_social, nome_fantasia, inscricao_estadual, endereco_logradouro, endereco_numero, endereco_bairro, endereco_municipio, endereco_municipio_ibge, endereco_uf, endereco_cep, csc_id, csc_token'
+    )
+    .eq('store_id', storeId)
+    .maybeSingle()
+  if (!row) return { ok: false, motivo: 'Loja sem configuração fiscal.' }
+
+  const r = row as Record<string, unknown>
+  const str = (v: unknown) => String(v ?? '').trim()
+  const cnpj = str(r.cnpj).replace(/\D/g, '')
+  const razaoSocial = str(r.razao_social)
+  if (!cnpj || !razaoSocial) {
+    return {
+      ok: false,
+      motivo: 'Preencha CNPJ e Razão Social na configuração fiscal antes de cadastrar a empresa.',
+    }
+  }
+
+  const ambiente = parseFiscalAmbiente(r.ambiente)
+  const cscId = str(r.csc_id)
+  const cscToken = str(r.csc_token)
+  const csc =
+    cscId || cscToken
+      ? ambiente === 'producao'
+        ? { idProducao: cscId || undefined, tokenProducao: cscToken || undefined }
+        : { idHomologacao: cscId || undefined, tokenHomologacao: cscToken || undefined }
+      : undefined
+
+  const empresaInput: EmpresaInput = {
+    cnpj,
+    razaoSocial,
+    nomeFantasia: str(r.nome_fantasia) || undefined,
+    inscricaoEstadual: str(r.inscricao_estadual) || undefined,
+    crt: regimeToCrt(str(r.regime_tributario)),
+    csc,
+    endereco: {
+      cep: str(r.endereco_cep) || undefined,
+      uf: str(r.endereco_uf) || undefined,
+      municipio: str(r.endereco_municipio) || undefined,
+      municipioIbge: str(r.endereco_municipio_ibge) || undefined,
+      logradouro: str(r.endereco_logradouro) || undefined,
+      numero: str(r.endereco_numero) || undefined,
+      bairro: str(r.endereco_bairro) || undefined,
+    },
+  }
+
+  const gateway = getFiscalService()
+  const add = await gateway.adicionarEmpresa(empresaInput)
+  let token = add.token
+
+  // Empresa já existe (CNPJ duplicado) ou token não veio: recupera pelo CNPJ.
+  if (!token) {
+    const list = await gateway.listarEmpresas()
+    token = list.empresas.find((e) => e.cnpj === cnpj)?.token
+  }
+  if (!token) {
+    return {
+      ok: false,
+      motivo: add.motivo || 'Não foi possível obter o token da empresa na Brasil NFe.',
+    }
+  }
+
+  const { error } = await svc
+    .from('store_fiscal_config')
+    .update({ brasilnfe_token: token, updated_at: new Date().toISOString() })
+    .eq('store_id', storeId)
+  if (error) return { ok: false, motivo: error.message }
+
+  return { ok: true }
 }

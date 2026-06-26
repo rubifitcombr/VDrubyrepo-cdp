@@ -75,7 +75,7 @@ export function AdminFiscalPanel() {
     void load()
   }, [load])
 
-  async function act(storeId: string, action: 'ativar' | 'bloquear') {
+  async function act(storeId: string, action: 'ativar' | 'bloquear' | 'cadastrar_empresa') {
     setBusyId(storeId)
     setMsg(null)
     try {
@@ -89,6 +89,9 @@ export function AdminFiscalPanel() {
       if (!res.ok) {
         setMsg(data.error || 'Falha ao atualizar status fiscal.')
         return
+      }
+      if (action === 'cadastrar_empresa') {
+        setMsg('Empresa cadastrada na Brasil NFe e token vinculado.')
       }
       await load()
     } finally {
@@ -182,6 +185,15 @@ export function AdminFiscalPanel() {
                     <option value="homologacao">Homologação</option>
                     <option value="producao">Produção</option>
                   </select>
+                  <button
+                    type="button"
+                    disabled={busyId === r.storeId}
+                    onClick={() => void act(r.storeId, 'cadastrar_empresa')}
+                    title="Cadastra a loja como Empresa na Brasil NFe e vincula o token"
+                    className="rounded-lg border border-[var(--card-border)] bg-white px-3 py-1.5 text-xs font-semibold text-[var(--dash-primary)] hover:bg-[#f9fafb] disabled:opacity-50"
+                  >
+                    {r.hasToken ? 'Re-sincronizar token' : 'Cadastrar na Brasil NFe'}
+                  </button>
                   <button
                     type="button"
                     disabled={busyId === r.storeId}

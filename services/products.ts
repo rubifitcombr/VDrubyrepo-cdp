@@ -201,6 +201,61 @@ export async function updateProduct(
   return supabase.from('products').update(patch).eq('id', id)
 }
 
+/* ------------------------------------------------------------------ */
+/* Dados fiscais por produto (NFC-e)                                   */
+/* ------------------------------------------------------------------ */
+
+export const PRODUCT_FISCAL_SELECT =
+  'id, name, category, ncm, cfop, cest, cst_csosn, origem, unidade'
+
+export type ProductFiscalRow = {
+  id: string
+  name: string
+  category: string | null
+  ncm: string | null
+  cfop: string | null
+  cest: string | null
+  cst_csosn: string | null
+  origem: string | null
+  unidade: string | null
+}
+
+export type ProductFiscalPatch = {
+  ncm?: string | null
+  cfop?: string | null
+  cest?: string | null
+  cst_csosn?: string | null
+  origem?: string | null
+  unidade?: string | null
+}
+
+export async function getProductsFiscal(storeId: string): Promise<ProductFiscalRow[]> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('products')
+    .select(PRODUCT_FISCAL_SELECT)
+    .eq('store_id', storeId)
+    .order('category', { ascending: true, nullsFirst: false })
+    .order('name', { ascending: true })
+  if (error) throw new Error(error.message)
+  return ((data as Record<string, unknown>[]) ?? []).map((r) => ({
+    id: String(r.id ?? ''),
+    name: String(r.name ?? ''),
+    category: r.category != null ? String(r.category) : null,
+    ncm: r.ncm != null ? String(r.ncm) : null,
+    cfop: r.cfop != null ? String(r.cfop) : null,
+    cest: r.cest != null ? String(r.cest) : null,
+    cst_csosn: r.cst_csosn != null ? String(r.cst_csosn) : null,
+    origem: r.origem != null ? String(r.origem) : null,
+    unidade: r.unidade != null ? String(r.unidade) : null,
+  }))
+}
+
+export async function updateProductFiscal(id: string, patch: ProductFiscalPatch) {
+  const supabase = createClient()
+  return supabase.from('products').update(patch).eq('id', id)
+}
+
 export async function reorderProduct(
   storeId: string,
   productId: string,

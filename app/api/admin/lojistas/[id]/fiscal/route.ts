@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { requireAdminApi } from '@/lib/admin-auth.server'
 import { insertAdminLog } from '@/services/admin-logs.server'
 import { getStoreFiscalConfig } from '@/services/fiscal.server'
+import { cadastrarEmpresa } from '@/services/fiscal'
 import { parseFiscalAmbiente } from '@/lib/fiscal'
 
 export async function GET(
@@ -51,9 +52,9 @@ export async function POST(
   }
 
   const action = String(body.action || '').trim().toLowerCase()
-  if (action !== 'ativar' && action !== 'bloquear') {
+  if (action !== 'ativar' && action !== 'bloquear' && action !== 'cadastrar_empresa') {
     return NextResponse.json(
-      { error: "action inválida (use 'ativar' ou 'bloquear')" },
+      { error: "action inválida (use 'ativar', 'bloquear' ou 'cadastrar_empresa')" },
       { status: 400 }
     )
   }
@@ -65,6 +66,21 @@ export async function POST(
     .maybeSingle()
   if (!store) {
     return NextResponse.json({ error: 'Loja não encontrada' }, { status: 404 })
+  }
+
+  // Cadastra a loja como Empresa na Brasil NFe e guarda o token retornado.
+  if (action === 'cadastrar_empresa') {
+    const result = await cadastrarEmpresa(id)
+    if (!result.ok) {
+      return NextResponse.json({ error: result.motivo || 'Falha ao cadastrar empresa.' }, { status: 422 })
+    }
+    await insertAdminLog(ctx.svc, {
+      adminId: ctx.user.id,
+      lojistaId: id,
+      acao: 'fiscal_cadastrou_empresa',
+      detalhes: 'Empresa cadastrada na Brasil NFe e token vinculado',
+    })
+    return NextResponse.json({ ok: true, tokenVinculado: true })
   }
 
   const nextStatus = action === 'ativar' ? 'ativo' : 'bloqueado'
