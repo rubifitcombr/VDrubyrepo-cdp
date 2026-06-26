@@ -10,6 +10,15 @@ import {
 } from '@/lib/print/device-prefs'
 import type { PaperMm } from '@/lib/print/layout'
 import { sendOrderTicketToPrintAgent } from '@/lib/print-agent-client'
+import {
+  connectBluetoothPrinter,
+  forgetBluetoothPrinter,
+  getBluetoothPrinterName,
+  isBluetoothPrinterConnected,
+  isWebBluetoothSupported,
+  printBluetoothTestTicket,
+  tryReconnectKnownBluetoothPrinter,
+} from '@/lib/bluetooth-print-client'
 import { openPrintingPreviewPopup } from '@/lib/printing-preview-window'
 import { updateStore } from '@/services/store'
 import { IconPrinter } from '@/app/dashboard/_components/NavIcons'
@@ -145,10 +154,28 @@ export function PrintingClient({
   const [busyTestPrint, setBusyTestPrint] = useState(false)
   const [discoverBusy, setDiscoverBusy] = useState(false)
   const [discoveredPrinters, setDiscoveredPrinters] = useState<DiscoveredPrinter[]>([])
+  const [btSupported, setBtSupported] = useState(false)
+  const [btDeviceName, setBtDeviceName] = useState<string | null>(null)
+  const [btConnected, setBtConnected] = useState(false)
+  const [btBusy, setBtBusy] = useState(false)
+  const [btTestBusy, setBtTestBusy] = useState(false)
+  const [btFallbackHint, setBtFallbackHint] = useState(false)
 
   useEffect(() => {
     setValues(initial)
   }, [initial])
+
+  useEffect(() => {
+    setBtSupported(isWebBluetoothSupported())
+    setBtDeviceName(getBluetoothPrinterName())
+    void (async () => {
+      const ok = await tryReconnectKnownBluetoothPrinter()
+      if (ok) {
+        setBtConnected(true)
+        setBtDeviceName(getBluetoothPrinterName())
+      }
+    })()
+  }, [])
 
   const fee = useMemo(
     () => (Number.isFinite(deliveryFee) && deliveryFee >= 0 ? deliveryFee : 5.99),
@@ -451,6 +478,57 @@ export function PrintingClient({
     }
   }
 
+  async function connectBt() {
+    setError(null)
+    setBtFallbackHint(false)
+    setBtBusy(true)
+    try {
+      const res = await connectBluetoothPrinter()
+      if (res.ok) {
+        setBtConnected(true)
+        setBtDeviceName(res.deviceName ?? getBluetoothPrinterName())
+        showToast(
+          res.deviceName
+            ? `Ligado a «${res.deviceName}». Toca em «Imprimir teste».`
+            : 'Impressora Bluetooth ligada. Toca em «Imprimir teste».'
+        )
+      } else if (res.code !== 'cancelled') {
+        setError(res.message)
+        showToast(res.message)
+        setBtFallbackHint(true)
+      }
+    } finally {
+      setBtBusy(false)
+    }
+  }
+
+  async function testBt() {
+    setError(null)
+    setBtTestBusy(true)
+    try {
+      const res = await printBluetoothTestTicket(storeName)
+      if (res.ok) {
+        setBtConnected(isBluetoothPrinterConnected())
+        setBtFallbackHint(false)
+        showToast('Cupom de teste enviado por Bluetooth.')
+      } else {
+        setError(res.message)
+        showToast(res.message)
+        setBtFallbackHint(true)
+      }
+    } finally {
+      setBtTestBusy(false)
+    }
+  }
+
+  function forgetBt() {
+    forgetBluetoothPrinter()
+    setBtConnected(false)
+    setBtDeviceName(null)
+    setBtFallbackHint(false)
+    showToast('Impressora Bluetooth esquecida.')
+  }
+
   const linkWizardBusy = savingAgent || busyHealth || busyTestPrint || discoverBusy
 
   return (
@@ -538,11 +616,14 @@ export function PrintingClient({
               3
             </span>
             <div>
-              <p className="font-semibold text-vyria-navy">Bluetooth</p>
+              <p className="font-semibold text-vyria-navy">Bluetooth (direto do navegador)</p>
               <p className="mt-1">
-                Impressão <strong>directa por Bluetooth a partir do site</strong> ainda não está
-                incluída. Liga a impressora ao <strong>Wi-Fi</strong> do sítio ou usa <strong>USB</strong>{' '}
-                num portátil com Chrome.
+                Liga a térmica <strong>Bluetooth</strong> direto do painel em{' '}
+                <strong>Chrome/Edge</strong> (Android, Windows ou Mac).{' '}
+                <a href="#bluetooth" className="font-semibold text-[var(--dash-primary)] underline">
+                  Configurar
+                </a>
+                . No <strong>iPhone/Safari</strong> não funciona — usa Wi-Fi (1) ou USB (2).
               </p>
             </div>
           </li>
@@ -743,6 +824,91 @@ export function PrintingClient({
           O botão grava os dados e tenta imprimir um cupom de teste. Se não imprimir, chama o
           suporte com uma foto do ecrã.
         </p>
+      </section>
+
+      <section
+        id="bluetooth"
+        className="rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-sm sm:p-6"
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="font-brand text-lg font-bold text-vyria-navy">Bluetooth (direto do navegador)</h2>
+            <p className="mt-2 text-sm leading-relaxed text-vyria-navy-muted">
+              Liga a tua térmica <strong>Bluetooth</strong> sem programa nem Wi-Fi. Funciona em{' '}
+              <strong>Chrome ou Edge</strong> no <strong>Android, Windows ou Mac</strong>. No{' '}
+              <strong>iPhone/Safari</strong> o Bluetooth do navegador não está disponível — usa a
+              Wi-Fi (acima) ou um cabo USB.
+            </p>
+          </div>
+          {btConnected ? (
+            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800 ring-1 ring-emerald-200/80">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden />
+              Ligada
+            </span>
+          ) : null}
+        </div>
+
+        {!btSupported ? (
+          <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            Este navegador não suporta Bluetooth Web. Abre o painel no <strong>Chrome</strong> ou{' '}
+            <strong>Edge</strong> (Android, Windows ou Mac) para usar esta opção.
+          </p>
+        ) : (
+          <>
+            {btDeviceName ? (
+              <p className="mt-4 rounded-xl border border-[var(--card-border)] bg-[#fafafa] px-4 py-3 text-sm text-vyria-navy">
+                Impressora: <strong>{btDeviceName}</strong>
+              </p>
+            ) : null}
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={btBusy}
+                onClick={() => void connectBt()}
+                className="rounded-xl bg-[var(--dash-primary)] px-4 py-2.5 text-sm font-bold text-white shadow-sm hover:brightness-105 disabled:opacity-50"
+              >
+                {btBusy ? 'A ligar…' : btConnected ? 'Trocar de impressora' : 'Ligar impressora Bluetooth'}
+              </button>
+              <button
+                type="button"
+                disabled={btTestBusy || (!btConnected && !btDeviceName)}
+                onClick={() => void testBt()}
+                className="rounded-xl border border-[var(--card-border)] bg-white px-4 py-2.5 text-sm font-semibold text-vyria-navy hover:bg-[#f9fafb] disabled:opacity-50"
+              >
+                {btTestBusy ? 'A imprimir…' : 'Imprimir teste'}
+              </button>
+              {btDeviceName ? (
+                <button
+                  type="button"
+                  disabled={btBusy || btTestBusy}
+                  onClick={forgetBt}
+                  className="rounded-xl border border-[var(--card-border)] bg-white px-4 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                >
+                  Esquecer
+                </button>
+              ) : null}
+            </div>
+            <p className="mt-3 text-xs leading-relaxed text-vyria-navy-muted">
+              Liga a impressora, carrega em <strong>Ligar impressora Bluetooth</strong> e escolhe-a na
+              lista do navegador. Depois os pedidos saem direto por Bluetooth a partir do painel
+              (Pedidos). Confirma a largura do rolo (58/80&nbsp;mm) em «Papel e porta série».
+            </p>
+            {btFallbackHint ? (
+              <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-900">
+                <p className="font-semibold">A impressora não ligou por Bluetooth?</p>
+                <p className="mt-1">
+                  Muitas térmicas portáteis baratas (ex.: <strong>Knup KP-1025</strong> e similares)
+                  usam Bluetooth «clássico», que o navegador não consegue aceder. Nesses casos, liga-a
+                  por <strong>cabo USB</strong> num PC com Chrome/Edge usando a{' '}
+                  <a href="#preview-cupom" className="font-semibold text-amber-950 underline">
+                    pré-visualização → porta série
+                  </a>
+                  , ou usa <strong>Wi-Fi</strong> se a impressora tiver rede.
+                </p>
+              </div>
+            ) : null}
+          </>
+        )}
       </section>
 
       <section className="rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-sm sm:p-6">

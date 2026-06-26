@@ -20,6 +20,11 @@ import {
   canUseConfiguredPrintAgent,
   sendOrderTicketToPrintAgent,
 } from '@/lib/print-agent-client'
+import {
+  isBluetoothPrinterReady,
+  sendOrderTicketToBluetooth,
+  tryReconnectKnownBluetoothPrinter,
+} from '@/lib/bluetooth-print-client'
 import { updateOrderStatus } from '@/services/orders'
 import { dashboardFetch } from '@/lib/dashboard-fetch.client'
 import { type Plan, hasFeature, merchantEntregadoresEnabled } from '@/lib/plan'
@@ -1103,6 +1108,11 @@ export function OrdersClient({
     }
   }, [])
 
+  useEffect(() => {
+    if (!hasFeature(plan, 'printing')) return
+    void tryReconnectKnownBluetoothPrinter()
+  }, [plan])
+
   // Só mostra o botão "Emitir NFC-e" quando o add-on fiscal está ativo.
   useEffect(() => {
     let cancelled = false
@@ -1310,30 +1320,45 @@ export function OrdersClient({
   }
 
   async function printOrderDefault(o: StoreOrderRow) {
-    const useThermal =
-      hasFeature(plan, 'printing') && Boolean(printing.print_agent_url?.trim())
+    const printingEnabled = hasFeature(plan, 'printing')
+    const orderRef =
+      displayNumberById.get(o.id) ?? o.id.replace(/-/g, '').slice(0, 8)
+    const ticketOpts = {
+      storeName,
+      order: o,
+      orderDisplayRef: orderRef,
+      printing: {
+        print_include_customer_details: printing.print_include_customer_details,
+        print_delivery_copy: printing.print_delivery_copy,
+        print_paper_mm: printing.print_paper_mm,
+      },
+      variant: orderTicketVariantFromSource(o.source, o),
+    }
+
+    if (printingEnabled && isBluetoothPrinterReady()) {
+      setThermalBusyId(o.id)
+      flashWaNotice('A imprimir por Bluetooth…')
+      try {
+        const bt = await sendOrderTicketToBluetooth(ticketOpts)
+        if (bt.ok) {
+          flashWaNotice('Comanda enviada à impressora Bluetooth.')
+          return
+        }
+        flashWaNotice(bt.message || 'Bluetooth falhou, a tentar outra via…')
+      } catch {
+        /* tenta agente / pré-visualização */
+      } finally {
+        setThermalBusyId(null)
+      }
+    }
+
+    const useThermal = printingEnabled && Boolean(printing.print_agent_url?.trim())
     if (useThermal) {
       setThermalBusyId(o.id)
       flashWaNotice('A imprimir…')
-      const orderRef =
-        displayNumberById.get(o.id) ?? o.id.replace(/-/g, '').slice(0, 8)
       try {
         if (canUseConfiguredPrintAgent(printing)) {
-          const direct = await sendOrderTicketToPrintAgent(
-            {
-              storeName,
-              order: o,
-              orderDisplayRef: orderRef,
-              printing: {
-                print_include_customer_details:
-                  printing.print_include_customer_details,
-                print_delivery_copy: printing.print_delivery_copy,
-                print_paper_mm: printing.print_paper_mm,
-              },
-              variant: orderTicketVariantFromSource(o.source, o),
-            },
-            printing
-          )
+          const direct = await sendOrderTicketToPrintAgent(ticketOpts, printing)
           if (direct.ok) {
             flashWaNotice('Comanda enviada à impressora.')
             return

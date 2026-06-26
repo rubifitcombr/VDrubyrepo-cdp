@@ -40,6 +40,17 @@ Usado por:
 - Garcom
 - Dashboard auto-accept
 
+### Bluetooth (Web Bluetooth)
+
+Impressao direta da termica Bluetooth a partir do painel, sem agente nem Wi-Fi.
+
+- `lib/bluetooth-print-client.ts`: liga via `navigator.bluetooth.requestDevice` (precisa de gesto do utilizador), procura uma caracteristica GATT com escrita e envia o ESC/POS em blocos (`WRITE_CHUNK_SIZE` bytes com `WRITE_CHUNK_DELAY_MS` de intervalo).
+- O aparelho fica memorizado em `localStorage` (`vyria_print_bt_device`); `tryReconnectKnownBluetoothPrinter()` tenta reabrir via `navigator.bluetooth.getDevices()` sem novo gesto (so em navegadores que suportam).
+- Configura-se em `/dashboard/printing` (seccao «Bluetooth»): ligar, imprimir teste e esquecer.
+- Em `OrdersClient.printOrderDefault`, se ha impressora Bluetooth pronta (`isBluetoothPrinterReady()`), tenta Bluetooth antes do Print Agent; falha cai para o agente e depois para a pre-visualizacao do navegador.
+- Suporte: Chrome/Edge em Android, Windows, Mac, Linux e ChromeOS. **Nao funciona em iOS/Safari** — usar Wi-Fi ou USB.
+- Servicos GATT cobertos: ver `KNOWN_PRINTER_SERVICES` (0x18F0/0x2AF1, 0xFF00, 0xFFE0, ISSC, etc.).
+
 ### Print Agent
 
 Rotas de pedido chamam `tryAutoThermalPrint()`, que carrega as configuracoes da loja, valida o toggle da origem, gera o cupom com os mesmos templates do navegador e envia base64 para `{print_agent_url}/print`.
