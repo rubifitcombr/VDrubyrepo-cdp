@@ -332,7 +332,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(
           {
             error:
-              'Pedidos por QR de mesa não estão disponíveis. A loja pode estar em modo garçom ou o plano não inclui esta função.',
+              'Pedidos por QR de mesa não estão disponíveis para este plano ou configuração da loja.',
           },
           { status: 403 }
         )

@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import type { MenuProductRow } from '@/lib/menu-product'
 import { type Plan, hasFeature } from '@/lib/plan'
 import {
+  planAllowsDualSalonModes,
   planAllowsSalonSelfServiceQr,
   planAllowsSalonStaffGarcom,
   type SalaoAttendanceMode,
@@ -312,6 +313,7 @@ export function WaiterClient({
 
   const staffSalonUi =
     planAllowsSalonStaffGarcom(plan) && (forceWaiterView || salaoMode === 'waiter')
+  const proDualSalon = planAllowsDualSalonModes(plan)
   const selfServiceSalonUi =
     !staffSalonUi &&
     planAllowsSalonSelfServiceQr(plan) &&
@@ -1406,8 +1408,14 @@ export function WaiterClient({
       {planAllowsSalonStaffGarcom(plan) ? (
         <div className="mb-3 rounded-xl border border-[var(--card-border)] bg-white p-3 shadow-sm">
           <p className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
-            Modo do salão
+            Vista preferida do painel
           </p>
+          {proDualSalon ? (
+            <p className="mt-1 text-[11px] leading-relaxed text-[#6b7280]">
+              No plano Pro o <strong>QR de autoatendimento fica sempre activo</strong> para os
+              clientes. A opção abaixo só muda o que vês aqui no painel.
+            </p>
+          ) : null}
           <div className="mt-3 flex flex-wrap gap-2">
             <button
               type="button"
@@ -1472,6 +1480,23 @@ export function WaiterClient({
 
       {staffSalonUi ? (
         <>
+      {proDualSalon ? (
+        <div className="mb-3 rounded-xl border border-[var(--card-border)] bg-white p-4 shadow-sm">
+          <h2 className="text-sm font-bold text-[#1a1614]">QR de autoatendimento (sempre activo)</h2>
+          <p className="mt-1 text-xs leading-relaxed text-[#6b7280]">
+            Os clientes podem pedir pela mesa mesmo com o mapa de garçom aberto.
+          </p>
+          <div className="mt-3">
+            <StorePublicQrPanel
+              publicUrl={`${origin.replace(/\/$/, '')}/${storeSlug}?auto=1`}
+              storeSlug={storeSlug}
+              qrCheckoutMode="dine_in"
+              compact
+              hideExplanatoryCopy
+            />
+          </div>
+        </div>
+      ) : null}
       {/* Mobile toggles */}
       <div className="mb-2 flex shrink-0 gap-2 md:hidden">
         <button
