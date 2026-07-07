@@ -83,25 +83,6 @@ function IconShare({ className }: { className?: string }) {
   )
 }
 
-function IconChevronRight({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="m9 18 6-6-6-6" />
-    </svg>
-  )
-}
-
 function IconMapPin({ className }: { className?: string }) {
   return (
     <svg
@@ -418,6 +399,14 @@ export function StorefrontMenuClient({
       return false
     }
   })
+  const [slugContextDismissed, setSlugContextDismissed] = useState(() => {
+    if (typeof window === 'undefined') return false
+    try {
+      return window.sessionStorage.getItem(`vyria:slug-chip:${storeSlug}`) === '1'
+    } catch {
+      return false
+    }
+  })
   const [detailProduct, setDetailProduct] =
     useState<StorefrontMenuProduct | null>(null)
 
@@ -460,9 +449,6 @@ export function StorefrontMenuClient({
   }, [filtered, selectedCategory])
 
   const hasPromoDay = products.some((p) => p.popular)
-  const heroSub =
-    subtitle?.trim() ||
-    'Os melhores pratos da região, com praticidade e sabor.'
   const autoMode = selfServiceFromQr || salaoAutoUnavailable
 
   const storeStatusLine = useMemo(() => {
@@ -523,6 +509,15 @@ export function StorefrontMenuClient({
     })
   }
 
+  function handleDismissSlugContext() {
+    setSlugContextDismissed(true)
+    try {
+      window.sessionStorage.setItem(`vyria:slug-chip:${storeSlug}`, '1')
+    } catch {
+      /* ignore */
+    }
+  }
+
   function handleDismissAutoContext() {
     setAutoContextDismissed(true)
     try {
@@ -563,7 +558,6 @@ export function StorefrontMenuClient({
   }, [cartOpen])
 
   const banner = bannerUrl?.trim() || null
-  const hasBanner = Boolean(banner)
 
   function categoryHasPromo(cat: string) {
     if (cat === 'Todos') return false
@@ -572,6 +566,10 @@ export function StorefrontMenuClient({
 
   const autoFrameClass =
     'mx-auto max-w-sm overflow-hidden bg-white shadow-[0_18px_50px_rgba(15,23,42,0.12)] ring-1 ring-black/10 sm:my-4 sm:rounded-[1.4rem]'
+
+  const slugDeliveryChipLabel = offersDelivery
+    ? 'Entrega e retirada no local'
+    : 'Retirada no local'
 
   return (
     <div
@@ -587,243 +585,135 @@ export function StorefrontMenuClient({
         } as CSSProperties
       }
     >
-      <div className={autoMode ? autoFrameClass : 'mx-auto max-w-3xl overflow-visible bg-neutral-100'}>
-        {autoMode ? (
-          <>
-            <div className="relative z-0 overflow-hidden bg-neutral-200">
-              <div
-                className="relative h-[112px] w-full"
-                style={
-                  banner
-                    ? undefined
-                    : {
-                        background: `linear-gradient(135deg, ${theme.primary} 0%, ${theme.secondary} 100%)`,
-                      }
-                }
-              >
-                {banner ? (
-                  <Image
-                    src={banner}
-                    alt={`Capa do cardápio — ${storeName}`}
-                    fill
-                    priority
-                    className="object-cover object-[center_46%]"
-                    sizes="(max-width: 768px) 100vw, 48rem"
-                  />
-                ) : (
-                  <div
-                    className="absolute inset-0 flex items-center justify-center text-white/80"
-                  >
-                    <IconPhoto className="h-8 w-8 opacity-75" />
-                  </div>
-                )}
-                <div
-                  className="absolute inset-0 bg-gradient-to-t from-black/10 via-transparent to-transparent"
-                  aria-hidden
-                />
-                <div
-                  className="absolute inset-x-0 bottom-0 h-2"
-                  style={{
-                    background: `linear-gradient(90deg, ${theme.primary} 0%, ${theme.secondary} 100%)`,
-                  }}
-                  aria-hidden
-                />
-                {hasPromoDay ? (
-                  <span
-                    className="absolute left-3 top-3 inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-white shadow-md"
-                    style={{ backgroundColor: theme.primary }}
-                  >
-                    <IconFlame className="h-3.5 w-3.5 opacity-95" />
-                    Promo do dia
-                  </span>
-                ) : null}
+      <div className={autoFrameClass}>
+        <div className="relative z-0 overflow-hidden bg-neutral-200">
+          <div
+            className="relative h-[112px] w-full"
+            style={
+              banner
+                ? undefined
+                : {
+                    background: `linear-gradient(135deg, ${theme.primary} 0%, ${theme.secondary} 100%)`,
+                  }
+            }
+          >
+            {banner ? (
+              <Image
+                src={banner}
+                alt={`Capa do cardápio — ${storeName}`}
+                fill
+                priority
+                className="object-cover object-[center_46%]"
+                sizes="(max-width: 768px) 100vw, 48rem"
+              />
+            ) : (
+              <div className="absolute inset-0 flex items-center justify-center text-white/80">
+                <IconPhoto className="h-8 w-8 opacity-75" />
               </div>
-            </div>
+            )}
+            <div
+              className="absolute inset-0 bg-gradient-to-t from-black/10 via-transparent to-transparent"
+              aria-hidden
+            />
+            <div
+              className="absolute inset-x-0 bottom-0 h-2"
+              style={{
+                background: `linear-gradient(90deg, ${theme.primary} 0%, ${theme.secondary} 100%)`,
+              }}
+              aria-hidden
+            />
+            {hasPromoDay ? (
+              <span
+                className="absolute left-3 top-3 inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-white shadow-md"
+                style={{ backgroundColor: theme.primary }}
+              >
+                <IconFlame className="h-3.5 w-3.5 opacity-95" />
+                Promo do dia
+              </span>
+            ) : null}
+          </div>
+        </div>
 
-            <div className="relative z-20 bg-white px-2.5 pb-2 pt-2">
+        <div className="relative z-20 bg-white px-2.5 pb-2 pt-2">
+          <button
+            type="button"
+            onClick={scrollToTop}
+            className="flex w-full items-center gap-2 text-left"
+          >
+            <span
+              className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full text-xs font-extrabold text-white shadow-sm"
+              style={{ backgroundColor: theme.primary }}
+            >
+              {logoUrl?.trim() ? (
+                <Image
+                  src={logoUrl.trim()}
+                  alt={storeName.trim() ? `Logo ${storeName}` : 'Logo'}
+                  fill
+                  className="object-cover"
+                  sizes="36px"
+                />
+              ) : (
+                storeName.trim().slice(0, 2).toUpperCase() || 'LO'
+              )}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[12px] font-extrabold leading-tight text-neutral-950">
+                {storeName}
+              </span>
+              <span className="mt-0.5 block truncate text-[10px] font-semibold text-neutral-600">
+                {storeStatusLine}
+              </span>
+            </span>
+          </button>
+
+          {autoMode && !autoContextDismissed ? (
+            <div
+              className={`mt-2 flex items-center gap-1.5 rounded-full border px-2 py-1.5 text-[10px] font-bold ${
+                salaoAutoUnavailable
+                  ? 'border-red-200 bg-red-50 text-red-900'
+                  : 'border-[#EBD19A] bg-[#FAEEDA] text-[#633806]'
+              }`}
+            >
+              {salaoAutoUnavailable ? (
+                <IconAlertTriangle className="h-4 w-4 shrink-0" />
+              ) : (
+                <IconArmchair className="h-4 w-4 shrink-0" />
+              )}
+              <span className="min-w-0 flex-1 truncate">
+                {salaoAutoUnavailable
+                  ? 'Autoatendimento indisponível — chame o garçom'
+                  : 'Pedido na mesa · Autoatendimento'}
+              </span>
               <button
                 type="button"
-                onClick={scrollToTop}
-                className="flex w-full items-center gap-2 text-left"
+                onClick={handleDismissAutoContext}
+                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-black/5 text-xs leading-none active:bg-black/10"
+                aria-label="Fechar aviso"
               >
-                <span
-                  className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full text-xs font-extrabold text-white shadow-sm"
-                  style={{ backgroundColor: theme.primary }}
-                >
-                  {logoUrl?.trim() ? (
-                    <Image
-                      src={logoUrl.trim()}
-                      alt={storeName.trim() ? `Logo ${storeName}` : 'Logo'}
-                      fill
-                      className="object-cover"
-                      sizes="36px"
-                    />
-                  ) : (
-                    storeName.trim().slice(0, 2).toUpperCase() || 'LO'
-                  )}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[12px] font-extrabold leading-tight text-neutral-950">
-                    {storeName}
-                  </span>
-                  <span className="mt-0.5 block truncate text-[10px] font-semibold text-neutral-600">
-                    {storeStatusLine}
-                  </span>
-                </span>
+                ×
               </button>
-
-              {!autoContextDismissed ? (
-                <div
-                  className={`mt-2 flex items-center gap-1.5 rounded-full border px-2 py-1.5 text-[10px] font-bold ${
-                    salaoAutoUnavailable
-                      ? 'border-red-200 bg-red-50 text-red-900'
-                      : 'border-[#EBD19A] bg-[#FAEEDA] text-[#633806]'
-                  }`}
-                >
-                  {salaoAutoUnavailable ? (
-                    <IconAlertTriangle className="h-4 w-4 shrink-0" />
-                  ) : (
-                    <IconArmchair className="h-4 w-4 shrink-0" />
-                  )}
-                  <span className="min-w-0 flex-1 truncate">
-                    {salaoAutoUnavailable
-                      ? 'Autoatendimento indisponível — chame o garçom'
-                      : 'Pedido na mesa · Autoatendimento'}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={handleDismissAutoContext}
-                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-black/5 text-xs leading-none active:bg-black/10"
-                    aria-label="Fechar aviso"
-                  >
-                    ×
-                  </button>
-                </div>
-              ) : null}
             </div>
-          </>
-        ) : (
-          <>
-            {/* Só o bloco da imagem usa overflow-hidden + cantos — a logo fica fora para não ser cortada */}
-            <div className="relative z-0 overflow-hidden rounded-t-3xl">
-              <div
-                className={
-                  hasBanner
-                    ? 'relative aspect-[5/3] min-h-[188px] w-full sm:min-h-[210px]'
-                    : 'relative h-12 w-full sm:h-14'
-                }
+          ) : null}
+
+          {!autoMode && !slugContextDismissed ? (
+            <div className="mt-2 flex items-center gap-1.5 rounded-full border border-[#EBD19A] bg-[#FAEEDA] px-2 py-1.5 text-[10px] font-bold text-[#633806]">
+              {offersDelivery ? (
+                <IconTruck className="h-4 w-4 shrink-0" />
+              ) : (
+                <IconStorePickup className="h-4 w-4 shrink-0" />
+              )}
+              <span className="min-w-0 flex-1 truncate">{slugDeliveryChipLabel}</span>
+              <button
+                type="button"
+                onClick={handleDismissSlugContext}
+                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-black/5 text-xs leading-none active:bg-black/10"
+                aria-label="Fechar aviso"
               >
-                {banner ? (
-                  <Image
-                    src={banner}
-                    alt={`Capa do cardápio — ${storeName}`}
-                    fill
-                    priority
-                    className="object-cover"
-                    sizes="(max-width: 768px) 100vw, 48rem"
-                  />
-                ) : (
-                  <div
-                    className="absolute inset-0"
-                    style={{
-                      background: `linear-gradient(135deg, ${theme.primary} 0%, ${theme.secondary} 100%)`,
-                    }}
-                  />
-                )}
-                {hasBanner ? (
-                  <div
-                    className="absolute inset-0 bg-gradient-to-t from-black/40 via-black/10 to-black/15"
-                    aria-hidden
-                  />
-                ) : null}
-                {hasPromoDay ? (
-                  <span
-                    className={`absolute inline-flex w-fit items-center gap-1.5 rounded-full font-bold uppercase tracking-wide text-white shadow-md ${
-                      hasBanner
-                        ? 'left-4 top-4 px-3 py-1 text-[11px]'
-                        : 'left-2 top-1.5 px-2 py-0.5 text-[9px] sm:left-3 sm:top-2 sm:text-[10px]'
-                    }`}
-                    style={{ backgroundColor: theme.primary }}
-                  >
-                    <IconFlame className="h-3.5 w-3.5 opacity-95" />
-                    Promo do dia
-                  </span>
-                ) : null}
-              </div>
+                ×
+              </button>
             </div>
-
-            {/* Logo centrada na junção banner/cartão: margem negativa = metade da altura (fluxo, sem clip) */}
-            <div
-              className={`relative z-30 flex justify-center ${
-                hasBanner ? '-mt-[48px] sm:-mt-[50px]' : '-mt-[40px] sm:-mt-[44px]'
-              }`}
-            >
-              <div className="relative h-[96px] w-[96px] shrink-0 overflow-hidden rounded-full border-[5px] border-white bg-white shadow-[0_8px_30px_rgba(0,0,0,0.14)] ring-1 ring-black/[0.06] sm:h-[100px] sm:w-[100px]">
-                {logoUrl?.trim() ? (
-                  <Image
-                    src={logoUrl.trim()}
-                    alt={storeName.trim() ? `Logo ${storeName}` : 'Logo'}
-                    fill
-                    className="object-cover"
-                    sizes="100px"
-                  />
-                ) : (
-                  <div
-                    className="flex h-full w-full items-center justify-center text-2xl font-bold text-white sm:text-[26px]"
-                    style={{
-                      background: `linear-gradient(135deg, ${theme.primary}, ${theme.secondary})`,
-                    }}
-                  >
-                    {storeName.trim().charAt(0).toUpperCase() || 'L'}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div
-              className={`relative z-20 rounded-t-3xl bg-white px-4 pb-5 shadow-[0_-8px_32px_rgba(0,0,0,0.08)] sm:px-6 ${
-                hasBanner
-                  ? '-mt-[68px] pt-16 sm:-mt-[72px] sm:pt-[3.5rem]'
-                  : '-mt-[56px] pt-14 sm:-mt-[60px] sm:pt-[3.25rem]'
-              }`}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <h2 className="text-[15px] font-extrabold uppercase leading-snug tracking-wide text-neutral-900 sm:text-base">
-                    {storeName}
-                  </h2>
-                  <div className="mt-2 flex items-center gap-2 text-[13px] font-medium text-neutral-800">
-                    <span
-                      className={`h-2 w-2 shrink-0 rounded-full ${
-                        storeOpen ? 'bg-emerald-500' : 'bg-neutral-400'
-                      }`}
-                      aria-hidden
-                    />
-                    <span>{storeStatusLine}</span>
-                  </div>
-                  <div className="mt-3.5 flex flex-wrap gap-x-6 gap-y-2 text-[12px] font-semibold text-neutral-600">
-                    {offersDelivery ? (
-                      <span className="inline-flex items-center gap-2">
-                        <IconTruck className="shrink-0 text-neutral-500" />
-                        Entrega
-                      </span>
-                    ) : null}
-                    <span className="inline-flex items-center gap-2">
-                      <IconStorePickup className="shrink-0 text-neutral-500" />
-                      Retirada
-                    </span>
-                  </div>
-                  <p className="mt-3 text-[13px] leading-relaxed text-neutral-500">
-                    {heroSub}
-                  </p>
-                </div>
-                <div className="shrink-0 pt-0.5 text-neutral-300" aria-hidden>
-                  <IconChevronRight className="h-5 w-5" />
-                </div>
-              </div>
-            </div>
-          </>
-        )}
+          ) : null}
+        </div>
       </div>
 
       {hoursMode === 'manual' && !storeOpen ? (
