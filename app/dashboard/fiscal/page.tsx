@@ -1,12 +1,15 @@
 'use client'
 
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { FiscalSettingsCard } from '@/app/dashboard/settings/_components/FiscalSettingsCard'
 import { getUser } from '@/services/auth'
 import { getStoreByUser } from '@/services/store'
 
 export default function VyriaFiscalPage() {
+  const searchParams = useSearchParams()
+  const fromHub = searchParams.get('hub') === 'fiscal'
   const [storeId, setStoreId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -30,15 +33,24 @@ export default function VyriaFiscalPage() {
 
   return (
     <div className="mx-auto w-full max-w-3xl lg:max-w-4xl">
-      <nav className="text-xs text-[#6b7280]">
-        <Link href="/dashboard" className="hover:text-[#1a1614]">
-          Início
+      {fromHub ? (
+        <Link
+          href="/dashboard"
+          className="inline-flex items-center gap-1 text-xs font-semibold text-[#6b7280] transition-colors hover:text-[#1a1614]"
+        >
+          ← Voltar ao hub
         </Link>
-        <span className="mx-1.5">/</span>
-        <span className="font-medium text-[#1a1614]">Vyria Fiscal</span>
-      </nav>
+      ) : (
+        <nav className="text-xs text-[#6b7280]">
+          <Link href="/dashboard" className="hover:text-[#1a1614]">
+            Início
+          </Link>
+          <span className="mx-1.5">/</span>
+          <span className="font-medium text-[#1a1614]">Vyria Fiscal</span>
+        </nav>
+      )}
 
-      <header className="mt-4">
+      <header className={fromHub ? 'mt-3' : 'mt-4'}>
         <h1 className="text-2xl font-bold tracking-tight text-[#1a1614] md:text-3xl">
           Vyria Fiscal
         </h1>

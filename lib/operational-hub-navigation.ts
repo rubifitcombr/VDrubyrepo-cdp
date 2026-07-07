@@ -56,7 +56,7 @@ const HUB_CONTEXT_MENU_KEYS: Record<
   comandas: ['pedidos'],
   visao: ['dashboard'],
   administracao: ADMINISTRATION_MENU_KEYS,
-  fiscal: ADMINISTRATION_MENU_KEYS,
+  fiscal: ['fiscal'],
 }
 
 const HUB_CONTEXT_LABELS: Record<OperationalHubContext, string> = {
@@ -97,7 +97,7 @@ export function isFiscalDashboardPath(pathname: string): boolean {
 export function hubContextKeepsFullSidebar(
   context: OperationalHubContext
 ): boolean {
-  return context === 'administracao' || context === 'fiscal'
+  return context === 'administracao'
 }
 
 export function resolveOperationalHubContext(
@@ -107,7 +107,6 @@ export function resolveOperationalHubContext(
   if (normalizePathname(pathname) === '/dashboard') return null
   if (isOperationalHubContext(hubParam)) return hubParam
   if (isAdministrationDashboardPath(pathname)) return null
-  if (isFiscalDashboardPath(pathname)) return 'fiscal'
   return null
 }
 
