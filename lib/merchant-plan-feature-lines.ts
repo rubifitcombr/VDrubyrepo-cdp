@@ -76,7 +76,7 @@ export function planPreviewLinesForMerchant(
   if (hasProMarketingAi(plan)) {
     lines.push('Imagem de produto com IA')
   }
-  if (operationMode === 'hibrido' && plan === 'START') {
+  if (operationMode === 'hibrido' && plan === 'GROWTH') {
     if (!lines.some((l) => l.includes('Link público'))) {
       lines.push('Link público e QR de pedidos (entrega/retirada)')
     }

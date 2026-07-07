@@ -7,6 +7,12 @@ import type { MerchantOperationMode } from '@/lib/merchant-operation-mode'
  */
 export type Plan = 'START' | 'GROWTH' | 'PRO'
 
+/** Planos comerciais activos (sem Start legado). */
+export type CommercialPlan = 'GROWTH' | 'PRO'
+
+/** Planos exibidos na página «Conheça nossos planos» (comercial). */
+export const COMMERCIAL_PLANS = ['GROWTH', 'PRO'] as const satisfies readonly CommercialPlan[]
+
 export type Feature =
   | 'dashboard'
   | 'products'
@@ -271,7 +277,7 @@ const moneyBrl = new Intl.NumberFormat('pt-BR', {
 export function planMonthlyPricesCatalogLinePt(
   operationMode: MerchantOperationMode | null = null
 ): string {
-  return `Start ${moneyBrl.format(planMonthlyAmountBrl('START', operationMode))} · Growth ${moneyBrl.format(planMonthlyAmountBrl('GROWTH', operationMode))} · Pro ${moneyBrl.format(planMonthlyAmountBrl('PRO', operationMode))}/mês`
+  return `Growth ${moneyBrl.format(planMonthlyAmountBrl('GROWTH', operationMode))} · Pro ${moneyBrl.format(planMonthlyAmountBrl('PRO', operationMode))}/mês`
 }
 
 /** Importação de cardápio por foto — Growth em diante (matriz comercial). */

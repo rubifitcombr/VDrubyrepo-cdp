@@ -57,11 +57,12 @@ const START_BASE: DashboardMenuKey[] = [
   'assinatura',
 ]
 
-/** Delivery Growth = fluxo online + automações (sem painel Garçom / QR mesa). */
+/** Delivery Growth = fluxo online + automações + entregadores. */
 const DELIVERY_GROWTH: DashboardMenuKey[] = [
   'dashboard',
   'produtos',
   'pedidos',
+  'entregadores',
   'promocoes',
   'relatorios',
   'automacoes',

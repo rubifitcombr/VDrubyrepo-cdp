@@ -7,6 +7,7 @@ import {
 } from '@/lib/merchant-operation-mode'
 import type { Plan } from '@/lib/plan'
 import {
+  COMMERCIAL_PLANS,
   planMonthlyPriceLabel,
   planMonthlyPricesCatalogLinePt,
   planTier,
@@ -16,7 +17,12 @@ import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { useMemo, useState } from 'react'
 
-const PLANS: Plan[] = ['START', 'GROWTH', 'PRO']
+const PLANS = COMMERCIAL_PLANS
+
+const TITLE: Record<(typeof COMMERCIAL_PLANS)[number], string> = {
+  GROWTH: 'Growth',
+  PRO: 'Pro',
+}
 
 export type PlanosPreviewTab = MerchantOperationMode
 
@@ -28,12 +34,6 @@ function defaultPreviewTab(storeMode: MerchantOperationMode | null): PlanosPrevi
   return storeMode ?? 'delivery'
 }
 
-const TITLE: Record<Plan, string> = {
-  START: 'Start',
-  GROWTH: 'Growth',
-  PRO: 'Pro',
-}
-
 const MODE_INTRO: Record<
   MerchantOperationMode,
   { indicadoPara: string; resumo: string }
@@ -42,19 +42,19 @@ const MODE_INTRO: Record<
     indicadoPara:
       'Negócios em que o foco é vender pelo canal online: cardápio público (link ou QR), pedidos para entrega ou retirada, gestão de entregadores e automações WhatsApp — sem operação de salão com PDV ou garçom no painel.',
     resumo:
-      'O painel prioriza pedidos do site, promoções, aparência da loja online e, nos planos superiores, caixa, cozinha (KDS) e impressão ligados a esse fluxo.',
+      'O plano Growth inclui pedidos do site, promoções, aparência e automações; o Pro acrescenta caixa, cozinha (KDS) e impressão ligados a esse fluxo.',
   },
   presencial: {
     indicadoPara:
       'Estabelecimentos que atendem só no espaço físico: balcão (PDV), mesas e consumo no local, com pedidos registados no salão — sem link público de delivery nem gestão de corridas de entrega.',
     resumo:
-      'O painel inclui PDV desde o Start; no Growth entram garçom/QR de mesa e pedidos em loja; no Pro, caixa, mapa de mesas, impressão e KDS para a operação local.',
+      'O plano Growth inclui PDV, garçom/QR de mesa e pedidos em loja; no Pro entram caixa, mapa de mesas, impressão e KDS para a operação local.',
   },
   hibrido: {
     indicadoPara:
       'Quem precisa dos dois mundos no mesmo contrato: atendimento no balcão e no salão (PDV, garçom, mesas) e, em paralelo, vendas pelo link/QR com entregas, taxas e zona de entrega.',
     resumo:
-      'Cada plano Híbrido reúne o que o Delivery e o Presencial oferecem no mesmo nível (Start, Growth ou Pro), com tabela de preços própria.',
+      'O plano Growth reúne delivery e presencial no mesmo contrato; o Pro acrescenta caixa, KDS, impressão e PIX no checkout, com tabela de preços própria.',
   },
 }
 
@@ -99,22 +99,12 @@ function ModeloOperacaoIntro({ mode }: { mode: MerchantOperationMode }) {
               </thead>
               <tbody className="divide-y divide-[var(--card-border)] text-vyria-navy-muted">
                 <tr>
-                  <td className="px-4 py-3 font-semibold text-vyria-navy">Start</td>
-                  <td className="px-4 py-3">
-                    Dash, produtos, relatórios, link/QR, taxa e zona de entrega
-                  </td>
-                  <td className="px-4 py-3">Dash, produtos, relatórios, PDV</td>
-                  <td className="px-4 py-3 text-vyria-navy">
-                    Tudo acima · {planMonthlyPriceLabel('START', 'hibrido')}
-                  </td>
-                </tr>
-                <tr>
                   <td className="px-4 py-3 font-semibold text-vyria-navy">Growth</td>
                   <td className="px-4 py-3">
-                    Pedidos, promoções, aparência, automações, entregadores
+                    Cardápio, link/QR, pedidos, promoções, aparência, automações e entregadores
                   </td>
                   <td className="px-4 py-3">
-                    PDV, garçom/QR mesa, pedidos, promoções, aparência
+                    PDV, garçom/QR mesa, pedidos, promoções e aparência
                   </td>
                   <td className="px-4 py-3 text-vyria-navy">
                     União dos dois · {planMonthlyPriceLabel('GROWTH', 'hibrido')}
@@ -177,7 +167,7 @@ export function PlanosPageClient({
     () =>
       Object.fromEntries(
         PLANS.map((p) => [p, planMonthlyPriceLabel(p, previewMode)])
-      ) as Record<Plan, string>,
+      ) as Record<(typeof COMMERCIAL_PLANS)[number], string>,
     [previewMode]
   )
 
@@ -198,6 +188,16 @@ export function PlanosPageClient({
             O endereço que tentaste abrir não faz parte do teu plano e modelo de operação actuais.
             Compara abaixo o que cada plano inclui em cada modelo, ou fala connosco para ajustar o
             plano ou o modelo da tua loja.
+          </p>
+        </div>
+      ) : null}
+
+      {currentPlan === 'START' ? (
+        <div className="mb-6 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800">
+          <p className="font-semibold">Plano Start (legado)</p>
+          <p className="mt-1 text-slate-700">
+            O plano de entrada comercial passou a ser o Growth. Fala connosco para actualizar a
+            tua assinatura e alinhar o painel às funcionalidades abaixo.
           </p>
         </div>
       ) : null}
@@ -249,7 +249,7 @@ export function PlanosPageClient({
 
       <ModeloOperacaoIntro mode={previewTab} />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="mx-auto grid max-w-3xl gap-4 sm:grid-cols-2">
         {PLANS.map((plan) => {
           const tier = planTier(plan)
           const isCurrent = plan === currentPlan

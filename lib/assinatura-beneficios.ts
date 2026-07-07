@@ -17,10 +17,13 @@ export const BENEFICIOS_POR_PLANO: Record<PlanoSlug, string[]> = {
     'Link público da loja',
   ],
   growth: [
-    'Tudo do Start',
-    'Pedidos em tempo real',
-    'Promoções e cupons',
+    'Dashboard e métricas básicas',
+    'Cardápio de produtos e link público da loja',
     'Relatórios de vendas',
+    'Configurações da loja',
+    'Pedidos em tempo real',
+    'PDV / atendimento no balcão',
+    'Promoções e cupons',
     'Aparência personalizada (logo, cor, banner)',
     'Importar cardápio por foto (IA)',
   ],
@@ -32,6 +35,44 @@ export const BENEFICIOS_POR_PLANO: Record<PlanoSlug, string[]> = {
     'Impressão automática de pedidos',
     'Descrição e imagem de produto com IA',
     'Relatórios avançados (comparativos e insights extra)',
+    PIX_CHECKOUT_BENEFIT_LINE,
+  ],
+}
+
+/**
+ * Benefícios alinhados ao modelo **Presencial** (balcão e salão, sem delivery online).
+ * Coerente com `merchant-menu-matrix` para `operation_mode === 'presencial'`.
+ */
+export const BENEFICIOS_PRESENCIAL: Record<PlanoSlug, string[]> = {
+  start: [
+    'Dashboard e métricas básicas',
+    'Cardápio de produtos',
+    'PDV / atendimento no balcão',
+    'Relatórios de vendas (essencial)',
+    'Configurações da loja',
+  ],
+  growth: [
+    'Dashboard e métricas básicas',
+    'Cardápio de produtos',
+    'PDV / atendimento no balcão',
+    'Relatórios de vendas',
+    'Configurações da loja',
+    'Pedidos em tempo real (balcão e salão)',
+    'Garçom / QR de mesa (autoatendimento no salão)',
+    'Promoções e cupons',
+    'Aparência da loja (logo, cor, banner)',
+    'Automações WhatsApp (confirmação e avisos)',
+    'Importar cardápio por foto (IA)',
+  ],
+  pro: [
+    'Tudo do Growth',
+    'Garçom com mapa de mesas e pedidos pelo painel',
+    'Caixa com turno e fecho de comandas',
+    'Impressão automática (cozinha / agente Wi‑Fi)',
+    'KDS — monitor de cozinha',
+    'Gestão de estoque por produto',
+    'Relatórios avançados',
+    'Descrição e imagem de produto com IA',
     PIX_CHECKOUT_BENEFIT_LINE,
   ],
 }
@@ -51,7 +92,13 @@ export const BENEFICIOS_HIBRIDO: Record<PlanoSlug, string[]> = {
     'Configurações da loja',
   ],
   growth: [
-    'Tudo do Start',
+    'Dashboard e métricas básicas',
+    'Cardápio de produtos',
+    'PDV / atendimento no balcão',
+    'Relatórios de vendas',
+    'Link público e QR de pedidos (entrega e retirada)',
+    'Taxa de entrega e zona de entrega (raio em km)',
+    'Configurações da loja',
     'Pedidos em tempo real (balcão, salão e canal online)',
     'Garçom / QR de mesa no salão',
     'Gestão de entregadores (pedidos online)',
@@ -85,7 +132,10 @@ export const BENEFICIOS_DELIVERY: Record<PlanoSlug, string[]> = {
     'Configurações da loja',
   ],
   growth: [
-    'Tudo do Start',
+    'Dashboard e métricas básicas',
+    'Cardápio online e link público da loja',
+    'Relatórios de vendas (essencial)',
+    'Configurações da loja',
     'Pedidos em tempo real (delivery e retirada no site)',
     'Gestão de entregadores e registo de corridas',
     'Promoções e cupons',
@@ -116,6 +166,9 @@ export function beneficiosDoPlano(
 ): string[] {
   if (operationMode === 'delivery') {
     return BENEFICIOS_DELIVERY[slug(plan)] ?? []
+  }
+  if (operationMode === 'presencial') {
+    return BENEFICIOS_PRESENCIAL[slug(plan)] ?? []
   }
   if (operationMode === 'hibrido') {
     return BENEFICIOS_HIBRIDO[slug(plan)] ?? []

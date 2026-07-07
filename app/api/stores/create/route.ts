@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
         slug: uniqueSlug,
         owner_id: user.id,
         status: 'pendente',
-        plano: 'start',
+        plano: 'growth',
         operation_mode: mode,
         ...(phone ? { phone } : {}),
       })
