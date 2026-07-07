@@ -302,11 +302,12 @@ function discountPercent(original: number, current: number) {
   return pct > 0 ? pct : 0
 }
 
-/** URL público do cardápio do logista (sem query/hash). */
-function getStorefrontPublicUrl(slug: string) {
+/** URL público do cardápio do logista. */
+function getStorefrontPublicUrl(slug: string, auto = false) {
   if (typeof window === 'undefined') return ''
   const path = `/${slug.replace(/^\/+|\/+$/g, '')}`
-  return `${window.location.origin}${path}`
+  const base = `${window.location.origin}${path}`
+  return auto ? `${base}?auto=1` : base
 }
 
 async function shareStoreLink({
@@ -338,7 +339,6 @@ export function StorefrontMenuClient({
   storeSlug,
   storePlan,
   phone,
-  subtitle,
   logoUrl,
   bannerUrl,
   theme,
@@ -362,7 +362,6 @@ export function StorefrontMenuClient({
   storeSlug: string
   storePlan: string | null | undefined
   phone?: string | null
-  subtitle?: string | null
   logoUrl?: string | null
   bannerUrl?: string | null
   theme: ThemeProps
@@ -449,7 +448,7 @@ export function StorefrontMenuClient({
   }, [filtered, selectedCategory])
 
   const hasPromoDay = products.some((p) => p.popular)
-  const autoMode = selfServiceFromQr || salaoAutoUnavailable
+  const autoMode = selfServiceFromQr
 
   const storeStatusLine = useMemo(() => {
     if (!storeOpen) {
@@ -500,7 +499,7 @@ export function StorefrontMenuClient({
 
   function handleShareClick() {
     if (typeof window === 'undefined') return
-    const url = getStorefrontPublicUrl(storeSlug)
+    const url = getStorefrontPublicUrl(storeSlug, selfServiceFromQr)
     if (!url) return
     void shareStoreLink({
       url,
@@ -540,6 +539,13 @@ export function StorefrontMenuClient({
   }
 
   function incrementProduct(product: StorefrontMenuProduct) {
+    const existing = items.find(
+      (item) => item.productId === product.id && !item.addons?.length
+    )
+    if (existing) {
+      setQuantity(existing.id, existing.quantity + 1)
+      return
+    }
     addItem({
       productId: product.id,
       name: product.name,
@@ -666,23 +672,20 @@ export function StorefrontMenuClient({
             </span>
           </button>
 
-          {autoMode && !autoContextDismissed ? (
-            <div
-              className={`mt-2 flex items-center gap-1.5 rounded-full border px-2 py-1.5 text-[10px] font-bold ${
-                salaoAutoUnavailable
-                  ? 'border-red-200 bg-red-50 text-red-900'
-                  : 'border-[#EBD19A] bg-[#FAEEDA] text-[#633806]'
-              }`}
-            >
-              {salaoAutoUnavailable ? (
-                <IconAlertTriangle className="h-4 w-4 shrink-0" />
-              ) : (
-                <IconArmchair className="h-4 w-4 shrink-0" />
-              )}
+          {salaoAutoUnavailable ? (
+            <div className="mt-2 flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-2 py-1.5 text-[10px] font-bold text-red-900">
+              <IconAlertTriangle className="h-4 w-4 shrink-0" />
               <span className="min-w-0 flex-1 truncate">
-                {salaoAutoUnavailable
-                  ? 'Autoatendimento indisponível — chame o garçom'
-                  : 'Pedido na mesa · Autoatendimento'}
+                Autoatendimento indisponível — chame o garçom
+              </span>
+            </div>
+          ) : null}
+
+          {autoMode && !autoContextDismissed ? (
+            <div className="mt-2 flex items-center gap-1.5 rounded-full border border-[#EBD19A] bg-[#FAEEDA] px-2 py-1.5 text-[10px] font-bold text-[#633806]">
+              <IconArmchair className="h-4 w-4 shrink-0" />
+              <span className="min-w-0 flex-1 truncate">
+                Pedido na mesa · Autoatendimento
               </span>
               <button
                 type="button"

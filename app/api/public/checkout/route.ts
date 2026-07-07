@@ -21,6 +21,11 @@ import {
   type ProductPriceChannel,
 } from '@/lib/product-pricing'
 import {
+  addonTotalFromCatalog,
+  loadAddonCatalogForProducts,
+  parseCheckoutAddons,
+} from '@/lib/public-checkout-pricing.server'
+import {
   MENU_PRODUCT_SELECT,
   normalizeMenuProductRow,
   type MenuProductRow,
@@ -31,6 +36,7 @@ type CheckoutLine = {
   name: string
   quantity: number
   unitPrice: number
+  addons: ReturnType<typeof parseCheckoutAddons>
 }
 
 function toText(v: unknown): string {
@@ -141,7 +147,8 @@ export async function POST(req: NextRequest) {
         const name = toText(o.name) || 'Produto'
         const quantity = Number(o.quantity)
         const unitPrice = Number(o.unitPrice)
-        return { productId, name, quantity, unitPrice }
+        const addons = parseCheckoutAddons(o.addons)
+        return { productId, name, quantity, unitPrice, addons }
       })
       .filter(
         (x) =>
@@ -250,6 +257,11 @@ export async function POST(req: NextRequest) {
       if (row.id) productById.set(row.id, row)
     }
 
+    const addonCatalog = await loadAddonCatalogForProducts(
+      supabase,
+      items.map((line) => line.productId)
+    )
+
     const pricedItems: CheckoutLine[] = []
     for (const line of items) {
       const row = productById.get(line.productId)
@@ -259,10 +271,24 @@ export async function POST(req: NextRequest) {
           { status: 400 }
         )
       }
-      const serverUnit = effectiveProductPrice(row, priceChannel)
+      const baseUnit = effectiveProductPrice(row, priceChannel)
+      const catalog = addonCatalog.get(line.productId) ?? []
+      const addonSum =
+        line.addons.length > 0
+          ? addonTotalFromCatalog(catalog, line.addons)
+          : 0
+      if (line.addons.length > 0 && !Number.isFinite(addonSum)) {
+        return NextResponse.json(
+          {
+            error:
+              'Um adicional do carrinho não está mais disponível. Atualiza o pedido e tenta de novo.',
+          },
+          { status: 409 }
+        )
+      }
+      const serverUnit = Math.round((baseUnit + addonSum) * 100) / 100
       const clientUnit = Math.round(line.unitPrice * 100) / 100
-      const serverRounded = Math.round(serverUnit * 100) / 100
-      if (Math.abs(clientUnit - serverRounded) > 0.02) {
+      if (Math.abs(clientUnit - serverUnit) > 0.02) {
         return NextResponse.json(
           {
             error:
@@ -275,7 +301,8 @@ export async function POST(req: NextRequest) {
         productId: line.productId,
         name: row.name?.trim() || line.name,
         quantity: line.quantity,
-        unitPrice: serverRounded,
+        unitPrice: serverUnit,
+        addons: line.addons,
       })
     }
 

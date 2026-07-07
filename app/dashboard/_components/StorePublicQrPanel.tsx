@@ -234,19 +234,11 @@ export function StorePublicQrPanel({
   const isDineIn = qrCheckoutMode === 'dine_in'
 
   useEffect(() => {
+    if (!publicUrl) return
+
     let cancelled = false
     let objectUrl: string | null = null
 
-    if (!publicUrl) {
-      setPosterUrl(null)
-      setError(null)
-      return () => {
-        cancelled = true
-      }
-    }
-
-    setError(null)
-    setPosterUrl(null)
     void buildBrandedPoster(publicUrl, isDineIn)
       .then((blob) => {
         if (cancelled) return

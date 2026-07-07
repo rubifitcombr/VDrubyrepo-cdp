@@ -25,6 +25,7 @@ export default async function OrdersPage({
   if (!user) return null
   const params = searchParams ? await searchParams : {}
   const hubParam = typeof params.hub === 'string' ? params.hub : null
+  const preferPresencial = hubParam === 'comandas' || hubParam === 'balcao'
 
   const store = await getStoreByUser(user.id)
   if (!store || typeof store !== 'object' || !('id' in store)) {
@@ -75,7 +76,7 @@ export default async function OrdersPage({
       slugChannelSourcesOnly={slugChannelSourcesOnly}
       initialChannelFilter={resolveOrdersChannelFilter(
         operationMode,
-        hubParam === 'comandas' ? 'presencial' : 'delivery'
+        preferPresencial ? 'presencial' : 'delivery'
       )}
     />
   )

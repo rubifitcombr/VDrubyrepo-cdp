@@ -201,11 +201,17 @@ export function WhatsAppCheckoutButton({
   }, [phone, storeName, items, subtotal])
 
   if (!dineInSelfService && !waUrl) {
-    return (
-      <p className="text-center text-sm text-vyria-navy-muted">
-        Esta loja ainda não configurou o WhatsApp para pedidos.
-      </p>
-    )
+    // Checkout via API permanece disponível sem WhatsApp configurado.
+  }
+
+  function mapCheckoutItems() {
+    return items.map((i) => ({
+      productId: i.productId,
+      name: i.name,
+      quantity: i.quantity,
+      unitPrice: i.price,
+      addons: i.addons,
+    }))
   }
 
   function validateDeliveryCheckout(): string | null {
@@ -372,12 +378,7 @@ export function WhatsAppCheckoutButton({
           addressBairro: addressBairro.trim(),
           paymentMethod: pixAvailableForCheckout ? paymentMethod : 'cash',
           notes: buildNotesPayload(),
-          items: items.map((i) => ({
-            productId: i.productId,
-            name: i.name,
-            quantity: i.quantity,
-            unitPrice: i.price,
-          })),
+          items: mapCheckoutItems(),
         }),
       })
       const payload = (await resp.json()) as {
@@ -445,12 +446,10 @@ export function WhatsAppCheckoutButton({
         .filter(Boolean)
         .join('\n')
       setSubmitting(false)
-      setDineInSuccess({
-        orderId: payload.orderId,
-        orderRef: ref,
-        table: tableMesa.trim(),
-        whatsappText: finalText,
-      })
+      finishCheckoutAfterApi(
+        { orderId: payload.orderId, pix: payload.pix },
+        finalText
+      )
     } catch (e) {
       setSubmitting(false)
       setError(e instanceof Error ? e.message : 'Erro ao finalizar pedido.')
@@ -477,12 +476,7 @@ export function WhatsAppCheckoutButton({
           customerName,
           customerPhone,
           notes: notes.trim() || null,
-          items: items.map((i) => ({
-            productId: i.productId,
-            name: i.name,
-            quantity: i.quantity,
-            unitPrice: i.price,
-          })),
+          items: mapCheckoutItems(),
         }),
       })
       const payload = (await resp.json()) as {
@@ -517,10 +511,14 @@ export function WhatsAppCheckoutButton({
       ]
         .filter(Boolean)
         .join('\n')
-      finishCheckoutAfterApi(
-        { orderId: payload.orderId, pix: payload.pix },
-        finalText
-      )
+      setDineInSuccess({
+        orderId: payload.orderId,
+        orderRef: ref,
+        table: tableMesa.trim(),
+        whatsappText: finalText,
+      })
+      clearCart()
+      setSubmitting(false)
     } catch (e) {
       setSubmitting(false)
       setError(e instanceof Error ? e.message : 'Erro ao finalizar pedido.')
@@ -547,12 +545,7 @@ export function WhatsAppCheckoutButton({
           customerPhone,
           paymentMethod,
           notes: buildNotesPayload(),
-          items: items.map((i) => ({
-            productId: i.productId,
-            name: i.name,
-            quantity: i.quantity,
-            unitPrice: i.price,
-          })),
+          items: mapCheckoutItems(),
         }),
       })
       const payload = (await resp.json()) as {

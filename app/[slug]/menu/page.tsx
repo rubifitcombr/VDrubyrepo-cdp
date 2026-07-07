@@ -1,11 +1,19 @@
 import { redirect } from 'next/navigation'
+import { storefrontLegacyRedirectPath } from '@/lib/storefront-legacy-redirect'
 import { normalizePublicSlugSegment } from '@/lib/store-public-slug.server'
 
-type Props = { params: Promise<{ slug: string }> }
+type Props = {
+  params: Promise<{ slug: string }>
+  searchParams?: Promise<Record<string, string | string[] | undefined>>
+}
 
-export default async function LegacyMenuPathPage({ params }: Props) {
+export default async function LegacyMenuPathPage({
+  params,
+  searchParams,
+}: Props) {
   const { slug: rawSlug } = await params
   const slug = normalizePublicSlugSegment(rawSlug)
   if (!slug) redirect('/')
-  redirect(`/${encodeURIComponent(slug)}`)
+  const sp = searchParams ? await searchParams : undefined
+  redirect(storefrontLegacyRedirectPath(slug, sp))
 }

@@ -180,7 +180,7 @@ function kanbanLabel(id: TabId, channel: ChannelFilter): string {
       case 'delivered':
         return 'Fechadas'
       case 'delivering':
-        return 'Em rota'
+        return 'Na mesa'
     }
   }
   switch (id) {
@@ -1119,6 +1119,9 @@ export function OrdersClient({
     initialOrders,
     slugChannelSourcesOnly
   )
+  useEffect(() => {
+    setOrders(initialOrders)
+  }, [initialOrders, setOrders])
   const [channelFilter, setChannelFilter] = useState<ChannelFilter>(() =>
     resolveOrdersChannelFilter(operationMode, initialChannelFilter)
   )
@@ -1310,7 +1313,7 @@ export function OrdersClient({
 
   const visibleColumns = useMemo(() => {
     if (channelFilter === 'presencial') {
-      return TAB_DEF.filter((c) => c.id !== 'delivering' && c.id !== 'delivered')
+      return TAB_DEF.filter((c) => c.id !== 'delivered')
     }
     if (!deliveryPipelineEnabled) {
       return TAB_DEF.filter((c) => c.id !== 'delivering' && c.id !== 'delivered')

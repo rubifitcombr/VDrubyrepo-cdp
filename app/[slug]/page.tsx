@@ -237,7 +237,6 @@ export default async function StorefrontPage({ params, searchParams }: Props) {
       storeSlug={s.slug}
       storePlan={storePlan}
       phone={s.phone}
-      subtitle={s.subtitle}
       logoUrl={logoUrl}
       bannerUrl={bannerUrl}
       theme={{

@@ -173,7 +173,7 @@ function aggregateTable(
   const list = ordersOnTable(openOrders, tableName, amb, configuredTables)
   const total = list.reduce((s, o) => s + (Number(o.total) || 0), 0)
   const itemsApprox = list.reduce((s, o) => {
-    const sum = (o.items_summary || '').split(',').filter((x) => x.trim()).length
+    const sum = (o.items_summary || '').split(';').filter((x) => x.trim()).length
     return s + Math.max(1, sum)
   }, 0)
   const waiterCount = list.filter((o) => String(o.source ?? '').toLowerCase() === 'waiter').length

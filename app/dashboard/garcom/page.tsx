@@ -113,7 +113,7 @@ export default async function GarcomPage({
       storeName={storeName}
       storeSlug={storeSlug}
       origin={origin}
-      plan={plan}
+      plan={planEffective}
       initialSalaoAttendanceMode={salaoMode}
       initialProducts={products.filter((p) => p.active !== false)}
       initialOpenOrders={openOrders}
