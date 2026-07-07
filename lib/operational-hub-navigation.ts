@@ -11,6 +11,7 @@ export type OperationalHubContext =
   | 'comandas'
   | 'visao'
   | 'administracao'
+  | 'fiscal'
 
 const HUB_CONTEXTS = new Set<OperationalHubContext>([
   'balcao',
@@ -21,6 +22,7 @@ const HUB_CONTEXTS = new Set<OperationalHubContext>([
   'comandas',
   'visao',
   'administracao',
+  'fiscal',
 ])
 
 const ADMINISTRATION_MENU_KEYS: readonly DashboardMenuKey[] = [
@@ -39,6 +41,7 @@ const ADMINISTRATION_MENU_KEYS: readonly DashboardMenuKey[] = [
   'pdv',
   'garcom',
   'automacoes',
+  'fiscal',
 ]
 
 const HUB_CONTEXT_MENU_KEYS: Record<
@@ -53,6 +56,7 @@ const HUB_CONTEXT_MENU_KEYS: Record<
   comandas: ['pedidos'],
   visao: ['dashboard'],
   administracao: ADMINISTRATION_MENU_KEYS,
+  fiscal: ADMINISTRATION_MENU_KEYS,
 }
 
 const HUB_CONTEXT_LABELS: Record<OperationalHubContext, string> = {
@@ -64,6 +68,7 @@ const HUB_CONTEXT_LABELS: Record<OperationalHubContext, string> = {
   comandas: 'Comandas',
   visao: 'Visão geral',
   administracao: 'Administração',
+  fiscal: 'Vyria Fiscal',
 }
 
 function normalizePathname(pathname: string): string {
@@ -83,6 +88,18 @@ export function isAdministrationDashboardPath(pathname: string): boolean {
   return n === '/dashboard/visao' || n.startsWith('/dashboard/visao/')
 }
 
+export function isFiscalDashboardPath(pathname: string): boolean {
+  const n = normalizePathname(pathname)
+  return n === '/dashboard/fiscal' || n.startsWith('/dashboard/fiscal/')
+}
+
+/** Hub contexts that mantêm a sidebar completa (não colapsada). */
+export function hubContextKeepsFullSidebar(
+  context: OperationalHubContext
+): boolean {
+  return context === 'administracao' || context === 'fiscal'
+}
+
 export function resolveOperationalHubContext(
   pathname: string,
   hubParam: string | null | undefined
@@ -90,6 +107,7 @@ export function resolveOperationalHubContext(
   if (normalizePathname(pathname) === '/dashboard') return null
   if (isOperationalHubContext(hubParam)) return hubParam
   if (isAdministrationDashboardPath(pathname)) return null
+  if (isFiscalDashboardPath(pathname)) return 'fiscal'
   return null
 }
 

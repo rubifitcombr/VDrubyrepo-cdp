@@ -35,6 +35,12 @@ import {
   parseSectorFromNotes,
   parseTableFromNotes,
 } from '@/lib/waiter-order-notes'
+import {
+  ordersDeliveryChannelVisible,
+  ordersPresencialChannelVisible,
+  resolveOrdersChannelFilter,
+  type MerchantOperationMode,
+} from '@/lib/merchant-operation-mode'
 import { IconPrinter } from '@/app/dashboard/_components/NavIcons'
 
 function playNewOrderBeep() {
@@ -234,10 +240,10 @@ function statusCardSurfaceClass(status: string | null): string {
   }
 }
 
-/** Remove totais por linha (`2x Item=12,50`) para exibição compacta no card. */
-function formatItemsSummaryForDisplay(summary: string | null | undefined): string {
+/** Remove totais por linha (`2x Item=12,50`) para exibição no card. */
+function parseItemsSummaryLines(summary: string | null | undefined): string[] {
   const raw = summary?.trim()
-  if (!raw) return 'Itens não indicados neste pedido.'
+  if (!raw) return []
   return raw
     .split(';')
     .map((segment) => {
@@ -248,7 +254,48 @@ function formatItemsSummaryForDisplay(summary: string | null | undefined): strin
       return line.slice(0, eq).trim()
     })
     .filter(Boolean)
-    .join(' · ')
+}
+
+const ORDER_ITEMS_COLLAPSED_COUNT = 3
+
+function OrderItemsSummary({ summary }: { summary: string | null | undefined }) {
+  const items = useMemo(() => parseItemsSummaryLines(summary), [summary])
+  const [expanded, setExpanded] = useState(false)
+  const needsExpand = items.length > ORDER_ITEMS_COLLAPSED_COUNT
+  const visible =
+    expanded || !needsExpand ? items : items.slice(0, ORDER_ITEMS_COLLAPSED_COUNT)
+  const hiddenCount = items.length - ORDER_ITEMS_COLLAPSED_COUNT
+
+  if (items.length === 0) {
+    return (
+      <p className="text-sm leading-5 text-slate-700">
+        Itens não indicados neste pedido.
+      </p>
+    )
+  }
+
+  return (
+    <div className="min-w-0 flex-1">
+      <ul className="space-y-0.5 text-sm leading-5 text-slate-700">
+        {visible.map((item, index) => (
+          <li key={`${index}-${item}`} className="break-words">
+            {item}
+          </li>
+        ))}
+      </ul>
+      {needsExpand ? (
+        <button
+          type="button"
+          onClick={() => setExpanded((open) => !open)}
+          className="mt-1.5 text-xs font-bold text-[var(--dash-primary)] underline-offset-2 hover:underline"
+        >
+          {expanded
+            ? 'Ver menos'
+            : `Ver mais ${hiddenCount} item${hiddenCount === 1 ? '' : 's'}`}
+        </button>
+      ) : null}
+    </div>
+  )
 }
 
 function orderDisplayLocation(o: StoreOrderRow): {
@@ -713,7 +760,6 @@ function OrderCard({
   onAction: OrderCardActions
 }) {
   const st = order.status
-  const itemsLine = formatItemsSummaryForDisplay(order.items_summary)
   const itemsCount = itemCountLabel(order.items_summary)
   const age = orderAgeMinutes(order.created_at)
   const priority = priorityTone(age, order.entrega_prazo_minutos ?? 20)
@@ -852,9 +898,7 @@ function OrderCard({
             ) : null}
           </p>
           <div className="flex items-start justify-between gap-2">
-            <p className="line-clamp-2 text-sm leading-5 text-slate-700">
-              {itemsLine}
-            </p>
+            <OrderItemsSummary summary={order.items_summary} />
             <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">
               {itemsCount}
             </span>
@@ -1050,6 +1094,7 @@ export function OrdersClient({
   printing,
   plan,
   deliveryPipelineEnabled = true,
+  operationMode = null,
   slugChannelSourcesOnly = false,
   initialChannelFilter = 'delivery',
 }: {
@@ -1060,17 +1105,28 @@ export function OrdersClient({
   plan: Plan
   /** Slug / entregas / separador «A caminho»: só delivery e híbrido. */
   deliveryPipelineEnabled?: boolean
+  /** Modelo de operação da loja — define quais canais aparecem em Pedidos. */
+  operationMode?: MerchantOperationMode | null
   /** Growth + delivery: só pedidos do cardápio público (slug/QR entrega ou retirada). */
   slugChannelSourcesOnly?: boolean
-  /** Hub `?hub=comandas` abre direto no canal presencial. */
+  /** Hub `?hub=comandas` abre direto no canal presencial (quando disponível). */
   initialChannelFilter?: ChannelFilter
 }) {
+  const showDeliveryChannel = ordersDeliveryChannelVisible(operationMode)
+  const showPresencialChannel = ordersPresencialChannelVisible(operationMode)
   const { orders, setOrders, liveOk } = useOrdersRealtime(
     storeId,
     initialOrders,
     slugChannelSourcesOnly
   )
-  const [channelFilter, setChannelFilter] = useState<ChannelFilter>(initialChannelFilter)
+  const [channelFilter, setChannelFilter] = useState<ChannelFilter>(() =>
+    resolveOrdersChannelFilter(operationMode, initialChannelFilter)
+  )
+  useEffect(() => {
+    setChannelFilter((current) =>
+      resolveOrdersChannelFilter(operationMode, current)
+    )
+  }, [operationMode])
   const [showActionQueue, setShowActionQueue] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -1701,7 +1757,13 @@ export function OrdersClient({
                 {liveOk ? `${actionOrders.length} pedidos aguardando ação` : 'Atualizando'}
               </button>
             </div>
-            <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4">
+            <div
+              className={`mt-2 grid grid-cols-2 gap-2 ${
+                showDeliveryChannel && showPresencialChannel
+                  ? 'md:grid-cols-4'
+                  : 'md:grid-cols-3'
+              }`}
+            >
               <div
                 className={`min-w-0 overflow-hidden rounded-xl border px-3 py-2 ${
                   channelCounts.lateActive > 0
@@ -1730,6 +1792,7 @@ export function OrdersClient({
                   Faturamento ativo
                 </p>
               </div>
+              {showDeliveryChannel ? (
               <div className="min-w-0 overflow-hidden rounded-xl border border-orange-100 bg-orange-50/50 px-3 py-2">
                 <div className="flex min-w-0 items-center gap-2">
                   <IconBike className="h-4 w-4 shrink-0 text-orange-700" />
@@ -1741,6 +1804,8 @@ export function OrdersClient({
                   Delivery ativo
                 </p>
               </div>
+              ) : null}
+              {showPresencialChannel ? (
               <div className="min-w-0 overflow-hidden rounded-xl border border-orange-100 bg-orange-50/50 px-3 py-2">
                 <div className="flex min-w-0 items-center gap-2">
                   <IconTool className="h-4 w-4 shrink-0 text-orange-700" />
@@ -1752,10 +1817,18 @@ export function OrdersClient({
                   Presencial ativo
                 </p>
               </div>
+              ) : null}
             </div>
           </div>
 
-          <div className="grid w-full gap-2 sm:grid-cols-2 xl:w-auto xl:min-w-[420px]">
+          <div
+            className={`grid w-full gap-2 xl:w-auto xl:min-w-[420px] ${
+              showDeliveryChannel && showPresencialChannel
+                ? 'sm:grid-cols-2'
+                : 'grid-cols-1'
+            }`}
+          >
+            {showDeliveryChannel ? (
             <button
               type="button"
               onClick={() => setChannelFilter('delivery')}
@@ -1785,6 +1858,8 @@ export function OrdersClient({
                 {channelCounts.deliveryActive} pedidos ativos
               </span>
             </button>
+            ) : null}
+            {showPresencialChannel ? (
             <button
               type="button"
               onClick={() => setChannelFilter('presencial')}
@@ -1814,6 +1889,7 @@ export function OrdersClient({
                 {channelCounts.presencialActive} comandas ativas
               </span>
             </button>
+            ) : null}
           </div>
         </div>
 

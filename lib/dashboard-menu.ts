@@ -74,6 +74,7 @@ const MENU_KEY_TO_PATH_PREFIX: Record<DashboardMenuKey, string> = {
   pdv: '/dashboard/pdv',
   garcom: '/dashboard/garcom',
   automacoes: '/dashboard/automations',
+  fiscal: '/dashboard/fiscal',
 }
 
 function planSlug(plan: Plan): 'start' | 'growth' | 'pro' {
@@ -103,6 +104,9 @@ export function menuKeysForMerchant(
     entregadoresMenuContext(operationMode)
   ) {
     set.add('entregadores')
+  }
+  if (set.has('configuracoes')) {
+    set.add('fiscal')
   }
   return set
 }

@@ -41,6 +41,33 @@ export function isDeliveryPipelineEnabled(
   return mode === 'delivery' || mode === 'hibrido'
 }
 
+/** Pedidos — card/filtro Delivery visível em delivery e híbrido (legado `null` = ambos). */
+export function ordersDeliveryChannelVisible(
+  mode: MerchantOperationMode | null
+): boolean {
+  if (mode === null) return true
+  return mode === 'delivery' || mode === 'hibrido'
+}
+
+/** Pedidos — card/filtro Presencial visível em presencial e híbrido (legado `null` = ambos). */
+export function ordersPresencialChannelVisible(
+  mode: MerchantOperationMode | null
+): boolean {
+  if (mode === null) return true
+  return mode === 'presencial' || mode === 'hibrido'
+}
+
+export function resolveOrdersChannelFilter(
+  mode: MerchantOperationMode | null,
+  prefer: 'delivery' | 'presencial' = 'delivery'
+): 'delivery' | 'presencial' {
+  const delivery = ordersDeliveryChannelVisible(mode)
+  const presencial = ordersPresencialChannelVisible(mode)
+  if (!delivery) return 'presencial'
+  if (!presencial) return 'delivery'
+  return prefer
+}
+
 export function operationModeLabel(mode: MerchantOperationMode): string {
   switch (mode) {
     case 'delivery':

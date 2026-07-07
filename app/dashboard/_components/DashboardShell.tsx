@@ -12,6 +12,7 @@ import type { DashboardMenuKey } from '@/lib/dashboard-menu'
 import { menuKeysForMerchant } from '@/lib/dashboard-menu'
 import type { MerchantOperationMode } from '@/lib/merchant-operation-mode'
 import {
+  hubContextKeepsFullSidebar,
   hubContextLabel,
   menuKeysForHubContext,
   resolveOperationalHubContext,
@@ -153,7 +154,7 @@ const nav: Array<{
     href: '/dashboard/fiscal',
     label: 'Vyria Fiscal',
     icon: IconReceipt,
-    menuKey: 'configuracoes',
+    menuKey: 'fiscal',
   },
   {
     href: '/dashboard/appearance',
@@ -415,7 +416,9 @@ export function DashboardShell({
   // "Administração" é o painel completo (descrição: "com sidebar"): mantém a
   // sidebar persistente no desktop — onde fica o botão "Sair" — em vez de
   // colapsar como os outros atalhos focados (operacionais) do hub.
-  const sidebarCollapsed = focusedHubNavigation && hubContext !== 'administracao'
+  const sidebarCollapsed =
+    focusedHubNavigation &&
+    !(hubContext && hubContextKeepsFullSidebar(hubContext))
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   useEffect(() => {

@@ -5,6 +5,7 @@ import { readStorePlano } from '@/lib/store-columns'
 import {
   isDeliveryPipelineEnabled,
   parseOperationModeFromStore,
+  resolveOrdersChannelFilter,
 } from '@/lib/merchant-operation-mode'
 import { dashboardUsesSlugChannelOrdersOnly } from '@/lib/slug-channel-orders'
 import { OrdersClient } from './_components/OrdersClient'
@@ -70,8 +71,12 @@ export default async function OrdersPage({
       printing={printing}
       plan={plan}
       deliveryPipelineEnabled={deliveryPipelineEnabled}
+      operationMode={operationMode}
       slugChannelSourcesOnly={slugChannelSourcesOnly}
-      initialChannelFilter={hubParam === 'comandas' ? 'presencial' : 'delivery'}
+      initialChannelFilter={resolveOrdersChannelFilter(
+        operationMode,
+        hubParam === 'comandas' ? 'presencial' : 'delivery'
+      )}
     />
   )
 }

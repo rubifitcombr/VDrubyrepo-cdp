@@ -393,7 +393,7 @@ export function OperationalHubClient({
                 label="Vyria Fiscal"
                 description="Emitir NFC-e, enviar certificado e configurar a nota fiscal."
                 icon={IconReceipt}
-                onOpen={() => openShortcut('/dashboard/fiscal')}
+                onOpen={() => openShortcut('/dashboard/fiscal?hub=fiscal')}
               />
               <SideShortcut
                 label="Visão geral do dia"

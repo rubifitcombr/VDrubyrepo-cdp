@@ -103,6 +103,7 @@ const PIN_PATH_PREFIXES: Array<{ prefix: string; shortcut: HubPinShortcut }> = [
   { prefix: '/dashboard/garcom', shortcut: 'salao' },
   { prefix: '/dashboard/kds', shortcut: 'cozinha' },
   { prefix: '/dashboard/visao', shortcut: 'administracao' },
+  { prefix: '/dashboard/fiscal', shortcut: 'administracao' },
 ]
 
 const OPERATIONAL_DASHBOARD_PREFIXES = [
@@ -138,6 +139,7 @@ export function hubPinShortcutForAccess(
   if (hubParam === 'salao' || hubParam === 'mesas') return 'salao'
   if (hubParam === 'cozinha') return 'cozinha'
   if (hubParam === 'administracao') return 'administracao'
+  if (hubParam === 'fiscal') return 'administracao'
 
   const fromPath = inferPinShortcutFromPath(pathname)
   if (fromPath) return fromPath
