@@ -15,7 +15,15 @@ import {
   planShortLabel,
 } from '@/lib/plan'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useState } from 'react'
+
+const CANCEL_MOTIVOS = [
+  { id: 'preco_alto', label: 'Preço alto' },
+  { id: 'nao_usando', label: 'Não estou usando' },
+  { id: 'falta_funcionalidade', label: 'Falta de funcionalidade' },
+  { id: 'outro', label: 'Outro' },
+] as const
 
 const dateShort = new Intl.DateTimeFormat('pt-BR', {
   day: '2-digit',
@@ -97,7 +105,15 @@ function IconAlert({ className }: { className?: string }) {
 }
 
 export function AssinaturaClient({ model }: { model: AssinaturaPageModel }) {
+  const router = useRouter()
   const [showAllBenefits, setShowAllBenefits] = useState(false)
+  const [cancelMotivo, setCancelMotivo] = useState<string>(CANCEL_MOTIVOS[0]!.id)
+  const [cancelBusy, setCancelBusy] = useState(false)
+  const [cancelDone, setCancelDone] = useState<{
+    multaEstimadaBrl: number
+    mesesRestantes: number
+  } | null>(null)
+  const [cancelError, setCancelError] = useState<string | null>(null)
 
   const subUi = subscriptionStatusPresentation(model.subscriptionStatus)
   const lista = beneficiosDoPlano(model.plan, model.operationMode)
@@ -122,6 +138,37 @@ export function AssinaturaClient({ model }: { model: AssinaturaPageModel }) {
 
   const wa = model.whatsappHref
   const showAcoesUpgrade = model.plan !== 'PRO' && !!wa
+  const annual = model.annualContract
+
+  async function submitCancelRequest() {
+    setCancelBusy(true)
+    setCancelError(null)
+    try {
+      const res = await fetch('/api/assinatura/cancelar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ motivo: cancelMotivo }),
+      })
+      const data = (await res.json()) as {
+        error?: string
+        multaEstimadaBrl?: number
+        mesesRestantes?: number
+      }
+      if (!res.ok) {
+        setCancelError(data.error || 'Não foi possível enviar o pedido.')
+        return
+      }
+      setCancelDone({
+        multaEstimadaBrl: data.multaEstimadaBrl ?? 0,
+        mesesRestantes: data.mesesRestantes ?? 0,
+      })
+      router.refresh()
+    } catch {
+      setCancelError('Erro de rede. Tenta novamente.')
+    } finally {
+      setCancelBusy(false)
+    }
+  }
 
   return (
     <div className="mx-auto w-full max-w-3xl lg:max-w-4xl">
@@ -193,6 +240,88 @@ export function AssinaturaClient({ model }: { model: AssinaturaPageModel }) {
             <span className="text-[#6b7280]">Próxima cobrança</span>
             <span className="font-medium text-[#1a1614]">{model.nextChargeDateLabel}</span>
           </div>
+
+          {annual ? (
+            <div className="mt-6 rounded-xl border border-emerald-200/80 bg-emerald-50/60 p-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-900">
+                  Contrato anual
+                </p>
+                {annual.contractEnded ? (
+                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-amber-950 ring-1 ring-amber-200/80">
+                    Compromisso terminado — renovação pendente
+                  </span>
+                ) : (
+                  <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase text-emerald-950 ring-1 ring-emerald-200/80">
+                    Activo
+                  </span>
+                )}
+              </div>
+              <dl className="mt-3 grid gap-2 text-sm text-[#374151]">
+                <div className="flex justify-between gap-3">
+                  <dt className="text-[#6b7280]">Mensalidade com desconto</dt>
+                  <dd className="font-semibold tabular-nums text-[#1a1614]">
+                    {annual.mensalidadeLabel}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-[#6b7280]">Desconto</dt>
+                  <dd className="font-medium text-emerald-800">{annual.descontoPct}%</dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-[#6b7280]">Início do contrato</dt>
+                  <dd>{annual.contratoInicioLabel}</dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-[#6b7280]">Fim do compromisso</dt>
+                  <dd className="font-medium">{annual.contratoFimLabel}</dd>
+                </div>
+                {!annual.contractEnded && annual.mesesRestantes > 0 ? (
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-[#6b7280]">Meses restantes</dt>
+                    <dd>{annual.mesesRestantes}</dd>
+                  </div>
+                ) : null}
+              </dl>
+              <p className="mt-3 text-xs leading-relaxed text-emerald-950/90">
+                {annual.penaltyTermsLine}
+                {annual.multaEstimadaLabel
+                  ? ` Multa estimada hoje: ${annual.multaEstimadaLabel}.`
+                  : ''}
+              </p>
+              {annual.contratoAssinadoEm ? (
+                <p className="mt-2 text-xs text-emerald-900">
+                  Assinado em {annual.contratoAssinadoEm}.
+                  {annual.documentoHash ? (
+                    <>
+                      {' '}
+                      Hash SHA-256:{' '}
+                      <code className="break-all text-[10px]">{annual.documentoHash}</code>
+                    </>
+                  ) : null}
+                </p>
+              ) : null}
+              {annual.podeBaixarPdf ? (
+                <Link
+                  href="/api/contrato/documento"
+                  prefetch={false}
+                  className="mt-3 inline-flex rounded-lg bg-emerald-800 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-900"
+                >
+                  Baixar PDF do contrato assinado
+                </Link>
+              ) : null}
+            </div>
+          ) : null}
+
+          {model.cancelamentoSolicitado ? (
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+              Pedido de cancelamento enviado. A equipa Vyria entrará em contacto para concluir o
+              processo
+              {annual?.multaEstimadaLabel
+                ? ` (multa estimada: ${annual.multaEstimadaLabel}).`
+                : '.'}
+            </div>
+          ) : null}
 
           <div className="mt-6 border-t border-[var(--card-border)] pt-6">
             <p className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
@@ -361,6 +490,71 @@ export function AssinaturaClient({ model }: { model: AssinaturaPageModel }) {
                 Falar com especialista para upgrade
               </a>
             </div>
+          </section>
+        ) : null}
+
+        {!model.cancelamentoSolicitado && !cancelDone ? (
+          <section className="rounded-2xl border border-[var(--card-border)] bg-white p-6 shadow-sm shadow-black/[0.04] md:p-8">
+            <h2 className="text-base font-bold text-[#1a1614]">Cancelar assinatura</h2>
+            <p className="mt-2 text-sm text-[#6b7280]">
+              O pedido é analisado pela equipa Vyria. O acesso mantém-se até a confirmação.
+              {annual && !annual.contractEnded && annual.multaEstimadaLabel ? (
+                <>
+                  {' '}
+                  No contrato anual, a multa estimada por cancelamento antecipado é{' '}
+                  <strong className="text-[#1a1614]">{annual.multaEstimadaLabel}</strong> (
+                  {annual.mesesRestantes} {annual.mesesRestantes === 1 ? 'mês' : 'meses'}{' '}
+                  restantes).
+                </>
+              ) : null}
+            </p>
+            <label className="mt-4 block text-sm font-medium text-[#374151]">
+              Motivo
+              <select
+                className="mt-2 w-full rounded-xl border border-[var(--card-border)] bg-white px-3 py-2.5 text-sm"
+                value={cancelMotivo}
+                onChange={(e) => setCancelMotivo(e.target.value)}
+              >
+                {CANCEL_MOTIVOS.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {cancelError ? (
+              <p className="mt-3 text-sm text-red-700" role="alert">
+                {cancelError}
+              </p>
+            ) : null}
+            <button
+              type="button"
+              disabled={cancelBusy}
+              onClick={() => void submitCancelRequest()}
+              className="mt-4 rounded-xl border border-red-200 bg-red-50 px-5 py-2.5 text-sm font-semibold text-red-800 hover:bg-red-100 disabled:opacity-50"
+            >
+              {cancelBusy ? 'A enviar…' : 'Solicitar cancelamento'}
+            </button>
+          </section>
+        ) : null}
+
+        {cancelDone ? (
+          <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 text-sm text-emerald-950 md:p-8">
+            <p className="font-semibold">Pedido de cancelamento registado</p>
+            <p className="mt-2">
+              A equipa Vyria entrará em contacto para concluir o processo.
+              {cancelDone.multaEstimadaBrl > 0 ? (
+                <>
+                  {' '}
+                  Multa estimada (contrato anual):{' '}
+                  <strong>{money.format(cancelDone.multaEstimadaBrl)}</strong>
+                  {cancelDone.mesesRestantes > 0
+                    ? ` · ${cancelDone.mesesRestantes} meses restantes`
+                    : ''}
+                  .
+                </>
+              ) : null}
+            </p>
           </section>
         ) : null}
       </div>

@@ -2,7 +2,17 @@
 
 import { adminPlanOptionsForOperationMode } from '@/lib/admin-plans'
 import { AdminFiscalControl } from '@/app/admin/lojistas/_components/AdminFiscalControl'
-import { planMonthlyPriceLabel } from '@/lib/plan'
+import {
+  ANNUAL_CONTRACT_DISCOUNT_PCT,
+  addCalendarMonthsIso,
+  defaultAnnualContractEndIso,
+  estimateContractPenalty,
+  formatContractMonthlyLabel,
+  formatMoneyBrl,
+  planContractMonthlyAmountBrl,
+  readStoreContract,
+  type BillingCycle,
+} from '@/lib/contract-pricing'
 import { createClient } from '@/lib/supabase/client'
 import type { MerchantStatus } from '@/lib/merchant-status'
 import {
@@ -15,7 +25,7 @@ import {
   parseOperationModeFromStore,
   type MerchantOperationMode,
 } from '@/lib/merchant-operation-mode'
-import { parsePlan, planShortLabel, type Plan } from '@/lib/plan'
+import { parsePlan, planMonthlyPriceLabel, planShortLabel, type Plan } from '@/lib/plan'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Area,
@@ -41,6 +51,13 @@ type LojistaRow = {
   operation_mode: MerchantOperationMode | null
   status: MerchantStatus
   plano_vence_em: string | null
+  billing_cycle: BillingCycle
+  contrato_inicio_em: string | null
+  contrato_fim_em: string | null
+  contrato_mensal_brl: number | null
+  contrato_assinado_em: string | null
+  contrato_documento_hash: string | null
+  contrato_pode_baixar_pdf: boolean
   cadastrado_em: string | null
   cancelamento_solicitado: boolean
   produtos_count: number
@@ -372,6 +389,20 @@ function normalizeLojista(raw: Record<string, unknown>): LojistaRow {
     operation_mode,
     status: parseMerchantStatus(raw.status),
     plano_vence_em: typeof raw.plano_vence_em === 'string' ? raw.plano_vence_em : null,
+    billing_cycle:
+      String(raw.billing_cycle || '').toLowerCase() === 'annual' ? 'annual' : 'monthly',
+    contrato_inicio_em:
+      typeof raw.contrato_inicio_em === 'string' ? raw.contrato_inicio_em : null,
+    contrato_fim_em: typeof raw.contrato_fim_em === 'string' ? raw.contrato_fim_em : null,
+    contrato_mensal_brl:
+      typeof raw.contrato_mensal_brl === 'number' && Number.isFinite(raw.contrato_mensal_brl)
+        ? raw.contrato_mensal_brl
+        : null,
+    contrato_assinado_em:
+      typeof raw.contrato_assinado_em === 'string' ? raw.contrato_assinado_em : null,
+    contrato_documento_hash:
+      typeof raw.contrato_documento_hash === 'string' ? raw.contrato_documento_hash : null,
+    contrato_pode_baixar_pdf: raw.contrato_pode_baixar_pdf === true,
     cadastrado_em: typeof raw.cadastrado_em === 'string' ? raw.cadastrado_em : null,
     cancelamento_solicitado: c === true || c === 'true' || c === 1,
     produtos_count: Math.max(0, Math.floor(numFromApi(raw.produtos_count))),
@@ -407,6 +438,8 @@ export function LojistasPageClient() {
   } | null>(null)
   const [planoPick, setPlanoPick] = useState<Plan>('GROWTH')
   const [planoVenceEm, setPlanoVenceEm] = useState(() => addDaysIso(null, 30))
+  const [billingCyclePick, setBillingCyclePick] = useState<BillingCycle>('monthly')
+  const [contratoFimEm, setContratoFimEm] = useState(() => defaultAnnualContractEndIso())
 
   const [faturaModalRow, setFaturaModalRow] = useState<LojistaRow | null>(null)
   const [faturaDesc, setFaturaDesc] = useState('')
@@ -444,6 +477,28 @@ export function LojistasPageClient() {
       ),
     [planoModal?.row.operation_mode]
   )
+
+  const planModalPenalty = useMemo(() => {
+    if (!confirmCancel) return null
+    const contract = readStoreContract(confirmCancel)
+    if (contract.billingCycle !== 'annual' || !contract.contratoFimEm) return null
+    const mensal =
+      contract.contratoMensalBrl ??
+      planContractMonthlyAmountBrl(confirmCancel.plano, confirmCancel.operation_mode)
+    return estimateContractPenalty({ ...contract, contratoMensalBrl: mensal })
+  }, [confirmCancel])
+
+  const planModalAnnualPreview = useMemo(() => {
+    if (!planoModal || billingCyclePick !== 'annual') return null
+    const mensal = planContractMonthlyAmountBrl(
+      planoPick,
+      planoModal.row.operation_mode
+    )
+    return {
+      mensalLabel: formatContractMonthlyLabel(mensal),
+      descontoPct: ANNUAL_CONTRACT_DISCOUNT_PCT,
+    }
+  }, [billingCyclePick, planoModal, planoPick])
   const [ownerPwdNew, setOwnerPwdNew] = useState('')
   const [ownerPwdConfirm, setOwnerPwdConfirm] = useState('')
   const [busyOwnerPwd, setBusyOwnerPwd] = useState(false)
@@ -683,6 +738,17 @@ export function LojistasPageClient() {
 
   function openPlanoModal(mode: 'ativar' | 'renovar', row: LojistaRow) {
     setPlanoModal({ mode, row })
+    setBillingCyclePick(row.billing_cycle)
+    if (row.contrato_fim_em && /^\d{4}-\d{2}-\d{2}$/.test(row.contrato_fim_em)) {
+      const today = todayIsoLocal()
+      setContratoFimEm(
+        row.contrato_fim_em >= today
+          ? addCalendarMonthsIso(row.contrato_fim_em, 12)
+          : defaultAnnualContractEndIso()
+      )
+    } else {
+      setContratoFimEm(defaultAnnualContractEndIso())
+    }
     if (mode === 'ativar') {
       if (row.status === 'cancelado') {
         setPlanoPick(row.plano)
@@ -707,7 +773,12 @@ export function LojistasPageClient() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ plano: planoPick, plano_vence_em: planoVenceEm }),
+          body: JSON.stringify({
+            plano: planoPick,
+            plano_vence_em: planoVenceEm,
+            billing_cycle: billingCyclePick,
+            ...(billingCyclePick === 'annual' ? { contrato_fim_em: contratoFimEm } : {}),
+          }),
         })
         const data = (await res.json()) as { error?: string; lojista?: Record<string, unknown> }
         if (!res.ok) {
@@ -728,7 +799,12 @@ export function LojistasPageClient() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ plano: planoPick, plano_vence_em: planoVenceEm }),
+          body: JSON.stringify({
+            plano: planoPick,
+            plano_vence_em: planoVenceEm,
+            billing_cycle: billingCyclePick,
+            ...(billingCyclePick === 'annual' ? { contrato_fim_em: contratoFimEm } : {}),
+          }),
         })
         const data = (await res.json()) as { error?: string; lojista?: Record<string, unknown> }
         if (!res.ok) {
@@ -1398,7 +1474,14 @@ export function LojistasPageClient() {
                   </td>
                   <td className="px-2 py-2 text-[#374151] sm:px-4 sm:py-3">{row.telefone ?? '—'}</td>
                   <td className="px-2 py-2 font-medium text-[#1a1614] sm:px-4 sm:py-3">
-                    {planShortLabel(row.plano)}
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span>{planShortLabel(row.plano)}</span>
+                      {row.billing_cycle === 'annual' ? (
+                        <span className="inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-900 ring-1 ring-emerald-200/80">
+                          Anual
+                        </span>
+                      ) : null}
+                    </div>
                   </td>
                   <td className="px-2 py-2 sm:px-4 sm:py-3">
                     <div className="flex flex-col gap-1.5">
@@ -1552,6 +1635,38 @@ export function LojistasPageClient() {
               </p>
             ) : null}
             <label className="block text-sm font-medium text-[#374151]">
+              Ciclo de cobrança
+              <select
+                className="mt-2 w-full rounded-xl border border-[var(--card-border)] bg-white px-3 py-2.5 text-sm"
+                value={billingCyclePick}
+                onChange={(e) => {
+                  const next = e.target.value === 'annual' ? 'annual' : 'monthly'
+                  setBillingCyclePick(next)
+                  if (next === 'annual') {
+                    setContratoFimEm(defaultAnnualContractEndIso())
+                  }
+                }}
+              >
+                <option value="monthly">Mensal (sem compromisso)</option>
+                <option value="annual">
+                  Anual ({ANNUAL_CONTRACT_DISCOUNT_PCT}% de desconto na mensalidade)
+                </option>
+              </select>
+            </label>
+            {billingCyclePick === 'annual' && planModalAnnualPreview ? (
+              <div className="rounded-xl border border-emerald-200/80 bg-emerald-50/90 px-3 py-2 text-sm text-emerald-950">
+                <p>
+                  Mensalidade com desconto:{' '}
+                  <strong>{planModalAnnualPreview.mensalLabel}</strong> (
+                  {planModalAnnualPreview.descontoPct}% off)
+                </p>
+                <p className="mt-1 text-xs text-emerald-900/90">
+                  Compromisso de 12 meses. Cancelamento antecipado: multa de 50% sobre o valor
+                  restante (informativa).
+                </p>
+              </div>
+            ) : null}
+            <label className="block text-sm font-medium text-[#374151]">
               Plano
               <select
                 className="mt-2 w-full rounded-xl border border-[var(--card-border)] bg-white px-3 py-2.5 text-sm"
@@ -1582,7 +1697,7 @@ export function LojistasPageClient() {
               </p>
             )}
             <label className="block text-sm font-medium text-[#374151]">
-              Data de vencimento
+              Data de vencimento (acesso)
               <input
                 type="date"
                 className="mt-2 w-full rounded-xl border border-[var(--card-border)] bg-white px-3 py-2.5 text-sm"
@@ -1590,6 +1705,17 @@ export function LojistasPageClient() {
                 onChange={(e) => setPlanoVenceEm(e.target.value)}
               />
             </label>
+            {billingCyclePick === 'annual' ? (
+              <label className="block text-sm font-medium text-[#374151]">
+                Fim do contrato anual
+                <input
+                  type="date"
+                  className="mt-2 w-full rounded-xl border border-[var(--card-border)] bg-white px-3 py-2.5 text-sm"
+                  value={contratoFimEm}
+                  onChange={(e) => setContratoFimEm(e.target.value)}
+                />
+              </label>
+            ) : null}
             <button
               type="button"
               disabled={!!busyId}
@@ -1687,6 +1813,16 @@ export function LojistasPageClient() {
             <p className="text-sm text-[#374151]">
               Cancelar assinatura de <strong>{confirmCancel.nome}</strong>?
             </p>
+            {planModalPenalty && planModalPenalty.multaBrl > 0 ? (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+                <p className="font-semibold">Multa informativa (contrato anual)</p>
+                <p className="mt-1">
+                  {formatMoneyBrl(planModalPenalty.multaBrl)} — {planModalPenalty.mesesRestantes}{' '}
+                  {planModalPenalty.mesesRestantes === 1 ? 'mês' : 'meses'} restantes (50% do valor
+                  faltante).
+                </p>
+              </div>
+            ) : null}
             <button
               type="button"
               disabled={!!busyId}
@@ -1999,15 +2135,64 @@ export function LojistasPageClient() {
                     <p className="mt-2 text-sm text-[#374151]">
                       <span className="text-[#6b7280]">Mensalidade indicativa:</span>{' '}
                       <span className="font-semibold tabular-nums text-[#1a1614]">
-                        {planMonthlyPriceLabel(
-                          drawerLojista.plano,
-                          drawerLojista.operation_mode
-                        )}
+                        {drawerLojista.billing_cycle === 'annual'
+                          ? formatContractMonthlyLabel(
+                              drawerLojista.contrato_mensal_brl ??
+                                planContractMonthlyAmountBrl(
+                                  drawerLojista.plano,
+                                  drawerLojista.operation_mode
+                                )
+                            )
+                          : planMonthlyPriceLabel(
+                              drawerLojista.plano,
+                              drawerLojista.operation_mode
+                            )}
                       </span>
+                      {drawerLojista.billing_cycle === 'annual' ? (
+                        <span className="ml-1 text-xs font-medium text-emerald-800">
+                          (contrato anual · {ANNUAL_CONTRACT_DISCOUNT_PCT}% off)
+                        </span>
+                      ) : null}
                       {drawerLojista.operation_mode === 'hibrido' ? (
                         <span className="ml-1 text-xs text-[#6b7280]">(tabela Híbrido)</span>
                       ) : null}
                     </p>
+                    {drawerLojista.billing_cycle === 'annual' ? (
+                      <>
+                        <p className="mt-2 text-sm text-[#374151]">
+                          <span className="text-[#6b7280]">Contrato até:</span>{' '}
+                          <span className="tabular-nums font-medium">
+                            {fmtDate(drawerLojista.contrato_fim_em)}
+                          </span>
+                        </p>
+                        <p className="mt-2 text-sm text-[#374151]">
+                          <span className="text-[#6b7280]">Assinatura eletrónica:</span>{' '}
+                          {drawerLojista.contrato_assinado_em ? (
+                            <span className="font-medium text-emerald-800">
+                              Assinado em {fmtDateTime(drawerLojista.contrato_assinado_em)}
+                            </span>
+                          ) : (
+                            <span className="font-medium text-amber-800">Pendente no 1.º acesso</span>
+                          )}
+                        </p>
+                        {drawerLojista.contrato_documento_hash ? (
+                          <p className="mt-2 text-[11px] leading-relaxed text-[#6b7280]">
+                            Hash SHA-256:{' '}
+                            <code className="break-all text-[10px] text-[#374151]">
+                              {drawerLojista.contrato_documento_hash}
+                            </code>
+                          </p>
+                        ) : null}
+                        {drawerLojista.contrato_pode_baixar_pdf ? (
+                          <a
+                            href={`/api/admin/lojistas/${drawerLojista.id}/contrato/documento`}
+                            className="mt-3 inline-flex rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800"
+                          >
+                            Baixar PDF assinado
+                          </a>
+                        ) : null}
+                      </>
+                    ) : null}
                     <div className="mt-3 flex flex-wrap items-center gap-2">
                       <span className="inline-flex rounded-full bg-white px-2.5 py-0.5 text-xs font-semibold text-[#1a1614] ring-1 ring-black/10">
                         {planShortLabel(drawerLojista.plano)}

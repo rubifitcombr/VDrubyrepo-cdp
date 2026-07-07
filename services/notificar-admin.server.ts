@@ -82,7 +82,21 @@ export async function notificarAdminSolicitacaoCancelamentoAssinatura(input: {
   nomeLoja: string
   emailLojista: string | null
   motivoLabel: string
+  multaEstimadaBrl?: number | null
+  mesesRestantes?: number | null
+  contratoAnual?: boolean
 }): Promise<void> {
+  const multaLine =
+    input.contratoAnual &&
+    input.multaEstimadaBrl != null &&
+    Number.isFinite(input.multaEstimadaBrl) &&
+    input.multaEstimadaBrl > 0
+      ? `<li><strong>Multa estimada (contrato anual):</strong> ${escapeHtml(
+          new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
+            input.multaEstimadaBrl
+          )
+        )}${input.mesesRestantes != null ? ` · ${input.mesesRestantes} meses restantes` : ''}</li>`
+      : ''
   const subject = `Vyria — Pedido de cancelamento de assinatura — ${input.nomeLoja}`
   const html = `
     <p><strong>Solicitação de cancelamento</strong> (painel do lojista)</p>
@@ -90,6 +104,8 @@ export async function notificarAdminSolicitacaoCancelamentoAssinatura(input: {
       <li><strong>Loja:</strong> ${escapeHtml(input.nomeLoja)}</li>
       <li><strong>Email:</strong> ${escapeHtml(input.emailLojista || '—')}</li>
       <li><strong>Motivo:</strong> ${escapeHtml(input.motivoLabel)}</li>
+      ${input.contratoAnual ? '<li><strong>Contrato:</strong> Anual</li>' : ''}
+      ${multaLine}
     </ul>
   `
   await sendResendEmail({ subject, html })

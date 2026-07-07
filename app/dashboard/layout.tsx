@@ -30,6 +30,7 @@ import {
 import { createClient } from '@/lib/supabase/server'
 import { syncAutoCloseOutsideHoursForStore } from '@/services/store-hours-automation.server'
 import { cookies } from 'next/headers'
+import { headers } from 'next/headers'
 import { after } from 'next/server'
 import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
@@ -151,6 +152,15 @@ export default async function DashboardLayout({
   const autoAcceptPrinting = storeRecord
     ? parsePrintingFromStore(storeRecord)
     : parsePrintingFromStore({})
+
+  const headerList = await headers()
+  const pathname = headerList.get('x-pathname') ?? ''
+  const isContratoRoute =
+    pathname === '/dashboard/contrato' || pathname.startsWith('/dashboard/contrato/')
+
+  if (isContratoRoute) {
+    return <>{children}</>
+  }
 
   return (
     <Suspense fallback={null}>

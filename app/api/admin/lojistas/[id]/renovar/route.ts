@@ -1,21 +1,28 @@
 import { NextResponse } from 'next/server'
 import { requireAdminApi } from '@/lib/admin-auth.server'
 import { fetchLojistaDetail } from '@/lib/admin-lojistas-query.server'
+import {
+  addCalendarMonthsIso,
+  buildAnnualContractDbPatch,
+  buildMonthlyContractDbPatch,
+  defaultAnnualContractEndIso,
+  parseBillingCycle,
+  readStoreContract,
+  todayIsoLocal,
+} from '@/lib/contract-pricing'
+import { clearAnnualContractAcceptancePatch } from '@/lib/annual-contract-acceptance'
 import { parseMerchantStatus } from '@/lib/merchant-status'
+import { parseOperationModeFromStore } from '@/lib/merchant-operation-mode'
 import { parsePlan, planShortLabel } from '@/lib/plan'
 import { readStorePlano } from '@/lib/store-columns'
 import { planToPlanoColumn } from '@/lib/plano-db'
 import { readStoreStatus } from '@/lib/store-columns'
 import { insertAdminLog } from '@/services/admin-logs.server'
+import { formatSupabaseStoreUpdateError } from '@/lib/supabase-schema-error'
 
 function fmtDateBr(iso: string) {
   const d = new Date(iso.includes('T') ? iso : `${iso}T12:00:00`)
   return d.toLocaleDateString('pt-BR')
-}
-
-function todayIsoLocal(): string {
-  const t = new Date()
-  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`
 }
 
 function addDaysIso(baseYmd: string, days: number): string {
@@ -34,13 +41,15 @@ export async function POST(
   if (!ctx.ok) return ctx.response
 
   const { id } = await params
-  let body: { plano?: string; dias?: number; plano_vence_em?: string }
+  let body: {
+    plano?: string
+    dias?: number
+    plano_vence_em?: string
+    billing_cycle?: string
+    contrato_fim_em?: string
+  }
   try {
-    body = (await req.json()) as {
-      plano?: string
-      dias?: number
-      plano_vence_em?: string
-    }
+    body = (await req.json()) as typeof body
   } catch {
     return NextResponse.json({ error: 'JSON inválido' }, { status: 400 })
   }
@@ -55,6 +64,11 @@ export async function POST(
   const plano =
     body.plano !== undefined && String(body.plano).trim() !== ''
       ? parsePlan(body.plano)
+      : undefined
+
+  const billingCycleInput =
+    body.billing_cycle !== undefined && String(body.billing_cycle).trim() !== ''
+      ? parseBillingCycle(body.billing_cycle)
       : undefined
 
   const { data: existing } = await ctx.svc
@@ -75,6 +89,7 @@ export async function POST(
     )
   }
 
+  const today = todayIsoLocal()
   let novoVence: string
   if (/^\d{4}-\d{2}-\d{2}$/.test(explicitVence)) {
     novoVence = explicitVence
@@ -83,12 +98,17 @@ export async function POST(
     const cur =
       typeof rawCur === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(rawCur.trim())
         ? rawCur.trim()
-        : todayIsoLocal()
-    const base = cur >= todayIsoLocal() ? cur : todayIsoLocal()
+        : today
+    const base = cur >= today ? cur : today
     novoVence = addDaysIso(base, dias)
   }
 
   const now = new Date().toISOString()
+  const pFinal = plano ?? parsePlan(readStorePlano(row))
+  const operationMode = parseOperationModeFromStore(row)
+  const currentContract = readStoreContract(row)
+  const billingCycle = billingCycleInput ?? currentContract.billingCycle
+
   const patch: Record<string, unknown> = {
     plano_vence_em: novoVence,
     plano_atualizado_em: now,
@@ -97,18 +117,56 @@ export async function POST(
     patch.plano = planToPlanoColumn(plano)
   }
 
-  const { error } = await ctx.svc.from('stores').update(patch).eq('id', id)
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+  if (billingCycle === 'annual') {
+    const contratoFimRaw = String(body.contrato_fim_em || '').trim()
+    let contratoFim: string
+    if (/^\d{4}-\d{2}-\d{2}$/.test(contratoFimRaw)) {
+      contratoFim = contratoFimRaw
+    } else if (currentContract.contratoFimEm && currentContract.contratoFimEm >= today) {
+      contratoFim = addCalendarMonthsIso(currentContract.contratoFimEm, 12)
+    } else {
+      contratoFim = defaultAnnualContractEndIso(today)
+    }
+    const contratoInicio =
+      currentContract.contratoInicioEm &&
+      currentContract.contratoFimEm &&
+      currentContract.contratoFimEm >= today
+        ? currentContract.contratoInicioEm
+        : today
+    const prevFim = currentContract.contratoFimEm
+    Object.assign(
+      patch,
+      buildAnnualContractDbPatch({
+        plan: pFinal,
+        operationMode,
+        contratoInicioEm: contratoInicio,
+        contratoFimEm: contratoFim,
+      })
+    )
+    if (contratoFim !== prevFim || billingCycleInput === 'annual') {
+      Object.assign(patch, clearAnnualContractAcceptancePatch())
+    }
+  } else if (billingCycleInput === 'monthly') {
+    Object.assign(patch, buildMonthlyContractDbPatch(), clearAnnualContractAcceptancePatch())
   }
 
-  const pFinal = plano ?? parsePlan(readStorePlano(row))
+  const { error } = await ctx.svc.from('stores').update(patch).eq('id', id)
+  if (error) {
+    return NextResponse.json(
+      { error: formatSupabaseStoreUpdateError(error) },
+      { status: 500 }
+    )
+  }
+
+  const cycleLabel = billingCycle === 'annual' ? 'Anual' : 'Mensal'
+  const contratoFim =
+    typeof patch.contrato_fim_em === 'string' ? patch.contrato_fim_em : null
 
   await insertAdminLog(ctx.svc, {
     adminId: ctx.user.id,
     lojistaId: id,
     acao: 'renovou',
-    detalhes: `Renovação · ${planShortLabel(pFinal)} · vence ${fmtDateBr(novoVence)}`,
+    detalhes: `Renovação · ${planShortLabel(pFinal)} · ${cycleLabel} · vence ${fmtDateBr(novoVence)}${contratoFim ? ` · contrato até ${fmtDateBr(contratoFim)}` : ''}`,
   })
 
   const detail = await fetchLojistaDetail(ctx.svc, id)

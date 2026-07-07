@@ -1,10 +1,15 @@
 import 'server-only'
 
-import { valorMensalPlano } from '@/lib/admin-mrr'
+import { valorMensalPlanoFromStore } from '@/lib/admin-mrr'
 import type { MerchantStatus } from '@/lib/merchant-status'
 import { parseMerchantStatus } from '@/lib/merchant-status'
 import type { Plan } from '@/lib/plan'
 import { parsePlan } from '@/lib/plan'
+import { readContractAcceptance } from '@/lib/annual-contract-acceptance'
+import {
+  parseBillingCycle,
+  type BillingCycle,
+} from '@/lib/contract-pricing'
 import {
   parseOperationModeFromStore,
   type MerchantOperationMode,
@@ -30,6 +35,13 @@ export type LojistaListRow = {
   operation_mode: MerchantOperationMode | null
   status: MerchantStatus
   plano_vence_em: string | null
+  billing_cycle: BillingCycle
+  contrato_inicio_em: string | null
+  contrato_fim_em: string | null
+  contrato_mensal_brl: number | null
+  contrato_assinado_em: string | null
+  contrato_documento_hash: string | null
+  contrato_pode_baixar_pdf: boolean
   cadastrado_em: string | null
   cancelamento_solicitado: boolean
   /** Linhas na tabela `products` desta loja. */
@@ -61,6 +73,7 @@ function rowToLojista(
 ): Omit<LojistaListRow, 'produtos_count' | 'faturamento_pedidos'> {
   const ownerId = String(store.owner_id ?? '')
   const cancelRaw = store.cancelamento_solicitado
+  const acceptance = readContractAcceptance(store)
   return {
     id: String(store.id),
     nome: String(store.name ?? ''),
@@ -76,6 +89,20 @@ function rowToLojista(
       typeof store.plano_vence_em === 'string'
         ? store.plano_vence_em
         : null,
+    billing_cycle: parseBillingCycle(store.billing_cycle),
+    contrato_inicio_em:
+      typeof store.contrato_inicio_em === 'string' ? store.contrato_inicio_em : null,
+    contrato_fim_em:
+      typeof store.contrato_fim_em === 'string' ? store.contrato_fim_em : null,
+    contrato_mensal_brl:
+      typeof store.contrato_mensal_brl === 'number' && Number.isFinite(store.contrato_mensal_brl)
+        ? store.contrato_mensal_brl
+        : typeof store.contrato_mensal_brl === 'string' && store.contrato_mensal_brl.trim() !== ''
+          ? Number(store.contrato_mensal_brl.replace(',', '.'))
+          : null,
+    contrato_assinado_em: acceptance.aceiteEm,
+    contrato_documento_hash: acceptance.documentoHash,
+    contrato_pode_baixar_pdf: Boolean(acceptance.pdfPath && acceptance.documentoHash),
     cadastrado_em:
       typeof store.created_at === 'string' ? store.created_at : null,
     cancelamento_solicitado:
@@ -403,6 +430,8 @@ export async function fetchLojistasForAdmin(
     })
   )
 
+  const storeById = new Map(list.map((s) => [String(s.id ?? ''), s]))
+
   const charts = {
     cadastros14d: buildCadastros14dSeries(list),
     statusDistrib: buildStatusDistribution(allRows),
@@ -419,7 +448,11 @@ export async function fetchLojistasForAdmin(
   for (const r of allRows) {
     if (r.status === 'ativo') {
       metrics.ativos++
-      metrics.mrr += valorMensalPlano(r.plano, r.operation_mode)
+      metrics.mrr += valorMensalPlanoFromStore(
+        r.plano,
+        r.operation_mode,
+        storeById.get(r.id) ?? {}
+      )
     } else if (r.status === 'pendente') metrics.pendentes++
     else if (r.status === 'bloqueado' || r.status === 'cancelado')
       metrics.bloqueadosCancelados++

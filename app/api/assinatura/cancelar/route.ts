@@ -1,4 +1,9 @@
 import { NextResponse } from 'next/server'
+import {
+  estimateContractPenalty,
+  readStoreContract,
+  todayIsoLocal,
+} from '@/lib/contract-pricing'
 import { notificarAdminSolicitacaoCancelamentoAssinatura } from '@/services/notificar-admin.server'
 import { createClient } from '@/lib/supabase/server'
 import { getStoreByUser } from '@/services/store.server'
@@ -37,11 +42,15 @@ export async function POST(req: Request) {
   const row = store as Record<string, unknown>
   const storeId = String(row.id)
   const nomeLoja = typeof row.name === 'string' ? row.name : 'Loja'
+  const contract = readStoreContract(row)
+  const penalty = estimateContractPenalty(contract, todayIsoLocal())
 
   const supabase = await createClient()
   const { error } = await supabase.from('assinatura_cancelamentos').insert({
     store_id: storeId,
     motivo: `${key}:${MOTIVOS[key]}`,
+    multa_estimada_brl: penalty?.multaBrl ?? null,
+    meses_restantes: penalty?.mesesRestantes ?? null,
   })
 
   if (error) {
@@ -50,18 +59,33 @@ export async function POST(req: Request) {
       {
         error:
           error.message?.includes('relation') || error.code === '42P01'
-            ? 'Executa o script SQL em supabase/faturas-assinatura.sql no Supabase.'
+            ? 'Executa as migrations de assinatura no Supabase.'
             : error.message || 'Erro ao registar pedido',
       },
       { status: 500 }
     )
   }
 
+  if (Object.prototype.hasOwnProperty.call(row, 'cancelamento_solicitado')) {
+    await supabase
+      .from('stores')
+      .update({ cancelamento_solicitado: true })
+      .eq('id', storeId)
+  }
+
   await notificarAdminSolicitacaoCancelamentoAssinatura({
     nomeLoja,
     emailLojista: user.email ?? null,
     motivoLabel: MOTIVOS[key]!,
+    multaEstimadaBrl: penalty?.multaBrl ?? null,
+    mesesRestantes: penalty?.mesesRestantes ?? null,
+    contratoAnual: contract.billingCycle === 'annual',
   })
 
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({
+    ok: true,
+    multaEstimadaBrl: penalty?.multaBrl ?? 0,
+    mesesRestantes: penalty?.mesesRestantes ?? 0,
+    valorRestanteBrl: penalty?.valorRestanteBrl ?? 0,
+  })
 }

@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server'
 import { requireAdminApi } from '@/lib/admin-auth.server'
-import { readStoreStatus } from '@/lib/store-columns'
 import { fetchLojistaDetail } from '@/lib/admin-lojistas-query.server'
+import {
+  estimateContractPenalty,
+  formatMoneyBrl,
+  readStoreContract,
+  todayIsoLocal,
+} from '@/lib/contract-pricing'
+import { readStoreStatus } from '@/lib/store-columns'
 import { insertAdminLog } from '@/services/admin-logs.server'
 
 export async function POST(
@@ -23,7 +29,8 @@ export async function POST(
     return NextResponse.json({ error: 'Loja não encontrada' }, { status: 404 })
   }
 
-  const st = String(readStoreStatus(existing as Record<string, unknown>) || '')
+  const row = existing as Record<string, unknown>
+  const st = String(readStoreStatus(row) || '')
   if (st !== 'ativo' && st !== 'bloqueado') {
     return NextResponse.json(
       { error: 'Cancelamento só para ativos ou bloqueados' },
@@ -31,12 +38,16 @@ export async function POST(
     )
   }
 
+  const contract = readStoreContract(row)
+  const penalty = estimateContractPenalty(contract, todayIsoLocal())
+
   const now = new Date().toISOString()
   const { error } = await ctx.svc
     .from('stores')
     .update({
       status: 'cancelado',
       plano_atualizado_em: now,
+      cancelamento_solicitado: false,
     })
     .eq('id', id)
 
@@ -45,14 +56,23 @@ export async function POST(
   }
 
   const nome = String((existing as { name?: string }).name ?? '')
+  const penaltyLine =
+    penalty && penalty.multaBrl > 0
+      ? ` · multa informativa ${formatMoneyBrl(penalty.multaBrl)} (${penalty.mesesRestantes} meses restantes)`
+      : ''
 
   await insertAdminLog(ctx.svc, {
     adminId: ctx.user.id,
     lojistaId: id,
     acao: 'cancelou',
-    detalhes: `Assinatura cancelada · ${nome}`,
+    detalhes: `Assinatura cancelada · ${nome}${penaltyLine}`,
   })
 
   const detail = await fetchLojistaDetail(ctx.svc, id)
-  return NextResponse.json({ ok: true, lojista: detail?.lojista })
+  return NextResponse.json({
+    ok: true,
+    lojista: detail?.lojista,
+    multaEstimadaBrl: penalty?.multaBrl ?? 0,
+    mesesRestantes: penalty?.mesesRestantes ?? 0,
+  })
 }

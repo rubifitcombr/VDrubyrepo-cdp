@@ -7,6 +7,7 @@ import {
   VYRIA_PANEL_MODE_COOKIE,
 } from '@/lib/vyria-panel-mode'
 import { verificarAcessoLojista } from '@/middleware/verificarAcesso'
+import { verificarContratoAnualGate } from '@/middleware/verificarContratoAnual'
 import { NextResponse, type NextRequest } from 'next/server'
 
 function pathnameWithoutTrailingSlash(pathname: string) {
@@ -140,6 +141,10 @@ export async function proxy(request: NextRequest) {
       if (!access.ok) {
         return NextResponse.redirect(new URL(access.redirectPath, request.url))
       }
+      const contratoGate = await verificarContratoAnualGate(user.id, p)
+      if (contratoGate) {
+        return NextResponse.redirect(new URL(contratoGate, request.url))
+      }
     }
   }
 
@@ -162,6 +167,8 @@ export async function proxy(request: NextRequest) {
       'private, no-store, max-age=0, must-revalidate'
     )
   }
+
+  supabaseResponse.headers.set('x-pathname', p)
 
   return supabaseResponse
 }

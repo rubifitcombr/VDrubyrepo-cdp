@@ -1,5 +1,6 @@
 import type { Plan } from '@/lib/plan'
 import type { MerchantOperationMode } from '@/lib/merchant-operation-mode'
+import type { BillingCycle } from '@/lib/contract-pricing'
 
 export type BillingSubscriptionStatus = 'active' | 'overdue' | 'cancelled'
 
@@ -16,6 +17,22 @@ export type BillingPaymentMethod =
   | { type: 'card'; brand: string; last4: string }
   | { type: 'pix' }
 
+export type AssinaturaAnnualContract = {
+  billingCycle: BillingCycle
+  mensalidadeLabel: string
+  contratoInicioLabel: string
+  contratoFimLabel: string
+  descontoPct: number
+  savingsLabel: string
+  penaltyTermsLine: string
+  mesesRestantes: number
+  multaEstimadaLabel: string | null
+  contractEnded: boolean
+  documentoHash: string | null
+  contratoAssinadoEm: string | null
+  podeBaixarPdf: boolean
+}
+
 export type AssinaturaPageModel = {
   plan: Plan
   planBadgeLabel: string
@@ -27,6 +44,8 @@ export type AssinaturaPageModel = {
   invoices: BillingInvoiceRow[]
   whatsappHref: string | null
   operationMode: MerchantOperationMode | null
+  annualContract: AssinaturaAnnualContract | null
+  cancelamentoSolicitado: boolean
 }
 
 const OVERDUE_BLOCK_DAYS = 3
