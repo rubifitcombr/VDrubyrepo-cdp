@@ -30,6 +30,13 @@ import {
   tableNamesMatch,
 } from '@/lib/waiter-order-notes'
 import { dashboardFetch } from '@/lib/dashboard-fetch.client'
+import type { StoreGarcomDTO } from '@/lib/garcons-types'
+import {
+  clearGarcomPinSession,
+  getGarcomPinSession,
+  isSalaoGarcomPinRequired,
+} from '@/lib/garcom-pin'
+import { GarcomSessionBadge } from '@/app/dashboard/garcom/_components/GarcomSalaoPinGate'
 import {
   openOrderTicketPrint,
   orderTicketVariantFromSource,
@@ -306,6 +313,22 @@ export function WaiterClient({
   const router = useRouter()
   const [salaoMode, setSalaoMode] = useState<SalaoAttendanceMode>(initialSalaoAttendanceMode)
   const [salaoSaving, setSalaoSaving] = useState(false)
+  const [garcons, setGarcons] = useState<StoreGarcomDTO[]>([])
+  const [selectedGarcomId, setSelectedGarcomId] = useState<string>('')
+
+  const pinSession = useMemo(() => getGarcomPinSession(storeId), [storeId])
+  const salaoPinRequired = isSalaoGarcomPinRequired(garcons)
+  const garcomSessionLocked = salaoPinRequired && !!pinSession
+  const effectiveGarcomId = garcomSessionLocked
+    ? pinSession!.garcomId
+    : selectedGarcomId
+
+  const visibleOpenOrders = useMemo(() => {
+    if (!garcomSessionLocked || !pinSession) return openOrders
+    return openOrders.filter(
+      (o) => !o.garcom_id || o.garcom_id === pinSession.garcomId
+    )
+  }, [openOrders, garcomSessionLocked, pinSession])
 
   useEffect(() => {
     setSalaoMode(initialSalaoAttendanceMode)
@@ -318,6 +341,49 @@ export function WaiterClient({
     !staffSalonUi &&
     planAllowsSalonSelfServiceQr(plan) &&
     (!planAllowsSalonStaffGarcom(plan) || salaoMode === 'self_service')
+
+  useEffect(() => {
+    if (!staffSalonUi) return
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await dashboardFetch('/api/store/garcons')
+        const json = (await res.json().catch(() => ({}))) as { garcons?: StoreGarcomDTO[] }
+        if (cancelled) return
+        const list = (json.garcons ?? []).filter((g) => g.ativo)
+        setGarcons(list)
+        const session = getGarcomPinSession(storeId)
+        if (session && list.some((g) => g.id === session.garcomId)) {
+          setSelectedGarcomId(session.garcomId)
+          return
+        }
+        const storageKey = `vyria-waiter-garcom:${storeId}`
+        const saved =
+          typeof window !== 'undefined' ? window.localStorage.getItem(storageKey) : null
+        if (saved && list.some((g) => g.id === saved)) {
+          setSelectedGarcomId(saved)
+        } else if (list.length === 1) {
+          setSelectedGarcomId(list[0]!.id)
+        }
+      } catch {
+        if (!cancelled) setGarcons([])
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [staffSalonUi, storeId])
+
+  useEffect(() => {
+    if (!effectiveGarcomId || typeof window === 'undefined') return
+    if (garcomSessionLocked) return
+    try {
+      window.localStorage.setItem(`vyria-waiter-garcom:${storeId}`, effectiveGarcomId)
+    } catch {
+      /* ignore */
+    }
+  }, [effectiveGarcomId, garcomSessionLocked, storeId])
+
   async function persistSalaoMode(next: SalaoAttendanceMode) {
     setSalaoSaving(true)
     try {
@@ -469,7 +535,7 @@ export function WaiterClient({
   }, [storeId, pullTables])
 
   const displayNumberById = useMemo(() => {
-    const sorted = [...openOrders].sort(
+    const sorted = [...visibleOpenOrders].sort(
       (a, b) =>
         new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
     )
@@ -478,7 +544,7 @@ export function WaiterClient({
       m.set(o.id, String(i + 1).padStart(3, '0'))
     })
     return m
-  }, [openOrders])
+  }, [visibleOpenOrders])
 
   useEffect(() => {
     const root = typeof document !== 'undefined' ? (document.documentElement as HTMLElement & {
@@ -651,8 +717,8 @@ export function WaiterClient({
   }
 
   async function handleTablePress(tb: StoreTableDTO) {
-    const st = tableState(openOrders, tb.name, tb.ambiente, tables)
-    const agg = aggregateTable(openOrders, tb.name, tb.ambiente, tables)
+    const st = tableState(visibleOpenOrders, tb.name, tb.ambiente, tables)
+    const agg = aggregateTable(visibleOpenOrders, tb.name, tb.ambiente, tables)
     const mobile = isMobileViewport()
 
     if (st === 'free') {
@@ -842,6 +908,7 @@ export function WaiterClient({
           payment_method: paymentMethod,
           notes: notes.trim() || null,
           discount_brl: discountBrl,
+          garcom_id: effectiveGarcomId || null,
           items: cart.map((line) => ({
             product_id: line.productId,
             quantity: line.quantity,
@@ -893,6 +960,7 @@ export function WaiterClient({
           payment_method: paymentMethod,
           notes: notes.trim() || null,
           discount_brl: discountBrl,
+          garcom_id: effectiveGarcomId || null,
           items: cart.map((line) => ({
             product_id: line.productId,
             quantity: line.quantity,
@@ -1032,6 +1100,7 @@ export function WaiterClient({
           orderId: order.id,
           mode: mesaCloseMode,
           paymentMethod,
+          garcom_id: effectiveGarcomId || null,
         }),
       })
       const json = (await res.json().catch(() => ({}))) as {
@@ -1224,7 +1293,7 @@ export function WaiterClient({
             </p>
           </div>
           <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-[#374151] ring-1 ring-[var(--card-border)]">
-            {openOrders.length} comandas abertas
+            {visibleOpenOrders.length} comandas abertas
           </span>
         </div>
 
@@ -1252,8 +1321,8 @@ export function WaiterClient({
                     </p>
                     <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
                       {list.map((tb) => {
-                        const st = tableState(openOrders, tb.name, tb.ambiente, tables)
-                        const agg = aggregateTable(openOrders, tb.name, tb.ambiente, tables)
+                        const st = tableState(visibleOpenOrders, tb.name, tb.ambiente, tables)
+                        const agg = aggregateTable(visibleOpenOrders, tb.name, tb.ambiente, tables)
                         const base =
                           st === 'free'
                             ? 'border-[var(--card-border)] bg-white'
@@ -1317,14 +1386,14 @@ export function WaiterClient({
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-bold text-[#1a1614]">Comandas abertas</h2>
               <span className="rounded-full bg-[#f3f4f6] px-2 py-0.5 text-xs font-bold text-[#374151]">
-                {openOrders.length}
+                {visibleOpenOrders.length}
               </span>
             </div>
-            {openOrders.length === 0 ? (
+            {visibleOpenOrders.length === 0 ? (
               <p className="mt-3 text-sm text-[#6b7280]">Sem comandas em aberto.</p>
             ) : (
               <ul className="mt-3 max-h-[calc(100dvh-14rem)] space-y-3 overflow-y-auto pr-1">
-                {openOrders.map((order) => {
+                {visibleOpenOrders.map((order) => {
                   const st = (order.status || '').toLowerCase()
                   const badgeClass =
                     st === 'pending'
@@ -1458,7 +1527,7 @@ export function WaiterClient({
             </span>
             <span className="text-[15px] font-bold tracking-tight text-[#1a1614]">Operação salão</span>
             <span className="rounded-full bg-[var(--dash-primary)]/10 px-2 py-0.5 text-[11px] font-bold text-[var(--dash-primary)]">
-              {openOrders.length} {openOrders.length === 1 ? 'aberto' : 'abertos'}
+              {visibleOpenOrders.length} {visibleOpenOrders.length === 1 ? 'aberto' : 'abertos'}
             </span>
           </div>
         </div>
@@ -1480,6 +1549,40 @@ export function WaiterClient({
 
       {staffSalonUi ? (
         <>
+      {garcons.length > 0 ? (
+        <div className="mb-3 flex flex-col gap-2 rounded-xl border border-[var(--card-border)] bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-bold text-[#1a1614]">Garçom responsável</p>
+            <p className="mt-0.5 text-xs text-[#6b7280]">
+              {garcomSessionLocked
+                ? 'Sessão identificada pelo PIN — só vê as suas comandas.'
+                : 'Os pedidos fechados serão atribuídos a este garçom no relatório.'}
+            </p>
+          </div>
+          {garcomSessionLocked && pinSession ? (
+            <GarcomSessionBadge
+              nome={pinSession.nome}
+              onTrocar={() => {
+                clearGarcomPinSession(storeId)
+                router.refresh()
+              }}
+            />
+          ) : (
+            <select
+              value={selectedGarcomId}
+              onChange={(e) => setSelectedGarcomId(e.target.value)}
+              className="rounded-lg border border-[#e5e7eb] bg-white px-3 py-2 text-sm font-medium text-[#1a1614] sm:min-w-[220px]"
+            >
+              <option value="">Selecionar garçom</option>
+              {garcons.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.nome}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+      ) : null}
       {proDualSalon ? (
         <div className="mb-3 rounded-xl border border-[var(--card-border)] bg-white p-4 shadow-sm">
           <h2 className="text-sm font-bold text-[#1a1614]">QR de autoatendimento (sempre activo)</h2>
@@ -1704,8 +1807,8 @@ export function WaiterClient({
                       </p>
                       <ul className="grid grid-cols-3 gap-2.5 sm:grid-cols-4">
                         {list.map((tb) => {
-                          const st = tableState(openOrders, tb.name, tb.ambiente, tables)
-                          const agg = aggregateTable(openOrders, tb.name, tb.ambiente, tables)
+                          const st = tableState(visibleOpenOrders, tb.name, tb.ambiente, tables)
+                          const agg = aggregateTable(visibleOpenOrders, tb.name, tb.ambiente, tables)
                           const sel =
                             selectedTableKey === `${tb.ambiente}::${tb.name}` &&
                             tableNamesMatch(table, tb.name) &&
@@ -1912,8 +2015,8 @@ export function WaiterClient({
                     </p>
                     <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
                       {list.map((tb) => {
-                        const st = tableState(openOrders, tb.name, tb.ambiente, tables)
-                        const agg = aggregateTable(openOrders, tb.name, tb.ambiente, tables)
+                        const st = tableState(visibleOpenOrders, tb.name, tb.ambiente, tables)
+                        const agg = aggregateTable(visibleOpenOrders, tb.name, tb.ambiente, tables)
                         const base =
                           st === 'free'
                             ? 'border-[var(--card-border)] bg-white'
@@ -1984,14 +2087,14 @@ export function WaiterClient({
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-bold text-[#1a1614]">Pedidos abertos</h2>
           <span className="rounded-full bg-[#f3f4f6] px-2 py-0.5 text-xs font-bold text-[#374151]">
-            {openOrders.length}
+            {visibleOpenOrders.length}
           </span>
         </div>
-        {openOrders.length === 0 ? (
+        {visibleOpenOrders.length === 0 ? (
           <p className="mt-3 text-sm text-[#6b7280]">Sem pedidos em aberto.</p>
         ) : (
           <ul className="mt-3 grid gap-3 md:grid-cols-3">
-            {openOrders.map((order) => {
+            {visibleOpenOrders.map((order) => {
               const st = (order.status || '').toLowerCase()
               const badgeClass =
                 st === 'pending'

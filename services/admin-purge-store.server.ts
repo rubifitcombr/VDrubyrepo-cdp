@@ -69,6 +69,7 @@ export async function adminPurgeStoreById(
   await tryDelete('caixas_turnos', () => svc.from('caixas_turnos').delete().eq('store_id', storeId), true)
 
   await tryDelete('store_entregadores', () => svc.from('store_entregadores').delete().eq('store_id', storeId), true)
+  await tryDelete('store_garcons', () => svc.from('store_garcons').delete().eq('store_id', storeId), true)
   await tryDelete('faturas', () => svc.from('faturas').delete().eq('store_id', storeId), true)
   await tryDelete('store_promotions', () => svc.from('store_promotions').delete().eq('store_id', storeId), true)
   await tryDelete('store_tables', () => svc.from('store_tables').delete().eq('store_id', storeId), true)

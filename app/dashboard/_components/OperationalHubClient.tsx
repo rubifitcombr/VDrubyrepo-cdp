@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { orderIsVisibleAfterPixConfirmation } from '@/lib/store-order'
 import { slugChannelSourcesForSupabaseIn } from '@/lib/slug-channel-orders'
@@ -15,7 +16,16 @@ import {
   IconReceipt,
   IconTruck,
 } from './NavIcons'
+import { GarcomPinModal } from './GarcomPinModal'
 import { HubShortcutPinModal } from './HubShortcutPinModal'
+import {
+  isGarcomPinSessionValid,
+  isSalaoGarcomAccessPath,
+  isSalaoGarcomPinRequired,
+  matchGarcomByPin,
+  setGarcomPinSession,
+} from '@/lib/garcom-pin'
+import type { StoreGarcomDTO } from '@/lib/garcons-types'
 import {
   clearHubPinUnlocks,
   hubPinUnlockStorageKey,
@@ -26,10 +36,9 @@ import {
   type HubPinShortcut,
 } from '@/lib/hub-shortcut-pin'
 
-type PendingShortcut = {
-  href: string
-  shortcut: HubPinShortcut
-}
+type PendingShortcut =
+  | { kind: 'hub'; href: string; shortcut: HubPinShortcut }
+  | { kind: 'garcom'; href: string }
 
 function BalcaoTile({
   href,
@@ -145,6 +154,7 @@ function SideShortcut({
 export function OperationalHubClient({
   storeId,
   hubPinConfig,
+  garcons,
   balcaoHref,
   showBalcao,
   showSalao,
@@ -164,6 +174,7 @@ export function OperationalHubClient({
 }: {
   storeId: string
   hubPinConfig: HubPinConfig
+  garcons: StoreGarcomDTO[]
   balcaoHref: string | null
   showBalcao: boolean
   showSalao: boolean
@@ -181,6 +192,8 @@ export function OperationalHubClient({
   centerTileCount: number
   sideShortcutCount: number
 }) {
+  const router = useRouter()
+  const [, startTransition] = useTransition()
   const [pendingShortcut, setPendingShortcut] = useState<PendingShortcut | null>(
     null
   )
@@ -193,6 +206,33 @@ export function OperationalHubClient({
   useEffect(() => {
     clearHubPinUnlocks(storeId)
   }, [storeId])
+
+  // Prefetch das janelas do hub para troca quase instantânea.
+  useEffect(() => {
+    const targets = [
+      balcaoHref,
+      showSalao || showAutoatendimento || showMesas ? '/dashboard/garcom?hub=salao' : null,
+      showMesas ? '/dashboard/garcom?hub=mesas' : null,
+      showCozinha ? '/dashboard/kds?hub=cozinha' : null,
+      showDelivery ? '/dashboard/entregadores?hub=delivery' : null,
+      showComandas ? '/dashboard/orders?hub=comandas' : null,
+      '/dashboard/fiscal?hub=fiscal',
+      '/dashboard/visao?hub=visao',
+      '/dashboard/visao?hub=administracao',
+    ]
+    for (const href of targets) {
+      if (href) router.prefetch(href)
+    }
+  }, [
+    balcaoHref,
+    router,
+    showAutoatendimento,
+    showComandas,
+    showCozinha,
+    showDelivery,
+    showMesas,
+    showSalao,
+  ])
 
   useEffect(() => {
     if (!storeId) return
@@ -254,17 +294,31 @@ export function OperationalHubClient({
   }, [storeId, slugChannelSourcesOnly])
 
   function navigateToShortcut(href: string) {
-    window.location.assign(href)
+    startTransition(() => {
+      router.push(href)
+    })
   }
 
   function openShortcut(href: string) {
     const url = new URL(href, window.location.origin)
-    const shortcut = hubPinShortcutForAccess(url.pathname, url.searchParams.get('hub'))
+    const hub = url.searchParams.get('hub')
+    const isSalaoAccess = isSalaoGarcomAccessPath(url.pathname, hub)
+
+    if (isSalaoAccess && isSalaoGarcomPinRequired(garcons)) {
+      if (!isGarcomPinSessionValid(storeId, garcons)) {
+        setPendingShortcut({ kind: 'garcom', href })
+        return
+      }
+      navigateToShortcut(href)
+      return
+    }
+
+    const shortcut = hubPinShortcutForAccess(url.pathname, hub)
     const entry = shortcut ? hubPinConfig[shortcut] : null
 
     const activeEntry = entry ?? undefined
-    if (shortcut && isHubPinActive(activeEntry)) {
-      setPendingShortcut({ href, shortcut })
+    if (shortcut && shortcut !== 'salao' && isHubPinActive(activeEntry)) {
+      setPendingShortcut({ kind: 'hub', href, shortcut })
       return
     }
 
@@ -273,6 +327,14 @@ export function OperationalHubClient({
 
   function confirmPin(pin: string) {
     if (!pendingShortcut) return false
+    if (pendingShortcut.kind === 'garcom') {
+      const garcom = matchGarcomByPin(garcons, pin)
+      if (!garcom) return false
+      setGarcomPinSession(storeId, garcom)
+      navigateToShortcut(pendingShortcut.href)
+      setPendingShortcut(null)
+      return true
+    }
     const entry = hubPinConfig[pendingShortcut.shortcut]
     if (!isHubPinActive(entry) || pin !== entry.pin) return false
     rememberHubPinUnlock(
@@ -412,9 +474,15 @@ export function OperationalHubClient({
         </section>
       </div>
 
-      {pendingShortcut ? (
+      {pendingShortcut?.kind === 'hub' ? (
         <HubShortcutPinModal
           shortcut={pendingShortcut.shortcut}
+          onCancel={() => setPendingShortcut(null)}
+          onConfirm={confirmPin}
+        />
+      ) : null}
+      {pendingShortcut?.kind === 'garcom' ? (
+        <GarcomPinModal
           onCancel={() => setPendingShortcut(null)}
           onConfirm={confirmPin}
         />

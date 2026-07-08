@@ -82,6 +82,8 @@ const nav: Array<{
   menuKey: DashboardMenuKey
   /** Item secundário (menos destaque visual no sidebar). */
   quiet?: boolean
+  /** Visível só no menu do atalho Administração. */
+  administrationOnly?: boolean
   section?: string
 }> = [
   {
@@ -113,6 +115,13 @@ const nav: Array<{
     label: 'Salão / Mesas',
     icon: IconClipboard,
     menuKey: 'garcom',
+  },
+  {
+    href: '/dashboard/garcons',
+    label: 'Meus garçons',
+    icon: IconClipboard,
+    menuKey: 'garcons',
+    administrationOnly: true,
   },
   {
     href: '/dashboard/pdv',
@@ -247,6 +256,7 @@ function DashboardNavLinks({
     : null
   const items = nav.filter((item) => {
     if (!allowed.has(item.menuKey)) return false
+    if (item.administrationOnly && hubContext !== 'administracao') return false
     if (!focusedKeys) return true
     return focusedKeys.has(item.menuKey)
   })
@@ -306,7 +316,7 @@ function DashboardNavLinks({
             ) : null}
           <Link
             href={withHubContextHref(href, hubContext)}
-            prefetch={menuKey === 'pedidos' ? false : undefined}
+            prefetch={true}
             className={
               layout === 'sidebar' ? linkSidebar : layout === 'drawer' ? linkDrawer : linkBottom
             }
@@ -407,7 +417,10 @@ export function DashboardShell({
   )
   const pinShortcut = hubPinShortcutForAccess(pathname, hubParam)
   const pinEntry = pinShortcut && hubPinConfig ? hubPinConfig[pinShortcut] : null
-  const pinRequired = isHubPinActive(pinEntry ?? undefined)
+  const pinRequired =
+    pinShortcut === 'salao'
+      ? false
+      : isHubPinActive(pinEntry ?? undefined)
   const pinUnlockKey =
     pinRequired && pinShortcut && storeId && pinEntry
       ? hubPinUnlockStorageKey(storeId, pinShortcut, pinEntry.pin)

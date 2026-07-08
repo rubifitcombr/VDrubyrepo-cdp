@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/client'
+import { normalizeMenuImageUrlForSave } from '@/lib/menu-image-url'
 import { slugifyStoreSlug } from '@/lib/store-slug'
 import type { MerchantOperationMode } from '@/lib/merchant-operation-mode'
 
@@ -124,6 +125,16 @@ export async function updateStore(
   }
 
   const sanitizedPatch: Record<string, unknown> = { ...sanitizedPatchRaw }
+  if (typeof sanitizedPatch.logo_url === 'string') {
+    sanitizedPatch.logo_url =
+      normalizeMenuImageUrlForSave(sanitizedPatch.logo_url, storeId) ??
+      (sanitizedPatch.logo_url.trim() || null)
+  }
+  if (typeof sanitizedPatch.storefront_banner_url === 'string') {
+    sanitizedPatch.storefront_banner_url =
+      normalizeMenuImageUrlForSave(sanitizedPatch.storefront_banner_url, storeId) ??
+      (sanitizedPatch.storefront_banner_url.trim() || null)
+  }
   let appliedSlug: string | null = null
   if (typeof sanitizedPatch.slug === 'string') {
     const desiredSlug = slugifyStoreSlug(sanitizedPatch.slug)

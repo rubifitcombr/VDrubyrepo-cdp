@@ -16,6 +16,7 @@ import {
   hasActivePromotion,
   type ProductPriceChannel,
 } from '@/lib/product-pricing'
+import { resolveMenuImageUrl } from '@/lib/menu-image-url'
 import {
   MENU_PRODUCT_SELECT,
   normalizeMenuProductRow,
@@ -186,13 +187,9 @@ export default async function StorefrontPage({ params, searchParams }: Props) {
     )
   }
 
-  const bannerUrl =
-    typeof s.storefront_banner_url === 'string'
-      ? s.storefront_banner_url.trim() || null
-      : null
+  const bannerUrl = resolveMenuImageUrl(s.storefront_banner_url, s.id)
 
-  const logoUrl =
-    typeof s.logo_url === 'string' ? s.logo_url.trim() || null : null
+  const logoUrl = resolveMenuImageUrl(s.logo_url, s.id)
   const autoRaw = spResolved.auto
   const autoFlag = Array.isArray(autoRaw) ? autoRaw[0] : autoRaw
   const storePlan = parsePlan(readStorePlano(s as Record<string, unknown>))
@@ -215,7 +212,7 @@ export default async function StorefrontPage({ params, searchParams }: Props) {
       name: p.name,
       description: p.description ?? null,
       category: (p.category || '').trim() || 'Sem categoria',
-      imageUrl: p.image_url?.trim() || null,
+      imageUrl: resolveMenuImageUrl(p.image_url, s.id),
       price: eff,
       originalPrice,
       popular: promo,

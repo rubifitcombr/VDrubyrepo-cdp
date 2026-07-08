@@ -1,14 +1,12 @@
 import { redirect } from 'next/navigation'
-import { GarcomSalaoPinGate } from '@/app/dashboard/garcom/_components/GarcomSalaoPinGate'
 import { menuKeysForMerchant } from '@/lib/dashboard-menu'
 import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
 import { parseOperationModeFromStore } from '@/lib/merchant-operation-mode'
 import { readStorePlano } from '@/lib/store-columns'
 import { getUser } from '@/services/auth.server'
-import { loadGarconsPageData } from '@/services/garcons-page.server'
 import { getStoreByUser } from '@/services/store.server'
 
-export default async function GarcomLayout({
+export default async function GarconsLayout({
   children,
 }: {
   children: React.ReactNode
@@ -22,19 +20,9 @@ export default async function GarcomLayout({
   const plan = effectiveDashboardPlan(user.email ?? null, rawPlan)
   const operationMode = parseOperationModeFromStore(row)
 
-  if (!menuKeysForMerchant(plan, operationMode).has('garcom')) {
+  if (!menuKeysForMerchant(plan, operationMode).has('garcons')) {
     redirect('/planos?planRestricted=1')
   }
 
-  const storeId = row && typeof row.id === 'string' ? row.id : ''
-  const { garcons } = storeId ? await loadGarconsPageData(storeId) : { garcons: [] }
-
-  if (!storeId) return children
-
-  return (
-    <GarcomSalaoPinGate storeId={storeId} garcons={garcons}>
-      {children}
-    </GarcomSalaoPinGate>
-  )
+  return children
 }
-

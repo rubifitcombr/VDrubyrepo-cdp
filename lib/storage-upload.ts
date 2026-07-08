@@ -1,7 +1,8 @@
 import { optimizeImageFileForUpload } from '@/lib/image-optimize.client'
+import { buildSupabasePublicStorageUrl, MENU_IMAGE_BUCKET } from '@/lib/menu-image-url'
 import { createClient } from '@/lib/supabase/client'
 
-const BUCKET = 'product-images'
+const BUCKET = MENU_IMAGE_BUCKET
 
 async function prepareImageFile(file: File): Promise<File> {
   try {
@@ -51,7 +52,9 @@ export async function uploadProductImage(
   }
 
   const { data } = supabase.storage.from(BUCKET).getPublicUrl(path)
-  return { publicUrl: data.publicUrl, error: null }
+  const publicUrl =
+    buildSupabasePublicStorageUrl(path) ?? data.publicUrl ?? null
+  return { publicUrl, error: null }
 }
 
 /** Capa do cardápio público (mesmo bucket que produtos; pasta da loja). */
@@ -85,7 +88,9 @@ export async function uploadStorefrontBanner(
   }
 
   const { data } = supabase.storage.from(BUCKET).getPublicUrl(path)
-  return { publicUrl: data.publicUrl, error: null }
+  const publicUrl =
+    buildSupabasePublicStorageUrl(path) ?? data.publicUrl ?? null
+  return { publicUrl, error: null }
 }
 
 /** Logotipo da loja (painel + cardápio público). */
@@ -119,5 +124,7 @@ export async function uploadStoreLogo(
   }
 
   const { data } = supabase.storage.from(BUCKET).getPublicUrl(path)
-  return { publicUrl: data.publicUrl, error: null }
+  const publicUrl =
+    buildSupabasePublicStorageUrl(path) ?? data.publicUrl ?? null
+  return { publicUrl, error: null }
 }

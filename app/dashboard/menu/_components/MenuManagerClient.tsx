@@ -11,6 +11,7 @@ import {
   IconSearch,
   IconTrash,
 } from '@/app/dashboard/_components/NavIcons'
+import { resolveMenuImageUrl } from '@/lib/menu-image-url'
 import type { MenuProductRow } from '@/lib/menu-product'
 import { effectiveProductPrice } from '@/lib/product-pricing'
 import type { Plan } from '@/lib/plan'
@@ -1351,7 +1352,7 @@ export function MenuManagerClient({
           <ul className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
             {filteredProducts.map((p) => {
               const catLabel = p.category?.trim() || 'Sem categoria'
-              const imgUrl = p.image_url?.trim()
+              const imgUrl = resolveMenuImageUrl(p.image_url, storeId)
               const desc = p.description?.trim()
               const stock = stockByProduct[p.id]
               const stockBadge = hasFeature(plan, 'inventory')

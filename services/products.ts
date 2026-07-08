@@ -5,6 +5,7 @@ import {
   type MenuProductRow,
 } from '@/lib/menu-product'
 import { createClient } from '@/lib/supabase/client'
+import { normalizeMenuImageUrlForSave } from '@/lib/menu-image-url'
 
 function normalizeCategoryLabel(c: string | null | undefined) {
   return (c || '').trim() || null
@@ -135,7 +136,9 @@ export async function createMenuProduct(payload: MenuProductPayload) {
     row.category = payload.category.trim()
   }
   if (payload.image_url?.trim()) {
-    row.image_url = payload.image_url.trim()
+    row.image_url =
+      normalizeMenuImageUrlForSave(payload.image_url, payload.store_id) ??
+      payload.image_url.trim()
   }
   if (payload.cardapio_meta && Object.keys(payload.cardapio_meta).length > 0) {
     row.cardapio_meta = payload.cardapio_meta
@@ -198,7 +201,14 @@ export async function updateProduct(
   }>
 ) {
   const supabase = createClient()
-  return supabase.from('products').update(patch).eq('id', id)
+  const normalized = { ...patch }
+  if ('image_url' in normalized) {
+    normalized.image_url = normalized.image_url
+      ? normalizeMenuImageUrlForSave(normalized.image_url) ??
+        String(normalized.image_url).trim()
+      : null
+  }
+  return supabase.from('products').update(normalized).eq('id', id)
 }
 
 /* ------------------------------------------------------------------ */

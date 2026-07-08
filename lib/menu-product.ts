@@ -1,3 +1,5 @@
+import { resolveMenuImageUrl } from '@/lib/menu-image-url'
+
 /** Colunas lidas pelo gestor de cardápio (alinhado com migrations de preço por canal). */
 export const MENU_PRODUCT_SELECT =
   'id, name, category, price, promotional_price, promotion_active, delivery_price, dine_in_price, delivery_promotional_price, delivery_promotion_active, dine_in_promotional_price, dine_in_promotion_active, image_url, active, description, sort_order'
@@ -62,7 +64,10 @@ export function normalizeMenuProductRow(
       typeof row.dine_in_promotion_active === 'boolean'
         ? row.dine_in_promotion_active
         : null,
-    image_url: row.image_url != null ? String(row.image_url) : null,
+    image_url: resolveMenuImageUrl(
+      row.image_url,
+      typeof row.store_id === 'string' ? row.store_id : null
+    ),
     active:
       typeof row.active === 'boolean'
         ? row.active

@@ -8,8 +8,7 @@ import {
 } from '@/lib/vyria-panel-mode'
 import { isMerchantApiContractGatePath } from '@/lib/annual-contract-acceptance'
 import { parseImpersonationContext, IMPERSONATION_ACTIVE_COOKIE } from '@/lib/impersonation'
-import { verificarAcessoLojista } from '@/middleware/verificarAcesso'
-import { verificarContratoAnualGate } from '@/middleware/verificarContratoAnual'
+import { verificarLojistaGates } from '@/middleware/verificarLojistaGates'
 import { NextResponse, type NextRequest } from 'next/server'
 
 function pathnameWithoutTrailingSlash(pathname: string) {
@@ -102,13 +101,12 @@ export async function proxy(request: NextRequest) {
     if (vyriaInAdminMode) {
       return NextResponse.redirect(new URL('/admin', request.url))
     }
-    const contratoGate = await verificarContratoAnualGate(
-      user.id,
-      '/dashboard',
-      supabase
-    )
-    if (contratoGate) {
-      return NextResponse.redirect(new URL(contratoGate, request.url))
+    const gate = await verificarLojistaGates(user.id, '/dashboard', supabase)
+    if (!gate.ok && gate.kind === 'contract') {
+      return NextResponse.redirect(new URL(gate.path, request.url))
+    }
+    if (!gate.ok && gate.kind === 'redirect') {
+      return NextResponse.redirect(new URL(gate.path, request.url))
     }
     return NextResponse.redirect(new URL('/dashboard', request.url))
   }
@@ -150,24 +148,23 @@ export async function proxy(request: NextRequest) {
 
   if (merchantShell && user) {
     if (!skipMerchantGates) {
-      const access = await verificarAcessoLojista(user.id)
-      if (!access.ok) {
-        return NextResponse.redirect(new URL(access.redirectPath, request.url))
-      }
-      const contratoGate = await verificarContratoAnualGate(user.id, p, supabase)
-      if (contratoGate) {
-        return NextResponse.redirect(new URL(contratoGate, request.url))
+      const gate = await verificarLojistaGates(user.id, p, supabase)
+      if (!gate.ok) {
+        return NextResponse.redirect(new URL(gate.path, request.url))
       }
     }
   }
 
   if (user && !skipMerchantGates && isMerchantApiContractGatePath(p)) {
-    const contratoGate = await verificarContratoAnualGate(user.id, p, supabase)
-    if (contratoGate) {
+    const gate = await verificarLojistaGates(user.id, p, supabase)
+    if (!gate.ok && gate.kind === 'contract') {
       return NextResponse.json(
-        { error: 'contrato_pendente', redirect: contratoGate },
+        { error: 'contrato_pendente', redirect: gate.path },
         { status: 403 }
       )
+    }
+    if (!gate.ok) {
+      return NextResponse.json({ error: 'acesso_bloqueado', redirect: gate.path }, { status: 403 })
     }
   }
 

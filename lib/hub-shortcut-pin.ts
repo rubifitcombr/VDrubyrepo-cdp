@@ -1,3 +1,5 @@
+import { clearGarcomPinSession } from '@/lib/garcom-pin'
+
 export type HubPinShortcut = 'balcao' | 'salao' | 'cozinha' | 'administracao'
 
 export type HubPinEntry = {
@@ -20,7 +22,8 @@ export const HUB_PIN_SHORTCUTS: Array<{
   {
     key: 'salao',
     label: 'Salão e Mesas',
-    description: 'Protege os atalhos Salão / Mesas e Mesas.',
+    description:
+      'PIN por garçom — configure em Administração → Meus garçons (não use o PIN global da loja).',
   },
   {
     key: 'cozinha',
@@ -33,6 +36,11 @@ export const HUB_PIN_SHORTCUTS: Array<{
     description: 'Protege o painel completo de administração.',
   },
 ]
+
+/** Atalhos configuráveis na loja (Salão usa PIN por garçom). */
+export const HUB_PIN_STORE_SETTINGS_SHORTCUTS = HUB_PIN_SHORTCUTS.filter(
+  (item) => item.key !== 'salao'
+)
 
 export const HUB_PIN_FIELDS: Record<
   HubPinShortcut,
@@ -104,6 +112,7 @@ const PIN_PATH_PREFIXES: Array<{ prefix: string; shortcut: HubPinShortcut }> = [
   { prefix: '/dashboard/kds', shortcut: 'cozinha' },
   { prefix: '/dashboard/visao', shortcut: 'administracao' },
   { prefix: '/dashboard/fiscal', shortcut: 'administracao' },
+  { prefix: '/dashboard/garcons', shortcut: 'administracao' },
 ]
 
 const OPERATIONAL_DASHBOARD_PREFIXES = [
@@ -191,6 +200,7 @@ export function clearHubPinUnlocks(storeId: string): void {
     for (const key of keysToRemove) {
       window.sessionStorage.removeItem(key)
     }
+    clearGarcomPinSession(storeId)
   } catch {
     // Ignore storage errors.
   }

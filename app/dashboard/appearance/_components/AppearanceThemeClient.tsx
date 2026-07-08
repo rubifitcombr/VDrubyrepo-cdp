@@ -120,7 +120,7 @@ export function AppearanceThemeClient({
         dbErr.code === 'PGRST204'
       ) {
         setError(
-          'Executa o script scripts/supabase-store-banner.sql no Supabase (coluna storefront_banner_url).'
+          'Executa o script scripts/supabase-product-images-storage.sql no Supabase (coluna storefront_banner_url e bucket product-images).'
         )
         return
       }

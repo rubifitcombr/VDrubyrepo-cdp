@@ -10,9 +10,10 @@ import {
 } from '@/services/marketing-ai-usage.server'
 import OpenAI from 'openai'
 import { NextRequest, NextResponse } from 'next/server'
+import { buildSupabasePublicStorageUrl, MENU_IMAGE_BUCKET } from '@/lib/menu-image-url'
 import { randomUUID } from 'crypto'
 
-const BUCKET = 'product-images'
+const BUCKET = MENU_IMAGE_BUCKET
 
 const GENERIC_ERROR = 'Tokens esgotados, fale com suporte.'
 
@@ -136,7 +137,8 @@ export async function POST(req: NextRequest) {
     }
 
     const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path)
-    const imageUrl = pub?.publicUrl
+    const imageUrl =
+      buildSupabasePublicStorageUrl(path) ?? pub?.publicUrl ?? null
     if (!imageUrl) {
       console.error('[ai/product-image] sem URL pública')
       return NextResponse.json({ error: GENERIC_ERROR }, { status: 500 })

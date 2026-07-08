@@ -15,7 +15,7 @@ import {
 import {
   createEmptyHubPinConfig,
   HUB_PIN_FIELDS,
-  HUB_PIN_SHORTCUTS,
+  HUB_PIN_STORE_SETTINGS_SHORTCUTS,
   parseHubPinConfig,
   storeSupportsHubPins,
   type HubPinConfig,
@@ -347,7 +347,7 @@ export default function SettingsPage() {
       }
     }
     if (supportsHubPins) {
-      for (const { key, label } of HUB_PIN_SHORTCUTS) {
+      for (const { key, label } of HUB_PIN_STORE_SETTINGS_SHORTCUTS) {
         const pin = hubPins[key].pin.replace(/\D/g, '').slice(0, 4)
         const enabled = hubPins[key].enabled
         if (enabled && pin.length !== 4) {
@@ -478,7 +478,7 @@ export default function SettingsPage() {
     if (!file || !storeId) return
     if (!supportsLogoUrl) {
       alert(
-        'A coluna logo_url ainda não existe. Executa scripts/supabase-store-logo.sql no Supabase.'
+        'A coluna logo_url ainda não existe. Executa scripts/supabase-product-images-storage.sql no Supabase.'
       )
       return
     }
@@ -501,7 +501,7 @@ export default function SettingsPage() {
     if (dbErr) {
       alert(
         dbErr.message?.includes('logo_url') || dbErr.code === 'PGRST204'
-          ? 'Executa o script scripts/supabase-store-logo.sql no Supabase (coluna logo_url).'
+          ? 'Executa o script scripts/supabase-product-images-storage.sql no Supabase (coluna logo_url).'
           : dbErr.message || 'Não foi possível guardar o logo.'
       )
       return
@@ -519,7 +519,7 @@ export default function SettingsPage() {
     if (dbErr) {
       alert(
         dbErr.message?.includes('logo_url') || dbErr.code === 'PGRST204'
-          ? 'Executa o script scripts/supabase-store-logo.sql no Supabase (coluna logo_url).'
+          ? 'Executa o script scripts/supabase-product-images-storage.sql no Supabase (coluna logo_url).'
           : dbErr.message || 'Não foi possível remover o logo.'
       )
       return
@@ -606,7 +606,7 @@ export default function SettingsPage() {
                 {!supportsLogoUrl ? (
                   <p className="text-xs text-amber-700">
                     A coluna <code>logo_url</code> ainda não existe no teu Supabase — executa{' '}
-                    <code className="rounded bg-amber-100 px-1">scripts/supabase-store-logo.sql</code>
+                    <code className="rounded bg-amber-100 px-1">scripts/supabase-product-images-storage.sql</code>
                     .
                   </p>
                 ) : null}
@@ -904,7 +904,14 @@ export default function SettingsPage() {
           </h2>
           <p className="mt-1 text-sm text-[#6b7280]">
             Ative um PIN de 4 números para pedir confirmação antes de abrir cada
-            área operacional.
+            área operacional. O salão usa PIN individual por garçom — configure em{' '}
+            <Link
+              href="/dashboard/garcons?hub=administracao"
+              className="font-semibold text-[var(--dash-primary)] hover:underline"
+            >
+              Meus garçons
+            </Link>
+            .
           </p>
           {!supportsHubPins ? (
             <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
@@ -913,7 +920,7 @@ export default function SettingsPage() {
             </p>
           ) : null}
           <div className="mt-5 grid gap-3 md:grid-cols-2">
-            {HUB_PIN_SHORTCUTS.map(({ key, label, description }) => (
+            {HUB_PIN_STORE_SETTINGS_SHORTCUTS.map(({ key, label, description }) => (
               <div
                 key={key}
                 className="rounded-2xl border border-[var(--card-border)] bg-[#fafafa] p-4"

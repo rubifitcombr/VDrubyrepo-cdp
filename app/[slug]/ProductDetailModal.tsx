@@ -1,6 +1,6 @@
 'use client'
 
-import Image from 'next/image'
+import { MenuImage } from '@/app/[slug]/_components/MenuImage'
 import { useEffect, useMemo, useState } from 'react'
 import type { CartAddonPick } from '@/app/context/CartContext'
 import { useCart } from '@/app/context/CartContext'
@@ -192,13 +192,14 @@ export function ProductDetailModal({
         <div className="relative shrink-0 overflow-hidden rounded-t-2xl sm:rounded-t-2xl sm:rounded-b-none">
           <div className="relative aspect-[16/10] w-full bg-neutral-100">
             {product.imageUrl ? (
-              <Image
+              <MenuImage
                 src={product.imageUrl}
                 alt=""
                 fill
                 className="object-cover"
                 sizes="100vw"
                 priority
+                fallback={<ProductThumbPlaceholder name={product.name} />}
               />
             ) : (
               <ProductThumbPlaceholder name={product.name} />

@@ -9,6 +9,7 @@ import {
 import { getUser } from '@/services/auth.server'
 import { createClient } from '@/lib/supabase/server'
 import { getOpenCaixaTurno } from '@/services/caixa-turnos.server'
+import { resolveGarcomForOrder } from '@/services/store-garcons.server'
 
 type PaymentMethod = 'cash' | 'pix' | 'card'
 
@@ -16,6 +17,10 @@ function normalizePayment(v: unknown): PaymentMethod | null {
   const t = String(v ?? '').trim().toLowerCase()
   if (t === 'cash' || t === 'pix' || t === 'card') return t
   return null
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100
 }
 
 export async function POST(request: Request) {
@@ -33,7 +38,7 @@ export async function POST(request: Request) {
   const denyStaff = denyStaffWaiterPanelWrites(gate.ctx.store, user.email)
   if (denyStaff) return denyStaff
 
-  let body: { orderId?: unknown; mode?: unknown; paymentMethod?: unknown }
+  let body: { orderId?: unknown; mode?: unknown; paymentMethod?: unknown; service_fee_brl?: unknown; garcom_id?: unknown }
   try {
     body = await request.json()
   } catch {
@@ -145,11 +150,23 @@ export async function POST(request: Request) {
   const closeLine = `[Garçom] Recebido em ${new Date().toISOString()} (${paymentMethod})`
   const notes = noteBase ? `${noteBase}\n${closeLine}` : closeLine
 
+  const serviceFee = round2(Math.max(0, Number(body.service_fee_brl) || 0))
+  const garcom = await resolveGarcomForOrder(
+    supabase,
+    storeId,
+    typeof body.garcom_id === 'string' ? body.garcom_id : null
+  )
+
   const updatePayload: Record<string, unknown> = {
     status: 'delivered',
     payment_method: paymentMethod,
     notes,
     caixa_turno_id: turnoAberto.id,
+    service_fee_brl: serviceFee,
+  }
+  if (garcom.garcom_id) {
+    updatePayload.garcom_id = garcom.garcom_id
+    updatePayload.garcom_nome = garcom.garcom_nome
   }
 
   const { error: upErr } = await supabase

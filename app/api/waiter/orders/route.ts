@@ -8,6 +8,7 @@ import { buildWaiterNotes } from '@/lib/waiter-order-notes'
 import { createClient } from '@/lib/supabase/server'
 import { buildItemsSummaryWithLineTotals } from '@/lib/print/items-summary-format'
 import { tryAutoThermalPrint } from '@/services/thermal-print.server'
+import { resolveGarcomForOrder } from '@/services/store-garcons.server'
 
 type BodyItem = {
   product_id: string
@@ -57,6 +58,7 @@ export async function POST(request: Request) {
     notes?: string | null
     items?: BodyItem[]
     discount_brl?: unknown
+    garcom_id?: unknown
   }
   try {
     body = await request.json()
@@ -130,6 +132,12 @@ export async function POST(request: Request) {
       ? body.payment_method.trim()
       : 'cash'
 
+  const garcom = await resolveGarcomForOrder(
+    supabase,
+    storeId,
+    typeof body.garcom_id === 'string' ? body.garcom_id : null
+  )
+
   const { data: order, error: orderErr } = await supabase
     .from('orders')
     .insert({
@@ -141,6 +149,8 @@ export async function POST(request: Request) {
       payment_method: payment,
       items_summary: itemsSummary,
       notes,
+      garcom_id: garcom.garcom_id,
+      garcom_nome: garcom.garcom_nome,
     })
     .select('id')
     .single()

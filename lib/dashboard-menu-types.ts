@@ -14,5 +14,6 @@ export type DashboardMenuKey =
   | 'kds'
   | 'pdv'
   | 'garcom'
+  | 'garcons'
   | 'automacoes'
   | 'fiscal'

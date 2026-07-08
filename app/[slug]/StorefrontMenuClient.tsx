@@ -1,8 +1,8 @@
 'use client'
 
 import { PublicSlugPathPill } from '@/app/_components/PublicSlugPathPill'
+import { MenuImage } from '@/app/[slug]/_components/MenuImage'
 import { useCart } from '@/app/context/CartContext'
-import Image from 'next/image'
 import type { CSSProperties } from 'react'
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { ProductDetailModal } from './ProductDetailModal'
@@ -604,13 +604,21 @@ export function StorefrontMenuClient({
             }
           >
             {banner ? (
-              <Image
+              <MenuImage
                 src={banner}
                 alt={`Capa do cardápio — ${storeName}`}
                 fill
                 priority
                 className="object-cover object-[center_46%]"
                 sizes="(max-width: 768px) 100vw, 48rem"
+                fallback={
+                  <div
+                    className="absolute inset-0"
+                    style={{
+                      background: `linear-gradient(135deg, ${theme.primary} 0%, ${theme.secondary} 100%)`,
+                    }}
+                  />
+                }
               />
             ) : (
               <div className="absolute inset-0 flex items-center justify-center text-white/80">
@@ -651,12 +659,17 @@ export function StorefrontMenuClient({
               style={{ backgroundColor: theme.primary }}
             >
               {logoUrl?.trim() ? (
-                <Image
+                <MenuImage
                   src={logoUrl.trim()}
                   alt={storeName.trim() ? `Logo ${storeName}` : 'Logo'}
                   fill
                   className="object-cover"
                   sizes="36px"
+                  fallback={
+                    <span className="flex h-full w-full items-center justify-center text-xs font-extrabold">
+                      {storeName.trim().slice(0, 2).toUpperCase() || 'LO'}
+                    </span>
+                  }
                 />
               ) : (
                 storeName.trim().slice(0, 2).toUpperCase() || 'LO'
@@ -946,14 +959,14 @@ export function StorefrontMenuClient({
                                 </span>
                               ) : null}
                               {p.imageUrl ? (
-                                <Image
+                                <MenuImage
                                   src={p.imageUrl}
                                   alt=""
                                   fill
                                   className="object-cover"
                                   sizes={autoMode ? '60px' : '88px'}
                                   loading="lazy"
-                                  decoding="async"
+                                  fallback={<ProductThumbPlaceholder />}
                                 />
                               ) : (
                                 <ProductThumbPlaceholder />

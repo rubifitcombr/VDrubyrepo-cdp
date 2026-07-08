@@ -40,6 +40,7 @@ const ADMINISTRATION_MENU_KEYS: readonly DashboardMenuKey[] = [
   'kds',
   'pdv',
   'garcom',
+  'garcons',
   'automacoes',
   'fiscal',
 ]

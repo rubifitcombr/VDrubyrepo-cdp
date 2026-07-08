@@ -17,6 +17,7 @@ import {
   planAllowsSalonStaffGarcom,
 } from '@/lib/salao-attendance'
 import { getPendingOrdersCount } from '@/services/dashboard.server'
+import { loadGarconsPageData } from '@/services/garcons-page.server'
 import { getUser } from '@/services/auth.server'
 import { getStoreByUser } from '@/services/store.server'
 
@@ -63,6 +64,9 @@ export default async function DashboardHub() {
   const pendingOrders = storeId
     ? await getPendingOrdersCount(storeId, { slugChannelSourcesOnly })
     : 0
+  const { garcons } = storeId
+    ? await loadGarconsPageData(storeId)
+    : { garcons: [] }
 
   if (!storeId) return <EmptyStoreNotice />
 
@@ -111,6 +115,7 @@ export default async function DashboardHub() {
     <OperationalHubClient
       storeId={storeId}
       hubPinConfig={parseHubPinConfig(row)}
+      garcons={garcons}
       balcaoHref={balcaoHref}
       showBalcao={showBalcao}
       showSalao={showSalao}

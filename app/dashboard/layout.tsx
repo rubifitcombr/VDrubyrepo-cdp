@@ -12,7 +12,6 @@ import {
   getDashboardBillingBanner,
   getDashboardBillingBlock,
 } from '@/services/billing.server'
-import { getDashboardNotificationCount } from '@/services/dashboard.server'
 import { getUser } from '@/services/auth.server'
 import { getStoreByUser } from '@/services/store.server'
 import { hasOrderPipelineAutomations } from '@/lib/plan'
@@ -116,11 +115,8 @@ export default async function DashboardLayout({
     })
   }
 
-  const notificationCount = storeId
-    ? await getDashboardNotificationCount(storeId, {
-        slugChannelSourcesOnly,
-      })
-    : 0
+  // Contagem no topbar já actualiza em tempo real no client — não bloquear navegação.
+  const notificationCount = 0
 
   const billingBlock = storeRecord
     ? getDashboardBillingBlock(storeRecord)

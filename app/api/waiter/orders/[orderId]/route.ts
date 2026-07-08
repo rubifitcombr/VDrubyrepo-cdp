@@ -14,6 +14,7 @@ import {
 import { getUser } from '@/services/auth.server'
 import { createClient } from '@/lib/supabase/server'
 import { buildItemsSummaryWithLineTotals } from '@/lib/print/items-summary-format'
+import { resolveGarcomForOrder } from '@/services/store-garcons.server'
 
 type BodyItem = {
   product_id: string
@@ -104,6 +105,7 @@ export async function PATCH(
     notes?: string | null
     items?: BodyItem[]
     discount_brl?: unknown
+    garcom_id?: unknown
   }
   try {
     body = await request.json()
@@ -208,6 +210,12 @@ export async function PATCH(
       ? body.payment_method.trim()
       : 'cash'
 
+  const garcom = await resolveGarcomForOrder(
+    supabase,
+    storeId,
+    typeof body.garcom_id === 'string' ? body.garcom_id : null
+  )
+
   const { error: delItems } = await supabase.from('order_items').delete().eq('order_id', id)
   if (delItems) {
     return NextResponse.json({ error: delItems.message }, { status: 500 })
@@ -234,6 +242,9 @@ export async function PATCH(
       items_summary: itemsSummary,
       notes,
       payment_method: payment,
+      ...(typeof body.garcom_id === 'string'
+        ? { garcom_id: garcom.garcom_id, garcom_nome: garcom.garcom_nome }
+        : {}),
     })
     .eq('id', id)
     .eq('store_id', storeId)

@@ -19,10 +19,13 @@ export type StoreOrderRow = {
   entregador_nome?: string | null
   entrega_despachada_em?: string | null
   entrega_prazo_minutos?: number | null
+  garcom_id?: string | null
+  garcom_nome?: string | null
+  service_fee_brl?: number | string | null
 }
 
 export const ORDER_SELECT =
-  'id, customer_name, total, status, created_at, source, delivery_address, delivery_fee, payment_method, payment_status, notes, customer_phone, items_summary, caixa_turno_id, entregador_id, entregador_nome, entrega_despachada_em, entrega_prazo_minutos'
+  'id, customer_name, total, status, created_at, source, delivery_address, delivery_fee, payment_method, payment_status, notes, customer_phone, items_summary, caixa_turno_id, entregador_id, entregador_nome, entrega_despachada_em, entrega_prazo_minutos, garcom_id, garcom_nome, service_fee_brl'
 
 export function pixPaymentStatusIsConfirmed(
   status: string | null | undefined
@@ -97,5 +100,14 @@ export function mapStoreOrderRow(row: Record<string, unknown>): StoreOrderRow {
         : typeof row.entrega_prazo_minutos === 'number'
           ? row.entrega_prazo_minutos
           : Number(row.entrega_prazo_minutos) || null,
+    garcom_id: typeof row.garcom_id === 'string' ? row.garcom_id : null,
+    garcom_nome:
+      typeof row.garcom_nome === 'string' ? row.garcom_nome : null,
+    service_fee_brl:
+      row.service_fee_brl == null
+        ? null
+        : typeof row.service_fee_brl === 'number'
+          ? row.service_fee_brl
+          : Number(String(row.service_fee_brl).replace(',', '.')) || null,
   }
 }
