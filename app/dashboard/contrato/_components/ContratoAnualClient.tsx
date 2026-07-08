@@ -7,7 +7,6 @@ import {
   resolveVyriaContratadaRazaoSocial,
 } from '@/lib/vyria-legal-constants'
 import { BrandLogo } from '@/app/_components/BrandLogo'
-import { useRouter } from 'next/navigation'
 import { useMemo, useState } from 'react'
 import { SignaturePad } from './SignaturePad'
 
@@ -20,7 +19,6 @@ export function ContratoAnualClient({
   storeName: string
   userEmail: string
 }) {
-  const router = useRouter()
   const [aceiteTermos, setAceiteTermos] = useState(false)
   const [aceiteCompromisso, setAceiteCompromisso] = useState(false)
   const [aceiteRepresentante, setAceiteRepresentante] = useState(false)
@@ -98,8 +96,8 @@ export function ContratoAnualClient({
         setError(data.error || 'Não foi possível registar o contrato.')
         return
       }
-      router.replace('/dashboard')
-      router.refresh()
+      // Hard navigation: sessão já assinada → hub operacional.
+      window.location.assign('/dashboard')
     } catch {
       setError('Erro de rede. Tenta novamente.')
     } finally {

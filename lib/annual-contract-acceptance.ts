@@ -116,7 +116,7 @@ export function requiresAnnualContractAcceptance(
 ): boolean {
   if (!store) return false
   const contract = readStoreContract(store)
-  if (!isAnnualContractActive(contract)) return false
+  if (contract.billingCycle !== 'annual') return false
   const { aceiteEm, termosVersao, documentoHash } = readContractAcceptance(store)
   if (!aceiteEm || !documentoHash) return true
   return termosVersao !== ANNUAL_CONTRACT_TERMS_VERSION
@@ -286,10 +286,26 @@ export function contractAcceptanceFromStore(
 export function isAnnualContractGateExemptPath(pathname: string): boolean {
   const p = pathname.split('?')[0] || '/'
   const n = p.length > 1 && p.endsWith('/') ? p.slice(0, -1) : p
-  if (n === '/dashboard/contrato') return true
+  if (n === '/dashboard/contrato' || n.startsWith('/dashboard/contrato/')) return true
   if (n.startsWith('/api/contrato/')) return true
   if (n === '/logout' || n.startsWith('/logout/')) return true
+  if (n === '/acesso-suspenso' || n.startsWith('/acesso-suspenso/')) return true
   return false
+}
+
+/** APIs do lojista bloqueadas enquanto o contrato anual estiver pendente. */
+export function isMerchantApiContractGatePath(pathname: string): boolean {
+  const p = pathname.split('?')[0] || '/'
+  const n = p.length > 1 && p.endsWith('/') ? p.slice(0, -1) : p
+  if (!n.startsWith('/api/')) return false
+  if (n.startsWith('/api/contrato/')) return false
+  if (n.startsWith('/api/admin/')) return false
+  if (n.startsWith('/api/public/')) return false
+  if (n.startsWith('/api/webhooks/')) return false
+  if (n.startsWith('/api/cron/')) return false
+  if (n.startsWith('/api/auth/')) return false
+  if (n.startsWith('/api/impersonate/')) return false
+  return true
 }
 
 export function storeHasAnnualBillingCycle(store: Record<string, unknown>): boolean {

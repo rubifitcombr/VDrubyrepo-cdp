@@ -14,6 +14,10 @@ const inputClass =
 function safeNextPath(raw: string | null): string {
   if (!raw || !raw.startsWith('/') || raw.startsWith('//')) return '/dashboard'
   // Fluxo operacional: login -> hub -> atalho escolhido no hub.
+  // Contrato anual pendente: nunca saltar o aceite (mesmo com ?next=outra rota).
+  if (raw === '/dashboard/contrato' || raw.startsWith('/dashboard/contrato/')) {
+    return '/dashboard/contrato'
+  }
   if (raw === '/dashboard' || raw.startsWith('/dashboard/')) return '/dashboard'
   return raw
 }
@@ -45,9 +49,13 @@ function LoginForm() {
 
       setRememberLoginPreference(rememberLogin)
 
-      const next = safeNextPath(searchParams.get('next'))
+      // Plano anual sem assinatura: abre o contrato; senão, hub.
+      const destination =
+        result.redirectTo === '/dashboard/contrato'
+          ? '/dashboard/contrato'
+          : safeNextPath(searchParams.get('next'))
       beginNavigation()
-      window.location.assign(next)
+      window.location.assign(destination)
     } catch (err) {
       const message =
         err instanceof Error

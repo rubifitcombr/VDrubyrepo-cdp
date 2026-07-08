@@ -6,6 +6,8 @@ import {
   parseVyriaPanelMode,
   VYRIA_PANEL_MODE_COOKIE,
 } from '@/lib/vyria-panel-mode'
+import { isMerchantApiContractGatePath } from '@/lib/annual-contract-acceptance'
+import { parseImpersonationContext, IMPERSONATION_ACTIVE_COOKIE } from '@/lib/impersonation'
 import { verificarAcessoLojista } from '@/middleware/verificarAcesso'
 import { verificarContratoAnualGate } from '@/middleware/verificarContratoAnual'
 import { NextResponse, type NextRequest } from 'next/server'
@@ -92,10 +94,21 @@ export async function proxy(request: NextRequest) {
     !!user &&
     isVyriaAdminPanelUser(user.id) &&
     vyriaPanelMode === 'admin'
+  const impersonating = parseImpersonationContext(
+    request.cookies.get(IMPERSONATION_ACTIVE_COOKIE)?.value
+  )
 
   if (isAuthPage && user && !isPasswordRedefinePage) {
     if (vyriaInAdminMode) {
       return NextResponse.redirect(new URL('/admin', request.url))
+    }
+    const contratoGate = await verificarContratoAnualGate(
+      user.id,
+      '/dashboard',
+      supabase
+    )
+    if (contratoGate) {
+      return NextResponse.redirect(new URL(contratoGate, request.url))
     }
     return NextResponse.redirect(new URL('/dashboard', request.url))
   }
@@ -132,19 +145,29 @@ export async function proxy(request: NextRequest) {
   }
 
   const merchantShell = p.startsWith('/dashboard') || p.startsWith('/planos')
+  const skipMerchantGates =
+    !!user && (vyriaInAdminMode || Boolean(impersonating))
 
   if (merchantShell && user) {
-    const skipLojistaCheck =
-      isVyriaAdminPanelUser(user.id) && vyriaPanelMode === 'admin'
-    if (!skipLojistaCheck) {
+    if (!skipMerchantGates) {
       const access = await verificarAcessoLojista(user.id)
       if (!access.ok) {
         return NextResponse.redirect(new URL(access.redirectPath, request.url))
       }
-      const contratoGate = await verificarContratoAnualGate(user.id, p)
+      const contratoGate = await verificarContratoAnualGate(user.id, p, supabase)
       if (contratoGate) {
         return NextResponse.redirect(new URL(contratoGate, request.url))
       }
+    }
+  }
+
+  if (user && !skipMerchantGates && isMerchantApiContractGatePath(p)) {
+    const contratoGate = await verificarContratoAnualGate(user.id, p, supabase)
+    if (contratoGate) {
+      return NextResponse.json(
+        { error: 'contrato_pendente', redirect: contratoGate },
+        { status: 403 }
+      )
     }
   }
 

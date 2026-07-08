@@ -23,6 +23,7 @@ import {
 import { parseAutomationsFromStore } from '@/lib/store-automations'
 import { parsePrintingFromStore } from '@/lib/store-printing'
 import { parseHubPinConfig } from '@/lib/hub-shortcut-pin'
+import { requiresAnnualContractAcceptance } from '@/lib/annual-contract-acceptance'
 import {
   IMPERSONATION_ACTIVE_COOKIE,
   parseImpersonationContext,
@@ -157,6 +158,14 @@ export default async function DashboardLayout({
   const pathname = headerList.get('x-pathname') ?? ''
   const isContratoRoute =
     pathname === '/dashboard/contrato' || pathname.startsWith('/dashboard/contrato/')
+
+  if (
+    storeRecord &&
+    !isContratoRoute &&
+    requiresAnnualContractAcceptance(storeRecord)
+  ) {
+    redirect('/dashboard/contrato')
+  }
 
   if (isContratoRoute) {
     return <>{children}</>

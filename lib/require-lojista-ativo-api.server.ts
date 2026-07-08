@@ -5,6 +5,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { createClient as createSessionSupabaseClient } from '@/lib/supabase/server'
 import { parseMerchantStatus } from '@/lib/merchant-status'
 import { isPlanoVencido } from '@/lib/merchant-access-dates'
+import { requiresAnnualContractAcceptance } from '@/lib/annual-contract-acceptance'
 import { readStorePlano, readStoreStatus } from '@/lib/store-columns'
 
 function readEnv(...keys: string[]) {
@@ -117,6 +118,16 @@ export async function requireLojistaAtivoApi(
     return {
       ok: false,
       response: NextResponse.json({ error: 'plano_vencido' }, { status: 403 }),
+    }
+  }
+
+  if (requiresAnnualContractAcceptance(row)) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: 'contrato_pendente', redirect: '/dashboard/contrato' },
+        { status: 403 }
+      ),
     }
   }
 
