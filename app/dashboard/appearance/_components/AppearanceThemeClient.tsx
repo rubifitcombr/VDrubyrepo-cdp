@@ -1,7 +1,7 @@
 'use client'
 
+import { MenuImage } from '@/app/_components/MenuImage'
 import { useEffect, useMemo, useState } from 'react'
-import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { PublicSlugPathPill } from '@/app/_components/PublicSlugPathPill'
 import { slugifyStoreSlug } from '@/lib/store-slug'
@@ -228,8 +228,9 @@ export function AppearanceThemeClient({
         <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-start">
           <div className="relative aspect-[21/9] w-full max-w-md overflow-hidden rounded-xl bg-[#f3f4f6] ring-1 ring-vyria-navy/10">
             {displayBannerUrl ? (
-              <Image
+              <MenuImage
                 src={displayBannerUrl}
+                storeId={storeId}
                 alt="Pré-visualização do banner"
                 fill
                 className="object-cover"

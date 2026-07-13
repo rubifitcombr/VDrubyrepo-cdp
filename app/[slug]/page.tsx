@@ -172,8 +172,8 @@ export default async function StorefrontPage({ params, searchParams }: Props) {
     .order('name', { ascending: true })
 
   let list: MenuProductRow[] =
-    ((ordered.data as Record<string, unknown>[] | null) ?? []).map(
-      normalizeMenuProductRow
+    ((ordered.data as Record<string, unknown>[] | null) ?? []).map((row) =>
+      normalizeMenuProductRow(row, s.id)
     )
   if (ordered.error) {
     const fallback = await supabase
@@ -183,7 +183,7 @@ export default async function StorefrontPage({ params, searchParams }: Props) {
       .eq('active', true)
       .order('name', { ascending: true })
     list = ((fallback.data as Record<string, unknown>[] | null) ?? []).map(
-      normalizeMenuProductRow
+      (row) => normalizeMenuProductRow(row, s.id)
     )
   }
 

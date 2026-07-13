@@ -30,7 +30,8 @@ import {
   pixKeyKindLabel,
   type PixKeyType,
 } from '@/lib/pix/key'
-import Image from 'next/image'
+import { MenuImage } from '@/app/_components/MenuImage'
+import { resolveMenuImageUrl } from '@/lib/menu-image-url'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
@@ -137,7 +138,7 @@ export default function SettingsPage() {
       setSupportsLogoUrl('logo_url' in s)
       setLogoUrl(
         typeof s.logo_url === 'string' && s.logo_url.trim()
-          ? s.logo_url.trim()
+          ? resolveMenuImageUrl(s.logo_url, String(s.id))
           : null
       )
       setPhone((s.phone as string) || '')
@@ -565,12 +566,18 @@ export default function SettingsPage() {
             <div className="mt-3 flex flex-wrap items-center gap-4">
               <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl border border-[var(--card-border)] bg-[#f9fafb] ring-1 ring-black/5">
                 {logoUrl ? (
-                  <Image
+                  <MenuImage
                     src={logoUrl}
+                    storeId={storeId}
                     alt={name.trim() ? `Logo ${name}` : 'Pré-visualização do logo'}
                     fill
                     className="object-cover"
                     sizes="80px"
+                    fallback={
+                      <div className="flex h-full w-full items-center justify-center bg-[var(--dash-primary)] text-lg font-bold text-white">
+                        {storeInitials(name || 'Loja')}
+                      </div>
+                    }
                   />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center bg-[var(--dash-primary)] text-lg font-bold text-white">

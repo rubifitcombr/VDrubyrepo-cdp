@@ -253,7 +253,7 @@ export async function POST(req: NextRequest) {
 
     const productById = new Map<string, MenuProductRow>()
     for (const raw of productRows ?? []) {
-      const row = normalizeMenuProductRow(raw)
+      const row = normalizeMenuProductRow(raw, String(storeRow.id))
       if (row.id) productById.set(row.id, row)
     }
 

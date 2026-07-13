@@ -30,8 +30,11 @@ export type MenuProductRow = {
 }
 
 export function normalizeMenuProductRow(
-  row: Record<string, unknown>
+  row: Record<string, unknown>,
+  storeId?: string | null
 ): MenuProductRow {
+  const resolvedStoreId =
+    storeId ?? (typeof row.store_id === 'string' ? row.store_id : null)
   const so = row.sort_order
   return {
     id: String(row.id ?? ''),
@@ -64,10 +67,7 @@ export function normalizeMenuProductRow(
       typeof row.dine_in_promotion_active === 'boolean'
         ? row.dine_in_promotion_active
         : null,
-    image_url: resolveMenuImageUrl(
-      row.image_url,
-      typeof row.store_id === 'string' ? row.store_id : null
-    ),
+    image_url: resolveMenuImageUrl(row.image_url, resolvedStoreId),
     active:
       typeof row.active === 'boolean'
         ? row.active

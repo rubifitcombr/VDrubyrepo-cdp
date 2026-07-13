@@ -1,7 +1,7 @@
 'use client'
 
 import { PublicSlugPathPill } from '@/app/_components/PublicSlugPathPill'
-import { MenuImage } from '@/app/[slug]/_components/MenuImage'
+import { MenuImage } from '@/app/_components/MenuImage'
 import { useCart } from '@/app/context/CartContext'
 import type { CSSProperties } from 'react'
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
@@ -592,25 +592,25 @@ export function StorefrontMenuClient({
       }
     >
       <div className={autoFrameClass}>
-        <div className="relative z-0 overflow-hidden bg-neutral-200">
-          <div
-            className="relative h-[112px] w-full"
-            style={
-              banner
-                ? undefined
-                : {
-                    background: `linear-gradient(135deg, ${theme.primary} 0%, ${theme.secondary} 100%)`,
-                  }
-            }
-          >
-            {banner ? (
+            <div className="relative z-0 overflow-hidden bg-neutral-200">
+              <div
+                className="relative h-[112px] w-full"
+                style={
+                  banner
+                    ? undefined
+                    : {
+                        background: `linear-gradient(135deg, ${theme.primary} 0%, ${theme.secondary} 100%)`,
+                      }
+                }
+              >
+                {banner ? (
               <MenuImage
-                src={banner}
-                alt={`Capa do cardápio — ${storeName}`}
-                fill
-                priority
-                className="object-cover object-[center_46%]"
-                sizes="(max-width: 768px) 100vw, 48rem"
+                    src={banner}
+                    alt={`Capa do cardápio — ${storeName}`}
+                    fill
+                    priority
+                    className="object-cover object-[center_46%]"
+                    sizes="(max-width: 768px) 100vw, 48rem"
                 fallback={
                   <div
                     className="absolute inset-0"
@@ -619,75 +619,75 @@ export function StorefrontMenuClient({
                     }}
                   />
                 }
-              />
-            ) : (
+                  />
+                ) : (
               <div className="absolute inset-0 flex items-center justify-center text-white/80">
-                <IconPhoto className="h-8 w-8 opacity-75" />
+                    <IconPhoto className="h-8 w-8 opacity-75" />
+                  </div>
+                )}
+                <div
+                  className="absolute inset-0 bg-gradient-to-t from-black/10 via-transparent to-transparent"
+                  aria-hidden
+                />
+                <div
+                  className="absolute inset-x-0 bottom-0 h-2"
+                  style={{
+                    background: `linear-gradient(90deg, ${theme.primary} 0%, ${theme.secondary} 100%)`,
+                  }}
+                  aria-hidden
+                />
+                {hasPromoDay ? (
+                  <span
+                    className="absolute left-3 top-3 inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-white shadow-md"
+                    style={{ backgroundColor: theme.primary }}
+                  >
+                    <IconFlame className="h-3.5 w-3.5 opacity-95" />
+                    Promo do dia
+                  </span>
+                ) : null}
               </div>
-            )}
-            <div
-              className="absolute inset-0 bg-gradient-to-t from-black/10 via-transparent to-transparent"
-              aria-hidden
-            />
-            <div
-              className="absolute inset-x-0 bottom-0 h-2"
-              style={{
-                background: `linear-gradient(90deg, ${theme.primary} 0%, ${theme.secondary} 100%)`,
-              }}
-              aria-hidden
-            />
-            {hasPromoDay ? (
-              <span
-                className="absolute left-3 top-3 inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-white shadow-md"
-                style={{ backgroundColor: theme.primary }}
-              >
-                <IconFlame className="h-3.5 w-3.5 opacity-95" />
-                Promo do dia
-              </span>
-            ) : null}
-          </div>
-        </div>
+            </div>
 
-        <div className="relative z-20 bg-white px-2.5 pb-2 pt-2">
-          <button
-            type="button"
-            onClick={scrollToTop}
-            className="flex w-full items-center gap-2 text-left"
-          >
-            <span
-              className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full text-xs font-extrabold text-white shadow-sm"
-              style={{ backgroundColor: theme.primary }}
-            >
-              {logoUrl?.trim() ? (
+            <div className="relative z-20 bg-white px-2.5 pb-2 pt-2">
+              <button
+                type="button"
+                onClick={scrollToTop}
+                className="flex w-full items-center gap-2 text-left"
+              >
+                <span
+                  className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full text-xs font-extrabold text-white shadow-sm"
+                  style={{ backgroundColor: theme.primary }}
+                >
+                  {logoUrl?.trim() ? (
                 <MenuImage
-                  src={logoUrl.trim()}
-                  alt={storeName.trim() ? `Logo ${storeName}` : 'Logo'}
-                  fill
-                  className="object-cover"
-                  sizes="36px"
+                      src={logoUrl.trim()}
+                      alt={storeName.trim() ? `Logo ${storeName}` : 'Logo'}
+                      fill
+                      className="object-cover"
+                      sizes="36px"
                   fallback={
                     <span className="flex h-full w-full items-center justify-center text-xs font-extrabold">
                       {storeName.trim().slice(0, 2).toUpperCase() || 'LO'}
                     </span>
                   }
-                />
-              ) : (
-                storeName.trim().slice(0, 2).toUpperCase() || 'LO'
-              )}
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-[12px] font-extrabold leading-tight text-neutral-950">
-                {storeName}
-              </span>
-              <span className="mt-0.5 block truncate text-[10px] font-semibold text-neutral-600">
-                {storeStatusLine}
-              </span>
-            </span>
-          </button>
+                    />
+                  ) : (
+                    storeName.trim().slice(0, 2).toUpperCase() || 'LO'
+                  )}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[12px] font-extrabold leading-tight text-neutral-950">
+                    {storeName}
+                  </span>
+                  <span className="mt-0.5 block truncate text-[10px] font-semibold text-neutral-600">
+                    {storeStatusLine}
+                  </span>
+                </span>
+              </button>
 
-          {salaoAutoUnavailable ? (
+                  {salaoAutoUnavailable ? (
             <div className="mt-2 flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-2 py-1.5 text-[10px] font-bold text-red-900">
-              <IconAlertTriangle className="h-4 w-4 shrink-0" />
+                    <IconAlertTriangle className="h-4 w-4 shrink-0" />
               <span className="min-w-0 flex-1 truncate">
                 Autoatendimento indisponível — chame o garçom
               </span>
@@ -696,20 +696,20 @@ export function StorefrontMenuClient({
 
           {autoMode && !autoContextDismissed ? (
             <div className="mt-2 flex items-center gap-1.5 rounded-full border border-[#EBD19A] bg-[#FAEEDA] px-2 py-1.5 text-[10px] font-bold text-[#633806]">
-              <IconArmchair className="h-4 w-4 shrink-0" />
-              <span className="min-w-0 flex-1 truncate">
+                    <IconArmchair className="h-4 w-4 shrink-0" />
+                  <span className="min-w-0 flex-1 truncate">
                 Pedido na mesa · Autoatendimento
-              </span>
-              <button
-                type="button"
-                onClick={handleDismissAutoContext}
-                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-black/5 text-xs leading-none active:bg-black/10"
-                aria-label="Fechar aviso"
-              >
-                ×
-              </button>
-            </div>
-          ) : null}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleDismissAutoContext}
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-black/5 text-xs leading-none active:bg-black/10"
+                    aria-label="Fechar aviso"
+                  >
+                    ×
+                  </button>
+                </div>
+              ) : null}
 
           {!autoMode && !slugContextDismissed ? (
             <div className="mt-2 flex items-center gap-1.5 rounded-full border border-[#EBD19A] bg-[#FAEEDA] px-2 py-1.5 text-[10px] font-bold text-[#633806]">
@@ -727,9 +727,9 @@ export function StorefrontMenuClient({
               >
                 ×
               </button>
-            </div>
-          ) : null}
-        </div>
+                  </div>
+                    ) : null}
+                  </div>
       </div>
 
       {hoursMode === 'manual' && !storeOpen ? (

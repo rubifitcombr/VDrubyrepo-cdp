@@ -5,6 +5,7 @@ import {
   isDeliveryPipelineEnabled,
   parseOperationModeFromStore,
 } from '@/lib/merchant-operation-mode'
+import { resolveMenuImageUrl } from '@/lib/menu-image-url'
 import { AppearanceThemeClient } from './_components/AppearanceThemeClient'
 
 /** Sempre dados frescos da loja após guardar (evita cache de RSC). */
@@ -31,10 +32,7 @@ export default async function AppearancePage() {
       ? row.theme_preset.trim().toLowerCase()
       : ''
   const resolved = resolveStoreTheme(rawPreset || undefined)
-  const initialBanner =
-    typeof row.storefront_banner_url === 'string'
-      ? row.storefront_banner_url.trim() || null
-      : null
+  const initialBanner = resolveMenuImageUrl(row.storefront_banner_url, String(row.id))
 
   const initialSlug =
     typeof row.slug === 'string' && row.slug.trim() ? row.slug.trim() : ''

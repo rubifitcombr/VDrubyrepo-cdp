@@ -35,10 +35,16 @@ export async function getMenuProducts(
       throw new Error(e2.message)
     }
     return sortMenuProductRows(
-      ((all as Record<string, unknown>[]) ?? []).map(normalizeMenuProductRow)
+      ((all as Record<string, unknown>[]) ?? []).map((row) =>
+        normalizeMenuProductRow(row, storeId)
+      )
     )
   }
-  return sortMenuProductRows((data as MenuProductRow[]) ?? [])
+  return sortMenuProductRows(
+    ((data as Record<string, unknown>[]) ?? []).map((row) =>
+      normalizeMenuProductRow(row, storeId)
+    )
+  )
 }
 
 export async function getProducts(storeId: string) {

@@ -1,6 +1,6 @@
 'use client'
 
-import Image from 'next/image'
+import { MenuImage } from '@/app/_components/MenuImage'
 import Link from 'next/link'
 import {
   useCallback,
@@ -442,6 +442,11 @@ export function PdvClient({
                 const base = baseProductPriceForChannel(p, 'dine_in')
                 const promo = hasActivePromotion(p, 'dine_in')
                 const img = p.image_url?.trim()
+                const thumbFallback = (
+                  <div className="flex h-full items-center justify-center text-3xl text-zinc-300">
+                    ···
+                  </div>
+                )
                 return (
                   <li key={p.id}>
                     <button
@@ -457,19 +462,18 @@ export function PdvClient({
                           </span>
                         ) : null}
                         {img ? (
-                          <Image
+                          <MenuImage
                             src={img}
+                            storeId={storeId}
                             alt=""
                             fill
                             className="object-cover"
                             sizes="(max-width: 640px) 50vw, 20vw"
                             loading="lazy"
-                            decoding="async"
+                            fallback={thumbFallback}
                           />
                         ) : (
-                          <div className="flex h-full items-center justify-center text-3xl text-zinc-300">
-                            ···
-                          </div>
+                          thumbFallback
                         )}
                       </div>
                       <div className="flex min-h-[3.25rem] flex-col justify-center gap-0.5 p-2">
@@ -538,12 +542,18 @@ export function PdvClient({
                   >
                     <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-zinc-100">
                       {line.imageUrl?.trim() ? (
-                        <Image
+                        <MenuImage
                           src={line.imageUrl.trim()}
+                          storeId={storeId}
                           alt=""
                           fill
                           className="object-cover"
                           sizes="56px"
+                          fallback={
+                            <div className="flex h-full items-center justify-center text-zinc-300">
+                              ·
+                            </div>
+                          }
                         />
                       ) : (
                         <div className="flex h-full items-center justify-center text-zinc-300">

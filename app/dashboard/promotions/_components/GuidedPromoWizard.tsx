@@ -1,5 +1,6 @@
 'use client'
 
+import { MenuImage } from '@/app/_components/MenuImage'
 import type { ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { MenuProductRow } from '@/lib/menu-product'
@@ -591,6 +592,7 @@ export function GuidedPromoWizard({
           catalog={catalog}
           productIds={productIds}
           setProductIds={setProductIds}
+          storeId={storeId}
         />
       )
     }
@@ -767,11 +769,13 @@ function ProductPickerStep({
   catalog,
   productIds,
   setProductIds,
+  storeId,
 }: {
   kind: PromoKind
   catalog: MenuProductRow[]
   productIds: string[]
   setProductIds: (ids: string[]) => void
+  storeId: string
 }) {
   const [q, setQ] = useState('')
   const filtered = useMemo(() => {
@@ -818,13 +822,20 @@ function ProductPickerStep({
                   : 'border-[var(--card-border)] bg-white'
               }`}
             >
-              <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-[#f3f4f6]">
+              <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-[#f3f4f6]">
                 {p.image_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
+                  <MenuImage
                     src={p.image_url}
+                    storeId={storeId}
                     alt=""
-                    className="h-full w-full object-cover"
+                    fill
+                    className="object-cover"
+                    sizes="56px"
+                    fallback={
+                      <div className="flex h-full items-center justify-center text-xs text-[#9ca3af]">
+                        —
+                      </div>
+                    }
                   />
                 ) : (
                   <div className="flex h-full items-center justify-center text-xs text-[#9ca3af]">

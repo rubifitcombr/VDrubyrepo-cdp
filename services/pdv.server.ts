@@ -35,9 +35,13 @@ export async function getPdvProductsForStore(
     }
     return sortMenuProductRows(
       ((all as Record<string, unknown>[]) ?? [])
-        .map(normalizeMenuProductRow)
+        .map((row) => normalizeMenuProductRow(row, storeId))
         .filter((r) => r.active !== false)
     )
   }
-  return sortMenuProductRows((data as MenuProductRow[]) ?? [])
+  return sortMenuProductRows(
+    ((data as Record<string, unknown>[]) ?? []).map((row) =>
+      normalizeMenuProductRow(row, storeId)
+    )
+  )
 }

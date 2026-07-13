@@ -17,9 +17,55 @@ export function buildSupabasePublicStorageUrl(objectPath: string): string | null
   return `${base}${PUBLIC_OBJECT_PREFIX}${MENU_IMAGE_BUCKET}/${path}`
 }
 
+const IMAGE_EXT_RE = /\.(jpg|jpeg|png|webp|gif)$/i
+
 function looksLikeStorageObjectPath(value: string): boolean {
   if (value.includes('://') || value.startsWith('data:')) return false
   return /^[\w-]+\/[\w./-]+\.(jpg|jpeg|png|webp|gif)$/i.test(value)
+}
+
+function looksLikeBareImageFilename(value: string): boolean {
+  if (value.includes('://') || value.startsWith('data:') || value.includes('/')) {
+    return false
+  }
+  return IMAGE_EXT_RE.test(value)
+}
+
+function stripBucketPrefix(path: string): string {
+  const prefix = `${MENU_IMAGE_BUCKET}/`
+  return path.startsWith(prefix) ? path.slice(prefix.length) : path
+}
+
+/** Tenta montar URL pública a partir de path relativo ou nome de ficheiro. */
+function buildFromRelativeStoragePath(
+  raw: string,
+  storeId?: string | null
+): string | null {
+  let path = stripBucketPrefix(raw.replace(/^\/+/, ''))
+  if (!path) return null
+
+  if (looksLikeStorageObjectPath(path)) {
+    return buildSupabasePublicStorageUrl(path)
+  }
+
+  if (storeId && looksLikeBareImageFilename(path)) {
+    return buildSupabasePublicStorageUrl(`${storeId}/${path}`)
+  }
+
+  if (storeId && IMAGE_EXT_RE.test(path) && !path.includes('://')) {
+    const segments = path.split('/').filter(Boolean)
+    if (segments.length === 1) {
+      return buildSupabasePublicStorageUrl(`${storeId}/${segments[0]}`)
+    }
+    if (segments.length >= 2 && !looksLikeStorageObjectPath(path)) {
+      const last = segments[segments.length - 1]
+      if (IMAGE_EXT_RE.test(last)) {
+        return buildSupabasePublicStorageUrl(`${storeId}/${path}`)
+      }
+    }
+  }
+
+  return null
 }
 
 function convertSupabaseObjectUrlToPublic(url: string): string {
@@ -86,23 +132,26 @@ function rewriteSupabaseStorageHost(url: string): string {
  */
 export function resolveMenuImageUrl(
   raw: unknown,
-  _storeId?: string | null
+  storeId?: string | null
 ): string | null {
   if (raw == null) return null
   let value = String(raw).trim()
   if (!value) return null
+
+  if (value.startsWith('blob:') || value.startsWith('data:')) {
+    return value
+  }
 
   if (value.startsWith('//')) {
     value = `https:${value}`
   }
 
   if (!/^https?:\/\//i.test(value) && !value.startsWith('data:')) {
+    const fromStorage = buildFromRelativeStoragePath(value, storeId)
+    if (fromStorage) return fromStorage
+
     if (/^[\w.-]+\.[a-z]{2,}/i.test(value)) {
       value = `https://${value}`
-    } else if (looksLikeStorageObjectPath(value)) {
-      const built = buildSupabasePublicStorageUrl(value)
-      if (built) return built
-      return null
     } else {
       return null
     }

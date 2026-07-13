@@ -1,6 +1,6 @@
 'use client'
 
-import { MenuImage } from '@/app/[slug]/_components/MenuImage'
+import { MenuImage } from '@/app/_components/MenuImage'
 import { useEffect, useMemo, useState } from 'react'
 import type { CartAddonPick } from '@/app/context/CartContext'
 import { useCart } from '@/app/context/CartContext'

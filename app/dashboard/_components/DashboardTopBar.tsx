@@ -1,6 +1,6 @@
 'use client'
 
-import Image from 'next/image'
+import { MenuImage } from '@/app/_components/MenuImage'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
@@ -149,12 +149,18 @@ export function DashboardTopBar({
         <div className="flex min-w-0 items-center gap-2.5 rounded-xl border border-[var(--card-border)] bg-white py-1.5 pl-1.5 pr-3 shadow-sm">
           <span className="relative flex h-10 w-10 shrink-0 overflow-hidden rounded-lg bg-[var(--dash-primary)] text-sm font-bold text-white ring-1 ring-black/5">
             {storeLogoUrl ? (
-              <Image
+              <MenuImage
                 src={storeLogoUrl}
+                storeId={storeId}
                 alt={storeName?.trim() ? `Logo ${storeName}` : 'Logo da loja'}
                 fill
                 className="object-cover"
                 sizes="40px"
+                fallback={
+                  <span className="flex h-full w-full items-center justify-center">
+                    {storeInitials(storeName)}
+                  </span>
+                }
               />
             ) : (
               <span className="flex h-full w-full items-center justify-center">

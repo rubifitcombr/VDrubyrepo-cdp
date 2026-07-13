@@ -31,8 +31,14 @@ export async function getMenuProductsForStore(
       return []
     }
     return sortMenuProductRows(
-      ((all as Record<string, unknown>[]) ?? []).map(normalizeMenuProductRow)
+      ((all as Record<string, unknown>[]) ?? []).map((row) =>
+        normalizeMenuProductRow(row, storeId)
+      )
     )
   }
-  return sortMenuProductRows((data as MenuProductRow[]) ?? [])
+  return sortMenuProductRows(
+    ((data as Record<string, unknown>[]) ?? []).map((row) =>
+      normalizeMenuProductRow(row, storeId)
+    )
+  )
 }

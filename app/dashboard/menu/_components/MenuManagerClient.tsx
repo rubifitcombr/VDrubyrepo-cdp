@@ -1,8 +1,8 @@
 'use client'
 
 import { dashboardFetch } from '@/lib/dashboard-fetch.client'
+import { MenuImage } from '@/app/_components/MenuImage'
 import Link from 'next/link'
-import Image from 'next/image'
 import type { ReactNode } from 'react'
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -11,7 +11,6 @@ import {
   IconSearch,
   IconTrash,
 } from '@/app/dashboard/_components/NavIcons'
-import { resolveMenuImageUrl } from '@/lib/menu-image-url'
 import type { MenuProductRow } from '@/lib/menu-product'
 import { effectiveProductPrice } from '@/lib/product-pricing'
 import type { Plan } from '@/lib/plan'
@@ -1253,8 +1252,9 @@ export function MenuManagerClient({
                     cardápio depois de clicares em Salvar.
                   </p>
                   <div className="relative mx-auto mt-3 h-52 w-full max-w-sm">
-                    <Image
+                    <MenuImage
                       src={formAiImageUrl}
+                      storeId={storeId}
                       alt="Pré-visualização da imagem gerada"
                       fill
                       className="object-contain"
@@ -1352,7 +1352,11 @@ export function MenuManagerClient({
           <ul className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
             {filteredProducts.map((p) => {
               const catLabel = p.category?.trim() || 'Sem categoria'
-              const imgUrl = resolveMenuImageUrl(p.image_url, storeId)
+              const imgFallback = (
+                <div className="flex h-full w-full items-center justify-center text-[#c4c4c4]">
+                  <IconCube className="h-14 w-14 opacity-80" />
+                </div>
+              )
               const desc = p.description?.trim()
               const stock = stockByProduct[p.id]
               const stockBadge = hasFeature(plan, 'inventory')
@@ -1385,20 +1389,19 @@ export function MenuManagerClient({
                   className="flex flex-col overflow-hidden rounded-2xl border border-[var(--card-border)] bg-white shadow-sm shadow-black/[0.04] transition-shadow hover:shadow-md"
                 >
                   <div className="relative aspect-[4/3] w-full bg-[#f3f4f6]">
-                    {imgUrl ? (
-                      <Image
-                        src={imgUrl}
+                    {p.image_url?.trim() ? (
+                      <MenuImage
+                        src={p.image_url}
+                        storeId={storeId}
                         alt=""
                         fill
                         className="object-cover"
                         sizes="(max-width: 640px) 100vw, (max-width: 1280px) 50vw, 33vw"
                         loading="lazy"
-                        decoding="async"
+                        fallback={imgFallback}
                       />
                     ) : (
-                      <div className="flex h-full w-full items-center justify-center text-[#c4c4c4]">
-                        <IconCube className="h-14 w-14 opacity-80" />
-                      </div>
+                      imgFallback
                     )}
                   </div>
                   <div className="flex flex-1 flex-col p-4">

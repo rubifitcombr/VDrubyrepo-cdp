@@ -1,3 +1,4 @@
+import { resolveMenuImageUrl } from '@/lib/menu-image-url'
 import { isVyriaAdminPanelUser } from '@/lib/admin-panel-user'
 import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
 import {
@@ -81,7 +82,12 @@ export default async function DashboardLayout({
     typeof store === 'object' &&
     'logo_url' in store &&
     typeof (store as Record<string, unknown>).logo_url === 'string'
-      ? String((store as Record<string, unknown>).logo_url).trim() || null
+      ? resolveMenuImageUrl(
+          (store as Record<string, unknown>).logo_url,
+          store && typeof store === 'object' && 'id' in store
+            ? String(store.id)
+            : null
+        )
       : null
 
   const rawPlan =
