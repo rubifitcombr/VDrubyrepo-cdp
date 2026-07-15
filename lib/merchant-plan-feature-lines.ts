@@ -6,7 +6,6 @@ import {
   hasFeature,
   hasMarketingAiDescription,
   hasPixCheckout,
-  hasProMarketingAi,
   PIX_CHECKOUT_BENEFIT_LINE,
   PIX_CHECKOUT_PRO_ONLY_LINE,
   type Plan,
@@ -74,9 +73,6 @@ export function planPreviewLinesForMerchant(
   }
   if (hasMarketingAiDescription(plan)) {
     lines.push('Descrição de produto com IA')
-  }
-  if (hasProMarketingAi(plan)) {
-    lines.push('Imagem de produto com IA')
   }
   if (operationMode === 'hibrido' && plan === 'GROWTH') {
     if (!lines.some((l) => l.includes('Link público'))) {

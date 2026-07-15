@@ -290,11 +290,6 @@ export function hasMarketingAiDescription(plan: Plan): boolean {
   return planTier(plan) >= planTier('GROWTH')
 }
 
-/** Geração de imagem de produto com IA (API /api/ai/product-image) — a partir do Pro. */
-export function hasProMarketingAi(plan: Plan): boolean {
-  return planTier(plan) >= planTier('PRO')
-}
-
 /** Acesso à automação de WhatsApp (chatbot simples) — Growth em diante. */
 export function hasAutomationAccess(plan: string): boolean {
   return ['GROWTH', 'PRO'].includes(String(plan || '').toUpperCase())

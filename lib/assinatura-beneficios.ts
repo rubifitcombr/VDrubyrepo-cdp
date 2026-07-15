@@ -33,7 +33,7 @@ export const BENEFICIOS_POR_PLANO: Record<PlanoSlug, string[]> = {
     'PDV / atendimento balcão',
     'Garçom — pedidos por mesa (conforme modelo)',
     'Impressão automática de pedidos',
-    'Descrição e imagem de produto com IA',
+    'Descrição de produto com IA',
     'Relatórios avançados (comparativos e insights extra)',
     PIX_CHECKOUT_BENEFIT_LINE,
   ],
@@ -72,7 +72,7 @@ export const BENEFICIOS_PRESENCIAL: Record<PlanoSlug, string[]> = {
     'KDS — monitor de cozinha',
     'Gestão de estoque por produto',
     'Relatórios avançados',
-    'Descrição e imagem de produto com IA',
+    'Descrição de produto com IA',
     PIX_CHECKOUT_BENEFIT_LINE,
   ],
 }
@@ -115,7 +115,7 @@ export const BENEFICIOS_HIBRIDO: Record<PlanoSlug, string[]> = {
     'KDS — monitor de cozinha',
     'Gestão de estoque por produto',
     'Relatórios avançados',
-    'Descrição e imagem de produto com IA',
+    'Descrição de produto com IA',
     PIX_CHECKOUT_BENEFIT_LINE,
   ],
 }
@@ -150,7 +150,7 @@ export const BENEFICIOS_DELIVERY: Record<PlanoSlug, string[]> = {
     'KDS — monitor de cozinha',
     'Gestão de estoque por produto',
     'Relatórios avançados',
-    'Descrição e imagem de produto com IA',
+    'Descrição de produto com IA',
     PIX_CHECKOUT_BENEFIT_LINE,
   ],
 }

@@ -95,7 +95,7 @@ export default async function UpgradePage({
             <ul className="mt-3 space-y-1 text-sm text-vyria-navy-muted">
               <li>PDV, KDS, impressão</li>
               <li>Aparência e automações avançadas</li>
-              <li>Relatórios avançados e IA de imagem</li>
+              <li>Relatórios avançados e descrição com IA</li>
             </ul>
           </div>
         </div>
