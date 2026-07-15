@@ -102,6 +102,15 @@ export function AdminShell({
           )
         })}
       </nav>
+      <div className="px-3 pb-3">
+        <Link
+          href="/dashboard"
+          onClick={() => setMobileNavOpen(false)}
+          className="inline-flex w-full items-center justify-center rounded-full border border-white/15 px-3 py-2 text-xs font-semibold text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+        >
+          Voltar ao hub
+        </Link>
+      </div>
       <p className="px-4 pb-3 text-[10px] leading-relaxed text-white/35 md:pb-4">
         Em Lojistas podes definir o modelo de operação de cada loja (drawer lateral → Guardar modelo).
       </p>
@@ -158,7 +167,15 @@ export function AdminShell({
           >
             <IconMenu className="h-5 w-5" />
           </button>
-          <span className="min-w-0 truncate text-sm font-semibold text-[#1a1614]">Vyria Admin</span>
+          <span className="min-w-0 flex-1 truncate text-sm font-semibold text-[#1a1614]">
+            Vyria Admin
+          </span>
+          <Link
+            href="/dashboard"
+            className="inline-flex shrink-0 items-center rounded-full border border-[var(--card-border)] bg-white px-3 py-1.5 text-xs font-semibold text-[#374151] transition-colors hover:bg-[#f9fafb]"
+          >
+            Voltar ao hub
+          </Link>
         </header>
         <main className="flex-1 overflow-x-hidden overflow-y-auto p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-6">
           {children}

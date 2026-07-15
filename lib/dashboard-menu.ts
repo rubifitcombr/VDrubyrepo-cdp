@@ -16,6 +16,7 @@ function entregadoresMenuContext(operationMode: MerchantOperationMode | null): b
  * Growth **não** inclui `garcom` (legado alinhado a operação só delivery); com modo definido em loja,
  * `menuKeysForMerchant` usa `merchant-menu-matrix` (ex.: Growth presencial inclui Garçom).
  * O mapa completo de garçom no painel continua exclusivo do Pro (`hasFeature(_, 'waiter')`).
+ * **Meus garçons** (`garcons`) só entra na matriz Presencial/Híbrido Pro — sem auto-add a partir de `garcom`.
  */
 export const MENU_POR_PLANO: Record<
   'start' | 'growth' | 'pro',
@@ -105,9 +106,6 @@ export function menuKeysForMerchant(
     entregadoresMenuContext(operationMode)
   ) {
     set.add('entregadores')
-  }
-  if (set.has('garcom')) {
-    set.add('garcons')
   }
   if (set.has('configuracoes')) {
     set.add('fiscal')

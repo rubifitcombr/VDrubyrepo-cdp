@@ -7,7 +7,6 @@ import { createClient } from '@/lib/supabase/client'
 import type { MenuProductRow } from '@/lib/menu-product'
 import { type Plan, hasFeature } from '@/lib/plan'
 import {
-  planAllowsDualSalonModes,
   planAllowsSalonSelfServiceQr,
   planAllowsSalonStaffGarcom,
   type SalaoAttendanceMode,
@@ -46,7 +45,6 @@ import {
   sendOrderTicketToPrintAgent,
 } from '@/lib/print-agent-client'
 import type { StorePrintingState } from '@/lib/store-printing'
-import { StorePublicQrPanel } from '@/app/dashboard/_components/StorePublicQrPanel'
 import { IconPrinter } from '@/app/dashboard/_components/NavIcons'
 import { updateStore } from '@/services/store'
 import { updateOrderStatus } from '@/services/orders'
@@ -221,8 +219,6 @@ function mergedSectorList(
 export function WaiterClient({
   storeId,
   storeName,
-  storeSlug,
-  origin,
   plan,
   initialSalaoAttendanceMode,
   initialProducts,
@@ -239,8 +235,6 @@ export function WaiterClient({
 }: {
   storeId: string
   storeName: string
-  storeSlug: string
-  origin: string
   plan: Plan
   initialSalaoAttendanceMode: SalaoAttendanceMode
   initialProducts: MenuProductRow[]
@@ -312,7 +306,6 @@ export function WaiterClient({
   const [tableActionSheetOpen, setTableActionSheetOpen] = useState(false)
   const router = useRouter()
   const [salaoMode, setSalaoMode] = useState<SalaoAttendanceMode>(initialSalaoAttendanceMode)
-  const [salaoSaving, setSalaoSaving] = useState(false)
   const [garcons, setGarcons] = useState<StoreGarcomDTO[]>([])
   const [selectedGarcomId, setSelectedGarcomId] = useState<string>('')
 
@@ -336,7 +329,6 @@ export function WaiterClient({
 
   const staffSalonUi =
     planAllowsSalonStaffGarcom(plan) && (forceWaiterView || salaoMode === 'waiter')
-  const proDualSalon = planAllowsDualSalonModes(plan)
   const selfServiceSalonUi =
     !staffSalonUi &&
     planAllowsSalonSelfServiceQr(plan) &&
@@ -383,21 +375,6 @@ export function WaiterClient({
       /* ignore */
     }
   }, [effectiveGarcomId, garcomSessionLocked, storeId])
-
-  async function persistSalaoMode(next: SalaoAttendanceMode) {
-    setSalaoSaving(true)
-    try {
-      const { error } = await updateStore(storeId, { salao_attendance_mode: next })
-      if (error) {
-        alert(typeof error.message === 'string' ? error.message : 'Não foi possível guardar.')
-        return
-      }
-      setSalaoMode(next)
-      router.refresh()
-    } finally {
-      setSalaoSaving(false)
-    }
-  }
 
   const avulsaToggleRef = useRef<HTMLButtonElement>(null)
   const avulsaPopoverRef = useRef<HTMLDivElement>(null)
@@ -1474,49 +1451,6 @@ export function WaiterClient({
         <span className="font-medium text-[#1a1614]">Garçom</span>
       </nav>
 
-      {planAllowsSalonStaffGarcom(plan) ? (
-        <div className="mb-3 rounded-xl border border-[var(--card-border)] bg-white p-3 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
-            Vista preferida do painel
-          </p>
-          {proDualSalon ? (
-            <p className="mt-1 text-[11px] leading-relaxed text-[#6b7280]">
-              No plano Pro o <strong>QR de autoatendimento fica sempre activo</strong> para os
-              clientes. A opção abaixo só muda o que vês aqui no painel.
-            </p>
-          ) : null}
-          <div className="mt-3 flex flex-wrap gap-2">
-            <button
-              type="button"
-              disabled={salaoSaving}
-              onClick={() => void persistSalaoMode('waiter')}
-              className={`rounded-lg px-4 py-2 text-xs font-semibold transition ${
-                salaoMode === 'waiter'
-                  ? 'bg-[var(--dash-primary)] text-white shadow-sm'
-                  : 'border border-[var(--card-border)] bg-white text-[#374151] hover:bg-[#f9fafb]'
-              }`}
-            >
-              Garçom (painel)
-            </button>
-            <button
-              type="button"
-              disabled={salaoSaving}
-              onClick={() => void persistSalaoMode('self_service')}
-              className={`rounded-lg px-4 py-2 text-xs font-semibold transition ${
-                salaoMode === 'self_service'
-                  ? 'bg-[var(--dash-primary)] text-white shadow-sm'
-                  : 'border border-[var(--card-border)] bg-white text-[#374151] hover:bg-[#f9fafb]'
-              }`}
-            >
-              Autoatendimento (QR)
-            </button>
-          </div>
-          {salaoSaving ? (
-            <p className="mt-2 text-[11px] text-[#6b7280]">A guardar…</p>
-          ) : null}
-        </div>
-      ) : null}
-
       <div className="mb-3 flex shrink-0 flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--card-border)] bg-white px-3.5 py-3 shadow-sm">
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
           <div className="flex items-center gap-2">
@@ -1581,23 +1515,6 @@ export function WaiterClient({
               ))}
             </select>
           )}
-        </div>
-      ) : null}
-      {proDualSalon ? (
-        <div className="mb-3 rounded-xl border border-[var(--card-border)] bg-white p-4 shadow-sm">
-          <h2 className="text-sm font-bold text-[#1a1614]">QR de autoatendimento (sempre activo)</h2>
-          <p className="mt-1 text-xs leading-relaxed text-[#6b7280]">
-            Os clientes podem pedir pela mesa mesmo com o mapa de garçom aberto.
-          </p>
-          <div className="mt-3">
-            <StorePublicQrPanel
-              publicUrl={`${origin.replace(/\/$/, '')}/${storeSlug}?auto=1`}
-              storeSlug={storeSlug}
-              qrCheckoutMode="dine_in"
-              compact
-              hideExplanatoryCopy
-            />
-          </div>
         </div>
       ) : null}
       {/* Mobile toggles */}
@@ -1967,16 +1884,6 @@ export function WaiterClient({
       ) : selfServiceSalonUi ? (
         <div className="space-y-4 pb-2">
           <div className="rounded-xl border border-[var(--card-border)] bg-white p-4 shadow-sm md:p-5">
-            <h2 className="text-base font-bold text-[#1a1614]">QR de autoatendimento</h2>
-            <StorePublicQrPanel
-              publicUrl={`${origin.replace(/\/$/, '')}/${storeSlug}?auto=1`}
-              storeSlug={storeSlug}
-              qrCheckoutMode="dine_in"
-              hideExplanatoryCopy
-            />
-          </div>
-
-          <div className="rounded-xl border border-[var(--card-border)] bg-white p-4 shadow-sm md:p-5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-base font-bold text-[#1a1614]">Mesas e setores</h2>
               <button
@@ -1993,9 +1900,8 @@ export function WaiterClient({
               </button>
             </div>
             <p className="mt-2 text-xs leading-relaxed text-[#6b7280]">
-              As mesas e ambientes que definires aqui aparecem no checkout quando o cliente pede
-              pelo QR do salão. Esta área é só de leitura: os pedidos na mesa entram pelo QR, não
-              pelo mapa do garçom (mapa completo no plano Pro).
+              Define mesas e ambientes usados no salão. No Growth, os pedidos na mesa entram pelo
+              autoatendimento do cliente; o mapa completo de garçom no painel está no plano Pro.
             </p>
             <p className="mt-2 text-[11px] text-[#6b7280]">
               <span className="mr-2">🟢 Livre</span>
@@ -2004,7 +1910,7 @@ export function WaiterClient({
             </p>
             {tables.length === 0 ? (
               <p className="mt-4 rounded-lg border border-dashed border-[var(--card-border)] bg-[#fafafa] p-4 text-sm text-[#6b7280]">
-                Ainda não há mesas. Configura para o cliente poder indicar a mesa ao pedir pelo QR.
+                Ainda não há mesas. Configura as mesas do salão para organizar o atendimento.
               </p>
             ) : (
               <div className="mt-4 space-y-6">

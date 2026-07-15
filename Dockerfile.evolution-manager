@@ -1,3 +1,0 @@
-FROM evoapicloud/evolution-manager:v2.3.5
-# nginx: gzip_proxied não aceita must-revalidate — EvolutionAPI/evolution-manager-v2#18
-RUN sed -i 's/ must-revalidate//g' /etc/nginx/conf.d/nginx.conf

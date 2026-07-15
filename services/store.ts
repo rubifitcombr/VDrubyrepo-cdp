@@ -23,7 +23,6 @@ const STORE_ALLOWED_FIELDS = new Set([
   'auto_accept_orders',
   'auto_notify_new_order',
   'auto_close_outside_hours',
-  'auto_whatsapp_delivery',
   'print_auto_on_confirm',
   'print_include_customer_details',
   'print_delivery_copy',

@@ -20,7 +20,7 @@ export async function getStoreOrders(storeId: string): Promise<StoreOrderRow[]> 
 export async function updateOrderStatus(
   orderId: string,
   status: string
-): Promise<{ error: Error | null; deliveryNotified?: boolean }> {
+): Promise<{ error: Error | null }> {
   try {
     const res = await fetch('/api/orders/status', {
       method: 'POST',
@@ -29,17 +29,13 @@ export async function updateOrderStatus(
     })
     const data = (await res.json()) as {
       error?: string
-      deliveryNotified?: boolean
     }
     if (!res.ok) {
       return {
         error: new Error(data?.error || res.statusText || 'Erro ao atualizar.'),
       }
     }
-    return {
-      error: null,
-      deliveryNotified: data.deliveryNotified === true,
-    }
+    return { error: null }
   } catch (e) {
     return {
       error: new Error(e instanceof Error ? e.message : 'Erro de rede.'),

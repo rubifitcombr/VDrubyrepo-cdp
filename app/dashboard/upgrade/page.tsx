@@ -7,7 +7,7 @@ const FEATURE_LABEL: Record<string, { title: string; minPlan: string }> = {
   reports: { title: 'Relatórios de vendas', minPlan: 'Growth' },
   reports_advanced: { title: 'Relatórios avançados', minPlan: 'Pro' },
   appearance: { title: 'Aparência (cor, logo, banner)', minPlan: 'Growth' },
-  automations: { title: 'Automações (mensagens e recuperação)', minPlan: 'Growth' },
+  automations: { title: 'Automações (pedidos e loja)', minPlan: 'Growth' },
   printing: { title: 'Impressão automática', minPlan: 'Pro' },
   kds: { title: 'KDS — monitor de cozinha', minPlan: 'Pro' },
   marketing_ai: {

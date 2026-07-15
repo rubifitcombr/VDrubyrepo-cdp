@@ -2,7 +2,6 @@ export type StoreAutomationKey =
   | 'auto_accept_orders'
   | 'auto_notify_new_order'
   | 'auto_close_outside_hours'
-  | 'auto_whatsapp_delivery'
 
 export type StoreAutomationsState = Record<StoreAutomationKey, boolean>
 
@@ -21,6 +20,5 @@ export function parseAutomationsFromStore(
       row.auto_close_outside_hours,
       false
     ),
-    auto_whatsapp_delivery: boolFromStore(row.auto_whatsapp_delivery, false),
   }
 }

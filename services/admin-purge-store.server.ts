@@ -98,16 +98,6 @@ export async function adminPurgeStoreById(
     () => svc.from('assinatura_cancelamentos').delete().eq('store_id', storeId),
     true
   )
-  await tryDelete(
-    'whatsapp_automations',
-    () => svc.from('whatsapp_automations').delete().eq('store_id', storeId),
-    true
-  )
-  await tryDelete(
-    'whatsapp_auto_reply_cooldowns',
-    () => svc.from('whatsapp_auto_reply_cooldowns').delete().eq('store_id', storeId),
-    true
-  )
 
   const { data: prodRows } = await svc.from('products').select('id').eq('store_id', storeId)
   const productIds = (prodRows ?? []).map((p) => String((p as { id?: string }).id ?? '')).filter(Boolean)

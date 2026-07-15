@@ -290,15 +290,15 @@ export function hasMarketingAiDescription(plan: Plan): boolean {
   return planTier(plan) >= planTier('GROWTH')
 }
 
-/** Acesso à automação de WhatsApp (chatbot simples) — Growth em diante. */
-export function hasAutomationAccess(plan: string): boolean {
-  return ['GROWTH', 'PRO'].includes(String(plan || '').toUpperCase())
-}
-
 /**
- * Toggles de pedido/loja (confirmação WhatsApp, aceitar pedido, notificação, fechar fora de horas,
- * mensagem de entrega, etc.) — Growth em diante (slug, PDV, garçom/QR, autoatendimento).
+ * Automações de pedido/loja (aceitar pedido, notificação, fechar fora de horas)
+ * — Growth em diante (slug, PDV, garçom/QR, autoatendimento).
  */
 export function hasOrderPipelineAutomations(plan: Plan): boolean {
   return planTier(plan) >= planTier('GROWTH')
+}
+
+/** @deprecated Use `hasOrderPipelineAutomations` — WhatsApp Evolution foi removido. */
+export function hasAutomationAccess(plan: string): boolean {
+  return hasOrderPipelineAutomations(parsePlan(plan))
 }

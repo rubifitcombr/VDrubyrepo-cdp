@@ -40,7 +40,7 @@ const MODE_INTRO: Record<
 > = {
   delivery: {
     indicadoPara:
-      'Negócios em que o foco é vender pelo canal online: cardápio público (link ou QR), pedidos para entrega ou retirada, gestão de entregadores e automações WhatsApp — sem operação de salão com PDV ou garçom no painel.',
+      'Negócios em que o foco é vender pelo canal online: cardápio público (link ou QR), pedidos para entrega ou retirada, gestão de entregadores e automações de pedidos — sem operação de salão com PDV ou garçom no painel.',
     resumo:
       'O plano Growth inclui pedidos do site, promoções, aparência e automações; o Pro acrescenta caixa, cozinha (KDS) e impressão ligados a esse fluxo.',
   },

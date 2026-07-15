@@ -26,7 +26,7 @@ const KEY_LABEL: Record<DashboardMenuKey, string> = {
   configuracoes: 'Configurações',
   fiscal: 'Vyria Fiscal (NFC-e)',
   aparencia: 'Aparência da loja online',
-  automacoes: 'Automações (WhatsApp)',
+  automacoes: 'Automações (pedidos e loja)',
   impressao: 'Impressão automática',
   assinatura: 'Assinatura e faturação',
 }

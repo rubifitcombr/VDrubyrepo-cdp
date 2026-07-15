@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { gateMerchantMenuKey } from '@/lib/merchant-api-gate.server'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
-import { maybeSendOrderOutForDeliveryWhatsApp } from '@/services/order-delivery-whatsapp.server'
 
 export const dynamic = 'force-dynamic'
 
@@ -75,7 +74,7 @@ export async function POST(req: NextRequest) {
 
     const current = typeof order.status === 'string' ? order.status : ''
     if (current === newStatus) {
-      return NextResponse.json({ ok: true, deliveryNotified: false })
+      return NextResponse.json({ ok: true })
     }
 
     const src = String((order as { source?: string }).source ?? '').trim().toLowerCase()
@@ -114,21 +113,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    let deliveryNotified = false
-    const wasReadyToConfirmed =
-      current === 'ready' && newStatus === 'confirmed'
-
-    if (wasReadyToConfirmed) {
-      deliveryNotified = await maybeSendOrderOutForDeliveryWhatsApp(supabase, {
-        store: gate.ctx.store,
-        storeId,
-        orderId,
-        customerPhone: order.customer_phone as string | null | undefined,
-        customerName: order.customer_name as string | null | undefined,
-      })
-    }
-
-    return NextResponse.json({ ok: true, deliveryNotified })
+    return NextResponse.json({ ok: true })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Erro inesperado.'
     return NextResponse.json({ error: message }, { status: 500 })

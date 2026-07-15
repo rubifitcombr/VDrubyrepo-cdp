@@ -1,5 +1,4 @@
 import Link from 'next/link'
-import { headers } from 'next/headers'
 import { getUser } from '@/services/auth.server'
 import { getProductStocksForStore } from '@/services/inventory.server'
 import { getMenuProductsForStore } from '@/services/menu.server'
@@ -88,18 +87,12 @@ export default async function GarcomPage({
     )
   }
 
-  const hdrs = await headers()
-  const host = hdrs.get('x-forwarded-host') ?? hdrs.get('host') ?? ''
-  const proto = hdrs.get('x-forwarded-proto') ?? 'http'
-  const origin = host ? `${proto}://${host}` : ''
-
   const supportsTableSectors = 'table_sectors' in s
   const tableSectors = Array.isArray(s.table_sectors)
     ? (s.table_sectors as unknown[])
         .map((x) => String(x ?? '').trim())
         .filter(Boolean)
     : ['Salão', 'Varanda']
-  const storeSlug = typeof s.slug === 'string' ? s.slug.trim() : ''
   const salaoMode = effectiveSalaoAttendanceMode(plan, s.salao_attendance_mode)
 
   const storeName =
@@ -111,8 +104,6 @@ export default async function GarcomPage({
     <WaiterClient
       storeId={storeId}
       storeName={storeName}
-      storeSlug={storeSlug}
-      origin={origin}
       plan={planEffective}
       initialSalaoAttendanceMode={salaoMode}
       initialProducts={products.filter((p) => p.active !== false)}

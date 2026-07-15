@@ -3,7 +3,7 @@ import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
 import { readStorePlano } from '@/lib/store-columns'
 import { getUser } from '@/services/auth.server'
 import { getStoreByUser } from '@/services/store.server'
-import { hasAutomationAccess } from '@/lib/plan'
+import { hasOrderPipelineAutomations } from '@/lib/plan'
 
 export default async function AutomationsLayout({
   children,
@@ -20,7 +20,7 @@ export default async function AutomationsLayout({
       : undefined
   const plan = effectiveDashboardPlan(user.email, rawPlan)
 
-  if (!hasAutomationAccess(plan)) {
+  if (!hasOrderPipelineAutomations(plan)) {
     redirect('/dashboard/upgrade?feature=automations')
   }
 

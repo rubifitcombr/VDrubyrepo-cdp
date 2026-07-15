@@ -61,7 +61,7 @@ export const BENEFICIOS_PRESENCIAL: Record<PlanoSlug, string[]> = {
     'Garçom / QR de mesa (autoatendimento no salão)',
     'Promoções e cupons',
     'Aparência da loja (logo, cor, banner)',
-    'Automações WhatsApp (confirmação e avisos)',
+    'Automações de pedidos (aceite, notificação e horário)',
     'Importar cardápio por foto (IA)',
   ],
   pro: [
@@ -104,7 +104,7 @@ export const BENEFICIOS_HIBRIDO: Record<PlanoSlug, string[]> = {
     'Gestão de entregadores (pedidos online)',
     'Promoções e cupons',
     'Aparência da loja online (logo, cor, banner)',
-    'Automações WhatsApp (confirmação e avisos)',
+    'Automações de pedidos (aceite, notificação e horário)',
     'Importar cardápio por foto (IA)',
   ],
   pro: [
@@ -140,7 +140,7 @@ export const BENEFICIOS_DELIVERY: Record<PlanoSlug, string[]> = {
     'Gestão de entregadores e registo de corridas',
     'Promoções e cupons',
     'Aparência da loja online (logo, cor, banner)',
-    'Automações WhatsApp (confirmação e avisos)',
+    'Automações de pedidos (aceite, notificação e horário)',
     'Importar cardápio por foto (IA)',
   ],
   pro: [

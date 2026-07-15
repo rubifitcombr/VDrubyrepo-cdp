@@ -1449,7 +1449,7 @@ export function OrdersClient({
   async function patchStatus(orderId: string, status: string) {
     const orderBefore = orders.find((o) => o.id === orderId)
     setBusyId(orderId)
-    const { error, deliveryNotified } = await updateOrderStatus(orderId, status)
+    const { error } = await updateOrderStatus(orderId, status)
     setBusyId(null)
     if (error) {
       alert(error.message)
@@ -1458,9 +1458,6 @@ export function OrdersClient({
     setOrders((prev) =>
       prev.map((o) => (o.id === orderId ? { ...o, status } : o))
     )
-    if (deliveryNotified) {
-      flashWaNotice('Aviso de entrega enviado ao cliente por WhatsApp.')
-    }
     if (
       status === 'preparing' &&
       printing.print_auto_on_confirm &&
@@ -1547,7 +1544,6 @@ export function OrdersClient({
       const json = (await res.json().catch(() => ({}))) as {
         error?: string
         order?: Record<string, unknown>
-        deliveryNotified?: boolean
       }
       if (!res.ok) {
         alert(json.error || 'Não foi possível despachar o pedido.')
@@ -1563,9 +1559,6 @@ export function OrdersClient({
             x.id === o.id ? { ...x, status: 'confirmed' } : x
           )
         )
-      }
-      if (json.deliveryNotified) {
-        flashWaNotice('Aviso de entrega enviado ao cliente por WhatsApp.')
       }
       setDeliveryModal(null)
     } finally {
