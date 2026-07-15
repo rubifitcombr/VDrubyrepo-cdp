@@ -9,6 +9,12 @@ const nextConfig: NextConfig = {
         destination: '/dashboard/assinatura',
         permanent: true,
       },
+      { source: '/entrar', destination: '/login', permanent: true },
+      { source: '/signin', destination: '/login', permanent: true },
+      { source: '/sign-in', destination: '/login', permanent: true },
+      { source: '/recuperar-senha', destination: '/login/recuperar', permanent: true },
+      { source: '/redefinir-senha', destination: '/login/redefinir-senha', permanent: true },
+      { source: '/cadastro', destination: '/register', permanent: true },
     ]
   },
   async rewrites() {

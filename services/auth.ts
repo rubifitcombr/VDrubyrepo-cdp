@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/client'
+import { getPasswordResetRedirectUrlClient } from '@/lib/auth-public-url'
 
 export async function getUser() {
   const supabase = createClient()
@@ -30,8 +31,7 @@ export async function signOut() {
 
 /** URL absoluta para o email de recuperação (whitelist no Supabase: Authentication → URL Configuration). */
 export function getPasswordResetRedirectUrl(): string {
-  if (typeof window === 'undefined') return ''
-  return `${window.location.origin}/login/redefinir-senha`
+  return getPasswordResetRedirectUrlClient()
 }
 
 /** Envia email com link para definir nova senha (utilizador não autenticado). */

@@ -3,14 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   FISCAL_CERT_STATUS_LABEL,
-  FISCAL_STATUS_LABEL,
-  isFiscalActive,
   parseFiscalCertStatus,
   parseFiscalStatus,
   type FiscalCertStatus,
   type FiscalStatus,
 } from '@/lib/fiscal'
-import { FiscalUpsell } from '@/app/dashboard/fiscal/_components/FiscalUpsell'
 import { ProductFiscalTable } from '@/app/dashboard/fiscal/_components/ProductFiscalTable'
 
 const inputClass =
@@ -58,6 +55,7 @@ const EMPTY_FORM: FiscalForm = {
 function statusTone(status: FiscalStatus): string {
   if (status === 'ativo') return 'bg-emerald-50 text-emerald-700 border-emerald-200'
   if (status === 'pending_review') return 'bg-amber-50 text-amber-700 border-amber-200'
+  if (status === 'aguardando_configuracao') return 'bg-sky-50 text-sky-700 border-sky-200'
   if (status === 'bloqueado') return 'bg-red-50 text-red-700 border-red-200'
   return 'bg-gray-100 text-gray-600 border-gray-200'
 }
@@ -68,7 +66,15 @@ function certTone(status: FiscalCertStatus): string {
   return 'bg-gray-100 text-gray-600 border-gray-200'
 }
 
-export function FiscalSettingsCard({ storeId }: { storeId: string }) {
+export function FiscalSettingsCard({
+  storeId,
+  displayLabel,
+  onUpdated,
+}: {
+  storeId: string
+  displayLabel?: string
+  onUpdated?: () => void
+}) {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [status, setStatus] = useState<FiscalStatus>('nao_configurado')
@@ -81,7 +87,11 @@ export function FiscalSettingsCard({ storeId }: { storeId: string }) {
   const [certSenha, setCertSenha] = useState('')
   const [certUploading, setCertUploading] = useState(false)
   const [certMsg, setCertMsg] = useState<string | null>(null)
+  const [hasCscId, setHasCscId] = useState(false)
+  const [hasCscToken, setHasCscToken] = useState(false)
   const certFileRef = useRef<HTMLInputElement>(null)
+
+  const badgeLabel = displayLabel ?? status
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -94,6 +104,8 @@ export function FiscalSettingsCard({ storeId }: { storeId: string }) {
         const f = data.fiscal
         setStatus(parseFiscalStatus(f.status))
         setHasToken(Boolean(f.hasToken))
+        setHasCscId(Boolean(f.hasCscId))
+        setHasCscToken(Boolean(f.hasCscToken))
         setCertStatus(parseFiscalCertStatus(f.certStatus))
         setCertCn(String(f.certCn ?? ''))
         setCertValidade(String(f.certValidade ?? ''))
@@ -144,8 +156,9 @@ export function FiscalSettingsCard({ storeId }: { storeId: string }) {
         setMsg(data.error || 'Não foi possível salvar.')
         return
       }
-      setMsg('Dados fiscais salvos. A Vyria vai revisar e ativar a emissão.')
+      setMsg('Dados fiscais salvos.')
       await load()
+      onUpdated?.()
     } finally {
       setSaving(false)
     }
@@ -186,14 +199,10 @@ export function FiscalSettingsCard({ storeId }: { storeId: string }) {
       setCertSenha('')
       if (certFileRef.current) certFileRef.current.value = ''
       await load()
+      onUpdated?.()
     } finally {
       setCertUploading(false)
     }
-  }
-
-  // Add-on pago: enquanto não estiver ativo, mostra o fluxo de ativação (upsell).
-  if (!loading && !isFiscalActive(status)) {
-    return <FiscalUpsell status={status} />
   }
 
   return (
@@ -205,36 +214,30 @@ export function FiscalSettingsCard({ storeId }: { storeId: string }) {
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
           </span>
-          <h2 className="text-base font-bold text-[#1a1614]">Nota fiscal (NFC-e)</h2>
+          <h2 className="text-base font-bold text-[#1a1614]">Configuração do emitente</h2>
         </div>
         <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${statusTone(status)}`}>
-          {FISCAL_STATUS_LABEL[status]}
+          {badgeLabel}
         </span>
       </div>
 
       <p className="mt-2 text-sm text-[#6b7280]">
-        Emissão de NFC-e via Brasil NFe. Preencha os dados do emitente e o Token da sua
-        empresa. O <strong>certificado digital A1 (.pfx)</strong> é enviado aqui com segurança:
-        a Vyria apenas repassa o arquivo ao parceiro fiscal e <strong>não o armazena</strong>.
-        Após salvar, o status fica <strong>Aguardando aprovação</strong> até a Vyria ativar.
+        Preencha os dados da empresa, CSC e certificado A1. A Vyria envia tudo para a Brasil NFe
+        usando a conta master — quem emite a nota é o <strong>CNPJ do seu restaurante</strong>.
+        O certificado é repassado com segurança e <strong>não é armazenado</strong> pela Vyria.
       </p>
+
+      {status === 'pending_review' ? (
+        <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Sua documentação está em análise. Você ainda pode ajustar a configuração se necessário.
+        </p>
+      ) : null}
 
       {loading ? (
         <p className="mt-4 text-sm text-[#9ca3af]">A carregar…</p>
       ) : (
         <div className="mt-5 space-y-5">
           <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className={labelClass}>Token Brasil NFe</label>
-              <input
-                type="password"
-                className={inputClass}
-                placeholder={hasToken ? '•••••• (configurado — preencha para alterar)' : 'Cole o token da Brasil NFe'}
-                value={form.brasilnfeToken}
-                onChange={(e) => set('brasilnfeToken', e.target.value)}
-                autoComplete="off"
-              />
-            </div>
             <div>
               <label className={labelClass}>Ambiente</label>
               <select
@@ -247,10 +250,16 @@ export function FiscalSettingsCard({ storeId }: { storeId: string }) {
               </select>
             </div>
             <div>
+              <label className={labelClass}>Brasil NFe</label>
+              <p className="mt-1.5 rounded-xl border border-[var(--card-border)] bg-[#fafafa] px-4 py-2.5 text-sm text-[#374151]">
+                {hasToken ? '✓ Empresa sincronizada' : 'Pendente — use "Sincronizar com Brasil NFe" abaixo'}
+              </p>
+            </div>
+            <div>
               <label className={labelClass}>CSC ID (QR da NFC-e)</label>
               <input
                 className={inputClass}
-                placeholder="Ex.: 000001"
+                placeholder={hasCscId ? '•••• (configurado — preencha para alterar)' : 'Ex.: 000001'}
                 value={form.cscId}
                 onChange={(e) => set('cscId', e.target.value)}
               />
@@ -260,7 +269,11 @@ export function FiscalSettingsCard({ storeId }: { storeId: string }) {
               <input
                 type="password"
                 className={inputClass}
-                placeholder="Código de Segurança do Contribuinte"
+                placeholder={
+                  hasCscToken
+                    ? '•••• (configurado — preencha para alterar)'
+                    : 'Código de Segurança do Contribuinte (SEFAZ)'
+                }
                 value={form.cscToken}
                 onChange={(e) => set('cscToken', e.target.value)}
                 autoComplete="off"
@@ -289,8 +302,8 @@ export function FiscalSettingsCard({ storeId }: { storeId: string }) {
 
             {!hasToken ? (
               <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                O cadastro da sua empresa na Brasil NFe ainda não foi concluído. Salve os dados do
-                emitente abaixo — a Vyria finaliza o cadastro e libera o envio do certificado.
+                Salve os dados da empresa e clique em <strong>Sincronizar com Brasil NFe</strong>{' '}
+                antes de enviar o certificado.
               </p>
             ) : null}
 
@@ -460,7 +473,7 @@ export function FiscalSettingsCard({ storeId }: { storeId: string }) {
             </button>
           </div>
 
-          <ProductFiscalTable storeId={storeId} />
+          <ProductFiscalTable storeId={storeId} onUpdated={onUpdated} />
         </div>
       )}
     </section>

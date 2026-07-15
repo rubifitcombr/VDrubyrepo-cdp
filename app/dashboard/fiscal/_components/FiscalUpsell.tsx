@@ -13,7 +13,15 @@ const BENEFITS = [
   'DANFE/QR Code prontos para o cliente e histórico de notas.',
 ]
 
-export function FiscalUpsell({ status }: { status: FiscalStatus }) {
+export function FiscalUpsell({
+  status,
+  showBeginButton = false,
+  onBeginConfig,
+}: {
+  status: FiscalStatus
+  showBeginButton?: boolean
+  onBeginConfig?: () => void
+}) {
   const [showCheckout, setShowCheckout] = useState(false)
 
   const checkoutUrl =
@@ -79,6 +87,15 @@ export function FiscalUpsell({ status }: { status: FiscalStatus }) {
           >
             {isBlocked ? `Reativar por ${FISCAL_PRICE_LABEL}` : `Ativar agora por ${FISCAL_PRICE_LABEL}`}
           </button>
+          {showBeginButton && onBeginConfig ? (
+            <button
+              type="button"
+              onClick={onBeginConfig}
+              className="flex-1 rounded-xl border-2 border-[var(--dash-primary)] bg-white px-6 py-3 text-center text-sm font-semibold text-[var(--dash-primary)] transition hover:bg-[var(--dash-primary)]/5"
+            >
+              Já comprei — configurar
+            </button>
+          ) : null}
           <a
             href={supportHref}
             target="_blank"
@@ -90,8 +107,8 @@ export function FiscalUpsell({ status }: { status: FiscalStatus }) {
         </div>
 
         <p className="mt-4 text-xs text-[#9ca3af]">
-          Após a confirmação do pagamento, a Vyria ativa o módulo e você poderá enviar o certificado
-          e começar a emitir.
+          Após a confirmação do pagamento, clique em <strong>Já comprei — configurar</strong> para
+          iniciar o checklist fiscal e solicitar a ativação.
         </p>
       </div>
 

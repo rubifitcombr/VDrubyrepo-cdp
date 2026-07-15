@@ -16,7 +16,13 @@ function isReady(r: Row): boolean {
   return Boolean(r.ncm?.trim() && r.cfop?.trim())
 }
 
-export function ProductFiscalTable({ storeId }: { storeId: string }) {
+export function ProductFiscalTable({
+  storeId,
+  onUpdated,
+}: {
+  storeId: string
+  onUpdated?: () => void
+}) {
   const [rows, setRows] = useState<Row[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -103,6 +109,7 @@ export function ProductFiscalTable({ storeId }: { storeId: string }) {
       } else {
         setMsg(`Dados fiscais salvos (${toSave.length} produto(s)).`)
         setDirty(new Set())
+        onUpdated?.()
       }
     } finally {
       setSaving(false)

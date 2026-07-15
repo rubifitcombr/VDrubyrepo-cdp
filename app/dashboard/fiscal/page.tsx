@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { FiscalSettingsCard } from '@/app/dashboard/settings/_components/FiscalSettingsCard'
+import { FiscalOnboardingClient } from '@/app/dashboard/fiscal/_components/FiscalOnboardingClient'
 import { getUser } from '@/services/auth'
 import { getStoreByUser } from '@/services/store'
 
@@ -64,7 +64,7 @@ export default function VyriaFiscalPage() {
         {loading ? (
           <p className="text-sm text-[#9ca3af]">A carregar…</p>
         ) : storeId ? (
-          <FiscalSettingsCard storeId={storeId} />
+          <FiscalOnboardingClient storeId={storeId} />
         ) : (
           <p className="rounded-2xl border border-dashed border-[var(--card-border)] bg-white px-6 py-10 text-center text-sm text-[#6b7280]">
             Não encontramos uma loja associada à sua conta.

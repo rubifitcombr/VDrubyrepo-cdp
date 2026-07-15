@@ -2,6 +2,7 @@
 
 export type FiscalStatus =
   | 'nao_configurado'
+  | 'aguardando_configuracao'
   | 'pending_review'
   | 'ativo'
   | 'bloqueado'
@@ -19,7 +20,8 @@ export type FiscalCertStatus = 'nao_enviado' | 'valido' | 'vencido' | 'invalido'
 
 export const FISCAL_STATUS_LABEL: Record<FiscalStatus, string> = {
   nao_configurado: 'Não configurado',
-  pending_review: 'Aguardando aprovação',
+  aguardando_configuracao: 'Aguardando configuração',
+  pending_review: 'Pronto para aprovação',
   ativo: 'Ativo',
   bloqueado: 'Bloqueado',
 }
@@ -41,7 +43,14 @@ export const FISCAL_CERT_STATUS_LABEL: Record<FiscalCertStatus, string> = {
 
 export function parseFiscalStatus(raw: unknown): FiscalStatus {
   const v = String(raw ?? '').trim().toLowerCase()
-  if (v === 'pending_review' || v === 'ativo' || v === 'bloqueado') return v
+  if (
+    v === 'aguardando_configuracao' ||
+    v === 'pending_review' ||
+    v === 'ativo' ||
+    v === 'bloqueado'
+  ) {
+    return v
+  }
   return 'nao_configurado'
 }
 
@@ -60,6 +69,12 @@ export function parseFiscalCertStatus(raw: unknown): FiscalCertStatus {
 /** O lojista só pode emitir NFC-e quando o add-on está ativo. */
 export function isFiscalActive(status: unknown): boolean {
   return parseFiscalStatus(status) === 'ativo'
+}
+
+/** Lojista pode configurar emitente, certificado e produtos durante o onboarding. */
+export function canAccessFiscalSettings(status: unknown): boolean {
+  const s = parseFiscalStatus(status)
+  return s === 'ativo' || s === 'pending_review' || s === 'aguardando_configuracao'
 }
 
 /** CFOPs aceitos pela NFC-e (saída a consumidor final) — Brasil NFe. */

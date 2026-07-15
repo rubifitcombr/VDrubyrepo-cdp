@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
   const { data: raw } = await svc
     .from('store_fiscal_config')
     .select(
-      'inscricao_estadual, nome_fantasia, endereco_logradouro, endereco_numero, endereco_bairro, endereco_municipio, endereco_municipio_ibge, endereco_uf, endereco_cep, csc_id'
+      'inscricao_estadual, nome_fantasia, endereco_logradouro, endereco_numero, endereco_bairro, endereco_municipio, endereco_municipio_ibge, endereco_uf, endereco_cep, csc_id, sefaz_credenciado'
     )
     .eq('store_id', storeId)
     .maybeSingle()
@@ -67,6 +67,9 @@ export async function GET(req: NextRequest) {
       // Segredos: só indicamos se estão preenchidos.
       hasToken: Boolean(cfg?.brasilnfeToken),
       hasCsc: Boolean((extra.csc_id as string | null) || cfg?.cscToken),
+      sefazCredenciado: Boolean(extra.sefaz_credenciado),
+      hasCscId: Boolean((extra.csc_id as string | null)?.trim()),
+      hasCscToken: Boolean(cfg?.cscToken),
     },
   })
 }
@@ -113,11 +116,16 @@ export async function POST(req: NextRequest) {
   if (str(body.cscId)) patch.csc_id = str(body.cscId)
   if (str(body.cscToken)) patch.csc_token = str(body.cscToken)
 
-  // O lojista nunca se auto-ativa: só admin coloca 'ativo'. Mantém estado se já
-  // ativo/bloqueado; caso contrário marca para revisão.
+  // O lojista nunca se auto-ativa. Mantém ativo/bloqueado/pending_review; demais ficam
+  // em aguardando_configuracao até clicar em "Solicitar ativação".
   const curStatus = parseFiscalStatus(current?.status)
-  patch.status =
-    curStatus === 'ativo' || curStatus === 'bloqueado' ? curStatus : 'pending_review'
+  if (curStatus === 'ativo' || curStatus === 'bloqueado' || curStatus === 'pending_review') {
+    patch.status = curStatus
+  } else if (curStatus === 'aguardando_configuracao') {
+    patch.status = 'aguardando_configuracao'
+  } else {
+    patch.status = 'aguardando_configuracao'
+  }
 
   const { error } = await svc
     .from('store_fiscal_config')

@@ -4,8 +4,8 @@ import { useBeginNavigation } from '@/app/_components/NavigationProgressProvider
 import { RouteLoadingFallback } from '@/app/_components/RouteLoadingFallback'
 import Link from 'next/link'
 import { Suspense, useEffect, useState } from 'react'
+import { createClient } from '@/lib/supabase/client'
 import { setRememberLoginPreference } from '@/services/auth'
-import { signInWithPasswordAction } from '@/services/auth.actions'
 import { useSearchParams } from 'next/navigation'
 
 const inputClass =
@@ -39,21 +39,36 @@ function LoginForm() {
   async function handleLogin() {
     setIsLoggingIn(true)
     try {
-      const result = await signInWithPasswordAction(email.trim(), password)
+      const supabase = createClient()
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      })
 
-      if (!result.ok) {
-        alert(result.error)
+      if (error) {
+        alert(error.message)
         setIsLoggingIn(false)
         return
       }
 
       setRememberLoginPreference(rememberLogin)
 
-      // Plano anual sem assinatura: abre o contrato; senão, hub.
+      await fetch('/api/auth/sync-usuario', {
+        method: 'POST',
+        credentials: 'include',
+      }).catch(() => null)
+
+      const next = safeNextPath(searchParams.get('next'))
+      const destRes = await fetch(
+        `/api/auth/post-login-redirect?next=${encodeURIComponent(next)}`,
+        { credentials: 'include' }
+      )
+      const destJson = (await destRes.json().catch(() => ({}))) as {
+        redirectTo?: string
+      }
       const destination =
-        result.redirectTo === '/dashboard/contrato'
-          ? '/dashboard/contrato'
-          : safeNextPath(searchParams.get('next'))
+        destRes.ok && destJson.redirectTo ? destJson.redirectTo : next
+
       beginNavigation()
       window.location.assign(destination)
     } catch (err) {

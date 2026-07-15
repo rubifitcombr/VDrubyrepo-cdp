@@ -21,11 +21,15 @@ type FiscalRow = {
   certStatus: FiscalCertStatus
   certValidade: string
   hasToken: boolean
+  hasCsc: boolean
+  readinessReady: boolean
+  readinessPending: number
 }
 
 function statusTone(status: FiscalStatus): string {
   if (status === 'ativo') return 'bg-emerald-50 text-emerald-700 border-emerald-200'
   if (status === 'pending_review') return 'bg-amber-50 text-amber-700 border-amber-200'
+  if (status === 'aguardando_configuracao') return 'bg-sky-50 text-sky-700 border-sky-200'
   if (status === 'bloqueado') return 'bg-red-50 text-red-700 border-red-200'
   return 'bg-gray-100 text-gray-600 border-gray-200'
 }
@@ -63,6 +67,9 @@ export function AdminFiscalPanel() {
         certStatus: parseFiscalCertStatus(r.certStatus),
         certValidade: String(r.certValidade ?? ''),
         hasToken: Boolean(r.hasToken),
+        hasCsc: Boolean(r.hasCsc),
+        readinessReady: Boolean(r.readinessReady),
+        readinessPending: Number(r.readinessPending ?? 0),
       }))
       setRows(items)
       setAmbienteById(new Map(items.map((i) => [i.storeId, i.ambiente])))
@@ -103,6 +110,7 @@ export function AdminFiscalPanel() {
     total: rows.length,
     ativo: rows.filter((r) => r.status === 'ativo').length,
     pendente: rows.filter((r) => r.status === 'pending_review').length,
+    configurando: rows.filter((r) => r.status === 'aguardando_configuracao').length,
   }
 
   return (
@@ -123,7 +131,7 @@ export function AdminFiscalPanel() {
         </button>
       </header>
 
-      <div className="mt-5 grid grid-cols-3 gap-3">
+      <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div className="rounded-xl border border-[var(--card-border)] bg-white px-4 py-3">
           <p className="text-2xl font-bold tabular-nums text-[#1a1614]">{counts.total}</p>
           <p className="text-xs font-semibold text-[#6b7280]">Lojas configuradas</p>
@@ -134,7 +142,11 @@ export function AdminFiscalPanel() {
         </div>
         <div className="rounded-xl border border-amber-200 bg-amber-50/50 px-4 py-3">
           <p className="text-2xl font-bold tabular-nums text-amber-700">{counts.pendente}</p>
-          <p className="text-xs font-semibold text-amber-700">Aguardando aprovação</p>
+          <p className="text-xs font-semibold text-amber-700">Prontas p/ aprovar</p>
+        </div>
+        <div className="rounded-xl border border-sky-200 bg-sky-50/50 px-4 py-3">
+          <p className="text-2xl font-bold tabular-nums text-sky-700">{counts.configurando}</p>
+          <p className="text-xs font-semibold text-sky-700">Em configuração</p>
         </div>
       </div>
 
@@ -166,8 +178,10 @@ export function AdminFiscalPanel() {
                   <p className="mt-1 text-xs text-[#6b7280]">
                     {r.razaoSocial || '—'}
                     {r.cnpj ? ` · CNPJ ${r.cnpj}` : ''}
-                    {` · Token ${r.hasToken ? 'OK' : 'ausente'}`}
+                    {` · Sync ${r.hasToken ? 'OK' : 'pendente'}`}
+                    {` · CSC ${r.hasCsc ? 'OK' : 'pendente'}`}
                     {` · ${r.ambiente === 'producao' ? 'Produção' : 'Homologação'}`}
+                    {r.readinessReady ? ' · Checklist ✓' : ` · ${r.readinessPending} item(ns) pendente(s)`}
                     {r.certValidade
                       ? ` · Cert. até ${new Date(r.certValidade).toLocaleDateString('pt-BR')}`
                       : ''}
@@ -196,8 +210,13 @@ export function AdminFiscalPanel() {
                   </button>
                   <button
                     type="button"
-                    disabled={busyId === r.storeId}
+                    disabled={busyId === r.storeId || r.status !== 'pending_review'}
                     onClick={() => void act(r.storeId, 'ativar')}
+                    title={
+                      r.status !== 'pending_review'
+                        ? 'Disponível quando o lojista solicitar ativação'
+                        : undefined
+                    }
                     className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:brightness-105 disabled:opacity-50"
                   >
                     Ativar

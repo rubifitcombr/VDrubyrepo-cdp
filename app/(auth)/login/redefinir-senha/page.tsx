@@ -57,10 +57,35 @@ function RedefinirSenhaForm() {
       }
     })
 
+    async function consumeRecoveryFromHash() {
+      if (!hash || cancelled) return false
+      const params = new URLSearchParams(hash.replace(/^#/, ''))
+      const accessToken = params.get('access_token')
+      const refreshToken = params.get('refresh_token')
+      const type = params.get('type')
+      if (accessToken && refreshToken && type === 'recovery') {
+        const { error } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        })
+        if (!error) {
+          markReady()
+          window.history.replaceState(null, '', window.location.pathname)
+          return true
+        }
+      }
+      return false
+    }
+
+    void consumeRecoveryFromHash()
+
     if (code) {
       void supabase.auth.exchangeCodeForSession(window.location.href).then(({ error }) => {
         if (cancelled) return
-        if (!error) markReady()
+        if (!error) {
+          markReady()
+          window.history.replaceState(null, '', window.location.pathname)
+        }
       })
     }
 
@@ -96,7 +121,15 @@ function RedefinirSenhaForm() {
         return
       }
       beginNavigation()
-      router.push('/dashboard')
+      const destRes = await fetch('/api/auth/post-login-redirect', {
+        credentials: 'include',
+      })
+      const destJson = (await destRes.json().catch(() => ({}))) as {
+        redirectTo?: string
+      }
+      router.push(
+        destRes.ok && destJson.redirectTo ? destJson.redirectTo : '/dashboard'
+      )
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Erro ao guardar.')
       setBusy(false)

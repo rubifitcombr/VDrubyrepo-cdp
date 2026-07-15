@@ -145,7 +145,8 @@ export function AdminFiscalControl({ lojistaId }: { lojistaId: string }) {
 
           {!info?.hasToken ? (
             <p className="text-xs text-amber-700">
-              O lojista ainda não enviou o Token da Brasil NFe nas configurações.
+              Empresa ainda não sincronizada com a Brasil NFe. O lojista deve usar
+              &quot;Sincronizar com Brasil NFe&quot; no painel fiscal.
             </p>
           ) : null}
           {msg ? <p className="text-xs text-[#374151]">{msg}</p> : null}

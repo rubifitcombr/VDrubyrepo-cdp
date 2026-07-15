@@ -81,9 +81,11 @@ export async function proxy(request: NextRequest) {
     p === '/login/redefinir-senha' || p.startsWith('/login/redefinir-senha/')
   const isRecuperarSenhaPage =
     p === '/login/recuperar' || p.startsWith('/login/recuperar/')
+  const isLoginPage = p === '/login' || p.startsWith('/login/')
   const isAuthPage =
-    p === '/login' ||
+    isLoginPage ||
     p === '/register' ||
+    p.startsWith('/register/') ||
     isRecuperarSenhaPage ||
     isPasswordRedefinePage
   const vyriaPanelMode = parseVyriaPanelMode(
@@ -171,8 +173,7 @@ export async function proxy(request: NextRequest) {
   if (merchantShell && !user) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
-    url.search = ''
-    url.searchParams.set('next', '/dashboard')
+    url.searchParams.set('next', p.startsWith('/dashboard') ? p : '/dashboard')
     return NextResponse.redirect(url)
   }
 
