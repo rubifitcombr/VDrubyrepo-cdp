@@ -8,6 +8,7 @@
     "build:clean": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\" && next build",
     "start": "next start",
     "lint": "eslint",
+    "test:fiscal": "node scripts/verify-fiscal.mjs",
     "docs:lp-diagrama": "node scripts/generate-lp-producao-pdf.mjs"
   },
   "dependencies": {

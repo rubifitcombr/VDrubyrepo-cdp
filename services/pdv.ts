@@ -2,11 +2,16 @@
 
 import { dashboardFetch } from '@/lib/dashboard-fetch.client'
 
-export type PdvPaymentMethod = 'cash' | 'pix' | 'card'
+export type PdvPaymentMethod = 'cash' | 'pix' | 'card' | 'card_credit' | 'card_debit'
 
 export type PdvCloseMode = 'cashier' | 'immediate'
 
-export type PdvImmediatePaymentMethod = 'cash' | 'pix' | 'card'
+export type PdvImmediatePaymentMethod =
+  | 'cash'
+  | 'pix'
+  | 'card'
+  | 'card_credit'
+  | 'card_debit'
 
 export type PdvSaleLine = {
   productId: string
@@ -25,8 +30,22 @@ export async function submitPdvSale(params: {
   closeMode?: PdvCloseMode
   /** Obrigatório quando `closeMode === 'immediate'`. */
   immediatePaymentMethod?: PdvImmediatePaymentMethod | null
+  /** CPF opcional na NFC-e (só emissão imediata). */
+  cpf?: string | null
 }): Promise<
-  | { ok: true; orderId: string; closedImmediately: boolean }
+  | {
+      ok: true
+      orderId: string
+      closedImmediately: boolean
+      fiscal?: {
+        attempted: boolean
+        skipped: boolean
+        ok: boolean
+        status?: string
+        chaveAcesso?: string
+        motivo?: string
+      }
+    }
   | { ok: false; message: string }
 > {
   const {
@@ -36,6 +55,7 @@ export async function submitPdvSale(params: {
     internalNotes,
     closeMode = 'cashier',
     immediatePaymentMethod,
+    cpf,
   } = params
 
   if (!items.length) {
@@ -44,6 +64,11 @@ export async function submitPdvSale(params: {
 
   if (closeMode === 'immediate' && !immediatePaymentMethod) {
     return { ok: false, message: 'Escolhe o método de pagamento para receber agora.' }
+  }
+
+  const cpfDigits = String(cpf ?? '').replace(/\D/g, '')
+  if (cpfDigits && cpfDigits.length !== 11) {
+    return { ok: false, message: 'CPF inválido: use 11 dígitos ou deixe em branco.' }
   }
 
   const res = await dashboardFetch('/api/pdv/sale', {
@@ -56,6 +81,7 @@ export async function submitPdvSale(params: {
       customerName: customerName?.trim() || undefined,
       internalNotes: internalNotes?.trim() || undefined,
       discountBrl,
+      cpf: closeMode === 'immediate' && cpfDigits ? cpfDigits : undefined,
       items: items.map((l) => ({
         product_id: l.productId,
         quantity: l.quantity,
@@ -65,7 +91,20 @@ export async function submitPdvSale(params: {
     }),
   })
 
-  let body: { error?: unknown; ok?: unknown; orderId?: unknown; closedImmediately?: unknown }
+  let body: {
+    error?: unknown
+    ok?: unknown
+    orderId?: unknown
+    closedImmediately?: unknown
+    fiscal?: {
+      attempted?: unknown
+      skipped?: unknown
+      ok?: unknown
+      status?: unknown
+      chaveAcesso?: unknown
+      motivo?: unknown
+    }
+  }
   try {
     body = (await res.json()) as typeof body
   } catch {
@@ -85,9 +124,28 @@ export async function submitPdvSale(params: {
     return { ok: false, message: 'Resposta inválida do servidor.' }
   }
 
+  const fiscalRaw = body.fiscal
+  const fiscal =
+    fiscalRaw && typeof fiscalRaw === 'object'
+      ? {
+          attempted: Boolean(fiscalRaw.attempted),
+          skipped: Boolean(fiscalRaw.skipped),
+          ok: Boolean(fiscalRaw.ok),
+          status:
+            typeof fiscalRaw.status === 'string' ? fiscalRaw.status : undefined,
+          chaveAcesso:
+            typeof fiscalRaw.chaveAcesso === 'string'
+              ? fiscalRaw.chaveAcesso
+              : undefined,
+          motivo:
+            typeof fiscalRaw.motivo === 'string' ? fiscalRaw.motivo : undefined,
+        }
+      : undefined
+
   return {
     ok: true,
     orderId,
     closedImmediately: Boolean(body.closedImmediately),
+    ...(fiscal ? { fiscal } : {}),
   }
 }

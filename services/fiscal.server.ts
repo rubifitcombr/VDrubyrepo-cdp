@@ -3,6 +3,7 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { BrasilNFe } from 'brasilnfe'
 import type {
+  CancelarNotaFiscalEnvio,
   EmpresaEnvio,
   NotaFiscalEnvio,
   Pagamento as SdkPagamento,
@@ -135,6 +136,15 @@ export type NfceEmitInput = {
   pagamentos?: NfcePagamentoInput[]
   /** Total da nota; usado para o pagamento padrão quando não há detalhamento. */
   valorTotal?: number
+  /** Frete (entrega) — rateado no 1º item via ValorFrete. */
+  valorFrete?: number
+  /** Taxa de serviço / outras despesas — no 1º item via ValorOutrasDespesas. */
+  valorOutrasDespesas?: number
+  /**
+   * Presença do comprador (NFC-e):
+   * 1 presencial, 4 entrega a domicílio, 9 não presencial outros…
+   */
+  indicadorPresenca?: number
   /** Correlaciona a nota com o pedido (usado na consulta posterior). */
   identificadorInterno?: string
 }
@@ -161,6 +171,32 @@ export type FiscalStatusResult = {
   nfeUrl?: string
   motivo?: string
   raw?: unknown
+}
+
+export type NfceCancelInput = {
+  token: string
+  chaveAcesso: string
+  /** Protocolo SEFAZ de autorização (opcional se a nota foi emitida na Brasil NFe). */
+  protocoloAutorizacao?: string
+  justificativa: string
+  ambiente: FiscalAmbiente
+}
+
+export type FiscalCancelResult = {
+  success: boolean
+  /** Processado | pendente | erro — alinhado ao Status do evento no gateway. */
+  status: 'cancelada' | 'pendente' | 'erro'
+  protocoloCancelamento?: string
+  motivo?: string
+  raw?: unknown
+}
+
+export type NfceArquivoTipo = 'xml' | 'danfe'
+
+export type NfceArquivoResult = {
+  success: boolean
+  buffer?: Buffer
+  motivo?: string
 }
 
 export type CertificadoInput = {
@@ -225,6 +261,13 @@ export type EmpresaListResult = {
 export interface FiscalService {
   emitirNfce(input: NfceEmitInput): Promise<FiscalEmissionResult>
   consultarStatus(nfeId: string, token: string): Promise<FiscalStatusResult>
+  cancelarNfce(input: NfceCancelInput): Promise<FiscalCancelResult>
+  /** Rebaixa XML (1) ou DANFE (2) pela chave quando a emissão não trouxe base64. */
+  obterArquivoNfce(input: {
+    token: string
+    chaveAcesso: string
+    tipo: NfceArquivoTipo
+  }): Promise<NfceArquivoResult>
   enviarCertificado(input: CertificadoInput): Promise<CertificadoResult>
   verificarCertificado(input: CertificadoInput): Promise<CertificadoResult>
   adicionarEmpresa(input: EmpresaInput): Promise<EmpresaResult>
@@ -281,9 +324,11 @@ export class BrasilNfeService implements FiscalService {
     const crt = input.crt ?? 1 // padrão Simples Nacional
     const cstIcmsPadrao = crt === 3 ? '00' : '102' // Normal usa CST; Simples usa CSOSN
 
-    const produtos: SdkProduto[] = input.produtos.map((p) => {
+    const produtos: SdkProduto[] = input.produtos.map((p, idx) => {
       const quantidade = toNum(p.quantidade) || 1
       const valorUnitario = toNum(p.valorUnitario)
+      const frete = idx === 0 ? toNum(input.valorFrete) : 0
+      const outras = idx === 0 ? toNum(input.valorOutrasDespesas) : 0
       return {
         CodProdutoServico: p.codigo || undefined,
         NmProduto: p.nome,
@@ -294,6 +339,8 @@ export class BrasilNfeService implements FiscalService {
         UnidadeComercial: p.unidade || 'UN',
         ValorUnitario: valorUnitario,
         ValorTotal: Number((quantidade * valorUnitario).toFixed(2)),
+        ...(frete > 0 ? { ValorFrete: Number(frete.toFixed(2)) } : {}),
+        ...(outras > 0 ? { ValorOutrasDespesas: Number(outras.toFixed(2)) } : {}),
         OrigemProduto: Number(p.origem ?? 0) || 0,
         Imposto: {
           ICMS: { CodSituacaoTributaria: p.cstCsosn?.trim() || cstIcmsPadrao, AliquotaICMS: 0 },
@@ -303,10 +350,13 @@ export class BrasilNfeService implements FiscalService {
       }
     })
 
+    const itemsSum = produtos.reduce((acc, p) => acc + (p.ValorTotal ?? 0), 0)
+    const freteTotal = toNum(input.valorFrete)
+    const outrasTotal = toNum(input.valorOutrasDespesas)
     const total =
       input.valorTotal != null
         ? toNum(input.valorTotal)
-        : produtos.reduce((acc, p) => acc + (p.ValorTotal ?? 0), 0)
+        : Number((itemsSum + freteTotal + outrasTotal).toFixed(2))
 
     const pagamentos: SdkPagamento[] = (input.pagamentos?.length
       ? input.pagamentos
@@ -324,7 +374,7 @@ export class BrasilNfeService implements FiscalService {
       ModeloDocumento: 65,
       Finalidade: 1,
       NaturezaOperacao: input.naturezaOperacao || 'VENDA AO CONSUMIDOR',
-      IndicadorPresenca: 1,
+      IndicadorPresenca: input.indicadorPresenca ?? 1,
       ConsumidorFinal: true,
       ...(input.identificadorInterno ? { IdentificadorInterno: input.identificadorInterno } : {}),
       ...(cpf
@@ -346,11 +396,19 @@ export class BrasilNfeService implements FiscalService {
       const slimRaw = { ReturnNF: ret, Error: resp.Error, Avisos: resp.Avisos }
 
       if (ret?.Ok) {
+        // ReturnNF.Numero é o número da nota — NÃO o protocolo SEFAZ.
+        // NumeroProtocolo vem da consulta; o cancelamento na Brasil NFe
+        // localiza o protocolo automaticamente se a nota foi emitida por ela.
+        const retAny = ret as { NumeroProtocolo?: string | number; ChaveNF?: string }
+        const protocolo =
+          retAny.NumeroProtocolo != null && String(retAny.NumeroProtocolo).trim()
+            ? String(retAny.NumeroProtocolo).trim()
+            : undefined
         return {
           success: true,
           status: 'autorizada',
           chaveAcesso: ret.ChaveNF || undefined,
-          protocolo: ret.Numero != null ? String(ret.Numero) : undefined,
+          protocolo,
           xmlBase64: resp.Base64Xml || undefined,
           danfeBase64: resp.Base64File || undefined,
           raw: slimRaw,
@@ -416,6 +474,106 @@ export class BrasilNfeService implements FiscalService {
       }
     } catch (err) {
       return { success: false, status: 'erro', motivo: errorMessage(err) }
+    }
+  }
+
+  async cancelarNfce(input: NfceCancelInput): Promise<FiscalCancelResult> {
+    if (!input.token?.trim()) {
+      return { success: false, status: 'erro', motivo: 'Token da empresa (loja) ausente.' }
+    }
+    const chave = String(input.chaveAcesso ?? '').replace(/\D/g, '')
+    if (chave.length !== 44) {
+      return { success: false, status: 'erro', motivo: 'Chave de acesso da NFC-e inválida.' }
+    }
+    const justificativa = String(input.justificativa ?? '').trim()
+    if (justificativa.length < 15) {
+      return {
+        success: false,
+        status: 'erro',
+        motivo: 'Justificativa deve ter no mínimo 15 caracteres.',
+      }
+    }
+    if (justificativa.length > 1000) {
+      return {
+        success: false,
+        status: 'erro',
+        motivo: 'Justificativa deve ter no máximo 1000 caracteres.',
+      }
+    }
+
+    const payload: CancelarNotaFiscalEnvio = {
+      ChaveNF: chave,
+      Justificativa: justificativa,
+      TipoAmbiente: input.ambiente === 'producao' ? 1 : 2,
+      TipoDocumento: 0,
+      ...(input.protocoloAutorizacao?.trim()
+        ? { NumeroProtocolo: input.protocoloAutorizacao.trim() }
+        : {}),
+    }
+
+    try {
+      const resp = await this.client(input.token).eventos.cancelarNotaFiscal(payload)
+      const statusCode = resp.Status
+      const motivo =
+        resp.DsMotivo ||
+        resp.Error ||
+        resp.Avisos?.join('; ') ||
+        undefined
+
+      if (statusCode === 1) {
+        return {
+          success: true,
+          status: 'cancelada',
+          protocoloCancelamento: resp.NuProtocolo || undefined,
+          motivo,
+          raw: resp,
+        }
+      }
+      if (statusCode === 2) {
+        return {
+          success: false,
+          status: 'pendente',
+          protocoloCancelamento: resp.NuProtocolo || undefined,
+          motivo: motivo || 'Cancelamento aguardando processamento na SEFAZ.',
+          raw: resp,
+        }
+      }
+      return {
+        success: false,
+        status: 'erro',
+        protocoloCancelamento: resp.NuProtocolo || undefined,
+        motivo: motivo || 'Falha ao cancelar a NFC-e.',
+        raw: resp,
+      }
+    } catch (err) {
+      return { success: false, status: 'erro', motivo: errorMessage(err) }
+    }
+  }
+
+  async obterArquivoNfce(input: {
+    token: string
+    chaveAcesso: string
+    tipo: NfceArquivoTipo
+  }): Promise<NfceArquivoResult> {
+    if (!input.token?.trim()) {
+      return { success: false, motivo: 'Token da empresa (loja) ausente.' }
+    }
+    const chave = String(input.chaveAcesso ?? '').replace(/\D/g, '')
+    if (chave.length !== 44) {
+      return { success: false, motivo: 'Chave de acesso inválida.' }
+    }
+    try {
+      const buf = await this.client(input.token).arquivos.obterArquivoNotaFiscal({
+        ChaveNF: chave,
+        FileType: input.tipo === 'danfe' ? 2 : 1,
+        TipoDocumentoFiscal: 1,
+      })
+      if (!buf?.length) {
+        return { success: false, motivo: 'Arquivo vazio no gateway.' }
+      }
+      return { success: true, buffer: Buffer.isBuffer(buf) ? buf : Buffer.from(buf) }
+    } catch (err) {
+      return { success: false, motivo: errorMessage(err) }
     }
   }
 

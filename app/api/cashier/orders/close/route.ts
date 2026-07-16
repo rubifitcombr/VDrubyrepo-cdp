@@ -11,12 +11,21 @@ import { readStorePlano } from '@/lib/store-columns'
 import { getUser } from '@/services/auth.server'
 import { createClient } from '@/lib/supabase/server'
 import { getOpenCaixaTurno } from '@/services/caixa-turnos.server'
+import { tryAutoEmitNfceForOrder } from '@/services/fiscal'
 
-type PaymentMethod = 'cash' | 'pix' | 'card'
+type PaymentMethod = 'cash' | 'pix' | 'card' | 'card_credit' | 'card_debit'
 
 function normalizePayment(v: unknown): PaymentMethod | null {
   const t = String(v ?? '').trim().toLowerCase()
-  if (t === 'cash' || t === 'pix' || t === 'card') return t
+  if (
+    t === 'cash' ||
+    t === 'pix' ||
+    t === 'card' ||
+    t === 'card_credit' ||
+    t === 'card_debit'
+  ) {
+    return t
+  }
   return null
 }
 
@@ -135,6 +144,9 @@ export async function POST(request: Request) {
     )
   }
 
+  // Fecho do caixa = pagamento confirmado → tenta NFC-e sem bloquear a venda.
+  const fiscal = await tryAutoEmitNfceForOrder(orderId)
+
   return NextResponse.json({
     ok: true,
     order: {
@@ -144,6 +156,7 @@ export async function POST(request: Request) {
       notes: String(updated.notes ?? ''),
       caixa_turno_id: String((updated as { caixa_turno_id?: string }).caixa_turno_id ?? turnoAberto.id),
     },
+    fiscal,
   })
 }
 

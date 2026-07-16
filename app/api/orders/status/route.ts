@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { gateMerchantMenuKey } from '@/lib/merchant-api-gate.server'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
+import { tryAutoCancelNfceForOrder, tryAutoEmitNfceForOrder } from '@/services/fiscal'
 
 export const dynamic = 'force-dynamic'
 
@@ -111,6 +112,18 @@ export async function POST(req: NextRequest) {
         { error: upErr.message || 'Não foi possível atualizar o pedido.' },
         { status: 500 }
       )
+    }
+
+    // Pedido já cancelado: tenta NFC-e sem bloquear a recusa.
+    if (newStatus === 'cancelled') {
+      const fiscal = await tryAutoCancelNfceForOrder(orderId)
+      return NextResponse.json({ ok: true, fiscal })
+    }
+
+    // Pedido entregue: tenta emitir NFC-e (delivery/manual) sem bloquear.
+    if (newStatus === 'delivered') {
+      const fiscal = await tryAutoEmitNfceForOrder(orderId)
+      return NextResponse.json({ ok: true, fiscal })
     }
 
     return NextResponse.json({ ok: true })

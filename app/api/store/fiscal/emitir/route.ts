@@ -57,5 +57,7 @@ export async function POST(req: NextRequest) {
     chaveAcesso: result.chaveAcesso,
     protocolo: result.protocolo,
     nfeUrl: result.nfeUrl,
+    xmlUrl: result.xmlUrl,
+    qrCodeUrl: result.qrCodeUrl,
   })
 }

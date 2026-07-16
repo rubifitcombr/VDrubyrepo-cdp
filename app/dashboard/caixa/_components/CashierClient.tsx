@@ -25,7 +25,7 @@ import { IconPrinter } from '@/app/dashboard/_components/NavIcons'
 import { FinanceiroView } from './FinanceiroView'
 
 type SourceKey = 'waiter' | 'pdv' | 'menu_link'
-type PaymentDraft = 'cash' | 'pix' | 'card'
+type PaymentDraft = 'cash' | 'pix' | 'card' | 'card_credit' | 'card_debit'
 
 const money = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
@@ -662,6 +662,12 @@ function OperacaoView({
           notes?: string
           caixa_turno_id?: string
         }
+        fiscal?: {
+          attempted?: boolean
+          skipped?: boolean
+          ok?: boolean
+          motivo?: string
+        }
       }
       if (!res.ok) {
         const err = json.error || 'Não foi possível fechar a comanda.'
@@ -682,6 +688,15 @@ function OperacaoView({
             : o
         )
       )
+      if (json.fiscal?.attempted && json.fiscal.ok) {
+        showToast('Comanda fechada. NFC-e emitida.')
+      } else if (json.fiscal?.attempted && !json.fiscal.ok) {
+        showToast(
+          `Comanda fechada. NFC-e: ${json.fiscal.motivo || 'não emitida — pode emitir em Fiscal.'}`
+        )
+      } else {
+        showToast('Comanda fechada.')
+      }
     } finally {
       setClosingOrderId(null)
     }
@@ -1195,7 +1210,9 @@ function OperacaoView({
                         >
                           <option value="cash">Dinheiro</option>
                           <option value="pix">PIX</option>
-                          <option value="card">Cartão</option>
+                          <option value="card_credit">Crédito</option>
+                          <option value="card_debit">Débito</option>
+                          <option value="card">Cartão (crédito)</option>
                         </select>
                         <button
                           type="button"

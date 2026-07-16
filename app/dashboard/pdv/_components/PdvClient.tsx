@@ -60,11 +60,13 @@ export function PdvClient({
   const [successKind, setSuccessKind] = useState<
     null | 'cashier' | 'immediate'
   >(null)
+  const [fiscalHint, setFiscalHint] = useState<string | null>(null)
   const [closeMode, setCloseMode] = useState<PdvCloseMode>(() =>
     cashierPanelEnabled ? 'cashier' : 'immediate'
   )
   const [immediatePayment, setImmediatePayment] =
     useState<PdvImmediatePaymentMethod>('cash')
+  const [cpfInput, setCpfInput] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const deferredSearch = useDeferredValue(searchQuery)
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
@@ -140,7 +142,10 @@ export function PdvClient({
 
   useEffect(() => {
     if (!successKind) return
-    const t = window.setTimeout(() => setSuccessKind(null), 4500)
+    const t = window.setTimeout(() => {
+      setSuccessKind(null)
+      setFiscalHint(null)
+    }, 4500)
     return () => window.clearTimeout(t)
   }, [successKind])
 
@@ -279,6 +284,7 @@ export function PdvClient({
         closeMode,
         immediatePaymentMethod:
           closeMode === 'immediate' ? immediatePayment : null,
+        cpf: closeMode === 'immediate' ? cpfInput : null,
       })
       if (!result.ok) {
         setError(result.message)
@@ -288,7 +294,17 @@ export function PdvClient({
       setCustomerName('')
       setInternalNotes('')
       setDiscountInput('')
+      setCpfInput('')
       setSuccessKind(result.closedImmediately ? 'immediate' : 'cashier')
+      if (result.closedImmediately && result.fiscal?.attempted) {
+        setFiscalHint(
+          result.fiscal.ok
+            ? 'NFC-e emitida.'
+            : `NFC-e: ${result.fiscal.motivo || 'não emitida — pode emitir em Fiscal.'}`
+        )
+      } else {
+        setFiscalHint(null)
+      }
       searchInputRef.current?.focus()
     } finally {
       setSubmitting(false)
@@ -336,6 +352,11 @@ export function PdvClient({
                 ? 'Pagamento registado no turno de caixa. Comanda fechada.'
                 : 'Pagamento registado. Comanda fechada.'
               : 'Comanda enviada ao Caixa para fecho e pagamento.'}
+            {fiscalHint ? (
+              <span className="mt-1 block text-xs font-medium text-emerald-50/95">
+                {fiscalHint}
+              </span>
+            ) : null}
           </div>
         </div>
       ) : null}
@@ -762,35 +783,56 @@ export function PdvClient({
           </div>
 
           {closeMode === 'immediate' ? (
-            <div>
-              <span className="mb-1.5 block text-xs font-medium text-vyria-navy-muted">
-                Pagamento
-              </span>
-              <div className="grid grid-cols-3 gap-2">
-                {(
-                  [
-                    { id: 'cash' as const, label: 'Dinheiro' },
-                    { id: 'pix' as const, label: 'PIX' },
-                    { id: 'card' as const, label: 'Cartão' },
-                  ] as const
-                ).map((opt) => (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => {
-                      setImmediatePayment(opt.id)
-                      setSuccessKind(null)
-                      setError(null)
-                    }}
-                    className={`rounded-xl border px-2 py-2.5 text-xs font-semibold transition sm:text-sm ${
-                      immediatePayment === opt.id
-                        ? 'border-[var(--dash-primary)] bg-[var(--dash-primary)]/10 text-vyria-navy ring-2 ring-[var(--dash-primary)]/30'
-                        : 'border-[var(--card-border)] bg-white text-vyria-navy hover:bg-zinc-50'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
+            <div className="space-y-3">
+              <div>
+                <span className="mb-1.5 block text-xs font-medium text-vyria-navy-muted">
+                  Pagamento
+                </span>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {(
+                    [
+                      { id: 'cash' as const, label: 'Dinheiro' },
+                      { id: 'pix' as const, label: 'PIX' },
+                      { id: 'card_credit' as const, label: 'Crédito' },
+                      { id: 'card_debit' as const, label: 'Débito' },
+                    ] as const
+                  ).map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => {
+                        setImmediatePayment(opt.id)
+                        setSuccessKind(null)
+                        setError(null)
+                      }}
+                      className={`rounded-xl border px-2 py-2.5 text-xs font-semibold transition sm:text-sm ${
+                        immediatePayment === opt.id ||
+                        (opt.id === 'card_credit' && immediatePayment === 'card')
+                          ? 'border-[var(--dash-primary)] bg-[var(--dash-primary)]/10 text-vyria-navy ring-2 ring-[var(--dash-primary)]/30'
+                          : 'border-[var(--card-border)] bg-white text-vyria-navy hover:bg-zinc-50'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label
+                  htmlFor="pdv-cpf"
+                  className="mb-1 block text-xs font-medium text-vyria-navy-muted"
+                >
+                  CPF na NFC-e (opcional)
+                </label>
+                <input
+                  id="pdv-cpf"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  placeholder="Somente números"
+                  value={cpfInput}
+                  onChange={(e) => setCpfInput(e.target.value.replace(/\D/g, '').slice(0, 11))}
+                  className="w-full rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm outline-none ring-[var(--dash-primary)] focus:ring-2"
+                />
               </div>
             </div>
           ) : null}

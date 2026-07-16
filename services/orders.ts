@@ -20,7 +20,16 @@ export async function getStoreOrders(storeId: string): Promise<StoreOrderRow[]> 
 export async function updateOrderStatus(
   orderId: string,
   status: string
-): Promise<{ error: Error | null }> {
+): Promise<{
+  error: Error | null
+  fiscal?: {
+    attempted: boolean
+    skipped: boolean
+    ok: boolean
+    status?: string
+    motivo?: string
+  }
+}> {
   try {
     const res = await fetch('/api/orders/status', {
       method: 'POST',
@@ -29,13 +38,29 @@ export async function updateOrderStatus(
     })
     const data = (await res.json()) as {
       error?: string
+      fiscal?: {
+        attempted?: boolean
+        skipped?: boolean
+        ok?: boolean
+        status?: string
+        motivo?: string
+      }
     }
     if (!res.ok) {
       return {
         error: new Error(data?.error || res.statusText || 'Erro ao atualizar.'),
       }
     }
-    return { error: null }
+    const fiscal = data.fiscal
+      ? {
+          attempted: Boolean(data.fiscal.attempted),
+          skipped: Boolean(data.fiscal.skipped),
+          ok: Boolean(data.fiscal.ok),
+          status: data.fiscal.status,
+          motivo: data.fiscal.motivo,
+        }
+      : undefined
+    return { error: null, ...(fiscal ? { fiscal } : {}) }
   } catch (e) {
     return {
       error: new Error(e instanceof Error ? e.message : 'Erro de rede.'),

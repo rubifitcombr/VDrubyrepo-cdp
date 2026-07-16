@@ -3,6 +3,7 @@ import { requireAdminApi } from '@/lib/admin-auth.server'
 import { insertAdminLog } from '@/services/admin-logs.server'
 import { getStoreFiscalConfig } from '@/services/fiscal.server'
 import { cadastrarEmpresa } from '@/services/fiscal'
+import { getFiscalReadinessForStore } from '@/services/fiscal-readiness.server'
 import { parseFiscalAmbiente } from '@/lib/fiscal'
 
 export async function GET(
@@ -91,6 +92,22 @@ export async function POST(
   }
   if (action === 'ativar' && body.ambiente) {
     patch.ambiente = parseFiscalAmbiente(body.ambiente)
+  }
+
+  if (action === 'ativar') {
+    const readiness = await getFiscalReadinessForStore(ctx.svc, id)
+    if (!readiness.ready) {
+      return NextResponse.json(
+        {
+          error:
+            'Checklist fiscal incompleto. A loja precisa concluir emitente, CSC, certificado e produtos antes da ativação.',
+          pending: readiness.items
+            .filter((i) => !i.ok && i.id !== 'pronto_emissao')
+            .map((i) => ({ id: i.id, label: i.label, hint: i.hint })),
+        },
+        { status: 422 }
+      )
+    }
   }
 
   const { error } = await ctx.svc

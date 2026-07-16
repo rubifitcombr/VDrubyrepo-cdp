@@ -41,6 +41,10 @@ import {
   resolveOrdersChannelFilter,
   type MerchantOperationMode,
 } from '@/lib/merchant-operation-mode'
+import {
+  NFCE_CANCEL_JUSTIFICATIVA_MIN,
+  nfceCancelPrazoLabel,
+} from '@/lib/fiscal'
 import { IconPrinter } from '@/app/dashboard/_components/NavIcons'
 
 function playNewOrderBeep() {
@@ -728,9 +732,17 @@ type OrderCardActions = {
   print: (order: StoreOrderRow) => void
   late: (order: StoreOrderRow) => void
   emitNfce: (order: StoreOrderRow) => void
+  cancelNfce: (order: StoreOrderRow) => void
 }
 
-type NfceState = { status: string; nfeUrl?: string | null }
+type NfceState = {
+  status: string
+  nfeUrl?: string | null
+  xmlUrl?: string | null
+  qrCodeUrl?: string | null
+  invoiceId?: string | null
+  emitidaEm?: string | null
+}
 
 function OrderCard({
   order,
@@ -792,8 +804,17 @@ function OrderCard({
   const showPrimaryStatusAction = isActiveStatus
   const showSecondaryWhatsapp = Boolean(st === 'ready' || st === 'confirmed' ? waOut || wa : wa)
   const readyIsDelivery = deliveryPipelineEnabled && isDeliveryFlowOrder(order)
-  const showNfce = fiscalActive && st !== 'cancelled'
+  const showNfce =
+    fiscalActive &&
+    (st !== 'cancelled' || nfceState?.status === 'autorizada')
   const nfceAuthorized = nfceState?.status === 'autorizada'
+  const nfceCancelled = nfceState?.status === 'cancelada'
+  const nfcePrazoHint = nfceAuthorized
+    ? nfceCancelPrazoLabel({
+        status: 'autorizada',
+        emitida_em: nfceState?.emitidaEm ?? null,
+      })
+    : null
 
   const primaryButtonBase =
     'inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl px-3 text-sm font-extrabold text-white shadow-sm transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50'
@@ -1007,23 +1028,71 @@ function OrderCard({
               ) : null}
               {showNfce ? (
                 nfceAuthorized ? (
-                  nfceState?.nfeUrl ? (
-                    <a
-                      href={nfceState.nfeUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={`${secondaryButtonClass} border-emerald-200 bg-emerald-50 text-emerald-700`}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {nfceState?.nfeUrl ? (
+                      <a
+                        href={nfceState.nfeUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`${secondaryButtonClass} border-emerald-200 bg-emerald-50 text-emerald-700`}
+                        title={
+                          nfcePrazoHint
+                            ? `Abrir DANFE. ${nfcePrazoHint}`
+                            : 'Abrir DANFE'
+                        }
+                      >
+                        <IconReceipt className="h-4 w-4" />
+                        DANFE
+                      </a>
+                    ) : (
+                      <span
+                        className={`${secondaryButtonClass} border-emerald-200 bg-emerald-50 text-emerald-700`}
+                        title={nfcePrazoHint ?? 'NFC-e autorizada'}
+                      >
+                        <IconReceipt className="h-4 w-4" />
+                        NFC-e ✓
+                      </span>
+                    )}
+                    {nfceState?.xmlUrl ? (
+                      <a
+                        href={`${nfceState.xmlUrl}${nfceState.xmlUrl.includes('?') ? '&' : '?'}download=1`}
+                        className={secondaryButtonClass}
+                        title="Baixar XML autorizado"
+                      >
+                        XML
+                      </a>
+                    ) : null}
+                    {nfceState?.qrCodeUrl ? (
+                      <a
+                        href={nfceState.qrCodeUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={secondaryButtonClass}
+                        title="Abrir QR Code da NFC-e (consulta SEFAZ)"
+                      >
+                        QR
+                      </a>
+                    ) : null}
+                    <button
+                      type="button"
+                      disabled={nfceBusy}
+                      onClick={() => onAction.cancelNfce(order)}
+                      className={`${secondaryButtonClass} border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-300 hover:bg-rose-100 hover:text-rose-900`}
+                      title={
+                        nfcePrazoHint
+                          ? `Cancelar NFC-e na SEFAZ. ${nfcePrazoHint}`
+                          : 'Cancelar NFC-e na SEFAZ'
+                      }
                     >
-                      <IconReceipt className="h-4 w-4" />
-                      NFC-e ✓
-                    </a>
-                  ) : (
-                    <span className={`${secondaryButtonClass} border-emerald-200 bg-emerald-50 text-emerald-700`}>
-                      <IconReceipt className="h-4 w-4" />
-                      NFC-e ✓
-                    </span>
-                  )
-                ) : (
+                      {nfceBusy ? 'Cancelando…' : 'Cancelar NFC-e'}
+                    </button>
+                  </div>
+                ) : nfceCancelled ? (
+                  <span className={`${secondaryButtonClass} border-slate-200 bg-slate-50 text-slate-500`}>
+                    <IconReceipt className="h-4 w-4" />
+                    NFC-e cancelada
+                  </span>
+                ) : st !== 'cancelled' ? (
                   <button
                     type="button"
                     disabled={nfceBusy}
@@ -1034,7 +1103,7 @@ function OrderCard({
                     <IconReceipt className="h-4 w-4 shrink-0" />
                     {nfceBusy ? 'Emitindo…' : 'Emitir NFC-e'}
                   </button>
-                )
+                ) : null
               ) : null}
             </div>
           </div>
@@ -1190,6 +1259,49 @@ export function OrdersClient({
       cancelled = true
     }
   }, [storeId])
+
+  // Carrega NFC-e autorizadas/canceladas dos pedidos visíveis (PDV/caixa incluídos).
+  useEffect(() => {
+    if (!fiscalActive) return
+    const ids = orders.map((o) => o.id).filter(Boolean)
+    if (!ids.length) return
+    let cancelled = false
+    void (async () => {
+      const supabase = createClient()
+      const { data } = await supabase
+        .from('fiscal_invoices')
+        .select('id, order_id, status, nfe_url, xml_url, qr_code_url, emitida_em')
+        .eq('store_id', storeId)
+        .in('order_id', ids)
+        .in('status', ['autorizada', 'cancelada'])
+      if (cancelled || !data?.length) return
+      setNfceStateById((prev) => {
+        const next = new Map(prev)
+        for (const row of data) {
+          const orderId = String((row as { order_id?: string }).order_id ?? '')
+          if (!orderId) continue
+          const status = String((row as { status?: string }).status ?? '')
+          const existing = next.get(orderId)
+          // Preferir autorizada se houver conflito.
+          if (existing?.status === 'autorizada' && status !== 'autorizada') continue
+          next.set(orderId, {
+            status,
+            nfeUrl: ((row as { nfe_url?: string | null }).nfe_url as string | null) ?? null,
+            xmlUrl: ((row as { xml_url?: string | null }).xml_url as string | null) ?? null,
+            qrCodeUrl:
+              ((row as { qr_code_url?: string | null }).qr_code_url as string | null) ?? null,
+            invoiceId: String((row as { id?: string }).id ?? '') || null,
+            emitidaEm:
+              ((row as { emitida_em?: string | null }).emitida_em as string | null) ?? null,
+          })
+        }
+        return next
+      })
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [fiscalActive, orders, storeId])
 
   useEffect(() => {
     if (!deliveryPipelineEnabled) return
@@ -1449,7 +1561,7 @@ export function OrdersClient({
   async function patchStatus(orderId: string, status: string) {
     const orderBefore = orders.find((o) => o.id === orderId)
     setBusyId(orderId)
-    const { error } = await updateOrderStatus(orderId, status)
+    const { error, fiscal } = await updateOrderStatus(orderId, status)
     setBusyId(null)
     if (error) {
       alert(error.message)
@@ -1458,6 +1570,30 @@ export function OrdersClient({
     setOrders((prev) =>
       prev.map((o) => (o.id === orderId ? { ...o, status } : o))
     )
+    if (status === 'cancelled' && fiscal?.attempted) {
+      if (fiscal.ok) {
+        setNfceStateById((prev) => {
+          const next = new Map(prev)
+          const cur = next.get(orderId)
+          next.set(orderId, {
+            status: 'cancelada',
+            nfeUrl: cur?.nfeUrl ?? null,
+            xmlUrl: cur?.xmlUrl ?? null,
+            qrCodeUrl: cur?.qrCodeUrl ?? null,
+            invoiceId: cur?.invoiceId ?? null,
+            emitidaEm: cur?.emitidaEm ?? null,
+          })
+          return next
+        })
+        flashWaNotice('Pedido recusado. NFC-e cancelada.')
+      } else {
+        flashWaNotice(
+          `Pedido recusado, mas a NFC-e não foi cancelada: ${
+            fiscal.motivo || 'erro desconhecido'
+          }. Use «Cancelar NFC-e» se ainda estiver no prazo.`
+        )
+      }
+    }
     if (
       status === 'preparing' &&
       printing.print_auto_on_confirm &&
@@ -1693,6 +1829,9 @@ export function OrdersClient({
         status?: string
         chaveAcesso?: string
         nfeUrl?: string
+        xmlUrl?: string
+        qrCodeUrl?: string
+        invoiceId?: string
       }
       if (!res.ok) {
         flashWaNotice(json.error || 'Não foi possível emitir a NFC-e.')
@@ -1700,7 +1839,14 @@ export function OrdersClient({
       }
       setNfceStateById((prev) => {
         const next = new Map(prev)
-        next.set(order.id, { status: json.status || 'autorizada', nfeUrl: json.nfeUrl })
+        next.set(order.id, {
+          status: json.status || 'autorizada',
+          nfeUrl: json.nfeUrl,
+          xmlUrl: json.xmlUrl,
+          qrCodeUrl: json.qrCodeUrl,
+          invoiceId: json.invoiceId ?? null,
+          emitidaEm: new Date().toISOString(),
+        })
         return next
       })
       flashWaNotice(
@@ -1708,6 +1854,63 @@ export function OrdersClient({
           ? `NFC-e autorizada (${json.chaveAcesso}).`
           : 'NFC-e emitida com sucesso.'
       )
+    } finally {
+      setNfceBusyId(null)
+    }
+  }
+
+  async function cancelNfce(order: StoreOrderRow) {
+    const ref = `#${displayNumberById.get(order.id) ?? '—'}`
+    const state = nfceStateById.get(order.id)
+    const prazo = nfceCancelPrazoLabel({
+      status: state?.status,
+      emitida_em: state?.emitidaEm ?? null,
+    })
+    const justificativaInput = window.prompt(
+      `Cancelar NFC-e do pedido ${ref}.\n\n${prazo}\n\nJustificativa (mínimo ${NFCE_CANCEL_JUSTIFICATIVA_MIN} caracteres):`,
+      'Cancelamento do pedido pelo lojista.'
+    )
+    if (justificativaInput === null) return
+    const justificativa = justificativaInput.trim()
+    if (justificativa.length < NFCE_CANCEL_JUSTIFICATIVA_MIN) {
+      flashWaNotice(
+        `Justificativa deve ter no mínimo ${NFCE_CANCEL_JUSTIFICATIVA_MIN} caracteres.`
+      )
+      return
+    }
+    setNfceBusyId(order.id)
+    try {
+      const res = await dashboardFetch('/api/store/fiscal/cancelar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId: order.id,
+          invoiceId: state?.invoiceId || undefined,
+          justificativa,
+        }),
+      })
+      const json = (await res.json().catch(() => ({}))) as {
+        error?: string
+        status?: string
+        invoiceId?: string
+      }
+      if (!res.ok) {
+        flashWaNotice(json.error || 'Não foi possível cancelar a NFC-e.')
+        return
+      }
+      setNfceStateById((prev) => {
+        const next = new Map(prev)
+        next.set(order.id, {
+          status: 'cancelada',
+          nfeUrl: state?.nfeUrl ?? null,
+          xmlUrl: state?.xmlUrl ?? null,
+          qrCodeUrl: state?.qrCodeUrl ?? null,
+          invoiceId: json.invoiceId ?? state?.invoiceId ?? null,
+          emitidaEm: state?.emitidaEm ?? null,
+        })
+        return next
+      })
+      flashWaNotice('NFC-e cancelada com sucesso.')
     } finally {
       setNfceBusyId(null)
     }
@@ -2030,6 +2233,7 @@ export function OrdersClient({
                     print: (o) => void printOrderDefault(o),
                     late: (o) => setDeliveryModal({ mode: 'late', order: o }),
                     emitNfce: (o) => void emitNfce(o),
+                    cancelNfce: (o) => void cancelNfce(o),
                   }}
                 />
               )}

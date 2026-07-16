@@ -1,16 +1,19 @@
 'use client'
 
+import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
 import { FiscalChecklist } from '@/app/dashboard/fiscal/_components/FiscalChecklist'
+import { FiscalHistoryClient } from '@/app/dashboard/fiscal/_components/FiscalHistoryClient'
 import { FiscalUpsell } from '@/app/dashboard/fiscal/_components/FiscalUpsell'
 import { FiscalWelcomeStep } from '@/app/dashboard/fiscal/_components/FiscalWelcomeStep'
 import { FiscalSettingsCard } from '@/app/dashboard/settings/_components/FiscalSettingsCard'
-import { canAccessFiscalSettings, parseFiscalStatus, type FiscalStatus } from '@/lib/fiscal'
+import { canAccessFiscalSettings, fiscalCertDaysRemaining, parseFiscalStatus, type FiscalStatus } from '@/lib/fiscal'
 import { getFiscalDisplayLabel, type FiscalReadinessResult } from '@/lib/fiscal-readiness'
 
 export function FiscalOnboardingClient({ storeId }: { storeId: string }) {
   const [status, setStatus] = useState<FiscalStatus>('nao_configurado')
   const [sefazCredenciado, setSefazCredenciado] = useState(false)
+  const [certDays, setCertDays] = useState<number | null>(null)
   const [readiness, setReadiness] = useState<FiscalReadinessResult | null>(null)
   const [loading, setLoading] = useState(true)
   const [showWelcome, setShowWelcome] = useState(false)
@@ -36,6 +39,13 @@ export function FiscalOnboardingClient({ storeId }: { storeId: string }) {
       if (fiscalRes.ok && fiscalJson.fiscal) {
         setStatus(parseFiscalStatus(fiscalJson.fiscal.status))
         setSefazCredenciado(Boolean(fiscalJson.fiscal.sefazCredenciado))
+        setCertDays(
+          fiscalCertDaysRemaining(
+            typeof fiscalJson.fiscal.certValidade === 'string'
+              ? fiscalJson.fiscal.certValidade
+              : null
+          )
+        )
       }
       if (readinessRes.ok && readinessJson.readiness) {
         setReadiness(readinessJson.readiness)
@@ -146,10 +156,33 @@ export function FiscalOnboardingClient({ storeId }: { storeId: string }) {
       ) : null}
 
       {isActive ? (
-        <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-          Módulo fiscal <strong>ativo</strong>. Você já pode emitir NFC-e nos pedidos.
-        </p>
+        <>
+          <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+            Módulo fiscal <strong>ativo</strong>. Você já pode emitir NFC-e nos pedidos.{' '}
+            <Link
+              href="/dashboard/fiscal/historico"
+              className="font-semibold underline decoration-emerald-600/40 underline-offset-2 hover:decoration-emerald-700"
+            >
+              Ver histórico fiscal
+            </Link>
+          </p>
+          {certDays != null && certDays <= 30 ? (
+            <p
+              className={`rounded-xl border px-4 py-3 text-sm ${
+                certDays <= 0
+                  ? 'border-rose-200 bg-rose-50 text-rose-900'
+                  : 'border-amber-200 bg-amber-50 text-amber-950'
+              }`}
+            >
+              {certDays <= 0
+                ? 'Certificado digital vencido — a emissão de NFC-e vai falhar até renovar o A1.'
+                : `Certificado digital vence em ${certDays} dia${certDays === 1 ? '' : 's'}. Renove antes do prazo para não interromper as vendas.`}
+            </p>
+          ) : null}
+        </>
       ) : null}
+
+      {isActive ? <FiscalHistoryClient storeId={storeId} compact /> : null}
 
       {readiness ? (
         <FiscalChecklist items={readiness.items} pendingCount={readiness.pendingCount} />

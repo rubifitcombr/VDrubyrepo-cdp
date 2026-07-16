@@ -9,9 +9,10 @@ import { createClient } from '@/lib/supabase/server'
 import { getOpenCaixaTurno } from '@/services/caixa-turnos.server'
 import { buildItemsSummaryWithLineTotals } from '@/lib/print/items-summary-format'
 import { tryAutoThermalPrint } from '@/services/thermal-print.server'
+import { tryAutoEmitNfceForOrder } from '@/services/fiscal'
 import { hasFeature } from '@/lib/plan'
 
-type PaymentMethod = 'cash' | 'pix' | 'card'
+type PaymentMethod = 'cash' | 'pix' | 'card' | 'card_credit' | 'card_debit'
 
 type BodyItem = {
   product_id?: unknown
@@ -26,7 +27,9 @@ function round2(n: number): number {
 
 function normalizePayment(v: unknown): PaymentMethod | null {
   const t = String(v ?? '').trim().toLowerCase()
-  if (t === 'cash' || t === 'pix' || t === 'card') return t
+  if (t === 'cash' || t === 'pix' || t === 'card' || t === 'card_credit' || t === 'card_debit') {
+    return t
+  }
   return null
 }
 
@@ -69,6 +72,7 @@ export async function POST(request: Request) {
     internalNotes?: unknown
     discountBrl?: unknown
     items?: unknown
+    cpf?: unknown
   }
   try {
     body = await request.json()
@@ -265,10 +269,20 @@ export async function POST(request: Request) {
     orderSource: 'pdv',
   })
 
+  // NFC-e automática só no recebimento imediato; envio ao caixa emite no fecho.
+  let fiscal: Awaited<ReturnType<typeof tryAutoEmitNfceForOrder>> | undefined
+  if (closeMode === 'immediate') {
+    const cpf = String(body.cpf ?? '').replace(/\D/g, '')
+    fiscal = await tryAutoEmitNfceForOrder(orderId, {
+      cpf: cpf.length === 11 ? cpf : undefined,
+    })
+  }
+
   return NextResponse.json({
     ok: true,
     orderId,
     closeMode,
     closedImmediately: closeMode === 'immediate',
+    ...(fiscal ? { fiscal } : {}),
   })
 }
