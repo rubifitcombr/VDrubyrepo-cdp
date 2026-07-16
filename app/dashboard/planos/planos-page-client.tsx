@@ -48,13 +48,13 @@ const MODE_INTRO: Record<
     indicadoPara:
       'Estabelecimentos que atendem só no espaço físico: balcão (PDV), mesas e consumo no local, com pedidos registados no salão — sem link público de delivery nem gestão de corridas de entrega.',
     resumo:
-      'O plano Growth inclui PDV, garçom/QR de mesa e pedidos em loja; no Pro entram caixa, mapa de mesas, impressão e KDS para a operação local.',
+      'O plano Growth inclui PDV, QR de mesa e pedidos em loja; no Pro entram gestão de garçons (PIN/cadastro), caixa, mapa de mesas, impressão e KDS.',
   },
   hibrido: {
     indicadoPara:
       'Quem precisa dos dois mundos no mesmo contrato: atendimento no balcão e no salão (PDV, garçom, mesas) e, em paralelo, vendas pelo link/QR com entregas, taxas e zona de entrega.',
     resumo:
-      'O plano Growth reúne delivery e presencial no mesmo contrato; o Pro acrescenta caixa, KDS, impressão e PIX no checkout, com tabela de preços própria.',
+      'O plano Growth reúne delivery e presencial no mesmo contrato; o Pro acrescenta gestão de garçons, caixa, KDS, impressão e PIX no checkout, com tabela de preços própria.',
   },
 }
 

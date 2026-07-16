@@ -12,6 +12,7 @@ import {
   parseOperationModeFromStore,
   type MerchantOperationMode,
 } from '@/lib/merchant-operation-mode'
+import { hasGarconsManagementAccess } from '@/lib/dashboard-menu'
 import {
   createEmptyHubPinConfig,
   HUB_PIN_FIELDS,
@@ -220,6 +221,7 @@ export default function SettingsPage() {
       : null
   const hasGrowthLocation = planTier(storePlan) >= planTier('GROWTH')
   const pixCheckoutAllowed = hasPixCheckout(storePlan)
+  const canManageGarcons = hasGarconsManagementAccess(storePlan, operationMode)
   const showGarcomPinQrSettings =
     operationMode !== 'delivery' && storePlan !== 'START'
   const isGrowthPresencial = storePlan === 'GROWTH' && operationMode === 'presencial'
@@ -911,13 +913,30 @@ export default function SettingsPage() {
           </h2>
           <p className="mt-1 text-sm text-[#6b7280]">
             Ative um PIN de 4 números para pedir confirmação antes de abrir cada
-            área operacional. O salão usa PIN individual por garçom — configure em{' '}
-            <Link
-              href="/dashboard/garcons?hub=administracao"
-              className="font-semibold text-[var(--dash-primary)] hover:underline"
-            >
-              Meus garçons
-            </Link>
+            área operacional. O salão usa PIN individual por garçom
+            {canManageGarcons ? (
+              <>
+                {' '}
+                — configure em{' '}
+                <Link
+                  href="/dashboard/garcons?hub=administracao"
+                  className="font-semibold text-[var(--dash-primary)] hover:underline"
+                >
+                  Meus garçons
+                </Link>
+              </>
+            ) : (
+              <>
+                {' '}
+                — disponível a partir do{' '}
+                <Link
+                  href="/dashboard/upgrade?feature=waiter"
+                  className="font-semibold text-[var(--dash-primary)] hover:underline"
+                >
+                  plano Pro
+                </Link>
+              </>
+            )}
             .
           </p>
           {!supportsHubPins ? (

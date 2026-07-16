@@ -5,9 +5,10 @@
  * **Híbrido** = união (Delivery ∪ Presencial) por tier — ver `unionMenuKeys` e `HIBRIDO_*`.
  *
  * - **Delivery:** Growth com pedidos, promoções, automações (sem Garçom no menu).
- * - **Presencial:** Start com PDV; Growth com PDV + Garçom (QR mesa); Pro com caixa, KDS, impressão e Meus garçons.
+ * - **Presencial:** Start com PDV; Growth com PDV + Garçom (QR mesa); Pro com caixa, KDS, impressão e gestão de garçons.
  * - **Híbrido:** mesma união por plano; preços em `PLAN_MONTHLY_BRL_HIBRIDO` (`lib/plan.ts`).
- * - **Meus garçons** (`garcons`): só Presencial/Híbrido a partir do Pro.
+ * - **Meus garçons** (`garcons`): exclusivo do plano Pro (Presencial/Híbrido/legado). Nunca no Growth nem em Delivery.
+ *   Reforçado em `menuKeysForMerchant` / `hasGarconsManagementAccess`.
  *
  * Estoque (`/dashboard/inventory`) continua a depender só de `hasFeature(plan, 'inventory')` em `dashboard-menu`.
  */

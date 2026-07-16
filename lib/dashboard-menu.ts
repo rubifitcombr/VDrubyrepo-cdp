@@ -16,7 +16,7 @@ function entregadoresMenuContext(operationMode: MerchantOperationMode | null): b
  * Growth **não** inclui `garcom` (legado alinhado a operação só delivery); com modo definido em loja,
  * `menuKeysForMerchant` usa `merchant-menu-matrix` (ex.: Growth presencial inclui Garçom).
  * O mapa completo de garçom no painel continua exclusivo do Pro (`hasFeature(_, 'waiter')`).
- * **Meus garçons** (`garcons`) só entra na matriz Presencial/Híbrido Pro — sem auto-add a partir de `garcom`.
+ * **Meus garçons** (`garcons`): exclusivo Pro — na matriz e reforçado em `menuKeysForMerchant`.
  */
 export const MENU_POR_PLANO: Record<
   'start' | 'growth' | 'pro',
@@ -45,6 +45,7 @@ export const MENU_POR_PLANO: Record<
     'dashboard',
     'produtos',
     'garcom',
+    'garcons',
     'pedidos',
     'caixa',
     'promocoes',
@@ -91,6 +92,19 @@ export function menuKeysForPlan(plan: Plan): ReadonlySet<DashboardMenuKey> {
  * Chaves de menu efetivas para plano × modo de operação.
  * Com `operationMode === null` (legado), equivale a `menuKeysForPlan(plan)`.
  */
+/**
+ * Gestão de garçons (CRUD / PIN / relatório) — só Pro e nunca em delivery-only.
+ * Growth presencial mantém `garcom` (QR salão), mas sem `garcons`.
+ */
+export function hasGarconsManagementAccess(
+  plan: Plan,
+  operationMode: MerchantOperationMode | null
+): boolean {
+  if (!hasFeature(plan, 'waiter')) return false
+  if (operationMode === 'delivery') return false
+  return true
+}
+
 export function menuKeysForMerchant(
   plan: Plan,
   operationMode: MerchantOperationMode | null
@@ -109,6 +123,12 @@ export function menuKeysForMerchant(
   }
   if (set.has('configuracoes')) {
     set.add('fiscal')
+  }
+  // Hard gate: nunca expor gestão de garçons abaixo do Pro / em delivery.
+  if (hasGarconsManagementAccess(plan, operationMode)) {
+    set.add('garcons')
+  } else {
+    set.delete('garcons')
   }
   return set
 }

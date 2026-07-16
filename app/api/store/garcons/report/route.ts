@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { gateMerchantMenuKey } from '@/lib/merchant-api-gate.server'
+import { gateMerchantGarconsManagement } from '@/lib/merchant-api-gate.server'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
 import { getUser } from '@/services/auth.server'
 import { buildGarconsReport } from '@/services/store-garcons-report.server'
@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
   const gate = await requireLojistaAtivoApi(user.id)
   if (!gate.ok) return gate.response
 
-  const deny = gateMerchantMenuKey(gate.ctx.store, user.email, 'garcons')
+  const deny = gateMerchantGarconsManagement(gate.ctx.store, user.email)
   if (deny) return deny
 
   const from = req.nextUrl.searchParams.get('from')

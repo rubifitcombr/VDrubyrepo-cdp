@@ -19,7 +19,10 @@ const FEATURE_LABEL: Record<string, { title: string; minPlan: string }> = {
     title: 'Garçom / QR salão (Growth em modo presencial ou híbrido; mapa completo no Pro)',
     minPlan: 'Growth',
   },
-  waiter: { title: 'Mapa de garçom no painel (pedidos por mesa)', minPlan: 'Pro' },
+  waiter: {
+    title: 'Gestão de garçons (cadastro, PIN e relatório) e mapa no painel',
+    minPlan: 'Pro',
+  },
   cashier: { title: 'Caixa completo', minPlan: 'Pro' },
   pix_checkout: {
     title: 'Pagamento PIX no checkout (QR Code na conta do lojista)',

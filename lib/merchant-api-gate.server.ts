@@ -72,6 +72,27 @@ export function gateMerchantMenuKey(
   return null
 }
 
+/** Gestão de garçons (CRUD/PIN/relatório) — exclusivo do plano Pro (presencial/híbrido). */
+export function gateMerchantGarconsManagement(
+  store: Record<string, unknown>,
+  userEmail: string | null | undefined
+): NextResponse | null {
+  const plan = effectivePlanFromStore(store, userEmail)
+  if (!hasFeature(plan, 'waiter')) {
+    return NextResponse.json(
+      {
+        error:
+          'A gestão de garçons (cadastro, PIN e relatório) está disponível a partir do plano Pro.',
+      },
+      { status: 403 }
+    )
+  }
+  if (operationModeFromStore(store) === 'delivery') {
+    return merchantApiForbidden('garcons:delivery')
+  }
+  return gateMerchantMenuKey(store, userEmail, 'garcons')
+}
+
 export function gateMerchantInventory(
   store: Record<string, unknown>,
   userEmail: string | null | undefined
