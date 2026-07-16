@@ -5,12 +5,15 @@ import type {
   FinancialEntryDTO,
   FinancialEntryStatus,
   FinancialEntryType,
+  OperationalSaleDTO,
   SupplierDTO,
 } from '@/lib/financial-types'
 
-const SUPPLIER_SELECT = 'id, store_id, nome, telefone, email, categoria, created_at'
+const SUPPLIER_SELECT =
+  'id, store_id, nome, telefone, email, categoria, cnpj, observacao, created_at'
 const ENTRY_SELECT =
   'id, store_id, tipo, categoria, supplier_id, descricao, valor, vencimento, data_pagamento, status, created_at'
+const SALE_SELECT = 'id, total, created_at, source, payment_method'
 
 function moneyNumber(v: unknown): number {
   if (typeof v === 'number' && Number.isFinite(v)) return Math.round(v * 100) / 100
@@ -42,6 +45,8 @@ function mapSupplier(row: Record<string, unknown>, pendingBySupplier: Map<string
     telefone: cleanOptional(row.telefone),
     email: cleanOptional(row.email),
     categoria: cleanOptional(row.categoria),
+    cnpj: cleanOptional(row.cnpj),
+    observacao: cleanOptional(row.observacao),
     created_at: typeof row.created_at === 'string' ? row.created_at : new Date().toISOString(),
     contas_pendentes: pendingBySupplier.get(id) ?? 0,
   }
@@ -65,24 +70,78 @@ function mapEntry(row: Record<string, unknown>, supplierNames: Map<string, strin
   }
 }
 
+function mapSale(row: Record<string, unknown>): OperationalSaleDTO {
+  return {
+    id: String(row.id ?? ''),
+    total: moneyNumber(row.total),
+    created_at: typeof row.created_at === 'string' ? row.created_at : new Date().toISOString(),
+    source: cleanOptional(row.source),
+    payment_method: cleanOptional(row.payment_method),
+  }
+}
+
+export type SupplierInput = {
+  nome: string
+  telefone: string | null
+  email: string | null
+  categoria: string | null
+  cnpj: string | null
+  observacao: string | null
+}
+
 export async function getFinanceiroSnapshot(
   svc: SupabaseClient,
   storeId: string
-): Promise<{ suppliers: SupplierDTO[]; entries: FinancialEntryDTO[] }> {
-  const [{ data: suppliers, error: suppliersErr }, { data: entries, error: entriesErr }] =
-    await Promise.all([
-      svc.from('suppliers').select(SUPPLIER_SELECT).eq('store_id', storeId).order('nome'),
-      svc
-        .from('financial_entries')
-        .select(ENTRY_SELECT)
+): Promise<{
+  suppliers: SupplierDTO[]
+  entries: FinancialEntryDTO[]
+  sales: OperationalSaleDTO[]
+}> {
+  const since = new Date()
+  since.setDate(since.getDate() - 120)
+
+  let supplierRows: Record<string, unknown>[] = []
+  {
+    const primary = await svc
+      .from('suppliers')
+      .select(SUPPLIER_SELECT)
+      .eq('store_id', storeId)
+      .order('nome')
+    if (!primary.error) {
+      supplierRows = (primary.data ?? []) as Record<string, unknown>[]
+    } else if (/cnpj|observacao|column|schema cache/i.test(primary.error.message)) {
+      const fallback = await svc
+        .from('suppliers')
+        .select('id, store_id, nome, telefone, email, categoria, created_at')
         .eq('store_id', storeId)
-        .order('created_at', { ascending: false }),
-    ])
+        .order('nome')
+      if (fallback.error) throw new Error(fallback.error.message)
+      supplierRows = (fallback.data ?? []) as Record<string, unknown>[]
+    } else {
+      throw new Error(primary.error.message)
+    }
+  }
 
-  if (suppliersErr) throw new Error(suppliersErr.message)
+  const [{ data: entries, error: entriesErr }, { data: sales, error: salesErr }] = await Promise.all([
+    svc
+      .from('financial_entries')
+      .select(ENTRY_SELECT)
+      .eq('store_id', storeId)
+      .order('created_at', { ascending: false }),
+    svc
+      .from('orders')
+      .select(SALE_SELECT)
+      .eq('store_id', storeId)
+      .eq('status', 'delivered')
+      .gte('created_at', since.toISOString())
+      .order('created_at', { ascending: false })
+      .limit(3000),
+  ])
+
   if (entriesErr) throw new Error(entriesErr.message)
+  // Vendas são opcionais no snapshot: se a query falhar, segue sem bloquear o financeiro.
+  const saleRows = salesErr ? [] : ((sales ?? []) as Record<string, unknown>[])
 
-  const supplierRows = (suppliers ?? []) as Record<string, unknown>[]
   const entryRows = (entries ?? []) as Record<string, unknown>[]
   const supplierNames = new Map(
     supplierRows.map((s) => [String(s.id ?? ''), String(s.nome ?? '').trim() || '—'])
@@ -99,28 +158,84 @@ export async function getFinanceiroSnapshot(
   return {
     suppliers: supplierRows.map((s) => mapSupplier(s, pendingBySupplier)),
     entries: entryRows.map((e) => mapEntry(e, supplierNames)),
+    sales: saleRows.map(mapSale),
   }
+}
+
+async function writeSupplier(
+  svc: SupabaseClient,
+  mode: 'insert' | 'update',
+  storeId: string,
+  input: SupplierInput,
+  id?: string
+): Promise<SupplierDTO> {
+  const fullRow = {
+    store_id: storeId,
+    nome: input.nome.trim(),
+    telefone: input.telefone,
+    email: input.email,
+    categoria: input.categoria,
+    cnpj: input.cnpj,
+    observacao: input.observacao,
+  }
+  const basicRow = {
+    store_id: storeId,
+    nome: input.nome.trim(),
+    telefone: input.telefone,
+    email: input.email,
+    categoria: input.categoria,
+  }
+
+  const run = async (row: Record<string, unknown>, select: string) => {
+    if (mode === 'insert') {
+      return svc.from('suppliers').insert(row).select(select).single()
+    }
+    return svc
+      .from('suppliers')
+      .update(row)
+      .eq('store_id', storeId)
+      .eq('id', id!)
+      .select(select)
+      .single()
+  }
+
+  let { data, error } = await run(fullRow, SUPPLIER_SELECT)
+  if (error && /cnpj|observacao|column|schema cache/i.test(error.message)) {
+    ;({ data, error } = await run(
+      basicRow,
+      'id, store_id, nome, telefone, email, categoria, created_at'
+    ))
+  }
+  if (error || !data) {
+    throw new Error(error?.message ?? (mode === 'insert' ? 'Erro ao criar fornecedor.' : 'Erro ao atualizar fornecedor.'))
+  }
+  return mapSupplier(data as unknown as Record<string, unknown>, new Map())
 }
 
 export async function insertSupplier(
   svc: SupabaseClient,
   storeId: string,
-  input: { nome: string; telefone: string | null; email: string | null; categoria: string | null }
+  input: SupplierInput
 ): Promise<SupplierDTO> {
-  const { data, error } = await svc
-    .from('suppliers')
-    .insert({
-      store_id: storeId,
-      nome: input.nome.trim(),
-      telefone: input.telefone,
-      email: input.email,
-      categoria: input.categoria,
-    })
-    .select(SUPPLIER_SELECT)
-    .single()
+  return writeSupplier(svc, 'insert', storeId, input)
+}
 
-  if (error || !data) throw new Error(error?.message ?? 'Erro ao criar fornecedor.')
-  return mapSupplier(data as Record<string, unknown>, new Map())
+export async function updateSupplier(
+  svc: SupabaseClient,
+  storeId: string,
+  id: string,
+  input: SupplierInput
+): Promise<SupplierDTO> {
+  return writeSupplier(svc, 'update', storeId, input, id)
+}
+
+export async function deleteSupplier(
+  svc: SupabaseClient,
+  storeId: string,
+  id: string
+): Promise<void> {
+  const { error } = await svc.from('suppliers').delete().eq('store_id', storeId).eq('id', id)
+  if (error) throw new Error(error.message)
 }
 
 export async function upsertFinancialEntry(

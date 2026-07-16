@@ -5,9 +5,11 @@ import { createClient } from '@/lib/supabase/server'
 import { getUser } from '@/services/auth.server'
 import {
   deleteFinancialEntry,
+  deleteSupplier,
   getFinanceiroSnapshot,
   insertSupplier,
   markFinancialEntryPaid,
+  updateSupplier,
   upsertFinancialEntry,
 } from '@/services/cashier-finance.server'
 import type { FinancialEntryStatus, FinancialEntryType } from '@/lib/financial-types'
@@ -44,6 +46,19 @@ function entryStatus(v: unknown): FinancialEntryStatus {
   return String(v ?? '').trim().toLowerCase() === 'pago' ? 'pago' : 'pendente'
 }
 
+function supplierPayload(body: Record<string, unknown>) {
+  const nome = optionalText(body.nome)
+  if (!nome) return null
+  return {
+    nome,
+    telefone: optionalText(body.telefone),
+    email: optionalText(body.email),
+    categoria: optionalText(body.categoria),
+    cnpj: optionalText(body.cnpj),
+    observacao: optionalText(body.observacao),
+  }
+}
+
 async function requireCashierAccess() {
   const user = await getUser()
   if (!user) {
@@ -77,6 +92,7 @@ export async function GET() {
         ok: true,
         suppliers: [],
         entries: [],
+        sales: [],
         missingTable: true,
       })
     }
@@ -100,15 +116,13 @@ export async function POST(req: NextRequest) {
 
   try {
     if (resource === 'supplier') {
-      const nome = optionalText(body.nome)
-      if (!nome) return NextResponse.json({ error: 'Nome obrigatório.' }, { status: 400 })
+      const payload = supplierPayload(body)
+      if (!payload) return NextResponse.json({ error: 'Nome obrigatório.' }, { status: 400 })
 
-      const supplier = await insertSupplier(supabase, access.storeId, {
-        nome,
-        telefone: optionalText(body.telefone),
-        email: optionalText(body.email),
-        categoria: optionalText(body.categoria),
-      })
+      const id = optionalText(body.id)
+      const supplier = id
+        ? await updateSupplier(supabase, access.storeId, id, payload)
+        : await insertSupplier(supabase, access.storeId, payload)
       return NextResponse.json({ ok: true, supplier })
     }
 
@@ -182,10 +196,18 @@ export async function DELETE(req: NextRequest) {
   const id = searchParams.get('id')?.trim()
   if (!id) return NextResponse.json({ error: 'ID em falta.' }, { status: 400 })
 
+  const resource = String(searchParams.get('resource') ?? 'entry').trim().toLowerCase()
   const supabase = await createClient()
   try {
-    await deleteFinancialEntry(supabase, access.storeId, id)
-    return NextResponse.json({ ok: true })
+    if (resource === 'supplier') {
+      await deleteSupplier(supabase, access.storeId, id)
+      return NextResponse.json({ ok: true })
+    }
+    if (resource === 'entry') {
+      await deleteFinancialEntry(supabase, access.storeId, id)
+      return NextResponse.json({ ok: true })
+    }
+    return NextResponse.json({ error: 'Recurso inválido.' }, { status: 400 })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Erro'
     return NextResponse.json({ error: msg }, { status: 500 })
