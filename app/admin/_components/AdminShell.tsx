@@ -58,6 +58,7 @@ export function AdminShell({
 
   const nav = [
     { href: '/admin/lojistas', label: 'Lojistas' },
+    { href: '/admin/usuarios', label: 'Utilizadores Auth' },
     { href: '/admin/fiscal', label: 'Vyria Fiscal' },
   ]
 

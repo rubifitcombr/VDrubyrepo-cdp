@@ -49,7 +49,12 @@ export default function Register() {
       })
       const json = (await res.json().catch(() => ({}))) as { error?: string; ok?: boolean }
       if (!res.ok || !json.ok) {
-        alert(json.error || 'Não foi possível criar a conta.')
+        const raw = String(json.error || '')
+        const friendly =
+          /user already registered|already registered|already exists/i.test(raw)
+            ? 'Este email já tem conta. Entra em «Entrar» ou recupera a senha.'
+            : raw || 'Não foi possível criar a conta.'
+        alert(friendly)
         setIsRegistering(false)
         return
       }
