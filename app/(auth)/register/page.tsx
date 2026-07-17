@@ -3,9 +3,7 @@
 import { useBeginNavigation } from '@/app/_components/NavigationProgressProvider'
 import Link from 'next/link'
 import { useState } from 'react'
-import { signUp } from '@/services/auth'
-import { createStore } from '@/services/store'
-import { upsertUsuarioMirror } from '@/services/usuarios'
+import { signIn } from '@/services/auth'
 import type { MerchantOperationMode } from '@/lib/merchant-operation-mode'
 import { operationModeLabel } from '@/lib/merchant-operation-mode'
 import { useRouter } from 'next/navigation'
@@ -38,72 +36,41 @@ export default function Register() {
 
     setIsRegistering(true)
     try {
-      const { data, error } = await signUp(mail, password)
-
-      if (error) {
-        const raw = error.message
-        alert(
-          raw.includes('Database error saving new user')
-            ? 'Erro ao criar conta na base de dados. Executa no Supabase (SQL Editor) o ficheiro supabase/migrations/20260425120000_signup_usuarios_sem_trigger_rls.sql do repositório, ou contacta o suporte.'
-            : raw
-        )
-        setIsRegistering(false)
-        return
-      }
-
-      const userId = data.user?.id
-
-      if (!userId) {
-        alert(
-          'Conta criada mas sessão indisponível. Tenta entrar com o email e a senha em «Entrar».'
-        )
-        setIsRegistering(false)
-        return
-      }
-
-      const userEmail = data.user?.email ?? mail
-      const { error: mirrorErr } = await upsertUsuarioMirror(userId, userEmail)
-
-      if (mirrorErr) {
-        let recovered = false
-        try {
-          const syncRes = await fetch('/api/auth/sync-usuario', {
-            method: 'POST',
-            credentials: 'include',
-          })
-          if (syncRes.ok) {
-            const body = (await syncRes.json()) as {
-              ok?: boolean
-              skipped?: boolean
-            }
-            if (body.ok && !body.skipped) recovered = true
-          }
-        } catch {
-          /* ignore */
-        }
-        if (!recovered) {
-          alert(
-            'Não foi possível guardar o perfil na base de dados. Executa no Supabase o SQL `20260425120000_signup_usuarios_sem_trigger_rls.sql` e confirma que SUPABASE_SERVICE_ROLE_KEY está definida no deploy (ou confirma o email da conta se o projeto exigir).'
-          )
-          setIsRegistering(false)
-          return
-        }
-      }
-
-      const { error: storeErr } = await createStore(userId, name, {
-        phone: phone.trim() || undefined,
-        operationMode,
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: mail,
+          password,
+          name,
+          phone: phone.trim() || null,
+          operation_mode: operationMode,
+        }),
       })
-      if (storeErr) {
-        alert(storeErr.message || 'Erro ao criar loja.')
+      const json = (await res.json().catch(() => ({}))) as { error?: string; ok?: boolean }
+      if (!res.ok || !json.ok) {
+        alert(json.error || 'Não foi possível criar a conta.')
         setIsRegistering(false)
         return
       }
+
+      const { error: signInErr } = await signIn(mail, password)
+      if (signInErr) {
+        alert(
+          'Conta criada. Entra agora com o mesmo email e senha em «Entrar».' +
+            (signInErr.message ? ` (${signInErr.message})` : '')
+        )
+        beginNavigation()
+        router.push('/login')
+        return
+      }
+
       try {
         await fetch('/api/auth/notificar-cadastro', { method: 'POST', credentials: 'include' })
       } catch {
         /* email opcional */
       }
+
       beginNavigation()
       router.push('/acesso-suspenso?error=pendente')
     } catch (err) {
