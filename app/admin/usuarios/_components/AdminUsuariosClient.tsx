@@ -59,8 +59,11 @@ export function AdminUsuariosClient() {
   const [withoutStore, setWithoutStore] = useState(0)
   const [q, setQ] = useState('')
   const [search, setSearch] = useState('')
+  const [onlyOrphans, setOnlyOrphans] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [busyId, setBusyId] = useState<string | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
 
   const load = useCallback(async (query: string) => {
     setLoading(true)
@@ -99,6 +102,53 @@ export function AdminUsuariosClient() {
     void load(search)
   }, [load, search])
 
+  async function createStoreForUser(u: AdminAuthUserDTO) {
+    const suggested =
+      u.intended_store_name ||
+      (u.email ? `Loja de ${u.email.split('@')[0]}` : 'Nova loja')
+    const name = window.prompt('Nome da loja a criar/religar:', suggested)
+    if (name == null) return
+    const trimmed = name.trim()
+    if (!trimmed) {
+      setToast('Nome da loja é obrigatório.')
+      return
+    }
+
+    setBusyId(u.id)
+    setToast(null)
+    try {
+      const res = await fetch('/api/admin/usuarios', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: u.id, storeName: trimmed }),
+      })
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string
+        created?: boolean
+        relinked?: boolean
+      }
+      if (!res.ok) {
+        setToast(data.error || 'Não foi possível criar a loja.')
+        return
+      }
+      setToast(
+        data.relinked
+          ? 'Loja fantasma religada ao utilizador.'
+          : data.created
+            ? 'Loja pendente criada.'
+            : 'Utilizador já tinha loja.'
+      )
+      await load(search)
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : 'Erro de rede.')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const visible = onlyOrphans ? users.filter((u) => !u.store_id) : users
+
   return (
     <div className="mx-auto w-full max-w-6xl space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
@@ -126,11 +176,28 @@ export function AdminUsuariosClient() {
           <p className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">Com loja</p>
           <p className="mt-1 text-2xl font-bold tabular-nums text-emerald-700">{withStore}</p>
         </div>
-        <div className="rounded-2xl border border-[var(--card-border)] bg-white p-4 shadow-sm">
+        <button
+          type="button"
+          onClick={() => setOnlyOrphans((v) => !v)}
+          className={`rounded-2xl border p-4 text-left shadow-sm transition ${
+            onlyOrphans
+              ? 'border-amber-300 bg-amber-50'
+              : 'border-[var(--card-border)] bg-white hover:bg-[#fafafa]'
+          }`}
+        >
           <p className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">Sem loja</p>
           <p className="mt-1 text-2xl font-bold tabular-nums text-amber-800">{withoutStore}</p>
-        </div>
+          <p className="mt-1 text-[11px] text-[#6b7280]">
+            {onlyOrphans ? 'A mostrar só órfãos — clica para ver todos' : 'Clica para filtrar órfãos'}
+          </p>
+        </button>
       </section>
+
+      {toast ? (
+        <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          {toast}
+        </p>
+      ) : null}
 
       <section className="rounded-2xl border border-[var(--card-border)] bg-white p-4 shadow-sm">
         <form
@@ -143,7 +210,7 @@ export function AdminUsuariosClient() {
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Buscar email, loja, slug ou id…"
+            placeholder="Buscar email, loja pretendida, loja, slug ou id…"
             className="min-w-[16rem] flex-1 rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm outline-none focus:border-[var(--dash-primary)]/40 focus:ring-2 focus:ring-[var(--dash-primary)]/15"
           />
           <button
@@ -164,11 +231,11 @@ export function AdminUsuariosClient() {
       <section className="overflow-hidden rounded-2xl border border-[var(--card-border)] bg-white shadow-sm">
         {loading ? (
           <p className="p-6 text-sm text-[#6b7280]">A carregar utilizadores Auth…</p>
-        ) : users.length === 0 ? (
+        ) : visible.length === 0 ? (
           <p className="p-6 text-sm text-[#6b7280]">Nenhum utilizador encontrado.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[920px] border-collapse text-left text-sm">
+            <table className="w-full min-w-[980px] border-collapse text-left text-sm">
               <thead>
                 <tr className="border-b border-[var(--card-border)] bg-[#fafafa] text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
                   <th className="px-4 py-3">Email</th>
@@ -177,10 +244,11 @@ export function AdminUsuariosClient() {
                   <th className="px-4 py-3">Email confirmado</th>
                   <th className="px-4 py-3">Loja</th>
                   <th className="px-4 py-3">Estado</th>
+                  <th className="px-4 py-3">Ação</th>
                 </tr>
               </thead>
               <tbody>
-                {users.map((u) => (
+                {visible.map((u) => (
                   <tr key={u.id} className="border-b border-[var(--card-border)]/80 align-top">
                     <td className="px-4 py-3">
                       <p className="font-semibold text-[#1a1614]">{u.email ?? '—'}</p>
@@ -209,10 +277,31 @@ export function AdminUsuariosClient() {
                           </Link>
                         </div>
                       ) : (
-                        <span className="text-[#9ca3af]">—</span>
+                        <div>
+                          <span className="text-[#9ca3af]">—</span>
+                          {u.intended_store_name ? (
+                            <p className="mt-1 text-xs text-[#6b7280]">
+                              Pretendida: {u.intended_store_name}
+                            </p>
+                          ) : null}
+                        </div>
                       )}
                     </td>
                     <td className="px-4 py-3">{statusBadge(u.store_status)}</td>
+                    <td className="px-4 py-3">
+                      {!u.store_id ? (
+                        <button
+                          type="button"
+                          disabled={busyId === u.id}
+                          onClick={() => void createStoreForUser(u)}
+                          className="rounded-lg bg-amber-600 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-amber-700 disabled:opacity-50"
+                        >
+                          {busyId === u.id ? 'A criar…' : 'Criar loja'}
+                        </button>
+                      ) : (
+                        <span className="text-xs text-[#9ca3af]">—</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

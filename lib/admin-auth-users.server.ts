@@ -5,9 +5,23 @@ import type { AdminAuthUserDTO } from '@/lib/admin-auth-users-types'
 
 export type { AdminAuthUserDTO } from '@/lib/admin-auth-users-types'
 
+function intendedStoreNameFromUser(u: User): string | null {
+  const meta = (u.user_metadata ?? {}) as Record<string, unknown>
+  const raw =
+    typeof meta.store_name === 'string'
+      ? meta.store_name
+      : typeof meta.storeName === 'string'
+        ? meta.storeName
+        : typeof meta.name === 'string'
+          ? meta.name
+          : null
+  const t = raw?.trim()
+  return t || null
+}
+
 async function listAllAuthUsers(svc: SupabaseClient): Promise<User[]> {
   const all: User[] = []
-  for (let page = 1; page <= 50; page++) {
+  for (let page = 1; page <= 200; page++) {
     const { data, error } = await svc.auth.admin.listUsers({ page, perPage: 200 })
     if (error) throw new Error(error.message)
     const users = data?.users ?? []
@@ -30,7 +44,6 @@ export async function fetchAuthUsersForAdmin(
   >()
 
   if (ownerIds.length > 0) {
-    // Chunk to avoid URL/query limits
     const chunkSize = 150
     for (let i = 0; i < ownerIds.length; i += chunkSize) {
       const chunk = ownerIds.slice(i, i + chunkSize)
@@ -39,7 +52,6 @@ export async function fetchAuthUsersForAdmin(
         .select('id, name, slug, status, merchant_status, owner_id')
         .in('owner_id', chunk)
       if (error) {
-        // Fallback se merchant_status não existir
         if (/merchant_status|column|schema cache/i.test(error.message)) {
           const fallback = await svc
             .from('stores')
@@ -100,6 +112,7 @@ export async function fetchAuthUsersForAdmin(
     .map((u) => {
       const store = storeByOwner.get(u.id) ?? null
       const bannedUntil = (u as { banned_until?: string | null }).banned_until
+      const intended = intendedStoreNameFromUser(u)
       return {
         id: u.id,
         email: u.email ?? null,
@@ -107,6 +120,7 @@ export async function fetchAuthUsersForAdmin(
         last_sign_in_at: u.last_sign_in_at ?? null,
         email_confirmed_at: u.email_confirmed_at ?? null,
         banned: Boolean(bannedUntil),
+        intended_store_name: intended,
         store_id: store?.id ?? null,
         store_name: store?.name ?? null,
         store_slug: store?.slug ?? null,
@@ -115,10 +129,22 @@ export async function fetchAuthUsersForAdmin(
     })
     .filter((u) => {
       if (!needle) return true
-      const hay = `${u.email ?? ''} ${u.store_name ?? ''} ${u.store_slug ?? ''} ${u.id}`.toLowerCase()
+      const hay = [
+        u.email ?? '',
+        u.store_name ?? '',
+        u.store_slug ?? '',
+        u.intended_store_name ?? '',
+        u.id,
+      ]
+        .join(' ')
+        .toLowerCase()
       return hay.includes(needle)
     })
     .sort((a, b) => {
+      // Órfãos (sem loja) primeiro — são os que costumam “sumir” do painel Lojistas.
+      const aOrphan = a.store_id ? 1 : 0
+      const bOrphan = b.store_id ? 1 : 0
+      if (aOrphan !== bOrphan) return aOrphan - bOrphan
       const at = a.created_at ? new Date(a.created_at).getTime() : 0
       const bt = b.created_at ? new Date(b.created_at).getTime() : 0
       return bt - at

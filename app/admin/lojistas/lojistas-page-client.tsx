@@ -41,8 +41,12 @@ import {
   YAxis,
 } from 'recharts'
 
+type LojistaRowKind = 'store' | 'orphan_auth' | 'ghost_store'
+
 type LojistaRow = {
   id: string
+  owner_id: string | null
+  row_kind: LojistaRowKind
   nome: string
   email: string | null
   telefone: string | null
@@ -119,6 +123,7 @@ const filtros = [
   { id: 'ativo', label: 'Ativos' },
   { id: 'bloqueado', label: 'Bloqueados' },
   { id: 'cancelado', label: 'Cancelados' },
+  { id: 'sem_loja', label: 'Sem loja / órfãos' },
   { id: 'urgentes', label: 'Urgentes' },
 ] as const
 
@@ -375,13 +380,22 @@ function operationModeBadgeLabel(mode: MerchantOperationMode | null): string {
   return operationModeLabel(mode)
 }
 
+function parseRowKind(v: unknown, id: string): LojistaRowKind {
+  if (v === 'orphan_auth' || v === 'ghost_store' || v === 'store') return v
+  if (id.startsWith('orphan:')) return 'orphan_auth'
+  return 'store'
+}
+
 function normalizeLojista(raw: Record<string, unknown>): LojistaRow {
   const c = raw.cancelamento_solicitado
   const operation_mode = parseOperationModeFromStore({
     operation_mode: raw.operation_mode,
   })
+  const id = String(raw.id ?? '')
   return {
-    id: String(raw.id ?? ''),
+    id,
+    owner_id: typeof raw.owner_id === 'string' ? raw.owner_id : null,
+    row_kind: parseRowKind(raw.row_kind, id),
     nome: String(raw.nome ?? ''),
     email: typeof raw.email === 'string' ? raw.email : null,
     telefone: typeof raw.telefone === 'string' ? raw.telefone : null,
@@ -616,6 +630,61 @@ export function LojistasPageClient() {
   useEffect(() => {
     void loadNotifications()
   }, [loadNotifications])
+
+  async function createStoreForOrphan(row: LojistaRow) {
+    const ownerId =
+      row.owner_id ||
+      (row.id.startsWith('orphan:') ? row.id.slice('orphan:'.length) : '')
+    if (!ownerId) {
+      setToast({ type: 'err', msg: 'Utilizador Auth sem id.' })
+      return
+    }
+    const suggested =
+      row.nome.replace(/^Sem loja —\s*/i, '').trim() ||
+      (row.email ? `Loja de ${row.email.split('@')[0]}` : 'Nova loja')
+    const name = window.prompt('Nome da loja a criar/religar:', suggested)
+    if (name == null) return
+    const trimmed = name.trim()
+    if (!trimmed) {
+      setToast({ type: 'err', msg: 'Nome da loja é obrigatório.' })
+      return
+    }
+
+    setBusyId(row.id)
+    try {
+      const res = await fetch('/api/admin/usuarios', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: ownerId, storeName: trimmed }),
+      })
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string
+        created?: boolean
+        relinked?: boolean
+      }
+      if (!res.ok) {
+        setToast({ type: 'err', msg: data.error || 'Não foi possível criar a loja.' })
+        return
+      }
+      setToast({
+        type: 'ok',
+        msg: data.relinked
+          ? `Loja religada a ${row.email ?? ownerId}.`
+          : data.created
+            ? `Loja pendente criada para ${row.email ?? ownerId}.`
+            : 'Utilizador já tinha loja.',
+      })
+      await load(true)
+    } catch (e) {
+      setToast({
+        type: 'err',
+        msg: e instanceof Error ? e.message : 'Erro de rede.',
+      })
+    } finally {
+      setBusyId(null)
+    }
+  }
 
   const refreshFromStoresRealtime = useCallback(async () => {
     await loadNotifications()
@@ -1458,16 +1527,33 @@ export function LojistasPageClient() {
                 </td>
               </tr>
             ) : (
-              rows.map((row) => (
+              rows.map((row) => {
+                const isOrphan = row.row_kind === 'orphan_auth'
+                const isGhost = row.row_kind === 'ghost_store'
+                return (
                 <tr key={row.id} className="bg-white">
                   <td className="px-2 py-2 font-medium text-[#1a1614] sm:px-4 sm:py-3">
-                    <button
-                      type="button"
-                      onClick={() => setDrawerId(row.id)}
-                      className="text-left font-medium text-[var(--dash-primary)] hover:underline"
-                    >
-                      {row.nome || '—'}
-                    </button>
+                    {isOrphan ? (
+                      <div>
+                        <p className="font-medium text-[#1a1614]">{row.nome || '—'}</p>
+                        <span className="mt-1 inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-900 ring-1 ring-amber-200/80">
+                          Auth sem loja
+                        </span>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setDrawerId(row.id)}
+                        className="text-left font-medium text-[var(--dash-primary)] hover:underline"
+                      >
+                        {row.nome || '—'}
+                      </button>
+                    )}
+                    {isGhost ? (
+                      <span className="mt-1 inline-flex rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-800 ring-1 ring-red-200/80">
+                        Dono em falta
+                      </span>
+                    ) : null}
                   </td>
                   <td className="max-w-[12rem] truncate px-2 py-2 text-[#374151] sm:px-4 sm:py-3">
                     {row.email ?? '—'}
@@ -1484,6 +1570,9 @@ export function LojistasPageClient() {
                     </div>
                   </td>
                   <td className="px-2 py-2 sm:px-4 sm:py-3">
+                    {isOrphan ? (
+                      <span className="text-xs text-[#9ca3af]">—</span>
+                    ) : (
                     <div className="flex flex-col gap-1.5">
                       <span
                         className={`inline-flex w-fit max-w-[10rem] rounded-full px-2 py-0.5 text-[11px] font-semibold leading-tight ring-1 ${
@@ -1503,6 +1592,7 @@ export function LojistasPageClient() {
                         Definir / alterar…
                       </button>
                     </div>
+                    )}
                   </td>
                   <td className="px-2 py-2 sm:px-4 sm:py-3">
                     <div className="flex flex-col gap-1.5">
@@ -1541,13 +1631,23 @@ export function LojistasPageClient() {
                     {fmtDate(row.cadastrado_em)}
                   </td>
                   <td className="px-2 py-2 sm:px-4 sm:py-3">
+                    {isOrphan ? (
+                      <button
+                        type="button"
+                        disabled={busyId === row.id}
+                        onClick={() => void createStoreForOrphan(row)}
+                        className="rounded-lg bg-amber-600 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-amber-700 disabled:opacity-50"
+                      >
+                        {busyId === row.id ? 'A criar…' : 'Criar loja'}
+                      </button>
+                    ) : (
                     <div className="flex flex-wrap items-center gap-1.5">
                       {(row.status === 'pendente' ||
                         row.status === 'bloqueado' ||
                         row.status === 'cancelado') && (
                         <button
                           type="button"
-                          disabled={busyId === row.id}
+                          disabled={busyId === row.id || isGhost}
                           onClick={() => openPlanoModal('ativar', row)}
                           className="rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50"
                         >
@@ -1566,7 +1666,7 @@ export function LojistasPageClient() {
                       )}
                       <button
                         type="button"
-                        disabled={busyId === row.id}
+                        disabled={busyId === row.id || isGhost}
                         onClick={() => {
                           setFaturaModalRow(row)
                           setFaturaDesc('')
@@ -1603,9 +1703,11 @@ export function LojistasPageClient() {
                         </button>
                       )}
                     </div>
+                    )}
                   </td>
                 </tr>
-              ))
+                )
+              })
             )}
           </tbody>
         </table>

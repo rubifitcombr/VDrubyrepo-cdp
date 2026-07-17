@@ -14,8 +14,9 @@ import {
   parseOperationModeFromStore,
   type MerchantOperationMode,
 } from '@/lib/merchant-operation-mode'
-import type { SupabaseClient } from '@supabase/supabase-js'
+import type { SupabaseClient, User } from '@supabase/supabase-js'
 import { readStorePlano, readStoreStatus } from '@/lib/store-columns'
+import type { LojistaRowKind } from '@/lib/admin-auth-users-types'
 
 export type FaturaAdminRow = {
   id: string
@@ -27,6 +28,9 @@ export type FaturaAdminRow = {
 
 export type LojistaListRow = {
   id: string
+  /** Prefixo `orphan:` para utilizadores Auth sem loja. */
+  owner_id: string | null
+  row_kind: LojistaRowKind
   nome: string
   email: string | null
   telefone: string | null
@@ -69,15 +73,18 @@ function orderCountsTowardFaturamento(status: unknown): boolean {
 
 function rowToLojista(
   store: Record<string, unknown>,
-  emailMap: Record<string, string | null>
+  emailMap: Record<string, string | null>,
+  rowKind: LojistaRowKind = 'store'
 ): Omit<LojistaListRow, 'produtos_count' | 'faturamento_pedidos'> {
-  const ownerId = String(store.owner_id ?? '')
+  const ownerId = String(store.owner_id ?? '').trim() || null
   const cancelRaw = store.cancelamento_solicitado
   const acceptance = readContractAcceptance(store)
   return {
     id: String(store.id),
+    owner_id: ownerId,
+    row_kind: rowKind,
     nome: String(store.name ?? ''),
-    email: emailMap[ownerId] ?? null,
+    email: ownerId ? emailMap[ownerId] ?? null : null,
     telefone:
       typeof store.phone === 'string' && store.phone.trim()
         ? store.phone.trim()
@@ -107,6 +114,46 @@ function rowToLojista(
       typeof store.created_at === 'string' ? store.created_at : null,
     cancelamento_solicitado:
       cancelRaw === true || cancelRaw === 'true' || cancelRaw === 1,
+  }
+}
+
+function intendedStoreNameFromAuthUser(u: User): string | null {
+  const meta = (u.user_metadata ?? {}) as Record<string, unknown>
+  const raw =
+    typeof meta.store_name === 'string'
+      ? meta.store_name
+      : typeof meta.storeName === 'string'
+        ? meta.storeName
+        : null
+  const t = raw?.trim()
+  return t || null
+}
+
+function orphanAuthToLojista(u: User): LojistaListRow {
+  const intended = intendedStoreNameFromAuthUser(u)
+  const email = u.email ?? null
+  return {
+    id: `orphan:${u.id}`,
+    owner_id: u.id,
+    row_kind: 'orphan_auth',
+    nome: intended || (email ? `Sem loja — ${email}` : 'Utilizador Auth sem loja'),
+    email,
+    telefone: null,
+    plano: parsePlan('growth'),
+    operation_mode: null,
+    status: 'pendente',
+    plano_vence_em: null,
+    billing_cycle: 'monthly',
+    contrato_inicio_em: null,
+    contrato_fim_em: null,
+    contrato_mensal_brl: null,
+    contrato_assinado_em: null,
+    contrato_documento_hash: null,
+    contrato_pode_baixar_pdf: false,
+    cadastrado_em: u.created_at ?? null,
+    cancelamento_solicitado: false,
+    produtos_count: 0,
+    faturamento_pedidos: 0,
   }
 }
 
@@ -225,7 +272,15 @@ function sortLojistas(rows: LojistaListRow[]): LojistaListRow[] {
     bloqueado: 2,
     cancelado: 3,
   }
+  const kindRank: Record<LojistaRowKind, number> = {
+    orphan_auth: 0,
+    ghost_store: 1,
+    store: 2,
+  }
   return [...rows].sort((a, b) => {
+    const ka = kindRank[a.row_kind] ?? 9
+    const kb = kindRank[b.row_kind] ?? 9
+    if (ka !== kb) return ka - kb
     const ra = rank[a.status] ?? 9
     const rb = rank[b.status] ?? 9
     if (ra !== rb) return ra - rb
@@ -330,14 +385,20 @@ export function buildStatusDistribution(rows: LojistaListRow[]): StatusSlice[] {
   }))
 }
 
+type AuthUsersSnapshot = {
+  emailById: Map<string, string | null>
+  users: User[]
+}
+
 /**
- * Utilizadores Auth (id → email). `null` se listUsers falhar (não filtrar lojas).
+ * Utilizadores Auth. `null` se listUsers falhar.
  * Usa páginas de 200 (limite seguro do GoTrue) para não truncar a lista.
  */
-async function fetchAuthUsersIndex(
+async function fetchAuthUsersSnapshot(
   svc: SupabaseClient
-): Promise<Map<string, string | null> | null> {
-  const map = new Map<string, string | null>()
+): Promise<AuthUsersSnapshot | null> {
+  const emailById = new Map<string, string | null>()
+  const users: User[] = []
   const perPage = 200
   for (let page = 1; page <= 200; page++) {
     const { data, error } = await svc.auth.admin.listUsers({ page, perPage })
@@ -345,13 +406,15 @@ async function fetchAuthUsersIndex(
       console.error('[admin-lojistas] listUsers falhou:', error.message)
       return null
     }
-    const users = data?.users ?? []
-    for (const u of users) {
-      if (u?.id) map.set(u.id, u.email ?? null)
+    const chunk = data?.users ?? []
+    for (const u of chunk) {
+      if (!u?.id) continue
+      emailById.set(u.id, u.email ?? null)
+      users.push(u)
     }
-    if (users.length < perPage) break
+    if (chunk.length < perPage) break
   }
-  return map
+  return { emailById, users }
 }
 
 async function fetchAllStores(svc: SupabaseClient): Promise<Record<string, unknown>[]> {
@@ -390,20 +453,16 @@ export async function fetchLojistasForAdmin(
   lojistas: LojistaListRow[]
 }> {
   const rawList = await fetchAllStores(svc)
+  const authSnap = await fetchAuthUsersSnapshot(svc)
+  const authIndex = authSnap?.emailById ?? null
 
-  // Alinha o painel com o banco: oculta lojas cujo dono já não existe em
-  // auth.users (ex.: usuário apagado direto no Supabase Authentication).
-  const authIndex = await fetchAuthUsersIndex(svc)
-  const list =
-    authIndex === null
-      ? rawList
-      : rawList.filter((s) => {
-          const ownerId = String(s.owner_id ?? '').trim()
-          // Mantém lojas sem dono (caso legado); oculta apenas quando o dono
-          // foi apagado de auth.users.
-          if (ownerId === '') return true
-          return authIndex.has(ownerId)
-        })
+  // Inclui TODAS as lojas: as com dono apagado ficam como ghost_store
+  // (antes eram ocultadas e “sumiam” do painel).
+  const list = rawList
+
+  const ownersWithStore = new Set(
+    list.map((s) => String(s.owner_id ?? '').trim()).filter(Boolean)
+  )
 
   const ownerIds = [
     ...new Set(
@@ -412,7 +471,6 @@ export async function fetchLojistasForAdmin(
   ]
 
   const emailMap: Record<string, string | null> = {}
-  // Preferir email do Auth; complementar com public.usuarios.
   if (authIndex) {
     for (const id of ownerIds) {
       if (authIndex.has(id)) emailMap[id] = authIndex.get(id) ?? null
@@ -438,17 +496,29 @@ export async function fetchLojistasForAdmin(
     aggregateOrderRevenueByStore(svc),
   ])
 
-  const allRows = sortLojistas(
-    list.map((s) => {
-      const sid = String(s.id ?? '')
-      const core = rowToLojista(s, emailMap)
-      return {
-        ...core,
-        produtos_count: productByStore[sid] ?? 0,
-        faturamento_pedidos: revenueByStore[sid] ?? 0,
-      }
-    })
-  )
+  const storeRows: LojistaListRow[] = list.map((s) => {
+    const sid = String(s.id ?? '')
+    const ownerId = String(s.owner_id ?? '').trim()
+    const kind: LojistaRowKind =
+      ownerId === '' || (authIndex !== null && !authIndex.has(ownerId))
+        ? 'ghost_store'
+        : 'store'
+    const core = rowToLojista(s, emailMap, kind)
+    return {
+      ...core,
+      produtos_count: productByStore[sid] ?? 0,
+      faturamento_pedidos: revenueByStore[sid] ?? 0,
+    }
+  })
+
+  const orphanRows: LojistaListRow[] =
+    authSnap === null
+      ? []
+      : authSnap.users
+          .filter((u) => u.id && !ownersWithStore.has(u.id))
+          .map((u) => orphanAuthToLojista(u))
+
+  const allRows = sortLojistas([...storeRows, ...orphanRows])
 
   const storeById = new Map(list.map((s) => [String(s.id ?? ''), s]))
 
@@ -496,6 +566,12 @@ export async function fetchLojistasForAdmin(
       break
     case 'cancelado':
       filtered = filtered.filter((r) => r.status === 'cancelado')
+      break
+    case 'sem_loja':
+    case 'orfaos':
+      filtered = filtered.filter(
+        (r) => r.row_kind === 'orphan_auth' || r.row_kind === 'ghost_store'
+      )
       break
     case 'urgentes':
     case 'vencendo':

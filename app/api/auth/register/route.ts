@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { parseOperationModeInput } from '@/lib/merchant-operation-mode'
 import { createServiceRoleClient } from '@/lib/supabase/service-role.server'
-import { resolveUniqueStoreSlug } from '@/lib/store-slug.server'
-import { slugifyStoreSlug } from '@/lib/store-slug'
+import { createOrRelinkPendingStoreForAuthUser } from '@/lib/admin-create-pending-store.server'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,7 +30,21 @@ async function findAuthUserIdByEmail(
   email: string
 ): Promise<string | null> {
   const target = email.toLowerCase()
-  for (let page = 1; page <= 25; page++) {
+
+  // Caminho rápido: espelho public.usuarios (quando o trigger correu).
+  const { data: mirror } = await svc
+    .from('usuarios')
+    .select('id')
+    .ilike('email', target)
+    .limit(1)
+    .maybeSingle()
+  if (mirror && typeof (mirror as { id?: string }).id === 'string') {
+    const id = String((mirror as { id: string }).id)
+    const { data } = await svc.auth.admin.getUserById(id)
+    if (data?.user?.id) return data.user.id
+  }
+
+  for (let page = 1; page <= 200; page++) {
     const { data, error } = await svc.auth.admin.listUsers({ page, perPage: 200 })
     if (error) return null
     const users = data?.users ?? []
@@ -72,57 +85,22 @@ async function ensureStoreForOwner(
     mode: string
   }
 ): Promise<{ storeId: string | null; error: string | null; created: boolean }> {
-  const { data: existingStore } = await svc
-    .from('stores')
-    .select('id')
-    .eq('owner_id', userId)
-    .maybeSingle()
-
-  if (existingStore?.id) {
-    return { storeId: String(existingStore.id), error: null, created: false }
-  }
-
-  const uniqueSlug = await resolveUniqueStoreSlug(svc, slugifyStoreSlug(input.name))
-  const baseRow: Record<string, unknown> = {
-    name: input.name,
-    slug: uniqueSlug,
-    owner_id: userId,
-    status: 'pendente',
-    merchant_status: 'pendente',
-    plano: 'growth',
-    operation_mode: input.mode,
-    ...(input.phone ? { phone: input.phone } : {}),
-  }
-
-  let { data, error: storeErr } = await svc
-    .from('stores')
-    .insert(baseRow)
-    .select('id')
-    .single()
-
-  // Schemas antigos: tenta sem merchant_status / operation_mode se a coluna não existir.
-  if (storeErr && /merchant_status|column|schema cache/i.test(storeErr.message)) {
-    const { merchant_status: _m, ...withoutMerchant } = baseRow
-    void _m
-    ;({ data, error: storeErr } = await svc
-      .from('stores')
-      .insert(withoutMerchant)
-      .select('id')
-      .single())
-  }
-  if (storeErr && /operation_mode|column|schema cache/i.test(storeErr.message)) {
-    const { operation_mode: _o, merchant_status: _m, ...minimal } = baseRow
-    void _o
-    void _m
-    ;({ data, error: storeErr } = await svc
-      .from('stores')
-      .insert({ ...minimal, status: 'pendente' })
-      .select('id')
-      .single())
-  }
-
-  if (storeErr) {
-    const msg = storeErr.message || 'Erro ao criar loja.'
+  try {
+    const { data: userData } = await svc.auth.admin.getUserById(userId)
+    const result = await createOrRelinkPendingStoreForAuthUser(svc, {
+      userId,
+      email: userData?.user?.email ?? null,
+      storeName: input.name,
+      phone: input.phone,
+      operationMode: input.mode,
+    })
+    return {
+      storeId: result.storeId,
+      error: null,
+      created: result.created || result.relinked,
+    }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Erro ao criar loja.'
     const missingCol =
       /operation_mode|column/i.test(msg) && /does not exist|schema cache/i.test(msg)
     return {
@@ -133,8 +111,6 @@ async function ensureStoreForOwner(
         : msg,
     }
   }
-
-  return { storeId: data?.id ? String(data.id) : null, error: null, created: true }
 }
 
 /**
@@ -293,7 +269,11 @@ export async function POST(req: NextRequest) {
   if (storeResult.error) {
     if (created?.user?.id === userId) {
       await svc.auth.admin.deleteUser(userId).catch(() => null)
-      await svc.from('usuarios').delete().eq('id', userId).catch(() => null)
+      try {
+        await svc.from('usuarios').delete().eq('id', userId)
+      } catch {
+        /* ignore cleanup */
+      }
     }
     return NextResponse.json({ error: storeResult.error }, { status: 500 })
   }
