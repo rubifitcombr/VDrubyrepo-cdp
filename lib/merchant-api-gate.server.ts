@@ -112,10 +112,8 @@ export function gateMerchantDeliveryPipeline(
   if (!merchantEntregadoresEnabled(plan)) {
     return merchantApiForbidden('entregadores')
   }
-  const denyMenu = gateMerchantMenuKey(store, userEmail, 'pedidos')
-  if (denyMenu) return denyMenu
   if (!merchantHasDeliveryContext(store)) {
     return merchantApiForbidden('entregas')
   }
-  return null
+  return gateMerchantMenuKey(store, userEmail, 'entregadores')
 }

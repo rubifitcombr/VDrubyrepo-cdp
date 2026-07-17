@@ -4,7 +4,10 @@ import { menuKeysForMerchant } from '@/lib/dashboard-menu'
 import type { DashboardMenuKey } from '@/lib/dashboard-menu-types'
 import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
 import { parseHubPinConfig } from '@/lib/hub-shortcut-pin'
-import { parseOperationModeFromStore } from '@/lib/merchant-operation-mode'
+import {
+  isDeliveryPipelineEnabled,
+  parseOperationModeFromStore,
+} from '@/lib/merchant-operation-mode'
 import {
   isHubContextVisible,
   isHubMenuKeyVisible,
@@ -89,7 +92,9 @@ export default async function DashboardHub() {
   const showSalao = garcomInMenu && hasStaffGarcom
   const showAutoatendimento = garcomInMenu && hasSalonQr && !hasStaffGarcom
   const showCozinha = isHubMenuKeyVisible('kds', allowed)
-  const showDelivery = isHubContextVisible('delivery', allowed)
+  const showDelivery =
+    isDeliveryPipelineEnabled(operationMode) &&
+    isHubContextVisible('delivery', allowed)
   const showMesas = garcomInMenu && hasSalonQr && !hasStaffGarcom
   const showComandas = isHubMenuKeyVisible('pedidos', allowed)
   const showDigitalMenu = shouldShowDigitalMenuShortcut(operationMode)

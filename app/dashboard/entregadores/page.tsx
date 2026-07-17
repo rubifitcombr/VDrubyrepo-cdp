@@ -1,8 +1,13 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { EntregadoresOpsClient } from '@/app/dashboard/entregadores/_components/EntregadoresOpsClient'
+import { menuKeysForMerchant } from '@/lib/dashboard-menu'
 import { merchantEntregadoresEnabled } from '@/lib/plan'
 import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
+import {
+  isDeliveryPipelineEnabled,
+  parseOperationModeFromStore,
+} from '@/lib/merchant-operation-mode'
 import { readStorePlano } from '@/lib/store-columns'
 import { getUser } from '@/services/auth.server'
 import { getStoreByUser } from '@/services/store.server'
@@ -29,8 +34,13 @@ export default async function EntregadoresPage() {
 
   const row = store as Record<string, unknown>
   const plan = effectiveDashboardPlan(user.email, readStorePlano(row))
-  if (!merchantEntregadoresEnabled(plan)) {
-    redirect('/dashboard/planos?planRestricted=1')
+  const operationMode = parseOperationModeFromStore(row)
+  if (
+    !merchantEntregadoresEnabled(plan) ||
+    !isDeliveryPipelineEnabled(operationMode) ||
+    !menuKeysForMerchant(plan, operationMode).has('entregadores')
+  ) {
+    redirect('/dashboard')
   }
 
   return (

@@ -14,9 +14,9 @@ import type { MerchantOperationMode } from '@/lib/merchant-operation-mode'
 import {
   hubContextKeepsFullSidebar,
   hubContextLabel,
+  isHubContextVisible,
   menuKeysForHubContext,
   resolveOperationalHubContext,
-  shouldShowFocusedHubNavigation,
   withHubContextHref,
 } from '@/lib/operational-hub-navigation'
 import {
@@ -410,11 +410,14 @@ export function DashboardShell({
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const hubParam = searchParams.get('hub')
-  const hubContext = resolveOperationalHubContext(pathname, hubParam)
-  const focusedHubNavigation = shouldShowFocusedHubNavigation(
-    pathname,
-    hubParam
-  )
+  const allowedMenuKeys = menuKeysForMerchant(plan, operationMode ?? null)
+  const resolvedHub = resolveOperationalHubContext(pathname, hubParam)
+  // Ignora contextos do hub que o plano/modo não permite (ex.: Delivery em presencial).
+  const hubContext =
+    resolvedHub && isHubContextVisible(resolvedHub, allowedMenuKeys)
+      ? resolvedHub
+      : null
+  const focusedHubNavigation = hubContext !== null
   const pinShortcut = hubPinShortcutForAccess(pathname, hubParam)
   const pinEntry = pinShortcut && hubPinConfig ? hubPinConfig[pinShortcut] : null
   const pinRequired =

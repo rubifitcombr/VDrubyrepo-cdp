@@ -52,7 +52,8 @@ const HUB_CONTEXT_MENU_KEYS: Record<
   balcao: ['pdv', 'caixa', 'pedidos'],
   salao: ['garcom', 'pedidos'],
   cozinha: ['kds', 'pedidos'],
-  delivery: ['pedidos', 'entregadores'],
+  /** Entregadores é o gate do atalho; Pedidos fica no menu focado do canal delivery. */
+  delivery: ['entregadores', 'pedidos'],
   mesas: ['garcom'],
   comandas: ['pedidos'],
   visao: ['dashboard'],
@@ -133,6 +134,11 @@ export function isHubContextVisible(
   context: OperationalHubContext,
   allowed: ReadonlySet<DashboardMenuKey>
 ): boolean {
+  // Presencial tem «Pedidos» (salão/PDV) mas NÃO o atalho Delivery:
+  // o tile/hub Delivery só existe com gestão de entregadores.
+  if (context === 'delivery') {
+    return allowed.has('entregadores')
+  }
   return menuKeysForHubContext(context, allowed).length > 0
 }
 
