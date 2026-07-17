@@ -11,13 +11,13 @@ function messageForError(raw: string | null): string {
   const e = (raw || '').toLowerCase().trim()
   switch (e) {
     case 'pendente':
-      return 'Seu cadastro está aguardando ativação. Entre em contato para contratar um plano.'
+      return 'O teu cadastro foi recebido e está aguardando ativação pela equipe Vyria. Em breve libertamos o acesso ao painel.'
     case 'bloqueado':
-      return 'Seu acesso foi suspenso. Entre em contato para regularizar.'
+      return 'O teu acesso está suspenso. Entre em contato para regularizar.'
     case 'cancelado':
-      return 'Sua assinatura foi cancelada. Entre em contato para reativar.'
+      return 'A tua assinatura foi cancelada. Entre em contato para reativar.'
     case 'plano_vencido':
-      return 'Seu plano venceu. Entre em contato para renovar.'
+      return 'O teu plano venceu. Entre em contato para renovar.'
     default:
       return 'Não foi possível aceder ao painel. Entre em contato com o suporte.'
   }

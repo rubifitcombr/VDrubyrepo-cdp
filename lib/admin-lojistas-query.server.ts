@@ -331,17 +331,15 @@ export function buildStatusDistribution(rows: LojistaListRow[]): StatusSlice[] {
 }
 
 /**
- * IDs de utilizadores que ainda existem em auth.users.
- * Retorna `null` se a consulta falhar (nesse caso não filtramos nada,
- * para evitar esconder lojas por engano).
+ * Utilizadores Auth (id → email). `null` se listUsers falhar (não filtrar lojas).
+ * Usa páginas de 200 (limite seguro do GoTrue) para não truncar a lista.
  */
-async function fetchExistingAuthUserIds(
+async function fetchAuthUsersIndex(
   svc: SupabaseClient
-): Promise<Set<string> | null> {
-  const ids = new Set<string>()
-  const perPage = 1000
-  let page = 1
-  while (true) {
+): Promise<Map<string, string | null> | null> {
+  const map = new Map<string, string | null>()
+  const perPage = 200
+  for (let page = 1; page <= 200; page++) {
     const { data, error } = await svc.auth.admin.listUsers({ page, perPage })
     if (error) {
       console.error('[admin-lojistas] listUsers falhou:', error.message)
@@ -349,13 +347,28 @@ async function fetchExistingAuthUserIds(
     }
     const users = data?.users ?? []
     for (const u of users) {
-      if (u?.id) ids.add(u.id)
+      if (u?.id) map.set(u.id, u.email ?? null)
     }
     if (users.length < perPage) break
-    page += 1
-    if (page > 100) break
   }
-  return ids
+  return map
+}
+
+async function fetchAllStores(svc: SupabaseClient): Promise<Record<string, unknown>[]> {
+  const rows: Record<string, unknown>[] = []
+  for (let from = 0; ; from += ADMIN_AGG_PAGE_SIZE) {
+    const to = from + ADMIN_AGG_PAGE_SIZE - 1
+    const { data, error } = await svc
+      .from('stores')
+      .select('*')
+      .order('created_at', { ascending: false, nullsFirst: false })
+      .range(from, to)
+    if (error) throw new Error(error.message)
+    const batch = (data ?? []) as Record<string, unknown>[]
+    rows.push(...batch)
+    if (batch.length < ADMIN_AGG_PAGE_SIZE) break
+  }
+  return rows
 }
 
 export async function fetchLojistasForAdmin(
@@ -376,23 +389,20 @@ export async function fetchLojistasForAdmin(
   }
   lojistas: LojistaListRow[]
 }> {
-  const { data: stores, error } = await svc.from('stores').select('*')
-  if (error) throw new Error(error.message)
-
-  const rawList = (stores ?? []) as Record<string, unknown>[]
+  const rawList = await fetchAllStores(svc)
 
   // Alinha o painel com o banco: oculta lojas cujo dono já não existe em
   // auth.users (ex.: usuário apagado direto no Supabase Authentication).
-  const existingAuthIds = await fetchExistingAuthUserIds(svc)
+  const authIndex = await fetchAuthUsersIndex(svc)
   const list =
-    existingAuthIds === null
+    authIndex === null
       ? rawList
       : rawList.filter((s) => {
           const ownerId = String(s.owner_id ?? '').trim()
           // Mantém lojas sem dono (caso legado); oculta apenas quando o dono
           // foi apagado de auth.users.
           if (ownerId === '') return true
-          return existingAuthIds.has(ownerId)
+          return authIndex.has(ownerId)
         })
 
   const ownerIds = [
@@ -402,14 +412,24 @@ export async function fetchLojistasForAdmin(
   ]
 
   const emailMap: Record<string, string | null> = {}
+  // Preferir email do Auth; complementar com public.usuarios.
+  if (authIndex) {
+    for (const id of ownerIds) {
+      if (authIndex.has(id)) emailMap[id] = authIndex.get(id) ?? null
+    }
+  }
   if (ownerIds.length > 0) {
-    const { data: usuarios } = await svc
-      .from('usuarios')
-      .select('id, email')
-      .in('id', ownerIds)
-    for (const u of usuarios ?? []) {
-      const r = u as { id: string; email: string | null }
-      emailMap[r.id] = r.email ?? null
+    const chunkSize = 150
+    for (let i = 0; i < ownerIds.length; i += chunkSize) {
+      const chunk = ownerIds.slice(i, i + chunkSize)
+      const { data: usuarios } = await svc
+        .from('usuarios')
+        .select('id, email')
+        .in('id', chunk)
+      for (const u of usuarios ?? []) {
+        const r = u as { id: string; email: string | null }
+        if (!emailMap[r.id] && r.email) emailMap[r.id] = r.email
+      }
     }
   }
 

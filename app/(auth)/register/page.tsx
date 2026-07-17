@@ -6,7 +6,6 @@ import { useState } from 'react'
 import { signIn } from '@/services/auth'
 import type { MerchantOperationMode } from '@/lib/merchant-operation-mode'
 import { operationModeLabel } from '@/lib/merchant-operation-mode'
-import { useRouter } from 'next/navigation'
 
 const inputClass =
   'mt-2 w-full rounded-xl border border-[var(--card-border)] bg-white px-4 py-3 text-sm text-vyria-navy outline-none transition-colors placeholder:text-vyria-navy-muted/70 focus:border-vyria-plum focus:ring-2 focus:ring-vyria-orange/20'
@@ -20,7 +19,6 @@ export default function Register() {
   const [showPassword, setShowPassword] = useState(false)
   const [isRegistering, setIsRegistering] = useState(false)
   const beginNavigation = useBeginNavigation()
-  const router = useRouter()
 
   async function handleRegister() {
     const name = storeName.trim()
@@ -66,7 +64,7 @@ export default function Register() {
             (signInErr.message ? ` (${signInErr.message})` : '')
         )
         beginNavigation()
-        router.push('/login')
+        window.location.assign('/login')
         return
       }
 
@@ -77,7 +75,8 @@ export default function Register() {
       }
 
       beginNavigation()
-      router.push('/acesso-suspenso?error=pendente')
+      // Hard navigation: evita race do middleware em /register com sessão já ativa.
+      window.location.assign('/acesso-suspenso?error=pendente')
     } catch (err) {
       const message =
         err instanceof Error

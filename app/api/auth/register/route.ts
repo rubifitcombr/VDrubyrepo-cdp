@@ -83,19 +83,43 @@ async function ensureStoreForOwner(
   }
 
   const uniqueSlug = await resolveUniqueStoreSlug(svc, slugifyStoreSlug(input.name))
-  const { data, error: storeErr } = await svc
+  const baseRow: Record<string, unknown> = {
+    name: input.name,
+    slug: uniqueSlug,
+    owner_id: userId,
+    status: 'pendente',
+    merchant_status: 'pendente',
+    plano: 'growth',
+    operation_mode: input.mode,
+    ...(input.phone ? { phone: input.phone } : {}),
+  }
+
+  let { data, error: storeErr } = await svc
     .from('stores')
-    .insert({
-      name: input.name,
-      slug: uniqueSlug,
-      owner_id: userId,
-      status: 'pendente',
-      plano: 'growth',
-      operation_mode: input.mode,
-      ...(input.phone ? { phone: input.phone } : {}),
-    })
+    .insert(baseRow)
     .select('id')
     .single()
+
+  // Schemas antigos: tenta sem merchant_status / operation_mode se a coluna não existir.
+  if (storeErr && /merchant_status|column|schema cache/i.test(storeErr.message)) {
+    const { merchant_status: _m, ...withoutMerchant } = baseRow
+    void _m
+    ;({ data, error: storeErr } = await svc
+      .from('stores')
+      .insert(withoutMerchant)
+      .select('id')
+      .single())
+  }
+  if (storeErr && /operation_mode|column|schema cache/i.test(storeErr.message)) {
+    const { operation_mode: _o, merchant_status: _m, ...minimal } = baseRow
+    void _o
+    void _m
+    ;({ data, error: storeErr } = await svc
+      .from('stores')
+      .insert({ ...minimal, status: 'pendente' })
+      .select('id')
+      .single())
+  }
 
   if (storeErr) {
     const msg = storeErr.message || 'Erro ao criar loja.'

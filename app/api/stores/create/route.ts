@@ -56,19 +56,26 @@ export async function POST(req: NextRequest) {
     }
 
     const uniqueSlug = await resolveUniqueStoreSlug(db, slugifyStoreSlug(name))
-    const { data, error } = await db
-      .from('stores')
-      .insert({
-        name,
-        slug: uniqueSlug,
-        owner_id: user.id,
-        status: 'pendente',
-        plano: 'growth',
-        operation_mode: mode,
-        ...(phone ? { phone } : {}),
-      })
-      .select('id, slug')
-      .single()
+    const row: Record<string, unknown> = {
+      name,
+      slug: uniqueSlug,
+      owner_id: user.id,
+      status: 'pendente',
+      merchant_status: 'pendente',
+      plano: 'growth',
+      operation_mode: mode,
+      ...(phone ? { phone } : {}),
+    }
+    let { data, error } = await db.from('stores').insert(row).select('id, slug').single()
+    if (error && /merchant_status|column|schema cache/i.test(error.message)) {
+      const { merchant_status: _m, ...withoutMerchant } = row
+      void _m
+      ;({ data, error } = await db
+        .from('stores')
+        .insert(withoutMerchant)
+        .select('id, slug')
+        .single())
+    }
 
     if (error) {
       const msg = error.message || ''

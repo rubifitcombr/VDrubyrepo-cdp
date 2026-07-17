@@ -1,13 +1,13 @@
 import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { createClient } from '@supabase/supabase-js'
 import {
   isAnnualContractGateExemptPath,
   requiresAnnualContractAcceptance,
 } from '@/lib/annual-contract-acceptance'
 import { isPlanoVencido } from '@/lib/merchant-access-dates'
 import { parseMerchantStatus } from '@/lib/merchant-status'
+import { tryCreateServiceRoleClient } from '@/lib/supabase/service-role.server'
 import { readStoreStatus } from '@/lib/store-columns'
 
 export type LojistaGateResult =
@@ -16,33 +16,45 @@ export type LojistaGateResult =
   | { ok: false; kind: 'contract'; path: '/dashboard/contrato' }
 
 const STORE_GATE_SELECT =
-  'id, status, plano_vence_em, billing_cycle, contrato_aceite_em, contrato_termos_versao, contrato_documento_hash'
-
-function serviceRoleClient(): SupabaseClient | null {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
-  if (!url || !key) return null
-  return createClient(url, key, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  })
-}
+  'id, status, merchant_status, plano_vence_em, billing_cycle, contrato_aceite_em, contrato_termos_versao, contrato_documento_hash'
 
 async function fetchGateStore(
   db: SupabaseClient,
   userId: string
 ): Promise<Record<string, unknown> | null> {
-  const { data, error } = await db
+  const primary = await db
     .from('stores')
     .select(STORE_GATE_SELECT)
     .eq('owner_id', userId)
     .maybeSingle()
-  if (error || !data) return null
-  return data as Record<string, unknown>
+
+  if (!primary.error && primary.data) {
+    return primary.data as Record<string, unknown>
+  }
+
+  // Schema antigo sem merchant_status
+  if (primary.error && /merchant_status|column|schema cache/i.test(primary.error.message)) {
+    const fallback = await db
+      .from('stores')
+      .select(
+        'id, status, plano_vence_em, billing_cycle, contrato_aceite_em, contrato_termos_versao, contrato_documento_hash'
+      )
+      .eq('owner_id', userId)
+      .maybeSingle()
+    if (!fallback.error && fallback.data) {
+      return fallback.data as Record<string, unknown>
+    }
+  }
+
+  return null
 }
 
 /**
  * Uma única leitura da loja para: estado activo, plano vencido e contrato anual.
  * Preferir `sessionClient` (cookies); service role só como fallback.
+ *
+ * Importante: só auto-bloqueia lojas **ativas** com plano vencido.
+ * Contas `pendente` (recém-cadastradas) nunca são convertidas em `bloqueado` aqui.
  */
 export async function verificarLojistaGates(
   userId: string,
@@ -55,7 +67,7 @@ export async function verificarLojistaGates(
     store = await fetchGateStore(sessionClient, userId)
   }
   if (!store) {
-    const svc = serviceRoleClient()
+    const svc = tryCreateServiceRoleClient()
     if (svc) store = await fetchGateStore(svc, userId)
   }
 
@@ -80,15 +92,25 @@ export async function verificarLojistaGates(
 
   if (!vence || isPlanoVencido(vence)) {
     const id = String(store.id ?? '')
-    const svc = serviceRoleClient()
+    const svc = tryCreateServiceRoleClient()
     if (id && svc) {
-      await svc
+      const patch: Record<string, unknown> = {
+        status: 'bloqueado',
+        plano_atualizado_em: new Date().toISOString(),
+      }
+      let { error } = await svc
         .from('stores')
-        .update({
-          status: 'bloqueado',
-          plano_atualizado_em: new Date().toISOString(),
-        })
+        .update({ ...patch, merchant_status: 'bloqueado' })
         .eq('id', id)
+        .eq('status', 'ativo')
+      if (error && /merchant_status|column|schema cache/i.test(error.message)) {
+        ;({ error } = await svc
+          .from('stores')
+          .update(patch)
+          .eq('id', id)
+          .eq('status', 'ativo'))
+      }
+      void error
     }
     return {
       ok: false,

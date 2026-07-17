@@ -36,20 +36,60 @@ export async function fetchAuthUsersForAdmin(
       const chunk = ownerIds.slice(i, i + chunkSize)
       const { data, error } = await svc
         .from('stores')
-        .select('id, name, slug, status, owner_id')
+        .select('id, name, slug, status, merchant_status, owner_id')
         .in('owner_id', chunk)
-      if (error) throw new Error(error.message)
+      if (error) {
+        // Fallback se merchant_status não existir
+        if (/merchant_status|column|schema cache/i.test(error.message)) {
+          const fallback = await svc
+            .from('stores')
+            .select('id, name, slug, status, owner_id')
+            .in('owner_id', chunk)
+          if (fallback.error) throw new Error(fallback.error.message)
+          for (const row of fallback.data ?? []) {
+            const ownerId = String((row as { owner_id?: string }).owner_id ?? '')
+            if (!ownerId || storeByOwner.has(ownerId)) continue
+            storeByOwner.set(ownerId, {
+              id: String((row as { id?: string }).id ?? ''),
+              name:
+                typeof (row as { name?: unknown }).name === 'string'
+                  ? (row as { name: string }).name
+                  : null,
+              slug:
+                typeof (row as { slug?: unknown }).slug === 'string'
+                  ? (row as { slug: string }).slug
+                  : null,
+              status:
+                typeof (row as { status?: unknown }).status === 'string'
+                  ? (row as { status: string }).status
+                  : null,
+            })
+          }
+          continue
+        }
+        throw new Error(error.message)
+      }
       for (const row of data ?? []) {
         const ownerId = String((row as { owner_id?: string }).owner_id ?? '')
         if (!ownerId || storeByOwner.has(ownerId)) continue
+        const statusRaw =
+          typeof (row as { status?: unknown }).status === 'string' &&
+          String((row as { status: string }).status).trim()
+            ? (row as { status: string }).status
+            : typeof (row as { merchant_status?: unknown }).merchant_status === 'string'
+              ? (row as { merchant_status: string }).merchant_status
+              : null
         storeByOwner.set(ownerId, {
           id: String((row as { id?: string }).id ?? ''),
-          name: typeof (row as { name?: unknown }).name === 'string' ? (row as { name: string }).name : null,
-          slug: typeof (row as { slug?: unknown }).slug === 'string' ? (row as { slug: string }).slug : null,
-          status:
-            typeof (row as { status?: unknown }).status === 'string'
-              ? (row as { status: string }).status
+          name:
+            typeof (row as { name?: unknown }).name === 'string'
+              ? (row as { name: string }).name
               : null,
+          slug:
+            typeof (row as { slug?: unknown }).slug === 'string'
+              ? (row as { slug: string }).slug
+              : null,
+          status: statusRaw,
         })
       }
     }
