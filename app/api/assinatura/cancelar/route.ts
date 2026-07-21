@@ -4,9 +4,9 @@ import {
   readStoreContract,
   todayIsoLocal,
 } from '@/lib/contract-pricing'
+import { requireLojistaCancelamentoApi } from '@/lib/require-lojista-ativo-api.server'
 import { notificarAdminSolicitacaoCancelamentoAssinatura } from '@/services/notificar-admin.server'
 import { createClient } from '@/lib/supabase/server'
-import { getStoreByUser } from '@/services/store.server'
 import { getUser } from '@/services/auth.server'
 
 const MOTIVOS: Record<string, string> = {
@@ -22,6 +22,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
   }
 
+  const gate = await requireLojistaCancelamentoApi(user.id)
+  if (!gate.ok) return gate.response
+
   let body: { motivo?: string }
   try {
     body = (await req.json()) as { motivo?: string }
@@ -34,13 +37,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Motivo inválido' }, { status: 400 })
   }
 
-  const store = await getStoreByUser(user.id)
-  if (!store || typeof store !== 'object' || !('id' in store)) {
-    return NextResponse.json({ error: 'Loja não encontrada' }, { status: 404 })
-  }
-
-  const row = store as Record<string, unknown>
-  const storeId = String(row.id)
+  const row = gate.ctx.store
+  const storeId = gate.ctx.storeId
   const nomeLoja = typeof row.name === 'string' ? row.name : 'Loja'
   const contract = readStoreContract(row)
   const penalty = estimateContractPenalty(contract, todayIsoLocal())

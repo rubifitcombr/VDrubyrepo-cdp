@@ -5,26 +5,14 @@ import { uploadCertificado } from '@/services/fiscal'
 
 const MAX_PFX_BYTES = 1_000_000 // certificados A1 têm poucos KB.
 
-async function requireOwnedStore(storeId: string) {
+export async function POST(req: NextRequest) {
   const user = await getUser()
   if (!user) {
-    return {
-      ok: false as const,
-      response: NextResponse.json({ error: 'Sessão necessária.' }, { status: 401 }),
-    }
+    return NextResponse.json({ error: 'Sessão necessária.' }, { status: 401 })
   }
   const gate = await requireLojistaAtivoApi(user.id)
-  if (!gate.ok) return { ok: false as const, response: gate.response }
-  if (storeId !== gate.ctx.storeId) {
-    return {
-      ok: false as const,
-      response: NextResponse.json({ error: 'Acesso negado à loja.' }, { status: 403 }),
-    }
-  }
-  return { ok: true as const, storeId: gate.ctx.storeId }
-}
+  if (!gate.ok) return gate.response
 
-export async function POST(req: NextRequest) {
   let form: FormData
   try {
     form = await req.formData()
@@ -52,9 +40,9 @@ export async function POST(req: NextRequest) {
   if (!lower.endsWith('.pfx') && !lower.endsWith('.p12')) {
     return NextResponse.json({ error: 'Formato inválido: use .pfx ou .p12 (A1).' }, { status: 400 })
   }
-
-  const owned = await requireOwnedStore(storeId)
-  if (!owned.ok) return owned.response
+  if (storeId !== gate.ctx.storeId) {
+    return NextResponse.json({ error: 'Acesso negado à loja.' }, { status: 403 })
+  }
 
   // O .pfx só vive em memória: converte para base64 e repassa ao gateway.
   const base64 = Buffer.from(await file.arrayBuffer()).toString('base64')

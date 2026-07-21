@@ -10,9 +10,16 @@ import { getOpenCaixaTurno } from '@/services/caixa-turnos.server'
 import { buildItemsSummaryWithLineTotals } from '@/lib/print/items-summary-format'
 import { tryAutoThermalPrint } from '@/services/thermal-print.server'
 import { tryAutoEmitNfceForOrder } from '@/services/fiscal'
+import { pricePdvLinesFromCatalog } from '@/lib/pdv-price.server'
 import { hasFeature } from '@/lib/plan'
+import {
+  parseOrderPaymentLines,
+  validatePaymentLines,
+  type OrderPaymentLine,
+} from '@/lib/order-payments'
+import { insertOrderPayments } from '@/services/order-payments.server'
 
-type PaymentMethod = 'cash' | 'pix' | 'card' | 'card_credit' | 'card_debit'
+type PaymentMethod = 'cash' | 'pix' | 'card' | 'card_credit' | 'card_debit' | 'split'
 
 type BodyItem = {
   product_id?: unknown
@@ -27,10 +34,45 @@ function round2(n: number): number {
 
 function normalizePayment(v: unknown): PaymentMethod | null {
   const t = String(v ?? '').trim().toLowerCase()
-  if (t === 'cash' || t === 'pix' || t === 'card' || t === 'card_credit' || t === 'card_debit') {
+  if (
+    t === 'cash' ||
+    t === 'pix' ||
+    t === 'card' ||
+    t === 'card_credit' ||
+    t === 'card_debit' ||
+    t === 'split'
+  ) {
     return t
   }
   return null
+}
+
+function resolveImmediatePayment(body: {
+  paymentMethod?: unknown
+  payments?: unknown
+}):
+  | { lines: OrderPaymentLine[]; storedMethod: PaymentMethod; isSplit: boolean }
+  | { error: string } {
+  const parsed = parseOrderPaymentLines(body.payments)
+  if (parsed) {
+    if (parsed.length === 1) {
+      const method = parsed[0]!.method
+      if (method === 'card_credit' || method === 'card_debit') {
+        return { lines: parsed, storedMethod: method, isSplit: false }
+      }
+      if (method === 'cash' || method === 'pix' || method === 'card') {
+        return { lines: parsed, storedMethod: method, isSplit: false }
+      }
+      return { lines: parsed, storedMethod: 'card', isSplit: false }
+    }
+    return { lines: parsed, storedMethod: 'split', isSplit: true }
+  }
+
+  const paymentMethod = normalizePayment(body.paymentMethod)
+  if (!paymentMethod || paymentMethod === 'split') {
+    return { error: 'Lance ao menos um pagamento para receber agora.' }
+  }
+  return { lines: [], storedMethod: paymentMethod, isSplit: false }
 }
 
 function friendlyStockError(raw: string | undefined): string {
@@ -68,6 +110,7 @@ export async function POST(request: Request) {
   let body: {
     closeMode?: unknown
     paymentMethod?: unknown
+    payments?: unknown
     customerName?: unknown
     internalNotes?: unknown
     discountBrl?: unknown
@@ -82,6 +125,8 @@ export async function POST(request: Request) {
 
   const closeMode = body.closeMode === 'immediate' ? 'immediate' : 'cashier'
   let paymentMethod: PaymentMethod | null = null
+  let paymentLines: OrderPaymentLine[] = []
+  let isSplit = false
 
   if (closeMode === 'cashier' && !caixaModule) {
     return NextResponse.json(
@@ -106,13 +151,13 @@ export async function POST(request: Request) {
         )
       }
     }
-    paymentMethod = normalizePayment(body.paymentMethod)
-    if (!paymentMethod) {
-      return NextResponse.json(
-        { error: 'Indica o método de pagamento para receber agora.' },
-        { status: 400 }
-      )
+    const resolved = resolveImmediatePayment(body)
+    if ('error' in resolved) {
+      return NextResponse.json({ error: resolved.error }, { status: 400 })
     }
+    paymentMethod = resolved.storedMethod
+    paymentLines = resolved.lines
+    isSplit = resolved.isSplit
   }
 
   const items = Array.isArray(body.items) ? body.items : []
@@ -137,44 +182,11 @@ export async function POST(request: Request) {
     }
   }
 
-  const productIds = (items as BodyItem[])
-    .map((i) => String(i.product_id ?? '').trim())
-    .filter(Boolean)
-  if (productIds.length === 0) {
-    return NextResponse.json(
-      { error: 'Cada item precisa de product_id válido.' },
-      { status: 400 }
-    )
+  const priced = await pricePdvLinesFromCatalog(supabase, storeId, items as BodyItem[])
+  if (!priced.ok) {
+    return NextResponse.json({ error: priced.error }, { status: priced.status })
   }
-  const { data: prodOk, error: prodErr } = await supabase
-    .from('products')
-    .select('id')
-    .eq('store_id', storeId)
-    .in('id', productIds)
-
-  if (prodErr) {
-    return NextResponse.json(
-      { error: 'Não foi possível validar os produtos.' },
-      { status: 500 }
-    )
-  }
-
-  const allowed = new Set((prodOk ?? []).map((p) => String(p.id)))
-  const cleanItems = (items as BodyItem[])
-    .filter((i) => allowed.has(String(i.product_id ?? '').trim()))
-    .map((i) => ({
-      product_id: String(i.product_id ?? '').trim(),
-      quantity: Math.max(1, Math.floor(Number(i.quantity) || 1)),
-      unit_price: round2(Math.max(0, Number(i.unit_price) || 0)),
-      name: String(i.name ?? '').trim() || 'Item',
-    }))
-
-  if (cleanItems.length === 0) {
-    return NextResponse.json(
-      { error: 'Nenhum item válido para esta loja.' },
-      { status: 400 }
-    )
-  }
+  const cleanItems = priced.lines
 
   const gross = round2(
     cleanItems.reduce((s, l) => s + l.unit_price * l.quantity, 0)
@@ -182,6 +194,13 @@ export async function POST(request: Request) {
   const discountBrl = round2(Math.max(0, Number(body.discountBrl) || 0))
   const disc = round2(Math.min(Math.max(0, discountBrl), gross))
   const total = round2(Math.max(0, gross - disc))
+
+  if (closeMode === 'immediate' && paymentLines.length > 0) {
+    const validationError = validatePaymentLines(total, paymentLines)
+    if (validationError) {
+      return NextResponse.json({ error: validationError }, { status: 400 })
+    }
+  }
 
   const itemsSummary = buildItemsSummaryWithLineTotals(cleanItems)
 
@@ -200,7 +219,10 @@ export async function POST(request: Request) {
   let notes = noteLines.length ? noteLines.join('\n') : null
 
   if (closeMode === 'immediate' && paymentMethod) {
-    const closeLine = `[PDV] Recebido em ${new Date().toISOString()} (${paymentMethod})`
+    const paymentNote = isSplit
+      ? paymentLines.map((l) => `${l.method}:${l.amount.toFixed(2)}`).join(', ')
+      : paymentMethod
+    const closeLine = `[PDV] Recebido em ${new Date().toISOString()} (${paymentNote})`
     notes = notes ? `${notes}\n${closeLine}` : closeLine
   }
 
@@ -263,7 +285,21 @@ export async function POST(request: Request) {
     )
   }
 
-  void tryAutoThermalPrint(supabase, {
+  if (closeMode === 'immediate' && isSplit && turnoAberto) {
+    const payResult = await insertOrderPayments(supabase, {
+      storeId,
+      orderId,
+      turnoId: turnoAberto.id,
+      lines: paymentLines,
+    })
+    if (!payResult.ok) {
+      await supabase.from('order_items').delete().eq('order_id', orderId)
+      await supabase.from('orders').delete().eq('id', orderId)
+      return NextResponse.json({ error: payResult.error }, { status: 500 })
+    }
+  }
+
+  void tryAutoThermalPrint({
     storeId,
     orderId,
     orderSource: 'pdv',

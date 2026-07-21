@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getUser } from '@/services/auth.server'
 import { getCashierOrdersForStore } from '@/services/cashier.server'
+import { getOrderPaymentsForStore } from '@/services/order-payments.server'
 import { parsePrintingFromStore } from '@/lib/store-printing'
 import {
   getCaixaTurnosHistorico,
@@ -67,6 +68,10 @@ export default async function CaixaPage() {
     getCaixaTurnosHistorico(supabase, storeId, 10),
   ])
 
+  const turnoPayments = turnoAberto?.id
+    ? await getOrderPaymentsForStore(supabase, storeId, { turnoId: turnoAberto.id })
+    : []
+
   const turnoIds = [
     ...new Set([
       ...historico.map((h) => h.id),
@@ -108,6 +113,7 @@ export default async function CaixaPage() {
       storeName={storeName}
       printPaperMm={printPaperMm}
       initialOrders={orders}
+      initialTurnoSplitPayments={turnoPayments}
       operatorLabel={operatorLabel}
       initialTurno={turnoAberto as CaixaTurnoDTO | null}
       initialHistorico={historico as CaixaTurnoDTO[]}

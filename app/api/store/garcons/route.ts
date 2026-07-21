@@ -8,7 +8,6 @@ import {
   updateGarcom,
 } from '@/services/store-garcons.server'
 import { createClient } from '@/lib/supabase/server'
-import { tryCreateServiceRoleClient } from '@/lib/supabase/service-role.server'
 
 function parseEmail(raw: unknown): string | null {
   if (raw === null || raw === undefined) return null
@@ -16,10 +15,6 @@ function parseEmail(raw: unknown): string | null {
   if (!v) return null
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return null
   return v
-}
-
-async function garconsDbClient() {
-  return tryCreateServiceRoleClient() ?? (await createClient())
 }
 
 function missingGarconsTableMessage(msg: string): boolean {
@@ -50,7 +45,7 @@ export async function GET() {
   const deny = gateMerchantGarconsManagement(gate.ctx.store, user.email)
   if (deny) return deny
 
-  const supabase = await garconsDbClient()
+  const supabase = await createClient()
   try {
     const items = await listGarconsForStore(supabase, gate.ctx.storeId)
     return NextResponse.json({ ok: true, garcons: items })
@@ -96,7 +91,7 @@ export async function POST(req: NextRequest) {
       ? body.telefone.trim()
       : null
 
-  const supabase = await garconsDbClient()
+  const supabase = await createClient()
   try {
     const row = await insertGarcom(supabase, gate.ctx.storeId, {
       nome,
@@ -171,7 +166,7 @@ export async function PATCH(req: NextRequest) {
   }
   if (typeof body.pin_ativo === 'boolean') patch.pin_ativo = body.pin_ativo
 
-  const supabase = await garconsDbClient()
+  const supabase = await createClient()
   try {
     const row = await updateGarcom(supabase, gate.ctx.storeId, id, patch)
     return NextResponse.json({ ok: true, garcom: row })

@@ -1,6 +1,7 @@
 import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { createServiceRoleClient } from '@/lib/supabase/service-role.server'
 import { gerarCupomPedido } from '@/lib/escpos'
 import type { PaperMm } from '@/lib/print/layout'
 import { orderTicketVariantFromSource } from '@/lib/print/order-ticket-variant'
@@ -93,8 +94,14 @@ async function postToAgent(
   escposBase64: string
 ): Promise<ThermalPrintResult> {
   const base = String(store.print_agent_url ?? '').replace(/\/+$/, '')
-  const token =
-    store.print_agent_token?.trim() || 'vyria-agent-2026'
+  const token = store.print_agent_token?.trim()
+  if (!token) {
+    return {
+      ok: false,
+      code: 'unauthorized',
+      message: 'Token do agente de impressão não configurado.',
+    }
+  }
   const printerIp = String(store.print_printer_ip ?? '').trim()
   const printerPort = store.print_printer_port || 9100
 
@@ -279,12 +286,21 @@ function logThermalPrint(
 
 /**
  * Impressão automática quando o toggle da origem está ativo e o agente está configurado.
- * Falhas são registadas em consola (não bloqueiam o fluxo do pedido).
+ * Usa service role no servidor (nunca confiar em RLS/anon para configs da loja).
  */
-export async function tryAutoThermalPrint(
-  supabase: SupabaseClient,
-  opts: { storeId: string; orderId: string; orderSource: string | null | undefined }
-): Promise<void> {
+export async function tryAutoThermalPrint(opts: {
+  storeId: string
+  orderId: string
+  orderSource: string | null | undefined
+}): Promise<void> {
+  let supabase: SupabaseClient
+  try {
+    supabase = createServiceRoleClient()
+  } catch (e) {
+    console.warn('[thermal-print] service role:', e)
+    return
+  }
+
   const { data: row, error } = await supabase
     .from('stores')
     .select(

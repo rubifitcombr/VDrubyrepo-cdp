@@ -7,7 +7,8 @@ import {
   VYRIA_PANEL_MODE_COOKIE,
 } from '@/lib/vyria-panel-mode'
 import { isMerchantApiContractGatePath } from '@/lib/annual-contract-acceptance'
-import { parseImpersonationContext, IMPERSONATION_ACTIVE_COOKIE } from '@/lib/impersonation'
+import { IMPERSONATION_ACTIVE_COOKIE } from '@/lib/impersonation'
+import { openImpersonationContext } from '@/lib/impersonation-sign.server'
 import { verificarLojistaGates } from '@/middleware/verificarLojistaGates'
 import { NextResponse, type NextRequest } from 'next/server'
 
@@ -15,6 +16,30 @@ function pathnameWithoutTrailingSlash(pathname: string) {
   return pathname.length > 1 && pathname.endsWith('/')
     ? pathname.slice(0, -1)
     : pathname
+}
+
+function clientIpFromRequest(request: NextRequest): string {
+  const fwd = request.headers.get('x-forwarded-for')
+  if (fwd) {
+    const first = fwd.split(',')[0]?.trim()
+    if (first) return first
+  }
+  return request.headers.get('x-real-ip')?.trim() || ''
+}
+
+/** Opt-in: ADMIN_IP_ALLOWLIST=ip1,ip2 (vírgula). Vazio = sem restrição. */
+function adminIpAllowed(request: NextRequest): boolean {
+  const raw = process.env.ADMIN_IP_ALLOWLIST?.trim()
+  if (!raw) return true
+  const allow = new Set(
+    raw
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+  )
+  if (allow.size === 0) return true
+  const ip = clientIpFromRequest(request)
+  return ip !== '' && allow.has(ip)
 }
 
 export async function proxy(request: NextRequest) {
@@ -95,7 +120,7 @@ export async function proxy(request: NextRequest) {
     !!user &&
     isVyriaAdminPanelUser(user.id) &&
     vyriaPanelMode === 'admin'
-  const impersonating = parseImpersonationContext(
+  const impersonating = openImpersonationContext(
     request.cookies.get(IMPERSONATION_ACTIVE_COOKIE)?.value
   )
 
@@ -111,6 +136,15 @@ export async function proxy(request: NextRequest) {
       return NextResponse.redirect(new URL(gate.path, request.url))
     }
     return NextResponse.redirect(new URL('/dashboard', request.url))
+  }
+
+  if (p.startsWith('/api/admin') || p.startsWith('/admin')) {
+    if (!adminIpAllowed(request)) {
+      if (p.startsWith('/api/admin')) {
+        return NextResponse.json({ error: 'Proibido' }, { status: 403 })
+      }
+      return NextResponse.redirect(new URL('/dashboard', request.url))
+    }
   }
 
   if (p.startsWith('/api/admin')) {
@@ -190,6 +224,16 @@ export async function proxy(request: NextRequest) {
   }
 
   supabaseResponse.headers.set('x-pathname', p)
+
+  supabaseResponse.headers.set('X-Frame-Options', 'DENY')
+  supabaseResponse.headers.set('X-Content-Type-Options', 'nosniff')
+  supabaseResponse.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
+  if (process.env.NODE_ENV === 'production') {
+    supabaseResponse.headers.set(
+      'Strict-Transport-Security',
+      'max-age=63072000; includeSubDomains; preload'
+    )
+  }
 
   return supabaseResponse
 }

@@ -1,17 +1,11 @@
 'use client'
 
 import { dashboardFetch } from '@/lib/dashboard-fetch.client'
+import type { OrderPaymentLine } from '@/lib/order-payments'
 
 export type PdvPaymentMethod = 'cash' | 'pix' | 'card' | 'card_credit' | 'card_debit'
 
 export type PdvCloseMode = 'cashier' | 'immediate'
-
-export type PdvImmediatePaymentMethod =
-  | 'cash'
-  | 'pix'
-  | 'card'
-  | 'card_credit'
-  | 'card_debit'
 
 export type PdvSaleLine = {
   productId: string
@@ -29,7 +23,7 @@ export async function submitPdvSale(params: {
   internalNotes?: string | null
   closeMode?: PdvCloseMode
   /** Obrigatório quando `closeMode === 'immediate'`. */
-  immediatePaymentMethod?: PdvImmediatePaymentMethod | null
+  payments?: OrderPaymentLine[]
   /** CPF opcional na NFC-e (só emissão imediata). */
   cpf?: string | null
 }): Promise<
@@ -54,7 +48,7 @@ export async function submitPdvSale(params: {
     discountBrl = 0,
     internalNotes,
     closeMode = 'cashier',
-    immediatePaymentMethod,
+    payments,
     cpf,
   } = params
 
@@ -62,8 +56,8 @@ export async function submitPdvSale(params: {
     return { ok: false, message: 'Adiciona pelo menos um produto.' }
   }
 
-  if (closeMode === 'immediate' && !immediatePaymentMethod) {
-    return { ok: false, message: 'Escolhe o método de pagamento para receber agora.' }
+  if (closeMode === 'immediate' && (!payments || payments.length === 0)) {
+    return { ok: false, message: 'Lance ao menos um pagamento para receber agora.' }
   }
 
   const cpfDigits = String(cpf ?? '').replace(/\D/g, '')
@@ -76,8 +70,7 @@ export async function submitPdvSale(params: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       closeMode,
-      paymentMethod:
-        closeMode === 'immediate' ? immediatePaymentMethod : undefined,
+      payments: closeMode === 'immediate' ? payments : undefined,
       customerName: customerName?.trim() || undefined,
       internalNotes: internalNotes?.trim() || undefined,
       discountBrl,

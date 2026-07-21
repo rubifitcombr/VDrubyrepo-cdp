@@ -1,6 +1,5 @@
 import { APP_RESERVED_FIRST_SEGMENTS } from '@/lib/app-reserved-routes'
-import { createClient } from '@/lib/supabase/server'
-import { tryCreateServiceRoleClient } from '@/lib/supabase/service-role.server'
+import { createPublicAnonClient } from '@/lib/supabase/public.server'
 import {
   fetchStoreByPublicSlug,
   normalizePublicSlugSegment,
@@ -116,9 +115,7 @@ export default async function StorefrontPage({ params, searchParams }: Props) {
     }
   }
 
-  /** Preferir service role: leitura pública fiável sem depender de cookies/RLS para `anon` (mobile). */
-  const supabase =
-    tryCreateServiceRoleClient() ?? (await createClient())
+  const supabase = createPublicAnonClient()
   const { data: store, error: storeError } = await fetchStoreByPublicSlug(
     supabase,
     slugSegment,

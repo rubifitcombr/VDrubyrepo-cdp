@@ -36,6 +36,9 @@ import {
   isSalaoGarcomPinRequired,
 } from '@/lib/garcom-pin'
 import { GarcomSessionBadge } from '@/app/dashboard/garcom/_components/GarcomSalaoPinGate'
+import { GarcomMesaComandasPanel, comandaListSubtitle } from '@/app/dashboard/garcom/_components/GarcomMesaComandasPanel'
+import { ComandaSplitPaymentModal } from '@/app/dashboard/caixa/_components/ComandaSplitPaymentModal'
+import { comandaDisplayName, type OrderPaymentLine } from '@/lib/order-payments'
 import {
   openOrderTicketPrint,
   orderTicketVariantFromSource,
@@ -78,14 +81,6 @@ const money = new Intl.NumberFormat('pt-BR', {
 })
 
 const WAITER_OPEN_STATUSES = new Set(['pending', 'preparing', 'ready', 'confirmed'])
-
-type WaiterPaymentMethod = 'cash' | 'pix' | 'card'
-
-function waiterPaymentLabel(pm: WaiterPaymentMethod): string {
-  if (pm === 'pix') return 'PIX'
-  if (pm === 'card') return 'Cartão'
-  return 'Dinheiro'
-}
 
 function escapeHtml(raw: string): string {
   return raw
@@ -272,7 +267,6 @@ export function WaiterClient({
   }, [sectors])
   const [customerName, setCustomerName] = useState('')
   const [notes, setNotes] = useState('')
-  const [paymentMethod, setPaymentMethod] = useState<WaiterPaymentMethod>('cash')
   const [cart, setCart] = useState<CartLine[]>([])
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null)
   const [discountBrl, setDiscountBrl] = useState(0)
@@ -296,6 +290,7 @@ export function WaiterClient({
   const [avulsaOpen, setAvulsaOpen] = useState(false)
   const [avulsaName, setAvulsaName] = useState('')
   const [confirmCloseOpen, setConfirmCloseOpen] = useState(false)
+  const [splitCloseOpen, setSplitCloseOpen] = useState(false)
   const [mesaCloseMode, setMesaCloseMode] = useState<'cashier' | 'immediate'>(
     'cashier'
   )
@@ -304,17 +299,17 @@ export function WaiterClient({
   const [orderDrawerOpen, setOrderDrawerOpen] = useState(false)
   const [selectedTableKey, setSelectedTableKey] = useState<string | null>(null)
   const [tableActionSheetOpen, setTableActionSheetOpen] = useState(false)
+  const [comandaPickerOpen, setComandaPickerOpen] = useState(false)
+  const [comandaPickerTable, setComandaPickerTable] = useState<StoreTableDTO | null>(null)
+  const [newComandaNameDraft, setNewComandaNameDraft] = useState('')
   const router = useRouter()
   const [salaoMode, setSalaoMode] = useState<SalaoAttendanceMode>(initialSalaoAttendanceMode)
   const [garcons, setGarcons] = useState<StoreGarcomDTO[]>([])
-  const [selectedGarcomId, setSelectedGarcomId] = useState<string>('')
 
   const pinSession = useMemo(() => getGarcomPinSession(storeId), [storeId])
   const salaoPinRequired = isSalaoGarcomPinRequired(garcons)
   const garcomSessionLocked = salaoPinRequired && !!pinSession
-  const effectiveGarcomId = garcomSessionLocked
-    ? pinSession!.garcomId
-    : selectedGarcomId
+  const effectiveGarcomId = garcomSessionLocked ? pinSession!.garcomId : null
 
   const visibleOpenOrders = useMemo(() => {
     if (!garcomSessionLocked || !pinSession) return openOrders
@@ -342,21 +337,7 @@ export function WaiterClient({
         const res = await dashboardFetch('/api/store/garcons')
         const json = (await res.json().catch(() => ({}))) as { garcons?: StoreGarcomDTO[] }
         if (cancelled) return
-        const list = (json.garcons ?? []).filter((g) => g.ativo)
-        setGarcons(list)
-        const session = getGarcomPinSession(storeId)
-        if (session && list.some((g) => g.id === session.garcomId)) {
-          setSelectedGarcomId(session.garcomId)
-          return
-        }
-        const storageKey = `vyria-waiter-garcom:${storeId}`
-        const saved =
-          typeof window !== 'undefined' ? window.localStorage.getItem(storageKey) : null
-        if (saved && list.some((g) => g.id === saved)) {
-          setSelectedGarcomId(saved)
-        } else if (list.length === 1) {
-          setSelectedGarcomId(list[0]!.id)
-        }
+        setGarcons((json.garcons ?? []).filter((g) => g.ativo))
       } catch {
         if (!cancelled) setGarcons([])
       }
@@ -365,16 +346,6 @@ export function WaiterClient({
       cancelled = true
     }
   }, [staffSalonUi, storeId])
-
-  useEffect(() => {
-    if (!effectiveGarcomId || typeof window === 'undefined') return
-    if (garcomSessionLocked) return
-    try {
-      window.localStorage.setItem(`vyria-waiter-garcom:${storeId}`, effectiveGarcomId)
-    } catch {
-      /* ignore */
-    }
-  }, [effectiveGarcomId, garcomSessionLocked, storeId])
 
   const avulsaToggleRef = useRef<HTMLButtonElement>(null)
   const avulsaPopoverRef = useRef<HTMLDivElement>(null)
@@ -640,10 +611,6 @@ export function WaiterClient({
       setSector(parseSectorFromNotes(o.notes))
       setCustomerName(o.customer_name?.trim() || '')
       setNotes(extractUserNotes(o.notes))
-      const pm = String(o.payment_method || 'cash').toLowerCase()
-      setPaymentMethod(
-        pm === 'pix' ? 'pix' : pm === 'card' ? 'card' : 'cash'
-      )
       setCart(lines)
       setDiscountBrl(parseDiscountFromNotes(o.notes))
       setDiscountOpen(false)
@@ -665,12 +632,21 @@ export function WaiterClient({
     setNotes('')
     setDiscountBrl(0)
     setDiscountOpen(false)
-    setPaymentMethod('cash')
     setCenterTab('map')
     if (openDrawer) setOrderDrawerOpen(true)
   }
 
-  function startNewOrderForTable(name = table, amb = sector, openDrawer = true) {
+  function openMenuForOrder() {
+    setMenuSheetOpen(true)
+    setError(null)
+  }
+
+  function startNewOrderForTable(
+    name = table,
+    amb = sector,
+    opts: { openDrawer?: boolean; openMenu?: boolean; comandaName?: string } = {}
+  ) {
+    const { openDrawer = true, openMenu = false, comandaName = '' } = opts
     const cleanName = name.trim()
     if (!cleanName) return
     setSelectedTableKey(`${amb}::${cleanName}`)
@@ -678,14 +654,22 @@ export function WaiterClient({
     setTable(cleanName)
     setSector(amb)
     setCart([])
-    setCustomerName('')
+    setCustomerName(comandaName.trim())
     setNotes('')
     setDiscountBrl(0)
     setDiscountOpen(false)
-    setPaymentMethod('cash')
     setError(null)
-    setSuccess(null)
+    setSuccess(
+      comandaName.trim()
+        ? `Nova comanda «${comandaName.trim()}» — adicione produtos no cardápio.`
+        : 'Nova comanda — adicione produtos no cardápio.'
+    )
     setCenterTab('map')
+    setComandaPickerOpen(false)
+    setComandaPickerTable(null)
+    setNewComandaNameDraft('')
+    setTableActionSheetOpen(false)
+    if (openMenu) openMenuForOrder()
     if (openDrawer) setOrderDrawerOpen(true)
   }
 
@@ -698,8 +682,16 @@ export function WaiterClient({
     const agg = aggregateTable(visibleOpenOrders, tb.name, tb.ambiente, tables)
     const mobile = isMobileViewport()
 
+    setTable(tb.name)
+    setSector(tb.ambiente)
+    setSelectedTableKey(`${tb.ambiente}::${tb.name}`)
+
     if (st === 'free') {
       selectFreeTable(tb.name, tb.ambiente, !mobile)
+    } else if (agg.list.length > 1) {
+      setComandaPickerTable(tb)
+      setComandaPickerOpen(true)
+      setNewComandaNameDraft('')
     } else if (agg.primary) {
       await loadOrderEditor(agg.primary, !mobile)
     }
@@ -882,7 +874,6 @@ export function WaiterClient({
           table: table.trim(),
           sector,
           customer_name: customerName.trim() || null,
-          payment_method: paymentMethod,
           notes: notes.trim() || null,
           discount_brl: discountBrl,
           garcom_id: effectiveGarcomId || null,
@@ -907,15 +898,9 @@ export function WaiterClient({
             sortOpenOrders([row, ...prev.filter((o) => o.id !== row.id)])
           )
         }
-        setSelectedTableKey(`${sector}::${table.trim()}`)
       }
       void pullOpenOrders()
-      setCart([])
-      setDiscountBrl(0)
-      setCustomerName('')
-      setNotes('')
-      setActiveOrderId(null)
-      setCenterTab('map')
+      returnToTableMap()
     } finally {
       setSaving(false)
     }
@@ -934,7 +919,6 @@ export function WaiterClient({
           table: table.trim(),
           sector,
           customer_name: customerName.trim() || null,
-          payment_method: paymentMethod,
           notes: notes.trim() || null,
           discount_brl: discountBrl,
           garcom_id: effectiveGarcomId || null,
@@ -1066,19 +1050,43 @@ export function WaiterClient({
     printSavedOrderTicket(order)
   }
 
-  async function submitWaiterCheckout(order: StoreOrderRow) {
+  function returnToTableMap() {
+    setCenterTab('map')
+    setOrderDrawerOpen(false)
+    setConfirmCloseOpen(false)
+    setSplitCloseOpen(false)
+    setTableActionSheetOpen(false)
+    setComandaPickerOpen(false)
+    setComandaPickerTable(null)
+    setNewComandaNameDraft('')
+    setSelectedTableKey(null)
+    setActiveOrderId(null)
+    setTable('')
+    setCart([])
+    setCustomerName('')
+    setNotes('')
+    setDiscountBrl(0)
+    setDiscountOpen(false)
+    setMenuSheetOpen(false)
+  }
+
+  async function submitWaiterCheckout(order: StoreOrderRow, payments?: OrderPaymentLine[]) {
     setBusyOrderId(order.id)
     setError(null)
     try {
+      const body: Record<string, unknown> = {
+        orderId: order.id,
+        mode: mesaCloseMode,
+        garcom_id: effectiveGarcomId || null,
+      }
+      if (mesaCloseMode === 'immediate' && payments && payments.length > 0) {
+        body.payments = payments
+      }
+
       const res = await dashboardFetch('/api/waiter/orders/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          orderId: order.id,
-          mode: mesaCloseMode,
-          paymentMethod,
-          garcom_id: effectiveGarcomId || null,
-        }),
+        body: JSON.stringify(body),
       })
       const json = (await res.json().catch(() => ({}))) as {
         error?: string
@@ -1089,11 +1097,7 @@ export function WaiterClient({
         return
       }
       setOpenOrders((prev) => prev.filter((x) => x.id !== order.id))
-      if (activeOrderId === order.id) {
-        setActiveOrderId(null)
-        setCart([])
-        setConfirmCloseOpen(false)
-      }
+      returnToTableMap()
       setSuccess(
         mesaCloseMode === 'immediate'
           ? 'Pagamento registado no turno de caixa. Mesa fechada.'
@@ -1381,14 +1385,15 @@ export function WaiterClient({
                           ? 'bg-emerald-100 text-emerald-900 ring-emerald-200'
                           : 'bg-zinc-100 text-zinc-700 ring-zinc-200'
                   return (
-                    <li
-                      key={order.id}
-                      className="rounded-xl border border-[var(--card-border)] p-3 shadow-sm"
-                    >
+                    <li key={order.id}>
+                      <button
+                        type="button"
+                        onClick={() => void loadOrderEditor(order, true)}
+                        className="w-full rounded-xl border border-[var(--card-border)] p-3 text-left shadow-sm transition hover:border-[var(--dash-primary)]/40"
+                      >
                       <div className="flex flex-wrap items-center justify-between gap-1">
                         <p className="text-xs font-semibold text-[#1a1614]">
-                          Mesa {parseTableFromNotes(order.notes) || '—'} ·{' '}
-                          {parseSectorFromNotes(order.notes)}
+                          {comandaListSubtitle(order)}
                         </p>
                         <div className="flex flex-wrap gap-1">
                           <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-bold text-zinc-700 ring-1 ring-zinc-200">
@@ -1405,6 +1410,7 @@ export function WaiterClient({
                       <p className="mt-2 text-sm font-bold text-[var(--dash-primary)]">
                         {money.format(Number(order.total) || 0)}
                       </p>
+                      </button>
                     </li>
                   )
                 })}
@@ -1483,38 +1489,29 @@ export function WaiterClient({
 
       {staffSalonUi ? (
         <>
-      {garcons.length > 0 ? (
-        <div className="mb-3 flex flex-col gap-2 rounded-xl border border-[var(--card-border)] bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-sm font-bold text-[#1a1614]">Garçom responsável</p>
-            <p className="mt-0.5 text-xs text-[#6b7280]">
-              {garcomSessionLocked
-                ? 'Sessão identificada pelo PIN — só vê as suas comandas.'
-                : 'Os pedidos fechados serão atribuídos a este garçom no relatório.'}
-            </p>
-          </div>
-          {garcomSessionLocked && pinSession ? (
-            <GarcomSessionBadge
-              nome={pinSession.nome}
-              onTrocar={() => {
-                clearGarcomPinSession(storeId)
-                router.refresh()
-              }}
-            />
-          ) : (
-            <select
-              value={selectedGarcomId}
-              onChange={(e) => setSelectedGarcomId(e.target.value)}
-              className="rounded-lg border border-[#e5e7eb] bg-white px-3 py-2 text-sm font-medium text-[#1a1614] sm:min-w-[220px]"
-            >
-              <option value="">Selecionar garçom</option>
-              {garcons.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.nome}
-                </option>
-              ))}
-            </select>
-          )}
+      {garcomSessionLocked && pinSession ? (
+        <div className="mb-3 flex flex-col gap-2 rounded-xl border border-[var(--card-border)] bg-white px-4 py-2.5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs text-[#6b7280]">
+            Sessão identificada pelo PIN — só vê as suas comandas.
+          </p>
+          <GarcomSessionBadge
+            nome={pinSession.nome}
+            onTrocar={() => {
+              clearGarcomPinSession(storeId)
+              router.refresh()
+            }}
+          />
+        </div>
+      ) : garcons.length > 0 && !salaoPinRequired ? (
+        <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Ative e defina o PIN de 4 dígitos de cada garçom em{' '}
+          <Link
+            href="/dashboard/garcons?hub=administracao"
+            className="font-semibold text-amber-950 underline underline-offset-2 hover:text-[#1a1614]"
+          >
+            Meus garçons
+          </Link>{' '}
+          para filtragem por garçom e relatório de vendas.
         </div>
       ) : null}
       {/* Mobile toggles */}
@@ -1850,8 +1847,6 @@ export function WaiterClient({
             setCustomerName={setCustomerName}
             notes={notes}
             setNotes={setNotes}
-            paymentMethod={paymentMethod}
-            setPaymentMethod={setPaymentMethod}
             cart={cart}
             setLineQty={setLineQty}
             subtotal={subtotal}
@@ -1869,7 +1864,8 @@ export function WaiterClient({
             hasSavedOrder={hasSavedOrder}
             onSubmitNew={submitNewOrder}
             onSaveExisting={saveExistingOrder}
-            onStartNewForTable={() => startNewOrderForTable()}
+            onStartNewForTable={() => startNewOrderForTable(table, sector, { openMenu: true })}
+            onOpenMenu={openMenuForOrder}
             onPrint={printComanda}
             onConfirmClose={() => {
               setMesaCloseMode('cashier')
@@ -2205,8 +2201,7 @@ export function WaiterClient({
           <div className="relative z-10 max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-xl">
             <p className="text-sm font-bold text-[#1a1614]">Fechar mesa</p>
             <p className="mt-1 text-xs text-[#6b7280]">
-              Total {money.format(Number(activeOrder.total) || 0)} · preferência de pagamento:{' '}
-              {waiterPaymentLabel(paymentMethod)}
+              Total {money.format(Number(activeOrder.total) || 0)}
             </p>
             {Math.abs(total - (Number(activeOrder.total) || 0)) > 0.01 ? (
               <p className="mt-2 text-xs text-amber-800">
@@ -2253,33 +2248,9 @@ export function WaiterClient({
                   >
                     turno de caixa
                   </Link>{' '}
-                  aberto (exige permissão de Caixa). A comanda fica paga e fechada.
+                  aberto (exige permissão de Caixa). Lance cada forma de pagamento até completar o
+                  total.
                 </p>
-                <span className="mb-1.5 mt-3 block text-[11px] font-medium text-[#6b7280]">
-                  Método de pagamento
-                </span>
-                <div className="grid grid-cols-3 gap-2">
-                  {(
-                    [
-                      { id: 'cash' as const, label: 'Dinheiro' },
-                      { id: 'pix' as const, label: 'PIX' },
-                      { id: 'card' as const, label: 'Cartão' },
-                    ] as const
-                  ).map((opt) => (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      onClick={() => setPaymentMethod(opt.id)}
-                      className={`rounded-lg border px-2 py-2 text-[11px] font-semibold ${
-                        paymentMethod === opt.id
-                          ? 'border-[var(--dash-primary)] bg-[var(--dash-primary)]/10 text-[#1a1614] ring-2 ring-[var(--dash-primary)]/25'
-                          : 'border-[var(--card-border)] bg-white text-[#374151]'
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
               </div>
             ) : (
               <p className="mt-3 text-xs text-[#6b7280]">
@@ -2298,7 +2269,14 @@ export function WaiterClient({
               <button
                 type="button"
                 disabled={busyOrderId === activeOrder.id}
-                onClick={() => void submitWaiterCheckout(activeOrder)}
+                onClick={() => {
+                  if (mesaCloseMode === 'immediate') {
+                    setConfirmCloseOpen(false)
+                    setSplitCloseOpen(true)
+                    return
+                  }
+                  void submitWaiterCheckout(activeOrder)
+                }}
                 className="flex-1 rounded-xl bg-emerald-600 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
               >
                 {busyOrderId === activeOrder.id
@@ -2310,6 +2288,19 @@ export function WaiterClient({
             </div>
           </div>
         </div>
+      ) : null}
+
+      {splitCloseOpen && activeOrder && mesaCloseMode === 'immediate' ? (
+        <ComandaSplitPaymentModal
+          open={splitCloseOpen}
+          comandaLabel={`${comandaDisplayName(activeOrder.customer_name)}${
+            table.trim() ? ` · Mesa ${table.trim()}` : ''
+          }`}
+          orderTotal={Number(activeOrder.total) || 0}
+          busy={busyOrderId === activeOrder.id}
+          onClose={() => !busyOrderId && setSplitCloseOpen(false)}
+          onConfirm={(lines) => void submitWaiterCheckout(activeOrder, lines)}
+        />
       ) : null}
 
       {/* Mobile: bottom sheet cardápio */}
@@ -2509,8 +2500,6 @@ export function WaiterClient({
                 setCustomerName={setCustomerName}
                 notes={notes}
                 setNotes={setNotes}
-                paymentMethod={paymentMethod}
-                setPaymentMethod={setPaymentMethod}
                 cart={cart}
                 setLineQty={setLineQty}
                 subtotal={subtotal}
@@ -2528,7 +2517,8 @@ export function WaiterClient({
                 hasSavedOrder={hasSavedOrder}
                 onSubmitNew={submitNewOrder}
                 onSaveExisting={saveExistingOrder}
-                onStartNewForTable={() => startNewOrderForTable()}
+                onStartNewForTable={() => startNewOrderForTable(table, sector, { openMenu: true })}
+                onOpenMenu={openMenuForOrder}
                 onPrint={printComanda}
                 onConfirmClose={() => {
               setMesaCloseMode('cashier')
@@ -2553,7 +2543,7 @@ export function WaiterClient({
                 type="button"
                 onClick={() => {
                   setTableActionSheetOpen(false)
-                  startNewOrderForTable(table, sector, false)
+                  startNewOrderForTable(table, sector, { openDrawer: false, openMenu: true })
                   setMenuSheetOpen(true)
                 }}
                 className="rounded-xl border border-[var(--card-border)] bg-white py-2.5 text-sm font-semibold text-[#1a1614]"
@@ -2575,6 +2565,38 @@ export function WaiterClient({
         </div>
       ) : null}
 
+      {comandaPickerOpen && comandaPickerTable ? (
+        <GarcomMesaComandasPanel
+          tableName={comandaPickerTable.name}
+          sector={comandaPickerTable.ambiente}
+          comandas={ordersOnTable(
+            visibleOpenOrders,
+            comandaPickerTable.name,
+            comandaPickerTable.ambiente,
+            tables
+          )}
+          activeOrderId={activeOrderId}
+          newComandaName={newComandaNameDraft}
+          onNewComandaNameChange={setNewComandaNameDraft}
+          onSelect={(order) => {
+            void loadOrderEditor(order, true)
+            setComandaPickerOpen(false)
+            setComandaPickerTable(null)
+          }}
+          onStartNew={() => {
+            startNewOrderForTable(comandaPickerTable.name, comandaPickerTable.ambiente, {
+              openMenu: true,
+              comandaName: newComandaNameDraft,
+            })
+          }}
+          onClose={() => {
+            setComandaPickerOpen(false)
+            setComandaPickerTable(null)
+            setNewComandaNameDraft('')
+          }}
+        />
+      ) : null}
+
     </div>
   )
 }
@@ -2587,8 +2609,6 @@ function OrderPanelContent({
   setCustomerName,
   notes,
   setNotes,
-  paymentMethod,
-  setPaymentMethod,
   cart,
   setLineQty,
   subtotal,
@@ -2607,6 +2627,7 @@ function OrderPanelContent({
   onSubmitNew,
   onSaveExisting,
   onStartNewForTable,
+  onOpenMenu,
   onPrint,
   onConfirmClose,
   sticky,
@@ -2618,8 +2639,6 @@ function OrderPanelContent({
   setCustomerName: (v: string) => void
   notes: string
   setNotes: (v: string) => void
-  paymentMethod: WaiterPaymentMethod
-  setPaymentMethod: (v: WaiterPaymentMethod) => void
   cart: CartLine[]
   setLineQty: (id: string, q: number) => void
   subtotal: number
@@ -2638,6 +2657,7 @@ function OrderPanelContent({
   onSubmitNew: () => void
   onSaveExisting: () => void
   onStartNewForTable: () => void
+  onOpenMenu: () => void
   onPrint: () => void
   onConfirmClose: () => void
   sticky: boolean
@@ -2674,11 +2694,11 @@ function OrderPanelContent({
               />
             </label>
             <label className="mt-2 block text-[11px] font-medium text-[#6b7280]">
-              Cliente (opcional)
+              Nome da comanda
               <input
                 value={customerName}
                 onChange={(e) => setCustomerName(e.target.value)}
-                placeholder="Nome do cliente"
+                placeholder="Ex.: João, Família Silva"
                 className="mt-1 w-full rounded-lg border border-[var(--card-border)] px-2 py-1.5 text-sm"
               />
             </label>
@@ -2692,33 +2712,30 @@ function OrderPanelContent({
                 className="mt-1 w-full resize-y rounded-lg border border-[var(--card-border)] px-2 py-1.5 text-sm"
               />
             </label>
-            <p className="mt-3 text-[11px] font-medium text-[#6b7280]">Pagamento</p>
-            <div className="mt-1.5 grid grid-cols-3 gap-1.5">
-              {(
-                [
-                  { id: 'cash' as const, label: 'Dinheiro' },
-                  { id: 'pix' as const, label: 'PIX' },
-                  { id: 'card' as const, label: 'Cartão' },
-                ] as const
-              ).map((opt) => (
-                <button
-                  key={opt.id}
-                  type="button"
-                  onClick={() => setPaymentMethod(opt.id)}
-                  className={`rounded-lg border px-1 py-2 text-[11px] font-semibold transition duration-150 ${
-                    paymentMethod === opt.id
-                      ? 'border-[var(--dash-primary)] bg-[var(--dash-primary)] text-white shadow-sm shadow-[var(--dash-primary)]/25'
-                      : 'border-[var(--card-border)] bg-white text-[#374151] hover:border-[var(--dash-primary)]/40 hover:bg-[var(--dash-primary)]/5'
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
 
             <div className="mt-4 border-t border-[var(--card-border)] pt-3">
               {cart.length === 0 ? (
-                <p className="py-6 text-center text-sm text-[#9ca3af]">Nenhum item adicionado.</p>
+                <div className="rounded-xl border border-dashed border-[var(--card-border)] bg-[#fafafa] px-3 py-5 text-center">
+                  <p className="text-sm font-semibold text-[#1a1614]">Nenhum item na comanda</p>
+                  <p className="mt-1 text-xs leading-relaxed text-[#6b7280]">
+                    {customerName.trim()
+                      ? `Comanda «${customerName.trim()}» · Mesa ${table.trim()}`
+                      : `Mesa ${table.trim()}`}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={onOpenMenu}
+                    className="mt-3 inline-flex items-center justify-center gap-2 rounded-xl bg-[var(--dash-primary)] px-4 py-2.5 text-xs font-semibold text-white shadow-sm md:hidden"
+                  >
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h10" />
+                    </svg>
+                    Abrir cardápio
+                  </button>
+                  <p className="mt-3 hidden text-xs text-[#6b7280] md:block">
+                    Selecione produtos no cardápio à esquerda para adicionar à comanda.
+                  </p>
+                </div>
               ) : (
                 <ul className="space-y-2">
                   {cart.map((line) => (
@@ -2868,7 +2885,7 @@ function OrderPanelContent({
                     onClick={onStartNewForTable}
                     className="flex-1 rounded-xl border border-[var(--card-border)] py-2 text-xs font-semibold text-[#1a1614] transition hover:bg-zinc-50 disabled:opacity-50"
                   >
-                    + Novo pedido
+                    + Nova comanda
                   </button>
                   <button
                     type="button"

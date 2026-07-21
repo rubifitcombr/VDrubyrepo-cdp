@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
 import { requiresAnnualContractAcceptance } from '@/lib/annual-contract-acceptance'
+import { parseMerchantStatus } from '@/lib/merchant-status'
+import { readStoreStatus } from '@/lib/store-columns'
 import { getUser } from '@/services/auth.server'
 import { acceptAnnualContract } from '@/services/annual-contract-accept.server'
 import { getStoreByUser } from '@/services/store.server'
@@ -54,6 +56,11 @@ export async function POST(req: Request) {
   }
 
   const row = store as Record<string, unknown>
+  const status = parseMerchantStatus(readStoreStatus(row))
+  if (status !== 'ativo' && status !== 'pendente') {
+    return NextResponse.json({ error: 'Acesso suspenso.' }, { status: 403 })
+  }
+
   if (!requiresAnnualContractAcceptance(row)) {
     return NextResponse.json({ error: 'Não há contrato pendente de aceite.' }, { status: 400 })
   }

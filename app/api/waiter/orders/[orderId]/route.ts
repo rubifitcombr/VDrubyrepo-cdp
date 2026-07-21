@@ -205,11 +205,6 @@ export async function PATCH(
     typeof body.notes === 'string' ? body.notes.trim() : extractUserNotes(existing.notes as string)
   const notes = buildWaiterNotes(table, sector, userNotes, discountBrl)
 
-  const payment =
-    typeof body.payment_method === 'string' && body.payment_method.trim()
-      ? body.payment_method.trim()
-      : 'cash'
-
   const garcom = await resolveGarcomForOrder(
     supabase,
     storeId,
@@ -241,7 +236,6 @@ export async function PATCH(
       total,
       items_summary: itemsSummary,
       notes,
-      payment_method: payment,
       ...(typeof body.garcom_id === 'string'
         ? { garcom_id: garcom.garcom_id, garcom_nome: garcom.garcom_nome }
         : {}),

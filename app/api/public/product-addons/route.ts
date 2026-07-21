@@ -1,19 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
-import { tryCreateServiceRoleClient } from '@/lib/supabase/service-role.server'
+import { createPublicAnonClient } from '@/lib/supabase/public.server'
+import {
+  checkRateLimit,
+  clientIpFromRequest,
+  rateLimitResponse,
+} from '@/lib/rate-limit.server'
 
 /**
  * Lista adicionais de um produto (cardápio público).
- * Usa o cliente servidor; requer políticas RLS de leitura em addon_*.
+ * RLS: addon_* + products activos em loja activa.
  */
 export async function GET(req: NextRequest) {
+  const ip = clientIpFromRequest(req)
+  const rl = checkRateLimit(`product-addons:${ip}`, 120, 60_000)
+  if (!rl.ok) return rateLimitResponse(rl.retryAfterSec)
+
   const productId = req.nextUrl.searchParams.get('productId')?.trim()
-  if (!productId) {
-    return NextResponse.json({ error: 'productId em falta.' }, { status: 400 })
+  if (!productId || !/^[0-9a-f-]{36}$/i.test(productId)) {
+    return NextResponse.json({ error: 'productId inválido.' }, { status: 400 })
   }
 
-  const supabase =
-    tryCreateServiceRoleClient() ?? (await createClient())
+  const supabase = createPublicAnonClient()
   const { data: groups, error: gErr } = await supabase
     .from('addon_groups')
     .select('id, name, required, sort_order')

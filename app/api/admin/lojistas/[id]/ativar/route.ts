@@ -10,7 +10,7 @@ import {
 } from '@/lib/contract-pricing'
 import { clearAnnualContractAcceptancePatch } from '@/lib/annual-contract-acceptance'
 import { parseOperationModeFromStore } from '@/lib/merchant-operation-mode'
-import { insertAdminLog } from '@/services/admin-logs.server'
+import { insertAdminLogFromRequest } from '@/services/admin-logs.server'
 import { parsePlan, planShortLabel } from '@/lib/plan'
 import { planToPlanoColumn } from '@/lib/plano-db'
 import { readStoreStatus } from '@/lib/store-columns'
@@ -119,7 +119,7 @@ export async function POST(
   }
 
   const cycleLabel = billingCycle === 'annual' ? 'Anual' : 'Mensal'
-  await insertAdminLog(ctx.svc, {
+  await insertAdminLogFromRequest(ctx.svc, req, {
     adminId: ctx.user.id,
     lojistaId: id,
     acao: st === 'cancelado' ? 'reativou' : 'ativou',

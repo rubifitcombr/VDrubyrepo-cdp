@@ -20,7 +20,7 @@ function cacheKey(q: string): string {
 export async function geocodeBrazil(
   query: string
 ): Promise<{ lat: number; lng: number } | null> {
-  const q = query.trim()
+  const q = query.trim().slice(0, 500)
   if (q.length < 4) return null
 
   const key = cacheKey(q)

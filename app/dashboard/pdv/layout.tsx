@@ -12,7 +12,7 @@ export default async function PdvLayout({
   children: React.ReactNode
 }) {
   const user = await getUser()
-  if (!user) return null
+  if (!user) redirect('/login?next=/dashboard/pdv')
 
   const store = await getStoreByUser(user.id)
   const storeRow =

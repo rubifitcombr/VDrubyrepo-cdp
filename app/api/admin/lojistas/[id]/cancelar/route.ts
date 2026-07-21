@@ -8,10 +8,10 @@ import {
   todayIsoLocal,
 } from '@/lib/contract-pricing'
 import { readStoreStatus } from '@/lib/store-columns'
-import { insertAdminLog } from '@/services/admin-logs.server'
+import { insertAdminLogFromRequest } from '@/services/admin-logs.server'
 
 export async function POST(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const ctx = await requireAdminApi()
@@ -61,7 +61,7 @@ export async function POST(
       ? ` · multa informativa ${formatMoneyBrl(penalty.multaBrl)} (${penalty.mesesRestantes} meses restantes)`
       : ''
 
-  await insertAdminLog(ctx.svc, {
+  await insertAdminLogFromRequest(ctx.svc, req, {
     adminId: ctx.user.id,
     lojistaId: id,
     acao: 'cancelou',

@@ -2,10 +2,10 @@ import { NextResponse } from 'next/server'
 import { requireAdminApi } from '@/lib/admin-auth.server'
 import { readStoreStatus } from '@/lib/store-columns'
 import { fetchLojistaDetail } from '@/lib/admin-lojistas-query.server'
-import { insertAdminLog } from '@/services/admin-logs.server'
+import { insertAdminLogFromRequest } from '@/services/admin-logs.server'
 
 export async function POST(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const ctx = await requireAdminApi()
@@ -45,7 +45,7 @@ export async function POST(
 
   const nome = String((existing as { name?: string }).name ?? '')
 
-  await insertAdminLog(ctx.svc, {
+  await insertAdminLogFromRequest(ctx.svc, req, {
     adminId: ctx.user.id,
     lojistaId: id,
     acao: 'bloqueou',

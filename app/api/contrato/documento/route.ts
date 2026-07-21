@@ -1,6 +1,8 @@
 import { getUser } from '@/services/auth.server'
 import { buildSignedContractPdfResponse } from '@/services/annual-contract-document.server'
 import { getStoreByUser } from '@/services/store.server'
+import { parseMerchantStatus } from '@/lib/merchant-status'
+import { readStoreStatus } from '@/lib/store-columns'
 import { NextResponse } from 'next/server'
 
 export async function GET() {
@@ -14,5 +16,11 @@ export async function GET() {
     return NextResponse.json({ error: 'Loja não encontrada' }, { status: 404 })
   }
 
-  return buildSignedContractPdfResponse(store as Record<string, unknown>)
+  const row = store as Record<string, unknown>
+  const status = parseMerchantStatus(readStoreStatus(row))
+  if (status === 'cancelado' || status === 'bloqueado') {
+    return NextResponse.json({ error: 'Acesso suspenso.' }, { status: 403 })
+  }
+
+  return buildSignedContractPdfResponse(row)
 }

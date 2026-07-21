@@ -19,6 +19,13 @@ export async function POST(req: Request) {
   const user = await getUser()
   if (!user) return jsonError('Não autenticado', 401)
 
+  if (process.env.NODE_ENV === 'production') {
+    return jsonError(
+      'Upgrade de plano disponível apenas após confirmação de pagamento. Contacte o suporte Vyria.',
+      403
+    )
+  }
+
   const gate = await requireLojistaAtivoApi(user.id)
   if (!gate.ok) return gate.response
 

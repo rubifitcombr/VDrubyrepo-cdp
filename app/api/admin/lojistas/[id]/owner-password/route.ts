@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { requireAdminApi } from '@/lib/admin-auth.server'
 import { getVyriaAdminPanelUserId } from '@/lib/admin-panel-user'
-import { insertAdminLog } from '@/services/admin-logs.server'
+import { insertAdminLogFromRequest } from '@/services/admin-logs.server'
 
 const MIN_LEN = 6
 const MAX_LEN = 128
@@ -79,7 +79,7 @@ export async function POST(
   const nomeLoja = String(row.name ?? '').trim().slice(0, 120)
 
   try {
-    await insertAdminLog(ctx.svc, {
+    await insertAdminLogFromRequest(ctx.svc, req, {
       adminId: ctx.user.id,
       lojistaId: storeId,
       acao: 'redefiniu_senha_dono',

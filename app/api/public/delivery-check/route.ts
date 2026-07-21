@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
-import { tryCreateServiceRoleClient } from '@/lib/supabase/service-role.server'
+import { createPublicAnonClient } from '@/lib/supabase/public.server'
+import {
+  checkRateLimit,
+  clientIpFromRequest,
+  rateLimitResponse,
+} from '@/lib/rate-limit.server'
 import { fetchStoreByPublicSlug } from '@/lib/store-public-slug.server'
 import {
   evaluateDeliveryForCustomer,
@@ -13,13 +17,17 @@ function toText(v: unknown): string {
 
 export async function POST(req: NextRequest) {
   try {
+    const ip = clientIpFromRequest(req)
+    const rl = checkRateLimit(`delivery-check:${ip}`, 40, 60_000)
+    if (!rl.ok) return rateLimitResponse(rl.retryAfterSec)
+
     const body = await req.json()
     if (!body || typeof body !== 'object') {
       return NextResponse.json({ error: 'Payload inválido.' }, { status: 400 })
     }
     const raw = body as Record<string, unknown>
     const slug = toText(raw.slug)
-    const addressLine = toText(raw.addressLine)
+    const addressLine = toText(raw.addressLine).slice(0, 500)
     const subtotal = Number(raw.subtotal)
 
     if (!slug) {
@@ -32,8 +40,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const supabase =
-      tryCreateServiceRoleClient() ?? (await createClient())
+    const supabase = createPublicAnonClient()
     const { data: store, error } = await fetchStoreByPublicSlug(
       supabase,
       slug,
@@ -48,33 +55,23 @@ export async function POST(req: NextRequest) {
     }
 
     const storeRow = store as StoreDeliveryConfig
-
-    const sub =
+    const safeSubtotal =
       Number.isFinite(subtotal) && subtotal >= 0 ? subtotal : 0
 
-    const result = await evaluateDeliveryForCustomer(
+    const zone = await evaluateDeliveryForCustomer(
       storeRow,
       addressLine,
-      sub
+      safeSubtotal
     )
 
     return NextResponse.json({
-      ok: true,
-      allowed: result.allowed,
-      distanceKm: result.distanceKm,
-      deliveryCharge: result.deliveryCharge,
-      reason: result.reason ?? null,
-      freeAbove:
-        storeRow.delivery_free_above != null
-          ? Number(storeRow.delivery_free_above)
-          : null,
-      maxKm:
-        storeRow.delivery_max_km != null ? Number(storeRow.delivery_max_km) : null,
-      baseFee:
-        storeRow.delivery_fee != null ? Number(storeRow.delivery_fee) : null,
+      allowed: zone.allowed,
+      distanceKm: zone.distanceKm,
+      deliveryCharge: zone.deliveryCharge,
+      reason: zone.reason ?? null,
     })
-  } catch (e) {
-    const message = e instanceof Error ? e.message : 'Erro inesperado.'
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Erro inesperado.'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

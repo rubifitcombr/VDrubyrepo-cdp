@@ -299,6 +299,7 @@ export function isMerchantApiContractGatePath(pathname: string): boolean {
   const n = p.length > 1 && p.endsWith('/') ? p.slice(0, -1) : p
   if (!n.startsWith('/api/')) return false
   if (n.startsWith('/api/contrato/')) return false
+  if (n === '/api/assinatura/cancelar') return false
   if (n.startsWith('/api/admin/')) return false
   if (n.startsWith('/api/public/')) return false
   if (n.startsWith('/api/webhooks/')) return false

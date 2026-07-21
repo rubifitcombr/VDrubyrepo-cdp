@@ -130,7 +130,7 @@ export async function POST(request: Request) {
   const payment =
     typeof body.payment_method === 'string' && body.payment_method.trim()
       ? body.payment_method.trim()
-      : 'cash'
+      : null
 
   const garcom = await resolveGarcomForOrder(
     supabase,
@@ -188,7 +188,7 @@ export async function POST(request: Request) {
     .eq('id', orderId)
     .single()
 
-  void tryAutoThermalPrint(supabase, {
+  void tryAutoThermalPrint({
     storeId,
     orderId,
     orderSource: 'waiter',

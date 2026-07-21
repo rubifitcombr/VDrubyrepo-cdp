@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { requireAdminApi } from '@/lib/admin-auth.server'
-import { insertAdminLog } from '@/services/admin-logs.server'
+import { insertAdminLogFromRequest } from '@/services/admin-logs.server'
 
 export async function POST(
   req: Request,
@@ -61,7 +61,7 @@ export async function POST(
     style: 'currency',
     currency: 'BRL',
   })
-  await insertAdminLog(ctx.svc, {
+  await insertAdminLogFromRequest(ctx.svc, req, {
     adminId: ctx.user.id,
     lojistaId: storeId,
     acao: 'fatura_registrada',

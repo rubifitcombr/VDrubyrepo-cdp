@@ -5,6 +5,11 @@ import {
 } from '@/lib/cashier-pro-delivery-scope'
 import { gateMerchantMenuKey } from '@/lib/merchant-api-gate.server'
 import { parseOperationModeFromStore } from '@/lib/merchant-operation-mode'
+import {
+  parseOrderPaymentLines,
+  validatePaymentLines,
+  type OrderPaymentLine,
+} from '@/lib/order-payments'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
 import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
 import { readStorePlano } from '@/lib/store-columns'
@@ -12,8 +17,9 @@ import { getUser } from '@/services/auth.server'
 import { createClient } from '@/lib/supabase/server'
 import { getOpenCaixaTurno } from '@/services/caixa-turnos.server'
 import { tryAutoEmitNfceForOrder } from '@/services/fiscal'
+import { insertOrderPayments } from '@/services/order-payments.server'
 
-type PaymentMethod = 'cash' | 'pix' | 'card' | 'card_credit' | 'card_debit'
+type PaymentMethod = 'cash' | 'pix' | 'card' | 'card_credit' | 'card_debit' | 'split'
 
 function normalizePayment(v: unknown): PaymentMethod | null {
   const t = String(v ?? '').trim().toLowerCase()
@@ -22,11 +28,31 @@ function normalizePayment(v: unknown): PaymentMethod | null {
     t === 'pix' ||
     t === 'card' ||
     t === 'card_credit' ||
-    t === 'card_debit'
+    t === 'card_debit' ||
+    t === 'split'
   ) {
     return t
   }
   return null
+}
+
+function resolvePaymentLines(body: {
+  paymentMethod?: unknown
+  payments?: unknown
+}): { lines: OrderPaymentLine[]; storedMethod: PaymentMethod } | { error: string } {
+  const parsed = parseOrderPaymentLines(body.payments)
+  if (parsed) {
+    if (parsed.length === 1) {
+      return { lines: parsed, storedMethod: parsed[0]!.method }
+    }
+    return { lines: parsed, storedMethod: 'split' }
+  }
+
+  const paymentMethod = normalizePayment(body.paymentMethod)
+  if (!paymentMethod || paymentMethod === 'split') {
+    return { error: 'Dados de fechamento inválidos.' }
+  }
+  return { lines: [], storedMethod: paymentMethod }
 }
 
 export async function POST(request: Request) {
@@ -41,7 +67,7 @@ export async function POST(request: Request) {
   const deny = gateMerchantMenuKey(gate.ctx.store, user.email, 'caixa')
   if (deny) return deny
 
-  let body: { orderId?: string; paymentMethod?: string }
+  let body: { orderId?: string; paymentMethod?: string; payments?: unknown }
   try {
     body = await request.json()
   } catch {
@@ -49,13 +75,19 @@ export async function POST(request: Request) {
   }
 
   const orderId = String(body.orderId ?? '').trim()
-  const paymentMethod = normalizePayment(body.paymentMethod)
-  if (!orderId || !paymentMethod) {
+  const resolved = resolvePaymentLines(body)
+  if ('error' in resolved) {
+    return NextResponse.json({ error: resolved.error }, { status: 400 })
+  }
+  if (!orderId) {
     return NextResponse.json(
       { error: 'Dados de fechamento inválidos.' },
       { status: 400 }
     )
   }
+
+  const { lines, storedMethod } = resolved
+  const isSplit = storedMethod === 'split'
 
   const supabase = await createClient()
   const storeId = gate.ctx.storeId
@@ -70,13 +102,21 @@ export async function POST(request: Request) {
 
   const { data: order, error: fetchErr } = await supabase
     .from('orders')
-    .select('id, source, status, notes, payment_method')
+    .select('id, source, status, notes, payment_method, total')
     .eq('store_id', storeId)
     .eq('id', orderId)
     .maybeSingle()
 
   if (fetchErr || !order) {
     return NextResponse.json({ error: 'Pedido não encontrado.' }, { status: 404 })
+  }
+
+  const orderTotal = Number(order.total) || 0
+  if (isSplit) {
+    const validationError = validatePaymentLines(orderTotal, lines)
+    if (validationError) {
+      return NextResponse.json({ error: validationError }, { status: 400 })
+    }
   }
 
   const src = String(order.source ?? '').trim().toLowerCase()
@@ -109,12 +149,15 @@ export async function POST(request: Request) {
   }
 
   const noteBase = String(order.notes ?? '').trim()
-  const closeLine = `[Caixa] Fechado em ${new Date().toISOString()} (${paymentMethod})`
+  const paymentNote = isSplit
+    ? lines.map((l) => `${l.method}:${l.amount.toFixed(2)}`).join(', ')
+    : storedMethod
+  const closeLine = `[Caixa] Fechado em ${new Date().toISOString()} (${paymentNote})`
   const notes = noteBase ? `${noteBase}\n${closeLine}` : closeLine
 
   const updatePayload: Record<string, unknown> = {
     status: 'delivered',
-    payment_method: paymentMethod,
+    payment_method: storedMethod,
     notes,
     caixa_turno_id: turnoAberto.id,
   }
@@ -144,7 +187,28 @@ export async function POST(request: Request) {
     )
   }
 
-  // Fecho do caixa = pagamento confirmado → tenta NFC-e sem bloquear a venda.
+  if (isSplit) {
+    const payResult = await insertOrderPayments(supabase, {
+      storeId,
+      orderId,
+      turnoId: turnoAberto.id,
+      lines,
+    })
+    if (!payResult.ok) {
+      await supabase
+        .from('orders')
+        .update({
+          status: order.status,
+          payment_method: order.payment_method,
+          notes: order.notes,
+          caixa_turno_id: null,
+        })
+        .eq('store_id', storeId)
+        .eq('id', orderId)
+      return NextResponse.json({ error: payResult.error }, { status: 500 })
+    }
+  }
+
   const fiscal = await tryAutoEmitNfceForOrder(orderId)
 
   return NextResponse.json({
@@ -152,11 +216,15 @@ export async function POST(request: Request) {
     order: {
       id: String(updated.id),
       status: String(updated.status ?? 'delivered'),
-      payment_method: String(updated.payment_method ?? paymentMethod),
+      payment_method: String(updated.payment_method ?? storedMethod),
       notes: String(updated.notes ?? ''),
-      caixa_turno_id: String((updated as { caixa_turno_id?: string }).caixa_turno_id ?? turnoAberto.id),
+      caixa_turno_id: String(
+        (updated as { caixa_turno_id?: string }).caixa_turno_id ?? turnoAberto.id
+      ),
     },
+    payments: isSplit
+      ? lines.map((l) => ({ method: l.method, amount: l.amount }))
+      : undefined,
     fiscal,
   })
 }
-

@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
-import { tryCreateServiceRoleClient } from '@/lib/supabase/service-role.server'
+import { createPublicAnonClient } from '@/lib/supabase/public.server'
+import {
+  checkRateLimit,
+  clientIpFromRequest,
+  rateLimitResponse,
+} from '@/lib/rate-limit.server'
 import { fetchStoreByPublicSlug } from '@/lib/store-public-slug.server'
 import {
   evaluateDeliveryForCustomer,
@@ -79,6 +83,10 @@ function formatDeliveryAddressFromParts(parts: {
 
 export async function POST(req: NextRequest) {
   try {
+    const ip = clientIpFromRequest(req)
+    const rl = checkRateLimit(`checkout:${ip}`, 30, 60_000)
+    if (!rl.ok) return rateLimitResponse(rl.retryAfterSec)
+
     const body = await req.json()
     if (!body || typeof body !== 'object') {
       return NextResponse.json({ error: 'Payload inválido.' }, { status: 400 })
@@ -201,8 +209,7 @@ export async function POST(req: NextRequest) {
 
     const customerPhone = customerPhoneRaw || null
 
-    const supabase =
-      tryCreateServiceRoleClient() ?? (await createClient())
+    const supabase = createPublicAnonClient()
     const { data: store, error: storeErr } = await fetchStoreByPublicSlug(
       supabase,
       slug,
@@ -517,7 +524,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (!isPixPayment) {
-      void tryAutoThermalPrint(supabase, {
+      void tryAutoThermalPrint({
         storeId: String(storeRow.id),
         orderId: String(order.id),
         orderSource: insertSource,

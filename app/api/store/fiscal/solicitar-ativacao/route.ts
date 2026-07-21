@@ -6,27 +6,15 @@ import { getStoreFiscalConfig } from '@/services/fiscal.server'
 import { getFiscalReadinessForStore } from '@/services/fiscal-readiness.server'
 import { parseFiscalStatus } from '@/lib/fiscal'
 
-async function requireOwnedStore(storeId: string) {
-  const user = await getUser()
-  if (!user) {
-    return {
-      ok: false as const,
-      response: NextResponse.json({ error: 'Sessão necessária.' }, { status: 401 }),
-    }
-  }
-  const gate = await requireLojistaAtivoApi(user.id)
-  if (!gate.ok) return { ok: false as const, response: gate.response }
-  if (storeId !== gate.ctx.storeId) {
-    return {
-      ok: false as const,
-      response: NextResponse.json({ error: 'Acesso negado à loja.' }, { status: 403 }),
-    }
-  }
-  return { ok: true as const, storeId: gate.ctx.storeId }
-}
-
 /** Valida o checklist e envia a loja para aprovação do admin. */
 export async function POST(req: NextRequest) {
+  const user = await getUser()
+  if (!user) {
+    return NextResponse.json({ error: 'Sessão necessária.' }, { status: 401 })
+  }
+  const gate = await requireLojistaAtivoApi(user.id)
+  if (!gate.ok) return gate.response
+
   let body: Record<string, unknown>
   try {
     body = (await req.json()) as Record<string, unknown>
@@ -38,8 +26,9 @@ export async function POST(req: NextRequest) {
   if (!storeId) {
     return NextResponse.json({ error: 'storeId é obrigatório.' }, { status: 400 })
   }
-  const owned = await requireOwnedStore(storeId)
-  if (!owned.ok) return owned.response
+  if (storeId !== gate.ctx.storeId) {
+    return NextResponse.json({ error: 'Acesso negado à loja.' }, { status: 403 })
+  }
 
   const svc = createServiceRoleClient()
   const cfg = await getStoreFiscalConfig(svc, storeId)

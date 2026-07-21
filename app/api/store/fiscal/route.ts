@@ -75,6 +75,13 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const user = await getUser()
+  if (!user) {
+    return NextResponse.json({ error: 'Sessão necessária.' }, { status: 401 })
+  }
+  const gate = await requireLojistaAtivoApi(user.id)
+  if (!gate.ok) return gate.response
+
   let body: Record<string, unknown>
   try {
     body = (await req.json()) as Record<string, unknown>
@@ -86,8 +93,9 @@ export async function POST(req: NextRequest) {
   if (!storeId) {
     return NextResponse.json({ error: 'storeId é obrigatório.' }, { status: 400 })
   }
-  const owned = await requireOwnedStore(storeId)
-  if (!owned.ok) return owned.response
+  if (storeId !== gate.ctx.storeId) {
+    return NextResponse.json({ error: 'Acesso negado à loja.' }, { status: 403 })
+  }
 
   const svc = createServiceRoleClient()
   const current = await getStoreFiscalConfig(svc, storeId)

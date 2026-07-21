@@ -26,8 +26,8 @@ import { parseHubPinConfig } from '@/lib/hub-shortcut-pin'
 import { requiresAnnualContractAcceptance } from '@/lib/annual-contract-acceptance'
 import {
   IMPERSONATION_ACTIVE_COOKIE,
-  parseImpersonationContext,
 } from '@/lib/impersonation'
+import { openImpersonationContext } from '@/lib/impersonation-sign.server'
 import { createClient } from '@/lib/supabase/server'
 import { syncAutoCloseOutsideHoursForStore } from '@/services/store-hours-automation.server'
 import { cookies } from 'next/headers'
@@ -52,7 +52,7 @@ export default async function DashboardLayout({
   const vyriaPanelMode = parseVyriaPanelMode(
     cookieStore.get(VYRIA_PANEL_MODE_COOKIE)?.value
   )
-  const impersonation = parseImpersonationContext(
+  const impersonation = openImpersonationContext(
     cookieStore.get(IMPERSONATION_ACTIVE_COOKIE)?.value
   )
 

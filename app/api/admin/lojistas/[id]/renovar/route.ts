@@ -17,7 +17,7 @@ import { parsePlan, planShortLabel } from '@/lib/plan'
 import { readStorePlano } from '@/lib/store-columns'
 import { planToPlanoColumn } from '@/lib/plano-db'
 import { readStoreStatus } from '@/lib/store-columns'
-import { insertAdminLog } from '@/services/admin-logs.server'
+import { insertAdminLogFromRequest } from '@/services/admin-logs.server'
 import { formatSupabaseStoreUpdateError } from '@/lib/supabase-schema-error'
 
 function fmtDateBr(iso: string) {
@@ -162,7 +162,7 @@ export async function POST(
   const contratoFim =
     typeof patch.contrato_fim_em === 'string' ? patch.contrato_fim_em : null
 
-  await insertAdminLog(ctx.svc, {
+  await insertAdminLogFromRequest(ctx.svc, req, {
     adminId: ctx.user.id,
     lojistaId: id,
     acao: 'renovou',

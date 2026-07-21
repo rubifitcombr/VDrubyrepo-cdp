@@ -6,12 +6,18 @@ import {
   WAITER_PENDING_CAIXA_MARKER,
   notesIndicateWaiterReleasedToCaixa,
 } from '@/lib/waiter-order-notes'
+import {
+  parseOrderPaymentLines,
+  validatePaymentLines,
+  type OrderPaymentLine,
+} from '@/lib/order-payments'
 import { getUser } from '@/services/auth.server'
 import { createClient } from '@/lib/supabase/server'
 import { getOpenCaixaTurno } from '@/services/caixa-turnos.server'
 import { resolveGarcomForOrder } from '@/services/store-garcons.server'
+import { insertOrderPayments } from '@/services/order-payments.server'
 
-type PaymentMethod = 'cash' | 'pix' | 'card'
+type PaymentMethod = 'cash' | 'pix' | 'card' | 'split'
 
 function normalizePayment(v: unknown): PaymentMethod | null {
   const t = String(v ?? '').trim().toLowerCase()
@@ -21,6 +27,34 @@ function normalizePayment(v: unknown): PaymentMethod | null {
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100
+}
+
+function resolveImmediatePayment(body: {
+  paymentMethod?: unknown
+  payments?: unknown
+}):
+  | { lines: OrderPaymentLine[]; storedMethod: PaymentMethod; isSplit: boolean }
+  | { error: string } {
+  const parsed = parseOrderPaymentLines(body.payments)
+  if (parsed) {
+    if (parsed.length === 1) {
+      const method = parsed[0]!.method
+      if (method === 'card_credit' || method === 'card_debit') {
+        return { lines: parsed, storedMethod: 'card', isSplit: false }
+      }
+      if (method === 'cash' || method === 'pix' || method === 'card') {
+        return { lines: parsed, storedMethod: method, isSplit: false }
+      }
+      return { lines: parsed, storedMethod: 'card', isSplit: false }
+    }
+    return { lines: parsed, storedMethod: 'split', isSplit: true }
+  }
+
+  const paymentMethod = normalizePayment(body.paymentMethod)
+  if (!paymentMethod) {
+    return { error: 'Indica o método de pagamento para receber agora.' }
+  }
+  return { lines: [], storedMethod: paymentMethod, isSplit: false }
 }
 
 export async function POST(request: Request) {
@@ -38,7 +72,14 @@ export async function POST(request: Request) {
   const denyStaff = denyStaffWaiterPanelWrites(gate.ctx.store, user.email)
   if (denyStaff) return denyStaff
 
-  let body: { orderId?: unknown; mode?: unknown; paymentMethod?: unknown; service_fee_brl?: unknown; garcom_id?: unknown }
+  let body: {
+    orderId?: unknown
+    mode?: unknown
+    paymentMethod?: unknown
+    payments?: unknown
+    service_fee_brl?: unknown
+    garcom_id?: unknown
+  }
   try {
     body = await request.json()
   } catch {
@@ -56,7 +97,7 @@ export async function POST(request: Request) {
 
   const { data: order, error: fetchErr } = await supabase
     .from('orders')
-    .select('id, source, status, notes, payment_method')
+    .select('id, source, status, notes, payment_method, total')
     .eq('store_id', storeId)
     .eq('id', orderId)
     .maybeSingle()
@@ -91,9 +132,6 @@ export async function POST(request: Request) {
   const noteBase = String(order.notes ?? '').trim()
 
   if (mode === 'cashier') {
-    const pref = normalizePayment(body.paymentMethod)
-    const paymentPref = pref ?? normalizePayment(order.payment_method) ?? 'cash'
-
     const line = `${WAITER_PENDING_CAIXA_MARKER} (${new Date().toISOString()})`
     const notes = noteBase ? `${noteBase}\n${line}` : line
 
@@ -101,7 +139,6 @@ export async function POST(request: Request) {
       .from('orders')
       .update({
         notes,
-        payment_method: paymentPref,
       })
       .eq('store_id', storeId)
       .eq('id', orderId)
@@ -131,12 +168,18 @@ export async function POST(request: Request) {
     )
   }
 
-  const paymentMethod = normalizePayment(body.paymentMethod)
-  if (!paymentMethod) {
-    return NextResponse.json(
-      { error: 'Indica o método de pagamento para receber agora.' },
-      { status: 400 }
-    )
+  const resolved = resolveImmediatePayment(body)
+  if ('error' in resolved) {
+    return NextResponse.json({ error: resolved.error }, { status: 400 })
+  }
+
+  const { lines, storedMethod, isSplit } = resolved
+  const orderTotal = Number(order.total) || 0
+  if (isSplit) {
+    const validationError = validatePaymentLines(orderTotal, lines)
+    if (validationError) {
+      return NextResponse.json({ error: validationError }, { status: 400 })
+    }
   }
 
   const turnoAberto = await getOpenCaixaTurno(supabase, storeId)
@@ -147,7 +190,10 @@ export async function POST(request: Request) {
     )
   }
 
-  const closeLine = `[Garçom] Recebido em ${new Date().toISOString()} (${paymentMethod})`
+  const paymentNote = isSplit
+    ? lines.map((l) => `${l.method}:${l.amount.toFixed(2)}`).join(', ')
+    : storedMethod
+  const closeLine = `[Garçom] Recebido em ${new Date().toISOString()} (${paymentNote})`
   const notes = noteBase ? `${noteBase}\n${closeLine}` : closeLine
 
   const serviceFee = round2(Math.max(0, Number(body.service_fee_brl) || 0))
@@ -159,7 +205,7 @@ export async function POST(request: Request) {
 
   const updatePayload: Record<string, unknown> = {
     status: 'delivered',
-    payment_method: paymentMethod,
+    payment_method: storedMethod,
     notes,
     caixa_turno_id: turnoAberto.id,
     service_fee_brl: serviceFee,
@@ -192,9 +238,34 @@ export async function POST(request: Request) {
     )
   }
 
+  if (isSplit) {
+    const payResult = await insertOrderPayments(supabase, {
+      storeId,
+      orderId,
+      turnoId: turnoAberto.id,
+      lines,
+    })
+    if (!payResult.ok) {
+      await supabase
+        .from('orders')
+        .update({
+          status: order.status,
+          payment_method: order.payment_method,
+          notes: order.notes,
+          caixa_turno_id: null,
+        })
+        .eq('store_id', storeId)
+        .eq('id', orderId)
+      return NextResponse.json({ error: payResult.error }, { status: 500 })
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     mode: 'immediate',
     orderId,
+    payments: isSplit
+      ? lines.map((l) => ({ method: l.method, amount: l.amount }))
+      : undefined,
   })
 }

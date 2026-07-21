@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { isSalaoGarcomPinRequired } from '@/lib/garcom-pin'
 import { gateMerchantGarconsManagement } from '@/lib/merchant-api-gate.server'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
 import { getUser } from '@/services/auth.server'
 import { buildGarconsReport } from '@/services/store-garcons-report.server'
+import { listGarconsForStore } from '@/services/store-garcons.server'
 import { createClient } from '@/lib/supabase/server'
 
 export async function GET(req: NextRequest) {
@@ -20,6 +22,11 @@ export async function GET(req: NextRequest) {
 
   const supabase = await createClient()
   try {
+    const garcons = await listGarconsForStore(supabase, gate.ctx.storeId)
+    if (!isSalaoGarcomPinRequired(garcons)) {
+      return NextResponse.json({ ok: true, pinsNotConfigured: true, report: null })
+    }
+
     const report = await buildGarconsReport(
       supabase,
       gate.ctx.storeId,

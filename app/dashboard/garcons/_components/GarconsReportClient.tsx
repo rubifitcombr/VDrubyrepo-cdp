@@ -40,14 +40,20 @@ function KpiCard({
   )
 }
 
-export function GarconsReportClient() {
+export function GarconsReportClient({ pinsConfigured }: { pinsConfigured: boolean }) {
   const defaults = useMemo(() => defaultGarconsReportRange(), [])
   const [from, setFrom] = useState(defaults.from)
   const [to, setTo] = useState(defaults.to)
   const [report, setReport] = useState<GarconsReportDTO | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(pinsConfigured)
 
   useEffect(() => {
+    if (!pinsConfigured) {
+      setReport(null)
+      setLoading(false)
+      return
+    }
+
     let cancelled = false
     const timer = window.setTimeout(() => {
       void (async () => {
@@ -57,8 +63,13 @@ export function GarconsReportClient() {
           const res = await dashboardFetch(`/api/store/garcons/report?${qs}`)
           const json = (await res.json().catch(() => ({}))) as {
             report?: GarconsReportDTO
+            pinsNotConfigured?: boolean
           }
           if (cancelled) return
+          if (json.pinsNotConfigured) {
+            setReport(null)
+            return
+          }
           setReport(json.report ?? null)
         } catch {
           if (!cancelled) setReport(null)
@@ -72,9 +83,24 @@ export function GarconsReportClient() {
       cancelled = true
       window.clearTimeout(timer)
     }
-  }, [from, to])
+  }, [from, to, pinsConfigured])
 
   const summary = report?.summary
+
+  if (!pinsConfigured) {
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-8 text-center sm:px-6">
+        <p className="text-sm font-semibold text-amber-950">
+          Relatório indisponível sem PIN configurado
+        </p>
+        <p className="mx-auto mt-2 max-w-lg text-sm text-amber-900">
+          Ative e defina o PIN de 4 dígitos de cada garçom na aba{' '}
+          <span className="font-semibold">Meus garçons</span>. O relatório e a filtragem no
+          mapa de mesas usam o PIN para identificar quem atendeu cada comanda.
+        </p>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-5">

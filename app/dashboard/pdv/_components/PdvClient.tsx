@@ -20,8 +20,9 @@ import {
 import {
   submitPdvSale,
   type PdvCloseMode,
-  type PdvImmediatePaymentMethod,
 } from '@/services/pdv'
+import { ComandaSplitPaymentModal } from '@/app/dashboard/caixa/_components/ComandaSplitPaymentModal'
+import type { OrderPaymentLine } from '@/lib/order-payments'
 
 const money = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
@@ -64,8 +65,7 @@ export function PdvClient({
   const [closeMode, setCloseMode] = useState<PdvCloseMode>(() =>
     cashierPanelEnabled ? 'cashier' : 'immediate'
   )
-  const [immediatePayment, setImmediatePayment] =
-    useState<PdvImmediatePaymentMethod>('cash')
+  const [receiveModalOpen, setReceiveModalOpen] = useState(false)
   const [cpfInput, setCpfInput] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const deferredSearch = useDeferredValue(searchQuery)
@@ -263,8 +263,7 @@ export function PdvClient({
     setDiscountInput('')
   }, [cart.length])
 
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault()
+  async function executeSale(payments?: OrderPaymentLine[]) {
     if (!cart.length || submitting) return
     setError(null)
     setSuccessKind(null)
@@ -282,8 +281,7 @@ export function PdvClient({
         discountBrl: discountApplied,
         internalNotes: internalNotes.trim() || null,
         closeMode,
-        immediatePaymentMethod:
-          closeMode === 'immediate' ? immediatePayment : null,
+        payments: closeMode === 'immediate' ? payments : undefined,
         cpf: closeMode === 'immediate' ? cpfInput : null,
       })
       if (!result.ok) {
@@ -295,6 +293,7 @@ export function PdvClient({
       setInternalNotes('')
       setDiscountInput('')
       setCpfInput('')
+      setReceiveModalOpen(false)
       setSuccessKind(result.closedImmediately ? 'immediate' : 'cashier')
       if (result.closedImmediately && result.fiscal?.attempted) {
         setFiscalHint(
@@ -309,6 +308,16 @@ export function PdvClient({
     } finally {
       setSubmitting(false)
     }
+  }
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!cart.length || submitting) return
+    if (closeMode === 'immediate') {
+      setReceiveModalOpen(true)
+      return
+    }
+    await executeSale()
   }
 
   async function toggleFullscreen() {
@@ -784,39 +793,9 @@ export function PdvClient({
 
           {closeMode === 'immediate' ? (
             <div className="space-y-3">
-              <div>
-                <span className="mb-1.5 block text-xs font-medium text-vyria-navy-muted">
-                  Pagamento
-                </span>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  {(
-                    [
-                      { id: 'cash' as const, label: 'Dinheiro' },
-                      { id: 'pix' as const, label: 'PIX' },
-                      { id: 'card_credit' as const, label: 'Crédito' },
-                      { id: 'card_debit' as const, label: 'Débito' },
-                    ] as const
-                  ).map((opt) => (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      onClick={() => {
-                        setImmediatePayment(opt.id)
-                        setSuccessKind(null)
-                        setError(null)
-                      }}
-                      className={`rounded-xl border px-2 py-2.5 text-xs font-semibold transition sm:text-sm ${
-                        immediatePayment === opt.id ||
-                        (opt.id === 'card_credit' && immediatePayment === 'card')
-                          ? 'border-[var(--dash-primary)] bg-[var(--dash-primary)]/10 text-vyria-navy ring-2 ring-[var(--dash-primary)]/30'
-                          : 'border-[var(--card-border)] bg-white text-vyria-navy hover:bg-zinc-50'
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              <p className="text-xs text-vyria-navy-muted">
+                Ao receber, lance cada forma de pagamento até completar o total.
+              </p>
               <div>
                 <label
                   htmlFor="pdv-cpf"
@@ -901,6 +880,19 @@ export function PdvClient({
           </div>
         </form>
       </aside>
+
+      <ComandaSplitPaymentModal
+        open={receiveModalOpen}
+        comandaLabel={
+          customerName.trim()
+            ? `Balcão · ${customerName.trim()}`
+            : 'Venda balcão'
+        }
+        orderTotal={totalPayable}
+        busy={submitting}
+        onClose={() => !submitting && setReceiveModalOpen(false)}
+        onConfirm={(lines) => void executeSale(lines)}
+      />
     </div>
   )
 }

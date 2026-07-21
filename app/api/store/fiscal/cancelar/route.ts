@@ -5,6 +5,13 @@ import { createServiceRoleClient } from '@/lib/supabase/service-role.server'
 import { cancelarNfce } from '@/services/fiscal'
 
 export async function POST(req: NextRequest) {
+  const user = await getUser()
+  if (!user) {
+    return NextResponse.json({ error: 'Sessão necessária.' }, { status: 401 })
+  }
+  const gate = await requireLojistaAtivoApi(user.id)
+  if (!gate.ok) return gate.response
+
   let body: Record<string, unknown>
   try {
     body = (await req.json()) as Record<string, unknown>
@@ -30,13 +37,6 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     )
   }
-
-  const user = await getUser()
-  if (!user) {
-    return NextResponse.json({ error: 'Sessão necessária.' }, { status: 401 })
-  }
-  const gate = await requireLojistaAtivoApi(user.id)
-  if (!gate.ok) return gate.response
 
   const svc = createServiceRoleClient()
   const storeId = gate.ctx.storeId

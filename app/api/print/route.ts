@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { gateMerchantMenuKey } from '@/lib/merchant-api-gate.server'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
 import { gerarCupomPedido } from '@/lib/escpos'
 import {
@@ -20,6 +21,9 @@ export async function POST(req: NextRequest) {
 
   const gate = await requireLojistaAtivoApi(user.id)
   if (!gate.ok) return gate.response
+
+  const denyPrint = gateMerchantMenuKey(gate.ctx.store, user.email, 'impressao')
+  if (denyPrint) return denyPrint
 
   const storeId = gate.ctx.storeId
 
@@ -89,7 +93,13 @@ export async function POST(req: NextRequest) {
       },
     })
     const base = store.print_agent_url.replace(/\/+$/, '')
-    const token = store.print_agent_token?.trim() || 'vyria-agent-2026'
+    const token = store.print_agent_token?.trim()
+    if (!token) {
+      return NextResponse.json(
+        { error: 'Token do agente não configurado.' },
+        { status: 400 }
+      )
+    }
     try {
       const agentRes = await fetch(`${base}/print`, {
         method: 'POST',

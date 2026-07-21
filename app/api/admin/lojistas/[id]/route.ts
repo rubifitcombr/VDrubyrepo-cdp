@@ -3,7 +3,7 @@ import { requireAdminApi } from '@/lib/admin-auth.server'
 import { fetchLojistaDetail } from '@/lib/admin-lojistas-query.server'
 import { parseOperationModeInput } from '@/lib/merchant-operation-mode'
 import { adminPurgeStoreById } from '@/services/admin-purge-store.server'
-import { insertAdminLog } from '@/services/admin-logs.server'
+import { insertAdminLogFromRequest } from '@/services/admin-logs.server'
 
 export async function GET(
   _req: Request,
@@ -95,7 +95,7 @@ export async function PATCH(
 
   if ('operation_mode' in body) {
     try {
-      await insertAdminLog(ctx.svc, {
+      await insertAdminLogFromRequest(ctx.svc, req, {
         adminId: ctx.user.id,
         lojistaId: id,
         acao: 'alterou_modo_operacao',
@@ -145,7 +145,7 @@ export async function DELETE(
   }
 
   try {
-    await insertAdminLog(ctx.svc, {
+    await insertAdminLogFromRequest(ctx.svc, req, {
       adminId: ctx.user.id,
       lojistaId: id,
       acao: 'eliminou_loja',

@@ -3,11 +3,12 @@ import { cookies } from 'next/headers'
 import { requireAdminApi } from '@/lib/admin-auth.server'
 import { getVyriaAdminPanelUserId } from '@/lib/admin-panel-user'
 import { createClient } from '@/lib/supabase/server'
-import { insertAdminLog } from '@/services/admin-logs.server'
+import { insertAdminLogFromRequest } from '@/services/admin-logs.server'
 import {
   IMPERSONATION_ACTIVE_COOKIE,
   IMPERSONATION_RESTORE_COOKIE,
 } from '@/lib/impersonation'
+import { sealImpersonationContext } from '@/lib/impersonation-sign.server'
 import {
   VYRIA_PANEL_MODE_COOKIE,
 } from '@/lib/vyria-panel-mode'
@@ -16,7 +17,7 @@ import {
 const RESTORE_MAX_AGE = 60 * 60 * 12
 
 export async function POST(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const ctx = await requireAdminApi()
@@ -120,7 +121,7 @@ export async function POST(
   cookieStore.set(IMPERSONATION_RESTORE_COOKIE, adminRefreshToken, baseCookie)
   cookieStore.set(
     IMPERSONATION_ACTIVE_COOKIE,
-    JSON.stringify({ storeId, storeName }),
+    sealImpersonationContext({ storeId, storeName }),
     baseCookie
   )
   // O lojista não é a conta admin: garantir regras normais de lojista.
@@ -132,7 +133,7 @@ export async function POST(
   })
 
   try {
-    await insertAdminLog(ctx.svc, {
+    await insertAdminLogFromRequest(ctx.svc, req, {
       adminId: ctx.user.id,
       lojistaId: storeId,
       acao: 'acessou_como_lojista',

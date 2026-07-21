@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { requireAdminApi } from '@/lib/admin-auth.server'
-import { insertAdminLog } from '@/services/admin-logs.server'
+import { insertAdminLogFromRequest } from '@/services/admin-logs.server'
 import { getStoreFiscalConfig } from '@/services/fiscal.server'
 import { cadastrarEmpresa } from '@/services/fiscal'
 import { getFiscalReadinessForStore } from '@/services/fiscal-readiness.server'
@@ -75,7 +75,7 @@ export async function POST(
     if (!result.ok) {
       return NextResponse.json({ error: result.motivo || 'Falha ao cadastrar empresa.' }, { status: 422 })
     }
-    await insertAdminLog(ctx.svc, {
+    await insertAdminLogFromRequest(ctx.svc, req, {
       adminId: ctx.user.id,
       lojistaId: id,
       acao: 'fiscal_cadastrou_empresa',
@@ -117,7 +117,7 @@ export async function POST(
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  await insertAdminLog(ctx.svc, {
+  await insertAdminLogFromRequest(ctx.svc, req, {
     adminId: ctx.user.id,
     lojistaId: id,
     acao: action === 'ativar' ? 'fiscal_ativou' : 'fiscal_bloqueou',

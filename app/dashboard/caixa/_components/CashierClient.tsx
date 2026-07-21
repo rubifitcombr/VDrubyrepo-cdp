@@ -23,9 +23,12 @@ import type { StoreOrderRow } from '@/lib/store-order'
 import { createClient } from '@/lib/supabase/client'
 import { IconPrinter } from '@/app/dashboard/_components/NavIcons'
 import { FinanceiroView } from './FinanceiroView'
+import { ComandaSplitPaymentModal } from './ComandaSplitPaymentModal'
+import { comandaDisplayName } from '@/lib/order-payments'
+import type { OrderPaymentLine, OrderPaymentRow } from '@/lib/order-payments'
+import { parseTableFromNotes } from '@/lib/waiter-order-notes'
 
 type SourceKey = 'waiter' | 'pdv' | 'menu_link'
-type PaymentDraft = 'cash' | 'pix' | 'card' | 'card_credit' | 'card_debit'
 
 const money = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
@@ -110,6 +113,7 @@ type CashierClientProps = {
   initialMovimentacoesPorTurno: Record<string, CaixaMovimentacaoDTO[]>
   initialEntregadores?: StoreEntregadorDTO[]
   initialEntregasTurno?: EntregaDTO[]
+  initialTurnoSplitPayments?: OrderPaymentRow[]
   deliveryPipelineEnabled?: boolean
   entregasCaixaEnabled?: boolean
   /** Pro + modo delivery: sem comandas PDV/garçom; métricas só pedidos do site (slug/QR) + entregas na secção dedicada. */
@@ -164,6 +168,7 @@ function OperacaoView({
   initialMovimentacoesPorTurno,
   initialEntregadores = [],
   initialEntregasTurno = [],
+  initialTurnoSplitPayments = [],
   deliveryPipelineEnabled = true,
   /** Secção entregas / entregadores e chamadas à API de entregas — Growth+ com pipeline de entregas. */
   entregasCaixaEnabled = false,
@@ -180,7 +185,6 @@ function OperacaoView({
   const [period, setPeriod] = useState<CaixaMetricsPeriod>('turno')
   const [sourceFilter, setSourceFilter] = useState<'all' | SourceKey>('all')
   const [openingCashInput, setOpeningCashInput] = useState('')
-  const [paymentDraftByOrder, setPaymentDraftByOrder] = useState<Record<string, PaymentDraft>>({})
   const [closingOrderId, setClosingOrderId] = useState<string | null>(null)
   const [thermalBusyOrderId, setThermalBusyOrderId] = useState<string | null>(null)
   const [cashierError, setCashierError] = useState<string | null>(null)
@@ -224,10 +228,14 @@ function OperacaoView({
   const [busyAcerto, setBusyAcerto] = useState(false)
   const [acertoFeitoPorKey, setAcertoFeitoPorKey] = useState<Record<string, boolean>>({})
   const [entregasTurnoAtual, setEntregasTurnoAtual] = useState<EntregaDTO[]>(initialEntregasTurno)
+  const [turnoSplitPayments, setTurnoSplitPayments] = useState<OrderPaymentRow[]>(
+    initialTurnoSplitPayments
+  )
+  const [splitModalOrder, setSplitModalOrder] = useState<StoreOrderRow | null>(null)
 
   useEffect(() => {
-    setEntregasTurnoAtual(initialEntregasTurno)
-  }, [initialEntregasTurno])
+    setTurnoSplitPayments(initialTurnoSplitPayments)
+  }, [initialTurnoSplitPayments])
 
   useEffect(() => {
     setOrders(initialOrders)
@@ -246,6 +254,9 @@ function OperacaoView({
   }, [initialEntregadores])
   useEffect(() => {
     setEntregasApi(initialEntregasTurno)
+  }, [initialEntregasTurno])
+  useEffect(() => {
+    setEntregasTurnoAtual(initialEntregasTurno)
   }, [initialEntregasTurno])
 
   const showToast = useCallback((msg: string) => {
@@ -401,9 +412,10 @@ function OperacaoView({
   const shiftBreakdown = useMemo(() => {
     if (!turno || turno.status !== 'aberto') return null
     return aggregateTurnClosedOrders(
-      orders.filter((o) => o.caixa_turno_id === turno.id && o.status === 'delivered')
+      orders.filter((o) => o.caixa_turno_id === turno.id && o.status === 'delivered'),
+      turnoSplitPayments
     )
-  }, [orders, turno])
+  }, [orders, turno, turnoSplitPayments])
 
   const openComandas = useMemo(() => {
     return orders.filter((o) => {
@@ -634,24 +646,16 @@ function OperacaoView({
     )
   }
 
-  function paymentDraft(order: StoreOrderRow): PaymentDraft {
-    const existing = paymentDraftByOrder[order.id]
-    if (existing) return existing
-    const current = String(order.payment_method ?? '').trim().toLowerCase()
-    if (current === 'pix') return 'pix'
-    if (current === 'card') return 'card'
-    return 'cash'
-  }
-
-  async function closeComanda(order: StoreOrderRow) {
+  async function closeComanda(order: StoreOrderRow, payments: OrderPaymentLine[]) {
     setCashierError(null)
-    const paymentMethod = paymentDraft(order)
     setClosingOrderId(order.id)
     try {
+      const body = { orderId: order.id, payments }
+
       const res = await dashboardFetch('/api/cashier/orders/close', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: order.id, paymentMethod }),
+        body: JSON.stringify(body),
       })
       const json = (await res.json().catch(() => ({}))) as {
         error?: string
@@ -662,6 +666,7 @@ function OperacaoView({
           notes?: string
           caixa_turno_id?: string
         }
+        payments?: Array<{ method: string; amount: number }>
         fiscal?: {
           attempted?: boolean
           skipped?: boolean
@@ -681,13 +686,26 @@ function OperacaoView({
             ? {
                 ...o,
                 status: json.order?.status || 'delivered',
-                payment_method: json.order?.payment_method || paymentMethod,
+                payment_method: json.order?.payment_method || (payments.length === 1 ? payments[0]!.method : 'split'),
                 notes: json.order?.notes ?? o.notes,
                 caixa_turno_id: json.order?.caixa_turno_id ?? turno?.id ?? o.caixa_turno_id,
               }
             : o
         )
       )
+      if (json.payments?.length) {
+        setTurnoSplitPayments((prev) => [
+          ...prev,
+          ...json.payments!.map((p) => ({
+            id: crypto.randomUUID(),
+            order_id: order.id,
+            payment_method: p.method,
+            amount_brl: p.amount,
+            caixa_turno_id: turno?.id ?? null,
+          })),
+        ])
+      }
+      setSplitModalOrder(null)
       if (json.fiscal?.attempted && json.fiscal.ok) {
         showToast('Comanda fechada. NFC-e emitida.')
       } else if (json.fiscal?.attempted && !json.fiscal.ok) {
@@ -1172,8 +1190,13 @@ function OperacaoView({
                   <div className="space-y-3 p-4">
                     <div className="min-w-0 space-y-1">
                       <p className="truncate text-sm font-semibold text-[#1a1614]">
-                        {o.customer_name?.trim() || 'Cliente'}
+                        {comandaDisplayName(o.customer_name)}
                       </p>
+                      {parseTableFromNotes(o.notes) ? (
+                        <p className="text-[11px] font-medium text-[#6b7280]">
+                          Mesa {parseTableFromNotes(o.notes)}
+                        </p>
+                      ) : null}
                       <p className="line-clamp-2 text-sm text-[#374151]">
                         {o.items_summary || 'Comanda'}
                       </p>
@@ -1198,22 +1221,6 @@ function OperacaoView({
                           <IconPrinter className="h-4 w-4 text-[var(--dash-primary)]" />
                           {thermalBusyOrderId === o.id ? '…' : 'Imprimir comanda'}
                         </button>
-                        <select
-                          value={paymentDraft(o)}
-                          onChange={(e) =>
-                            setPaymentDraftByOrder((prev) => ({
-                              ...prev,
-                              [o.id]: e.target.value as PaymentDraft,
-                            }))
-                          }
-                          className="rounded-lg border border-[var(--card-border)] bg-white px-2 py-2 text-xs font-semibold text-[#1f2937]"
-                        >
-                          <option value="cash">Dinheiro</option>
-                          <option value="pix">PIX</option>
-                          <option value="card_credit">Crédito</option>
-                          <option value="card_debit">Débito</option>
-                          <option value="card">Cartão (crédito)</option>
-                        </select>
                         <button
                           type="button"
                           disabled={closingOrderId === o.id || !turno || turno.status !== 'aberto'}
@@ -1222,7 +1229,7 @@ function OperacaoView({
                               ? 'Abre um turno na secção acima para receber pagamentos.'
                               : undefined
                           }
-                          onClick={() => void closeComanda(o)}
+                          onClick={() => setSplitModalOrder(o)}
                           className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50"
                         >
                           {closingOrderId === o.id ? 'A processar…' : 'Receber e fechar'}
@@ -2146,6 +2153,25 @@ function OperacaoView({
           </div>
         </div>
       ) : null}
+
+      <ComandaSplitPaymentModal
+        open={splitModalOrder != null}
+        comandaLabel={
+          splitModalOrder
+            ? `${comandaDisplayName(splitModalOrder.customer_name)}${
+                parseTableFromNotes(splitModalOrder.notes)
+                  ? ` · Mesa ${parseTableFromNotes(splitModalOrder.notes)}`
+                  : ''
+              }`
+            : ''
+        }
+        orderTotal={Number(splitModalOrder?.total) || 0}
+        busy={closingOrderId === splitModalOrder?.id}
+        onClose={() => !closingOrderId && setSplitModalOrder(null)}
+        onConfirm={(lines) => {
+          if (splitModalOrder) void closeComanda(splitModalOrder, lines)
+        }}
+      />
     </div>
   )
 }

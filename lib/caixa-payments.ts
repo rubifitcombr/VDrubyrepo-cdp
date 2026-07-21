@@ -6,7 +6,9 @@ export function normalizeCaixaPayment(
   if (t === 'cash' || t === 'dinheiro') return 'cash'
   if (t === 'pix') return 'pix'
   if (t === 'card' || t === 'cartao' || t === 'cartão') return 'card'
+  if (t === 'card_credit' || t === 'card_debit') return 'card'
   if (t === 'credit' || t === 'credito' || t === 'crédito' || t === 'fiado') return 'credit'
+  if (t === 'split') return null
   return null
 }
 
@@ -30,30 +32,66 @@ export function emptyBreakdown(): CaixaPaymentBreakdown {
   }
 }
 
+type SplitPaymentRow = {
+  order_id: string
+  payment_method: string
+  amount_brl: number
+}
+
+function addToBreakdown(
+  out: CaixaPaymentBreakdown,
+  amount: number,
+  methodRaw: string | null | undefined
+) {
+  const p = normalizeCaixaPayment(methodRaw ?? null)
+  if (!p || amount <= 0) return
+  out.totalGeral += amount
+  if (p === 'cash') {
+    out.dinheiro.total += amount
+    out.dinheiro.count += 1
+  } else if (p === 'pix') {
+    out.pix.total += amount
+    out.pix.count += 1
+  } else if (p === 'card') {
+    out.cartao.total += amount
+    out.cartao.count += 1
+  } else {
+    out.credito.total += amount
+    out.credito.count += 1
+  }
+}
+
 /** Pedidos já fechados no turno (entregues e vinculados ao turno). */
 export function aggregateTurnClosedOrders(
-  rows: Array<{ total: unknown; payment_method?: string | null }>
+  rows: Array<{ id?: string; total: unknown; payment_method?: string | null }>,
+  splitPayments: SplitPaymentRow[] = []
 ): CaixaPaymentBreakdown {
   const out = emptyBreakdown()
+  const splitsByOrder = new Map<string, SplitPaymentRow[]>()
+  for (const sp of splitPayments) {
+    const list = splitsByOrder.get(sp.order_id) ?? []
+    list.push(sp)
+    splitsByOrder.set(sp.order_id, list)
+  }
+
   for (const o of rows) {
+    const orderId = o.id ? String(o.id) : ''
+    const method = String(o.payment_method ?? '').trim().toLowerCase()
+    const splits = orderId ? splitsByOrder.get(orderId) : undefined
+
+    if (method === 'split' && splits && splits.length > 0) {
+      out.pedidosFechados += 1
+      for (const sp of splits) {
+        addToBreakdown(out, Number(sp.amount_brl) || 0, sp.payment_method)
+      }
+      continue
+    }
+
     const total = Number(o.total) || 0
     const p = normalizeCaixaPayment(o.payment_method ?? null)
     if (!p) continue
     out.pedidosFechados += 1
-    out.totalGeral += total
-    if (p === 'cash') {
-      out.dinheiro.total += total
-      out.dinheiro.count += 1
-    } else if (p === 'pix') {
-      out.pix.total += total
-      out.pix.count += 1
-    } else if (p === 'card') {
-      out.cartao.total += total
-      out.cartao.count += 1
-    } else {
-      out.credito.total += total
-      out.credito.count += 1
-    }
+    addToBreakdown(out, total, o.payment_method ?? null)
   }
   return out
 }

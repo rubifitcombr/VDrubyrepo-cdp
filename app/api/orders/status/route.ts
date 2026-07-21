@@ -27,18 +27,6 @@ const ALLOWED_NEXT: Record<string, Set<string>> = {
 
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json()) as { orderId?: string; status?: string }
-    const orderId = typeof body.orderId === 'string' ? body.orderId.trim() : ''
-    const newStatus =
-      typeof body.status === 'string' ? body.status.trim() : ''
-
-    if (!orderId || !newStatus || !STATUS_SET.has(newStatus)) {
-      return NextResponse.json(
-        { error: 'Pedido ou estado inválido.' },
-        { status: 400 }
-      )
-    }
-
     const supabase = await createClient()
     const {
       data: { user },
@@ -56,6 +44,18 @@ export async function POST(req: NextRequest) {
       'pedidos'
     )
     if (deny) return deny
+
+    const body = (await req.json()) as { orderId?: string; status?: string }
+    const orderId = typeof body.orderId === 'string' ? body.orderId.trim() : ''
+    const newStatus =
+      typeof body.status === 'string' ? body.status.trim() : ''
+
+    if (!orderId || !newStatus || !STATUS_SET.has(newStatus)) {
+      return NextResponse.json(
+        { error: 'Pedido ou estado inválido.' },
+        { status: 400 }
+      )
+    }
 
     const storeId = gate.ctx.storeId
 
