@@ -6,7 +6,7 @@ import {
   parseVyriaPanelMode,
   VYRIA_PANEL_MODE_COOKIE,
 } from '@/lib/vyria-panel-mode'
-import { isMerchantApiContractGatePath } from '@/lib/annual-contract-acceptance'
+import { isMerchantApiContractGatePath } from '@/lib/annual-contract-gates'
 import { IMPERSONATION_ACTIVE_COOKIE } from '@/lib/impersonation'
 import { openImpersonationContextEdge } from '@/lib/impersonation-open.edge'
 import { verificarLojistaGatesEdge } from '@/middleware/verificarLojistaGates.edge'

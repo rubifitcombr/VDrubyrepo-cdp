@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   isAnnualContractGateExemptPath,
   requiresAnnualContractAcceptance,
-} from '@/lib/annual-contract-acceptance'
+} from '@/lib/annual-contract-gates'
 import { isPlanoVencido } from '@/lib/merchant-access-dates'
 import { parseMerchantStatus } from '@/lib/merchant-status'
 import { readStoreStatus } from '@/lib/store-columns'
