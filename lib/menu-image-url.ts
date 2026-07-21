@@ -41,7 +41,7 @@ function buildFromRelativeStoragePath(
   raw: string,
   storeId?: string | null
 ): string | null {
-  let path = stripBucketPrefix(raw.replace(/^\/+/, ''))
+  const path = stripBucketPrefix(raw.replace(/^\/+/, ''))
   if (!path) return null
 
   if (looksLikeStorageObjectPath(path)) {

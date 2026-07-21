@@ -5,6 +5,7 @@ import { RouteLoadingFallback } from '@/app/_components/RouteLoadingFallback'
 import Link from 'next/link'
 import { Suspense, useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { authErrorMessagePt } from '@/lib/auth-error-message'
 import { setRememberLoginPreference } from '@/services/auth'
 import { useSearchParams } from 'next/navigation'
 
@@ -46,7 +47,7 @@ function LoginForm() {
       })
 
       if (error) {
-        alert(error.message)
+        alert(authErrorMessagePt(error.message))
         setIsLoggingIn(false)
         return
       }

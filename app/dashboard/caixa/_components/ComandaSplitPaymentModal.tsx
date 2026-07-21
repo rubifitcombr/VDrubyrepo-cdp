@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   orderPaymentMethodLabel,
   type OrderPaymentLine,
@@ -47,25 +47,43 @@ export function ComandaSplitPaymentModal({
   onClose: () => void
   onConfirm: (lines: OrderPaymentLine[]) => void
 }) {
+  if (!open) return null
+
+  return (
+    <ComandaSplitPaymentModalBody
+      key={`${comandaLabel}-${orderTotal}`}
+      comandaLabel={comandaLabel}
+      orderTotal={orderTotal}
+      busy={busy}
+      onClose={onClose}
+      onConfirm={onConfirm}
+    />
+  )
+}
+
+function ComandaSplitPaymentModalBody({
+  comandaLabel,
+  orderTotal,
+  busy,
+  onClose,
+  onConfirm,
+}: {
+  comandaLabel: string
+  orderTotal: number
+  busy?: boolean
+  onClose: () => void
+  onConfirm: (lines: OrderPaymentLine[]) => void
+}) {
   const total = roundMoneyBrl(orderTotal)
   const [launched, setLaunched] = useState<OrderPaymentLine[]>([])
   const [draftMethod, setDraftMethod] = useState<OrderPaymentMethod>('cash')
-  const [draftAmount, setDraftAmount] = useState('')
-
-  useEffect(() => {
-    if (!open) return
-    setLaunched([])
-    setDraftMethod('cash')
-    setDraftAmount(formatAmountInput(total))
-  }, [open, total])
+  const [draftAmount, setDraftAmount] = useState(() => formatAmountInput(total))
 
   const paid = useMemo(
     () => roundMoneyBrl(launched.reduce((s, l) => s + l.amount, 0)),
     [launched]
   )
   const remaining = roundMoneyBrl(total - paid)
-
-  if (!open) return null
 
   function launchPayment() {
     const amount = parseAmount(draftAmount)

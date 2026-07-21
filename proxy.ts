@@ -8,8 +8,8 @@ import {
 } from '@/lib/vyria-panel-mode'
 import { isMerchantApiContractGatePath } from '@/lib/annual-contract-acceptance'
 import { IMPERSONATION_ACTIVE_COOKIE } from '@/lib/impersonation'
-import { openImpersonationContext } from '@/lib/impersonation-sign.server'
-import { verificarLojistaGates } from '@/middleware/verificarLojistaGates'
+import { openImpersonationContextEdge } from '@/lib/impersonation-open.edge'
+import { verificarLojistaGatesEdge } from '@/middleware/verificarLojistaGates.edge'
 import { NextResponse, type NextRequest } from 'next/server'
 
 function pathnameWithoutTrailingSlash(pathname: string) {
@@ -120,7 +120,7 @@ export async function proxy(request: NextRequest) {
     !!user &&
     isVyriaAdminPanelUser(user.id) &&
     vyriaPanelMode === 'admin'
-  const impersonating = openImpersonationContext(
+  const impersonating = await openImpersonationContextEdge(
     request.cookies.get(IMPERSONATION_ACTIVE_COOKIE)?.value
   )
 
@@ -128,7 +128,7 @@ export async function proxy(request: NextRequest) {
     if (vyriaInAdminMode) {
       return NextResponse.redirect(new URL('/admin', request.url))
     }
-    const gate = await verificarLojistaGates(user.id, '/dashboard', supabase)
+    const gate = await verificarLojistaGatesEdge(user.id, '/dashboard', supabase)
     if (!gate.ok && gate.kind === 'contract') {
       return NextResponse.redirect(new URL(gate.path, request.url))
     }
@@ -184,7 +184,7 @@ export async function proxy(request: NextRequest) {
 
   if (merchantShell && user) {
     if (!skipMerchantGates) {
-      const gate = await verificarLojistaGates(user.id, p, supabase)
+      const gate = await verificarLojistaGatesEdge(user.id, p, supabase)
       if (!gate.ok) {
         return NextResponse.redirect(new URL(gate.path, request.url))
       }
@@ -192,7 +192,7 @@ export async function proxy(request: NextRequest) {
   }
 
   if (user && !skipMerchantGates && isMerchantApiContractGatePath(p)) {
-    const gate = await verificarLojistaGates(user.id, p, supabase)
+    const gate = await verificarLojistaGatesEdge(user.id, p, supabase)
     if (!gate.ok && gate.kind === 'contract') {
       return NextResponse.json(
         { error: 'contrato_pendente', redirect: gate.path },

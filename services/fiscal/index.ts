@@ -379,8 +379,8 @@ export async function emitirNfce(
 
   if (result.success && result.chaveAcesso) {
     try {
-      let xmlBase64 = result.xmlBase64
-      let danfeBase64 = result.danfeBase64
+      const xmlBase64 = result.xmlBase64
+      const danfeBase64 = result.danfeBase64
       let xmlBuffer: Buffer | null = null
       let danfeBuffer: Buffer | null = null
 

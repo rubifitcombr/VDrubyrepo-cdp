@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useState } from 'react'
 import { requestPasswordResetEmail } from '@/services/auth'
+import { authErrorMessagePt } from '@/lib/auth-error-message'
 
 const inputClass =
   'mt-2 w-full rounded-xl border border-[var(--card-border)] bg-white px-4 py-3 text-sm text-vyria-navy outline-none transition-colors placeholder:text-vyria-navy-muted/70 focus:border-vyria-plum focus:ring-2 focus:ring-vyria-orange/20'
@@ -22,7 +23,7 @@ export default function RecuperarSenhaPage() {
     try {
       const { error } = await requestPasswordResetEmail(mail)
       if (error) {
-        alert(error.message)
+        alert(authErrorMessagePt(error.message, 'Não foi possível enviar o email.'))
         setBusy(false)
         return
       }
