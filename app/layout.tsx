@@ -1,8 +1,10 @@
-import type { Metadata, Viewport } from "next";
+import type { Viewport } from "next";
 import { Geist_Mono, Montserrat, Playfair_Display } from "next/font/google";
 import "./globals.css";
 import { ClearLegacyServiceWorker } from "./_components/ClearLegacyServiceWorker";
 import { NavigationProgressProvider } from "./_components/NavigationProgressProvider";
+import { SiteOrganizationJsonLd } from "./_components/SiteOrganizationJsonLd";
+import { buildRootSiteMetadata } from "@/lib/site-metadata";
 
 const playfair = Playfair_Display({
   variable: "--font-playfair",
@@ -21,23 +23,7 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
-  title: "Vyria Delivery",
-  description: "Engenharia de vendas local — gestão de entregas e loja online",
-  manifest: "/manifest.json",
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: "default",
-    title: "Vyria",
-  },
-  icons: {
-    icon: [
-      { url: "/icon.png", type: "image/png" },
-      { url: "/favicon-32x32.png", type: "image/png", sizes: "32x32" },
-    ],
-    apple: [{ url: "/icons/icon-192x192.png", sizes: "192x192", type: "image/png" }],
-  },
-};
+export const metadata = buildRootSiteMetadata();
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -57,12 +43,13 @@ export default function RootLayout({
       className={`${playfair.variable} ${montserrat.variable} ${geistMono.variable} min-h-dvh antialiased`}
     >
       <head>
+        <SiteOrganizationJsonLd />
         <link rel="manifest" href="/manifest.json" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="Vyria" />
-        <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
       </head>
       <body className="flex min-h-dvh flex-col font-sans">
         <ClearLegacyServiceWorker />
