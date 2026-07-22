@@ -10,11 +10,6 @@ export function getVyriaAdminPanelUserId(): string {
     typeof process !== 'undefined'
       ? process.env.VYRIA_ADMIN_USER_ID?.trim()
       : undefined
-  if (process.env.NODE_ENV === 'production' && !fromEnv) {
-    throw new Error(
-      'VYRIA_ADMIN_USER_ID é obrigatório em produção (UUID da conta admin Vyria).'
-    )
-  }
   return fromEnv || VYRIA_ADMIN_PANEL_USER_ID
 }
 
