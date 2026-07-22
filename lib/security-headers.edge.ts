@@ -61,7 +61,11 @@ export function expectedSecurityHeaderChecks(production: boolean): Array<{
   get: (headers: Headers) => string | null
   ok: (value: string | null) => boolean
 }> {
-  const checks = [
+  const checks: Array<{
+    name: string
+    get: (headers: Headers) => string | null
+    ok: (value: string | null) => boolean
+  }> = [
     {
       name: 'X-Frame-Options',
       get: (h: Headers) => h.get('x-frame-options'),

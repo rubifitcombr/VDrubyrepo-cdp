@@ -258,6 +258,8 @@ async function fetchTopProductsForStore(
     .select('id')
     .eq('store_id', storeId)
     .gte('created_at', since)
+    .order('created_at', { ascending: false })
+    .limit(400)
   if (slugChannelSourcesOnly) {
     oq = oq.in('source', slugChannelSourcesForSupabaseIn())
   }

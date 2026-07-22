@@ -24,6 +24,7 @@ import {
 import { resolveStoreTheme } from '@/lib/store-theme'
 import { storePixCheckoutEnabled } from '@/lib/pix/key'
 import { notFound, redirect } from 'next/navigation'
+import { after } from 'next/server'
 import { StorefrontMenuClient } from './StorefrontMenuClient'
 import type { StorefrontMenuProduct } from './storefront-menu-types'
 
@@ -82,9 +83,8 @@ const STORE_PUBLIC_SELECT = [
   'pix_key',
 ].join(',')
 
-/** Evita 404 em cache (CDN/PWA) para rotas dinâmicas por loja. */
-export const dynamic = 'force-dynamic'
-export const fetchCache = 'force-no-store'
+/** Cardápio público: cache curto — lojista pode invalidar ao editar produtos. */
+export const revalidate = 30
 
 export default async function StorefrontPage({ params, searchParams }: Props) {
   const { slug: rawSlug } = await params
@@ -145,12 +145,11 @@ export default async function StorefrontPage({ params, searchParams }: Props) {
   }
   const theme = resolveStoreTheme(s.theme_preset)
 
-  const manualClosedSync = await syncAutoCloseOutsideHoursForStore(
-    s as Record<string, unknown>,
-    supabase
-  )
-  const manualClosedEffective =
-    manualClosedSync !== null ? manualClosedSync : s.manual_closed === true
+  after(async () => {
+    await syncAutoCloseOutsideHoursForStore(s as Record<string, unknown>, supabase)
+  })
+
+  const manualClosedEffective = s.manual_closed === true
 
   const { open: storeOpen, mode: hoursMode } = getStoreOpenState(
     s.business_hours,

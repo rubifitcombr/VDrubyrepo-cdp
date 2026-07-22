@@ -7,9 +7,10 @@ import { createClient } from '@/lib/supabase/server'
 
 export async function getStoreOrders(
   storeId: string,
-  options?: { slugChannelSourcesOnly?: boolean }
+  options?: { slugChannelSourcesOnly?: boolean; limit?: number }
 ): Promise<StoreOrderRow[]> {
   const supabase = await createClient()
+  const limit = options?.limit ?? 250
   let q = supabase
     .from('orders')
     .select(ORDER_SELECT)
@@ -17,7 +18,9 @@ export async function getStoreOrders(
   if (options?.slugChannelSourcesOnly) {
     q = q.in('source', slugChannelSourcesForSupabaseIn())
   }
-  const { data, error } = await q.order('created_at', { ascending: false })
+  const { data, error } = await q
+    .order('created_at', { ascending: false })
+    .limit(limit)
 
   if (error) {
     console.error('[orders]', error.message)

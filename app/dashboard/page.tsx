@@ -64,12 +64,14 @@ export default async function DashboardHub() {
     plan,
     operationMode
   )
-  const pendingOrders = storeId
-    ? await getPendingOrdersCount(storeId, { slugChannelSourcesOnly })
-    : 0
-  const { garcons } = storeId
-    ? await loadGarconsPageData(storeId)
-    : { garcons: [] }
+  const hubData = storeId
+    ? await Promise.all([
+        getPendingOrdersCount(storeId, { slugChannelSourcesOnly }),
+        loadGarconsPageData(storeId),
+      ])
+    : null
+  const pendingOrders = hubData ? hubData[0] : 0
+  const garcons = hubData ? hubData[1].garcons : []
 
   if (!storeId) return <EmptyStoreNotice />
 

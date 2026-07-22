@@ -68,17 +68,12 @@ export default async function CaixaPage() {
     getCaixaTurnosHistorico(supabase, storeId, 10),
   ])
 
-  const turnoPayments = turnoAberto?.id
-    ? await getOrderPaymentsForStore(supabase, storeId, { turnoId: turnoAberto.id })
-    : []
-
   const turnoIds = [
     ...new Set([
       ...historico.map((h) => h.id),
       ...(turnoAberto ? [turnoAberto.id] : []),
     ]),
   ]
-  const movimentacoesPorTurno = await getMovimentacoesForTurnos(supabase, turnoIds)
 
   const deliveryPipelineEnabled = isDeliveryPipelineEnabled(operationMode)
   const entregasCaixaEnabled =
@@ -86,22 +81,21 @@ export default async function CaixaPage() {
 
   const printingCfg = parsePrintingFromStore(storeRow)
 
-  let entregadoresInicial: StoreEntregadorDTO[] = []
-  let entregasTurnoInicial: EntregaDTO[] = []
-  if (entregasCaixaEnabled) {
-    try {
-      entregadoresInicial = await listEntregadoresForStore(supabase, storeId)
-    } catch {
-      entregadoresInicial = []
-    }
-    if (turnoAberto?.id) {
-      try {
-        entregasTurnoInicial = await listEntregasForTurno(supabase, storeId, turnoAberto.id)
-      } catch {
-        entregasTurnoInicial = []
-      }
-    }
-  }
+  const [turnoPayments, movimentacoesPorTurno, entregadoresInicial, entregasTurnoInicial] =
+    await Promise.all([
+      turnoAberto?.id
+        ? getOrderPaymentsForStore(supabase, storeId, { turnoId: turnoAberto.id })
+        : Promise.resolve([]),
+      getMovimentacoesForTurnos(supabase, turnoIds),
+      entregasCaixaEnabled
+        ? listEntregadoresForStore(supabase, storeId).catch(() => [] as StoreEntregadorDTO[])
+        : Promise.resolve([] as StoreEntregadorDTO[]),
+      entregasCaixaEnabled && turnoAberto?.id
+        ? listEntregasForTurno(supabase, storeId, turnoAberto.id).catch(
+            () => [] as EntregaDTO[]
+          )
+        : Promise.resolve([] as EntregaDTO[]),
+    ])
 
   const operatorLabel =
     (typeof user.user_metadata?.name === 'string' && user.user_metadata.name.trim()) ||

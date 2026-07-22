@@ -22,6 +22,7 @@ export const getStoreByUser = cache(async function getStoreByUser(userId: string
   const currentSlug = typeof row.slug === 'string' ? row.slug : ''
   const normalized = slugifyStoreSlug(currentSlug || name)
   if (!id || currentSlug === normalized) return data
+  if (currentSlug.trim()) return data
 
   try {
     const svc = tryCreateServiceRoleClient()

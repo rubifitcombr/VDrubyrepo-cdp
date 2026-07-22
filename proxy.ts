@@ -9,7 +9,10 @@ import {
 import { isMerchantApiContractGatePath } from '@/lib/annual-contract-gates'
 import { IMPERSONATION_ACTIVE_COOKIE } from '@/lib/impersonation'
 import { openImpersonationContextEdge } from '@/lib/impersonation-open.edge'
-import { verificarLojistaGatesEdge } from '@/middleware/verificarLojistaGates.edge'
+import {
+  verificarLojistaGatesEdge,
+  type LojistaGateResult,
+} from '@/middleware/verificarLojistaGates.edge'
 import { applySecurityHeaders } from '@/lib/security-headers.edge'
 import { NextResponse, type NextRequest } from 'next/server'
 
@@ -132,11 +135,24 @@ export async function proxy(request: NextRequest) {
     request.cookies.get(IMPERSONATION_ACTIVE_COOKIE)?.value
   )
 
+  const merchantShell = p.startsWith('/dashboard') || p.startsWith('/planos')
+  const skipMerchantGates =
+    !!user && (vyriaInAdminMode || Boolean(impersonating))
+
+  let lojistaGate: LojistaGateResult | null = null
+  async function gateFor(pathname: string): Promise<LojistaGateResult> {
+    if (!user || skipMerchantGates) return { ok: true }
+    if (!lojistaGate) {
+      lojistaGate = await verificarLojistaGatesEdge(user.id, pathname, supabase)
+    }
+    return lojistaGate
+  }
+
   if (isAuthPage && user && !isPasswordRedefinePage) {
     if (vyriaInAdminMode) {
       return secure(NextResponse.redirect(new URL('/admin', request.url)))
     }
-    const gate = await verificarLojistaGatesEdge(user.id, '/dashboard', supabase)
+    const gate = await gateFor('/dashboard')
     if (!gate.ok && gate.kind === 'contract') {
       return secure(NextResponse.redirect(new URL(gate.path, request.url)))
     }
@@ -188,13 +204,9 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  const merchantShell = p.startsWith('/dashboard') || p.startsWith('/planos')
-  const skipMerchantGates =
-    !!user && (vyriaInAdminMode || Boolean(impersonating))
-
   if (merchantShell && user) {
     if (!skipMerchantGates) {
-      const gate = await verificarLojistaGatesEdge(user.id, p, supabase)
+      const gate = await gateFor(p)
       if (!gate.ok) {
         return secure(NextResponse.redirect(new URL(gate.path, request.url)))
       }
@@ -202,7 +214,7 @@ export async function proxy(request: NextRequest) {
   }
 
   if (user && !skipMerchantGates && isMerchantApiContractGatePath(p)) {
-    const gate = await verificarLojistaGatesEdge(user.id, p, supabase)
+    const gate = await gateFor(p)
     if (!gate.ok && gate.kind === 'contract') {
       return secure(
         NextResponse.json(
@@ -236,7 +248,9 @@ export async function proxy(request: NextRequest) {
   ) {
     supabaseResponse.headers.set(
       'Cache-Control',
-      'private, no-store, max-age=0, must-revalidate'
+      user
+        ? 'private, no-store, max-age=0, must-revalidate'
+        : 'public, s-maxage=30, stale-while-revalidate=120'
     )
   }
 

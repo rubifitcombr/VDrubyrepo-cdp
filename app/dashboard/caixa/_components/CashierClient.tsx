@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { aggregateTurnClosedOrders } from '@/lib/caixa-payments'
@@ -22,7 +23,6 @@ import type { StorePrintingState } from '@/lib/store-printing'
 import type { StoreOrderRow } from '@/lib/store-order'
 import { createClient } from '@/lib/supabase/client'
 import { IconPrinter } from '@/app/dashboard/_components/NavIcons'
-import { FinanceiroView } from './FinanceiroView'
 import { ComandaSplitPaymentModal } from './ComandaSplitPaymentModal'
 import { comandaDisplayName } from '@/lib/order-payments'
 import type { OrderPaymentLine, OrderPaymentRow } from '@/lib/order-payments'
@@ -34,6 +34,17 @@ const money = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
   currency: 'BRL',
 })
+
+const FinanceiroView = dynamic(
+  () => import('./FinanceiroView').then((m) => ({ default: m.FinanceiroView })),
+  {
+    loading: () => (
+      <div className="rounded-2xl border border-[var(--card-border)] bg-white p-10 text-center text-sm text-[#6b7280]">
+        Carregando financeiro…
+      </div>
+    ),
+  }
+)
 
 const dateTime = new Intl.DateTimeFormat('pt-BR', {
   dateStyle: 'short',

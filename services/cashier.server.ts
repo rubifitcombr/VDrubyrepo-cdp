@@ -18,6 +18,7 @@ export async function getCashierOrdersForStore(
     .eq('store_id', storeId)
     .gte('created_at', from)
     .order('created_at', { ascending: false })
+    .limit(500)
 
   if (error) {
     console.error('[cashier] list orders:', error.message)
