@@ -113,5 +113,37 @@ if (LOJISTA_COOKIE) {
   console.log('· skip assinatura/cancelar test (defina LOJISTA_SESSION_COOKIE)')
 }
 
+await test('GET /login inclui cabeçalhos de segurança', async () => {
+  const res = await fetch(`${BASE}/login`)
+  const frame = res.headers.get('x-frame-options')
+  const nosniff = res.headers.get('x-content-type-options')
+  const coop = res.headers.get('cross-origin-opener-policy')
+  if (frame !== 'DENY') throw new Error(`X-Frame-Options: ${frame}`)
+  if (nosniff !== 'nosniff') throw new Error(`X-Content-Type-Options: ${nosniff}`)
+  if (coop !== 'same-origin') throw new Error(`COOP: ${coop}`)
+})
+
+await test('POST /api/auth/register rate limit ou validação', async () => {
+  const bodies = Array.from({ length: 12 }, (_, i) =>
+    fetch(`${BASE}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: `spam-${i}-${Date.now()}@example.com`,
+        password: '123456',
+        name: 'Teste',
+      }),
+    })
+  )
+  const results = await Promise.all(bodies)
+  const has429 = results.some((r) => r.status === 429)
+  const has400 = results.some((r) => r.status === 400 || r.status === 409)
+  if (!has429 && !has400) {
+    throw new Error(
+      `esperado 429 ou 400/409 em flood de register, got ${results.map((r) => r.status).join(',')}`
+    )
+  }
+})
+
 console.log(failed ? `\n${failed} teste(s) falharam.` : '\nTodos os testes passaram.')
 process.exit(failed ? 1 : 0)

@@ -3,6 +3,11 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { parseOperationModeInput } from '@/lib/merchant-operation-mode'
 import { createServiceRoleClient } from '@/lib/supabase/service-role.server'
 import { createOrRelinkPendingStoreForAuthUser } from '@/lib/admin-create-pending-store.server'
+import {
+  checkRateLimit,
+  clientIpFromRequest,
+  rateLimitResponse,
+} from '@/lib/rate-limit.server'
 
 export const dynamic = 'force-dynamic'
 
@@ -120,6 +125,10 @@ async function ensureStoreForOwner(
  * - espelha em public.usuarios e cria loja pendente
  */
 export async function POST(req: NextRequest) {
+  const ip = clientIpFromRequest(req)
+  const rl = checkRateLimit(`auth-register:${ip}`, 8, 15 * 60_000)
+  if (!rl.ok) return rateLimitResponse(rl.retryAfterSec)
+
   let body: Record<string, unknown>
   try {
     body = (await req.json()) as Record<string, unknown>

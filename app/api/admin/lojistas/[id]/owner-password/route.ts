@@ -55,7 +55,9 @@ export async function POST(
     )
   }
 
-  if (ownerId === getVyriaAdminPanelUserId()) {
+  const adminId = getVyriaAdminPanelUserId()
+
+  if (adminId && ownerId === adminId) {
     return NextResponse.json(
       {
         error:

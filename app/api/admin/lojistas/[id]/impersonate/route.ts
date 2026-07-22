@@ -49,7 +49,9 @@ export async function POST(
     )
   }
 
-  if (ownerId === getVyriaAdminPanelUserId()) {
+  const adminId = getVyriaAdminPanelUserId()
+
+  if (adminId && ownerId === adminId) {
     return NextResponse.json(
       { error: 'Não é possível aceder como a própria conta de administração.' },
       { status: 400 }

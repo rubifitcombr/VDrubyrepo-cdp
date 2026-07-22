@@ -47,7 +47,7 @@ Colunas legadas de gateway/trial na tabela `stores` são removidas pela migratio
 
 ### Acesso ao painel `/admin`
 
-Apenas **uma** conta pode aceder: o UUID fixo em `lib/admin-panel-user.ts` (`VYRIA_ADMIN_PANEL_USER_ID`). Opcionalmente podes sobrescrever em deploy com `VYRIA_ADMIN_USER_ID` (mesmo formato UUID).
+Apenas a conta cujo UUID está em `VYRIA_ADMIN_USER_ID` (variável de ambiente no deploy) pode aceder ao painel admin.
 
 - Sessão obrigatória; qualquer outro utilizador autenticado é redirecionado para `/dashboard`.
 - Login com `?next=/admin` volta ao admin após entrar.

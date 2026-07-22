@@ -10,7 +10,15 @@ import { isMerchantApiContractGatePath } from '@/lib/annual-contract-gates'
 import { IMPERSONATION_ACTIVE_COOKIE } from '@/lib/impersonation'
 import { openImpersonationContextEdge } from '@/lib/impersonation-open.edge'
 import { verificarLojistaGatesEdge } from '@/middleware/verificarLojistaGates.edge'
+import { applySecurityHeaders } from '@/lib/security-headers.edge'
 import { NextResponse, type NextRequest } from 'next/server'
+
+const IS_PRODUCTION = process.env.NODE_ENV === 'production'
+
+function secure(response: NextResponse): NextResponse {
+  applySecurityHeaders(response, IS_PRODUCTION)
+  return response
+}
 
 function pathnameWithoutTrailingSlash(pathname: string) {
   return pathname.length > 1 && pathname.endsWith('/')
@@ -52,7 +60,7 @@ export async function proxy(request: NextRequest) {
     if (path === '/') {
       const url = request.nextUrl.clone()
       url.pathname = '/login'
-      return NextResponse.redirect(url)
+      return secure(NextResponse.redirect(url))
     }
   }
 
@@ -68,7 +76,7 @@ export async function proxy(request: NextRequest) {
     ) {
       const url = request.nextUrl.clone()
       url.pathname = '/' + [firstLower, ...segments.slice(1)].join('/')
-      return NextResponse.redirect(url)
+      return secure(NextResponse.redirect(url))
     }
   }
 
@@ -77,7 +85,7 @@ export async function proxy(request: NextRequest) {
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim()
 
   if (!supabaseUrl || !supabaseAnonKey) {
-    return supabaseResponse
+    return secure(supabaseResponse)
   }
 
   const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
@@ -126,41 +134,43 @@ export async function proxy(request: NextRequest) {
 
   if (isAuthPage && user && !isPasswordRedefinePage) {
     if (vyriaInAdminMode) {
-      return NextResponse.redirect(new URL('/admin', request.url))
+      return secure(NextResponse.redirect(new URL('/admin', request.url)))
     }
     const gate = await verificarLojistaGatesEdge(user.id, '/dashboard', supabase)
     if (!gate.ok && gate.kind === 'contract') {
-      return NextResponse.redirect(new URL(gate.path, request.url))
+      return secure(NextResponse.redirect(new URL(gate.path, request.url)))
     }
     if (!gate.ok && gate.kind === 'redirect') {
-      return NextResponse.redirect(new URL(gate.path, request.url))
+      return secure(NextResponse.redirect(new URL(gate.path, request.url)))
     }
-    return NextResponse.redirect(new URL('/dashboard', request.url))
+    return secure(NextResponse.redirect(new URL('/dashboard', request.url)))
   }
 
   if (p.startsWith('/api/admin') || p.startsWith('/admin')) {
     if (!adminIpAllowed(request)) {
       if (p.startsWith('/api/admin')) {
-        return NextResponse.json({ error: 'Proibido' }, { status: 403 })
+        return secure(NextResponse.json({ error: 'Proibido' }, { status: 403 }))
       }
-      return NextResponse.redirect(new URL('/dashboard', request.url))
+      return secure(NextResponse.redirect(new URL('/dashboard', request.url)))
     }
   }
 
   if (p.startsWith('/api/admin')) {
     if (!user) {
-      return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
+      return secure(NextResponse.json({ error: 'Não autenticado' }, { status: 401 }))
     }
     if (!isVyriaAdminPanelUser(user.id)) {
-      return NextResponse.json({ error: 'Proibido' }, { status: 403 })
+      return secure(NextResponse.json({ error: 'Proibido' }, { status: 403 }))
     }
     if (!vyriaInAdminMode) {
-      return NextResponse.json(
-        { error: 'Ativa o modo admin para usar esta API.' },
-        { status: 403 }
+      return secure(
+        NextResponse.json(
+          { error: 'Ativa o modo admin para usar esta API.' },
+          { status: 403 }
+        )
       )
     }
-    return supabaseResponse
+    return secure(supabaseResponse)
   }
 
   if (p.startsWith('/admin')) {
@@ -168,13 +178,13 @@ export async function proxy(request: NextRequest) {
       const url = request.nextUrl.clone()
       url.pathname = '/login'
       url.searchParams.set('next', p)
-      return NextResponse.redirect(url)
+      return secure(NextResponse.redirect(url))
     }
     if (!isVyriaAdminPanelUser(user.id)) {
-      return NextResponse.redirect(new URL('/dashboard', request.url))
+      return secure(NextResponse.redirect(new URL('/dashboard', request.url)))
     }
     if (!vyriaInAdminMode) {
-      return NextResponse.redirect(new URL('/dashboard', request.url))
+      return secure(NextResponse.redirect(new URL('/dashboard', request.url)))
     }
   }
 
@@ -186,7 +196,7 @@ export async function proxy(request: NextRequest) {
     if (!skipMerchantGates) {
       const gate = await verificarLojistaGatesEdge(user.id, p, supabase)
       if (!gate.ok) {
-        return NextResponse.redirect(new URL(gate.path, request.url))
+        return secure(NextResponse.redirect(new URL(gate.path, request.url)))
       }
     }
   }
@@ -194,13 +204,20 @@ export async function proxy(request: NextRequest) {
   if (user && !skipMerchantGates && isMerchantApiContractGatePath(p)) {
     const gate = await verificarLojistaGatesEdge(user.id, p, supabase)
     if (!gate.ok && gate.kind === 'contract') {
-      return NextResponse.json(
-        { error: 'contrato_pendente', redirect: gate.path },
-        { status: 403 }
+      return secure(
+        NextResponse.json(
+          { error: 'contrato_pendente', redirect: gate.path },
+          { status: 403 }
+        )
       )
     }
     if (!gate.ok) {
-      return NextResponse.json({ error: 'acesso_bloqueado', redirect: gate.path }, { status: 403 })
+      return secure(
+        NextResponse.json(
+          { error: 'acesso_bloqueado', redirect: gate.path },
+          { status: 403 }
+        )
+      )
     }
   }
 
@@ -208,7 +225,7 @@ export async function proxy(request: NextRequest) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     url.searchParams.set('next', p.startsWith('/dashboard') ? p : '/dashboard')
-    return NextResponse.redirect(url)
+    return secure(NextResponse.redirect(url))
   }
 
   const slugSegments = p.split('/').filter(Boolean)
@@ -225,17 +242,7 @@ export async function proxy(request: NextRequest) {
 
   supabaseResponse.headers.set('x-pathname', p)
 
-  supabaseResponse.headers.set('X-Frame-Options', 'DENY')
-  supabaseResponse.headers.set('X-Content-Type-Options', 'nosniff')
-  supabaseResponse.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
-  if (process.env.NODE_ENV === 'production') {
-    supabaseResponse.headers.set(
-      'Strict-Transport-Security',
-      'max-age=63072000; includeSubDomains; preload'
-    )
-  }
-
-  return supabaseResponse
+  return secure(supabaseResponse)
 }
 
 export const config = {

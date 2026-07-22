@@ -5,8 +5,6 @@ import {
   resolveVyriaContratadaCnpjDigits,
   resolveVyriaContratadaCnpjLabel,
   resolveVyriaContratadaRazaoSocial,
-  VYRIA_CONTRATADA_CNPJ,
-  VYRIA_CONTRATADA_RAZAO_SOCIAL,
 } from '@/lib/vyria-legal-constants'
 
 function sanitizeEnvText(value: string | undefined): string {
@@ -20,26 +18,20 @@ function sanitizeEnvText(value: string | undefined): string {
   return v
 }
 
-/** Dados da contratada (Vyria) para contratos. */
+/** Dados da contratada (Vyria) para contratos — só via variáveis de ambiente. */
 export function getVyriaLegalEntity(): VyriaLegalEntity {
-  const envRazao = sanitizeEnvText(process.env.VYRIA_RAZAO_SOCIAL)
-  const envCnpj = sanitizeEnvText(process.env.VYRIA_CNPJ).replace(/\D/g, '')
-  const hasCompleteEnvOverride = Boolean(envRazao) && envCnpj.length === 14
-
-  const razaoSocial = hasCompleteEnvOverride
-    ? envRazao
-    : resolveVyriaContratadaRazaoSocial(envRazao || VYRIA_CONTRATADA_RAZAO_SOCIAL)
-  const cnpj = hasCompleteEnvOverride
-    ? envCnpj
-    : resolveVyriaContratadaCnpjDigits(envCnpj || VYRIA_CONTRATADA_CNPJ)
+  const razaoSocial = resolveVyriaContratadaRazaoSocial(
+    sanitizeEnvText(process.env.VYRIA_RAZAO_SOCIAL)
+  )
+  const cnpj = resolveVyriaContratadaCnpjDigits(
+    sanitizeEnvText(process.env.VYRIA_CNPJ)
+  )
   const emailJuridico =
     process.env.VYRIA_EMAIL_JURIDICO?.trim() ||
     process.env.ADMIN_EMAIL?.trim() ||
-    'juridico@vyria.com.br'
-  const foroComarca =
-    process.env.VYRIA_FORO_COMARCA?.trim() || 'Comarca da Capital do Estado de São Paulo/SP'
-  const termosUrl =
-    process.env.VYRIA_TERMOS_URL?.trim() || 'https://vyria.com.br/termos'
+    ''
+  const foroComarca = process.env.VYRIA_FORO_COMARCA?.trim() || ''
+  const termosUrl = process.env.VYRIA_TERMOS_URL?.trim() || ''
 
   return {
     razaoSocial,

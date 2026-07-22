@@ -5,7 +5,6 @@ import { buildWhatsAppLink } from '@/lib/whatsapp-number'
 import type { FiscalStatus } from '@/lib/fiscal'
 
 const FISCAL_PRICE_LABEL = 'R$ 39,90/mês'
-const DEFAULT_CHECKOUT_URL = 'https://pay.cakto.com.br/wjcapqo_942588'
 
 const BENEFITS = [
   'Emissão de NFC-e com um clique, direto no painel de pedidos.',
@@ -24,8 +23,7 @@ export function FiscalUpsell({
 }) {
   const [showCheckout, setShowCheckout] = useState(false)
 
-  const checkoutUrl =
-    process.env.NEXT_PUBLIC_FISCAL_CHECKOUT_URL?.trim() || DEFAULT_CHECKOUT_URL
+  const checkoutUrl = process.env.NEXT_PUBLIC_FISCAL_CHECKOUT_URL?.trim() || ''
   const supportHref =
     buildWhatsAppLink(
       process.env.NEXT_PUBLIC_ADMIN_WHATSAPP || '',

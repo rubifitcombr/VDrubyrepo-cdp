@@ -1,21 +1,20 @@
 /**
  * Conta com acesso exclusivo ao painel `/admin`.
- * Override opcional: `VYRIA_ADMIN_USER_ID` (mesmo UUID em string).
+ * Definir em deploy: `VYRIA_ADMIN_USER_ID` (UUID Supabase Auth).
  */
-export const VYRIA_ADMIN_PANEL_USER_ID =
-  '48357da1-a7f3-4b97-988b-1cefff055b7e'
-
-export function getVyriaAdminPanelUserId(): string {
-  const fromEnv =
+export function getVyriaAdminPanelUserId(): string | null {
+  const id =
     typeof process !== 'undefined'
       ? process.env.VYRIA_ADMIN_USER_ID?.trim()
       : undefined
-  return fromEnv || VYRIA_ADMIN_PANEL_USER_ID
+  return id || null
 }
 
 export function isVyriaAdminPanelUser(
   userId: string | null | undefined
 ): boolean {
   if (!userId) return false
-  return userId === getVyriaAdminPanelUserId()
+  const adminId = getVyriaAdminPanelUserId()
+  if (!adminId) return false
+  return userId === adminId
 }
