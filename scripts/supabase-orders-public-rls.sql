@@ -46,6 +46,9 @@ $$;
 
 ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
 
+GRANT INSERT, UPDATE, DELETE ON public.orders TO anon, authenticated;
+GRANT SELECT ON public.orders TO authenticated;
+
 DROP POLICY IF EXISTS orders_public_insert ON public.orders;
 CREATE POLICY orders_public_insert ON public.orders
   FOR INSERT TO anon, authenticated
@@ -73,6 +76,8 @@ DO $$
 BEGIN
   IF to_regclass('public.order_items') IS NOT NULL THEN
     EXECUTE 'ALTER TABLE public.order_items ENABLE ROW LEVEL SECURITY';
+    EXECUTE 'GRANT INSERT, DELETE ON public.order_items TO anon, authenticated';
+    EXECUTE 'GRANT SELECT ON public.order_items TO authenticated';
 
     EXECUTE 'DROP POLICY IF EXISTS order_items_public_insert ON public.order_items';
     EXECUTE $p$
@@ -106,3 +111,7 @@ BEGIN
 END $$;
 
 SELECT pg_notify('pgrst', 'reload schema');
+
+-- Verificação (deve listar orders_public_insert):
+-- SELECT policyname, roles, cmd FROM pg_policies
+-- WHERE schemaname = 'public' AND tablename = 'orders' AND cmd = 'INSERT';
