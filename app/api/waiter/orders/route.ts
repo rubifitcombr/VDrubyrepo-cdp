@@ -7,6 +7,7 @@ import { ORDER_SELECT, mapStoreOrderRow } from '@/lib/store-order'
 import { buildWaiterNotes } from '@/lib/waiter-order-notes'
 import { createClient } from '@/lib/supabase/server'
 import { buildItemsSummaryWithLineTotals } from '@/lib/print/items-summary-format'
+import { isSupabaseRlsViolation } from '@/lib/supabase-rls-error'
 import { tryAutoThermalPrint } from '@/services/thermal-print.server'
 import { resolveGarcomForOrder } from '@/services/store-garcons.server'
 
@@ -156,6 +157,15 @@ export async function POST(request: Request) {
     .single()
 
   if (orderErr || !order?.id) {
+    if (isSupabaseRlsViolation(orderErr?.message)) {
+      return NextResponse.json(
+        {
+          error:
+            'Não foi possível lançar o pedido: loja inactiva, plano vencido ou permissões em falta na base de dados.',
+        },
+        { status: 403 }
+      )
+    }
     return NextResponse.json(
       { error: orderErr?.message ?? 'Não foi possível criar o pedido.' },
       { status: 500 }

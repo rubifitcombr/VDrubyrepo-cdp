@@ -29,6 +29,7 @@ import {
   loadAddonCatalogForProducts,
   parseCheckoutAddons,
 } from '@/lib/public-checkout-pricing.server'
+import { insertPublicCheckoutOrder } from '@/services/public-checkout-order.server'
 import {
   MENU_PRODUCT_SELECT,
   normalizeMenuProductRow,
@@ -430,9 +431,9 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const { data: order, error: orderErr } = await supabase
-      .from('orders')
-      .insert({
+    const created = await insertPublicCheckoutOrder(
+      supabase,
+      {
         store_id: String(storeRow.id),
         customer_name: customerName,
         customer_phone: customerPhone,
@@ -445,35 +446,21 @@ export async function POST(req: NextRequest) {
         items_summary: itemsSummary,
         status: orderStatus,
         source: insertSource,
-      })
-      .select('id')
-      .single()
+      },
+      pricedItems.map((l) => ({
+        product_id: l.productId,
+        quantity: l.quantity,
+        price: l.unitPrice,
+        unit_price: l.unitPrice,
+        name: l.name,
+      }))
+    )
 
-    if (orderErr || !order?.id) {
-      return NextResponse.json(
-        { error: orderErr?.message || 'Não foi possível criar o pedido.' },
-        { status: 500 }
-      )
-    }
-
-    const rows = pricedItems.map((l) => ({
-      order_id: String(order.id),
-      product_id: l.productId,
-      quantity: l.quantity,
-      price: l.unitPrice,
-      unit_price: l.unitPrice,
-      name: l.name,
-    }))
-
-    const { error: itemsErr } = await supabase.from('order_items').insert(rows)
-    if (itemsErr) {
-      if (
-        itemsErr.message?.includes('order_items') ||
-        itemsErr.message?.includes('does not exist')
-      ) {
+    if (!created.ok) {
+      if (created.missingOrderItemsTable) {
         return NextResponse.json({
           ok: true,
-          orderId: String(order.id),
+          orderId: created.orderId ?? 'unknown',
           mode: plan === 'START' ? 'history' : 'realtime',
           storeName: String(storeRow.name || ''),
           subtotal,
@@ -481,14 +468,10 @@ export async function POST(req: NextRequest) {
           orderTotal: total,
         })
       }
-      await supabase.from('orders').delete().eq('id', order.id)
-      const errText = friendlyOrderItemsError(itemsErr.message)
-      const isStock = /stock insuficiente/i.test(errText)
-      return NextResponse.json(
-        { error: errText },
-        { status: isStock ? 409 : 500 }
-      )
+      return NextResponse.json({ error: created.error }, { status: 500 })
     }
+
+    const order = { id: created.orderId }
 
     const storeMeta = storeRow as Record<string, unknown>
     const checkoutPlan = parsePlan(readStorePlano(storeMeta))

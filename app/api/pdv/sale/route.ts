@@ -8,6 +8,7 @@ import { getUser } from '@/services/auth.server'
 import { createClient } from '@/lib/supabase/server'
 import { getOpenCaixaTurno } from '@/services/caixa-turnos.server'
 import { buildItemsSummaryWithLineTotals } from '@/lib/print/items-summary-format'
+import { isSupabaseRlsViolation } from '@/lib/supabase-rls-error'
 import { tryAutoThermalPrint } from '@/services/thermal-print.server'
 import { tryAutoEmitNfceForOrder } from '@/services/fiscal'
 import { pricePdvLinesFromCatalog } from '@/lib/pdv-price.server'
@@ -249,6 +250,15 @@ export async function POST(request: Request) {
 
   if (orderErr || !order?.id) {
     const msg = orderErr?.message ?? ''
+    if (isSupabaseRlsViolation(msg)) {
+      return NextResponse.json(
+        {
+          error:
+            'Não foi possível lançar o pedido: loja inactiva, plano vencido ou permissões em falta na base de dados. Verifica o estado da loja no painel ou contacta o suporte Vyria.',
+        },
+        { status: 403 }
+      )
+    }
     if (/caixa_turno_id|column/i.test(msg)) {
       return NextResponse.json(
         {
