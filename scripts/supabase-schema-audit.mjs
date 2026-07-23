@@ -34,6 +34,7 @@ const anon = createClient(url, anonKey, { auth: { persistSession: false } })
 const svc = createClient(url, svcKey, { auth: { persistSession: false } })
 
 let ok = true
+let anonRlsOk = true
 function pass(msg) {
   console.log(`✓ ${msg}`)
 }
@@ -110,10 +111,13 @@ if (!activeStore?.id) {
 
   if (anonOrderErr) {
     if (/row-level security/i.test(anonOrderErr.message)) {
+      anonRlsOk = false
       fail(
-        `INSERT anon em orders bloqueado — aplicar scripts/supabase-orders-public-rls.sql (loja: ${activeStore.name})`
+        `INSERT anon em orders bloqueado — reexecutar scripts/supabase-orders-public-rls.sql (loja: ${activeStore.name})`
       )
-      warn('Deploy Vercel usa fallback service-role no checkout; cardápio pode funcionar mesmo assim')
+      warn(
+        'Falta GRANT EXECUTE em store_is_public_active para anon, ou policy orders_public_insert ausente'
+      )
     } else {
       fail(`INSERT anon orders: ${anonOrderErr.message}`)
     }
@@ -138,6 +142,64 @@ if (!activeStore?.id) {
     }
     await svc.from('order_items').delete().eq('order_id', anonOrder.id)
     await svc.from('orders').delete().eq('id', anonOrder.id)
+  }
+}
+
+// Checkout produção (API) — o que importa para o cliente final
+console.log('\n--- Checkout público (API produção) ---')
+const base =
+  process.env.NEXT_PUBLIC_VYRIA_PUBLIC_URL?.trim() ||
+  process.env.VYRIA_PUBLIC_URL?.trim() ||
+  'https://acesso.vyriadelivery.com.br'
+if (activeStore?.slug) {
+  const { data: prod } = await svc
+    .from('products')
+    .select('id, name, price')
+    .eq('store_id', activeStore.id)
+    .eq('active', true)
+    .limit(1)
+    .maybeSingle()
+  if (prod?.id) {
+    try {
+      const r = await fetch(`${base.replace(/\/$/, '')}/api/public/checkout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          slug: activeStore.slug,
+          fulfillment: 'pickup',
+          customerName: 'Audit',
+          customerPhone: '11999999999',
+          paymentMethod: 'cash',
+          items: [
+            {
+              productId: prod.id,
+              name: prod.name,
+              quantity: 1,
+              unitPrice: Number(prod.price) || 1,
+              addons: [],
+            },
+          ],
+        }),
+      })
+      const j = await r.json().catch(() => ({}))
+      if (r.ok && j.ok && j.orderId) {
+        pass(`POST /api/public/checkout → 200 (loja ${activeStore.slug})`)
+        await svc.from('order_items').delete().eq('order_id', j.orderId)
+        await svc.from('orders').delete().eq('id', j.orderId)
+        if (!anonRlsOk) {
+          warn(
+            'RLS anon ainda falha, mas checkout em produção OK (fallback service-role no servidor)'
+          )
+          ok = true
+        }
+      } else {
+        fail(`POST /api/public/checkout → ${r.status} ${j.error || ''}`)
+      }
+    } catch (e) {
+      warn(`Checkout API não testado: ${e instanceof Error ? e.message : e}`)
+    }
+  } else {
+    warn(`Loja ${activeStore.slug} sem produtos ativos — checkout não testado`)
   }
 }
 

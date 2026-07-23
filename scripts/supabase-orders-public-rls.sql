@@ -44,6 +44,12 @@ AS $$
   );
 $$;
 
+REVOKE ALL ON FUNCTION public.store_is_public_active(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.store_is_public_active(uuid) TO anon, authenticated, service_role;
+
+REVOKE ALL ON FUNCTION public.store_owner_can_operate(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.store_owner_can_operate(uuid) TO authenticated, service_role;
+
 ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
 
 GRANT INSERT, UPDATE, DELETE ON public.orders TO anon, authenticated;
@@ -112,6 +118,8 @@ END $$;
 
 SELECT pg_notify('pgrst', 'reload schema');
 
--- Verificação (deve listar orders_public_insert):
--- SELECT policyname, roles, cmd FROM pg_policies
--- WHERE schemaname = 'public' AND tablename = 'orders' AND cmd = 'INSERT';
+-- Confirmação (deve aparecer orders_public_insert na lista):
+SELECT policyname, roles::text AS roles, cmd
+FROM pg_policies
+WHERE schemaname = 'public' AND tablename = 'orders' AND cmd = 'INSERT'
+ORDER BY policyname;
