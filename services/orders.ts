@@ -21,7 +21,7 @@ export async function getStoreOrders(storeId: string): Promise<StoreOrderRow[]> 
 export async function updateOrderStatus(
   orderId: string,
   status: string,
-  opts?: { storeId?: string }
+  opts?: { storeId?: string | null }
 ): Promise<{
   error: Error | null
   fiscal?: {

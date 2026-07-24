@@ -18,6 +18,7 @@ type Props = {
 export function StoreOperationalRealtimeBridge({ storeId }: Props) {
   useEffect(() => {
     if (!storeId) return
+    const activeStoreId = storeId
 
     const supabase = createClient()
     let debounceTimer: number | null = null
@@ -26,19 +27,19 @@ export function StoreOperationalRealtimeBridge({ storeId }: Props) {
       if (debounceTimer) window.clearTimeout(debounceTimer)
       debounceTimer = window.setTimeout(() => {
         debounceTimer = null
-        dispatchStoreOrdersSync({ storeId, source, eventType })
+        dispatchStoreOrdersSync({ storeId: activeStoreId, source, eventType })
       }, 120)
     }
 
     const channel = supabase
-      .channel(`store-ops-bridge-${storeId}`)
+      .channel(`store-ops-bridge-${activeStoreId}`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'orders',
-          filter: `store_id=eq.${storeId}`,
+          filter: `store_id=eq.${activeStoreId}`,
         },
         (payload) => {
           notify('orders', payload.eventType)
@@ -61,7 +62,7 @@ export function StoreOperationalRealtimeBridge({ storeId }: Props) {
           event: '*',
           schema: 'public',
           table: 'store_tables',
-          filter: `store_id=eq.${storeId}`,
+          filter: `store_id=eq.${activeStoreId}`,
         },
         (payload) => {
           notify('store_tables', payload.eventType)
@@ -73,7 +74,7 @@ export function StoreOperationalRealtimeBridge({ storeId }: Props) {
           event: '*',
           schema: 'public',
           table: 'caixas_turnos',
-          filter: `store_id=eq.${storeId}`,
+          filter: `store_id=eq.${activeStoreId}`,
         },
         (payload) => {
           notify('caixas_turnos', payload.eventType)
@@ -85,7 +86,7 @@ export function StoreOperationalRealtimeBridge({ storeId }: Props) {
           event: '*',
           schema: 'public',
           table: 'caixa_movimentacoes',
-          filter: `store_id=eq.${storeId}`,
+          filter: `store_id=eq.${activeStoreId}`,
         },
         (payload) => {
           notify('caixa_movimentacoes', payload.eventType)
