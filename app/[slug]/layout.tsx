@@ -1,5 +1,3 @@
-'use client'
-
 import { Suspense } from 'react'
 import { CartProvider } from '@/app/context/CartContext'
 import { CartScopeGuard } from './_components/CartScopeGuard'

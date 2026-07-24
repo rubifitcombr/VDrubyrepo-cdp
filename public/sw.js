@@ -1,5 +1,5 @@
 // Bump quando as regras de cache mudarem — força clientes a largar caches antigos.
-const CACHE_NAME = 'vyria-v5';
+const CACHE_NAME = 'vyria-v6';
 const STATIC_ASSETS = ['/', '/dashboard', '/offline.html', '/manifest.json'];
 
 /** Segmentos que não são slugs de loja (alinhado a lib/app-reserved-routes + rotas técnicas). */
