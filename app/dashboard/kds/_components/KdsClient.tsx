@@ -12,7 +12,7 @@ import {
 import type { StorePrintingState } from '@/lib/store-printing'
 import { openOrderTicketAutoPrintOnConfirm } from '@/lib/order-print-window'
 import {
-  dispatchStoreOrdersSync,
+  notifyStoreOrdersChanged,
   subscribeStoreOrdersSync,
 } from '@/lib/store-operational-realtime.client'
 import { updateOrderStatus } from '@/services/orders'
@@ -153,7 +153,7 @@ export function KdsClient({
   async function patch(orderId: string, status: string) {
     const orderBefore = orders.find((o) => o.id === orderId)
     setBusyId(orderId)
-    const { error } = await updateOrderStatus(orderId, status)
+    const { error } = await updateOrderStatus(orderId, status, { storeId })
     setBusyId(null)
     if (error) {
       alert(error.message)
@@ -162,7 +162,6 @@ export function KdsClient({
     setOrders((prev) =>
       prev.map((o) => (o.id === orderId ? { ...o, status } : o))
     )
-    dispatchStoreOrdersSync({ storeId, source: 'orders', eventType: 'UPDATE' })
     if (
       status === 'preparing' &&
       printing.print_auto_on_confirm &&

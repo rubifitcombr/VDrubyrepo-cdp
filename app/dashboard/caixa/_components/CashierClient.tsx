@@ -21,7 +21,11 @@ import {
 } from '@/lib/print-agent-client'
 import type { StorePrintingState } from '@/lib/store-printing'
 import type { StoreOrderRow } from '@/lib/store-order'
+import { mapStoreOrderRow, ORDER_SELECT } from '@/lib/store-order'
+import { isPdvWaiterComandaSource } from '@/lib/cashier-pro-delivery-scope'
+import { createClient } from '@/lib/supabase/client'
 import {
+  notifyStoreOrdersChanged,
   subscribeStoreOrdersSync,
 } from '@/lib/store-operational-realtime.client'
 import { IconPrinter } from '@/app/dashboard/_components/NavIcons'
@@ -245,6 +249,25 @@ function OperacaoView({
     initialTurnoSplitPayments
   )
   const [splitModalOrder, setSplitModalOrder] = useState<StoreOrderRow | null>(null)
+
+  const pullCashierOrders = useCallback(async () => {
+    const supabase = createClient()
+    const from = new Date(Date.now() - 45 * 86400000).toISOString()
+    const { data, error } = await supabase
+      .from('orders')
+      .select(ORDER_SELECT)
+      .eq('store_id', storeId)
+      .gte('created_at', from)
+      .order('created_at', { ascending: false })
+      .limit(500)
+
+    if (error || !data) return
+    let rows = (data as Record<string, unknown>[]).map(mapStoreOrderRow)
+    if (caixaProDeliveryOnly) {
+      rows = rows.filter((o) => !isPdvWaiterComandaSource(o.source))
+    }
+    setOrders(rows)
+  }, [storeId, caixaProDeliveryOnly])
 
   useEffect(() => {
     setTurnoSplitPayments(initialTurnoSplitPayments)
@@ -508,7 +531,11 @@ function OperacaoView({
       }, 350)
     }
 
-    const unsubscribe = subscribeStoreOrdersSync(storeId, () => {
+    const unsubscribe = subscribeStoreOrdersSync(storeId, (detail) => {
+      if (detail.source === 'orders' || detail.source === 'order_items') {
+        void pullCashierOrders()
+        return
+      }
       scheduleRefresh()
     })
 
@@ -523,7 +550,7 @@ function OperacaoView({
       window.clearInterval(poll)
       unsubscribe()
     }
-  }, [storeId, router, reloadEntregas])
+  }, [storeId, router, reloadEntregas, pullCashierOrders])
 
   const entregasTabela = useMemo(() => {
     if (entFilterQuick === 'by_driver' && !entDriverKey) return []
@@ -697,6 +724,7 @@ function OperacaoView({
       } else {
         showToast('Comanda fechada.')
       }
+      notifyStoreOrdersChanged(storeId, { eventType: 'UPDATE' })
     } finally {
       setClosingOrderId(null)
     }

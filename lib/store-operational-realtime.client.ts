@@ -19,6 +19,21 @@ function broadcastChannelName(storeId: string): string {
   return `vyria-ops-${storeId}`
 }
 
+/** Atalho para notificar alteração de comandas em todos os painéis da loja. */
+export function notifyStoreOrdersChanged(
+  storeId: string,
+  opts?: {
+    source?: StoreOrdersSyncSource
+    eventType?: 'INSERT' | 'UPDATE' | 'DELETE'
+  }
+): void {
+  dispatchStoreOrdersSync({
+    storeId,
+    source: opts?.source ?? 'orders',
+    eventType: opts?.eventType ?? 'UPDATE',
+  })
+}
+
 /** Propaga alteração operacional a todos os painéis abertos (mesma aba + outras abas). */
 export function dispatchStoreOrdersSync(detail: StoreOrdersSyncDetail): void {
   if (typeof window === 'undefined') return

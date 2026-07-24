@@ -20,10 +20,10 @@ WHERE t.schemaname = 'public'
       AND p.tablename = t.tablename
   );
 
--- 3) Todas as policies (esperado após 20260718160000_orders_rls_tighten_pix.sql):
+-- 3) Todas as policies (esperado após 20260724150000_orders_owner_select_restore.sql):
 --    - stores: stores_owner_* (4x) — SEM vyria_stores_public_select_anon
 --    - products: products_public_select + products_owner_* (4x)
---    - orders: orders_public_insert/update/delete + orders_owner_* — SEM orders_public_select_pix
+--    - orders: orders_public_* + orders_owner_select/insert/update/delete — SEM orders_public_select_pix
 --    - order_items: order_items_public_* + order_items_owner_all
 SELECT tablename, policyname, cmd
 FROM pg_policies
@@ -66,3 +66,18 @@ SELECT tgname
 FROM pg_trigger
 WHERE tgrelid = 'public.stores'::regclass
   AND tgname = 'trg_protect_stores_owner_sensitive';
+
+-- 8) Realtime operacional (painel: garçom, caixa, KDS)
+SELECT tablename
+FROM pg_publication_tables
+WHERE pubname = 'supabase_realtime'
+  AND schemaname = 'public'
+  AND tablename IN ('orders', 'order_items', 'store_tables', 'caixas_turnos', 'caixa_movimentacoes')
+ORDER BY tablename;
+
+-- 9) Pedidos: owner SELECT obrigatório (INSERT com .select() falha sem isto)
+SELECT policyname
+FROM pg_policies
+WHERE schemaname = 'public'
+  AND tablename = 'orders'
+  AND policyname = 'orders_owner_select';

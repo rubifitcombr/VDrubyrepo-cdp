@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/client'
+import { notifyStoreOrdersChanged } from '@/lib/store-operational-realtime.client'
 import type { StoreOrderRow } from '@/lib/store-order'
 import { ORDER_SELECT, orderIsVisibleAfterPixConfirmation } from '@/lib/store-order'
 
@@ -19,7 +20,8 @@ export async function getStoreOrders(storeId: string): Promise<StoreOrderRow[]> 
 
 export async function updateOrderStatus(
   orderId: string,
-  status: string
+  status: string,
+  opts?: { storeId?: string }
 ): Promise<{
   error: Error | null
   fiscal?: {
@@ -60,6 +62,10 @@ export async function updateOrderStatus(
           motivo: data.fiscal.motivo,
         }
       : undefined
+    const storeId = opts?.storeId?.trim()
+    if (storeId) {
+      notifyStoreOrdersChanged(storeId, { eventType: 'UPDATE' })
+    }
     return { error: null, ...(fiscal ? { fiscal } : {}) }
   } catch (e) {
     return {

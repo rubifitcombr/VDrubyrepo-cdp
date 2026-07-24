@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { EntregadoresManagePanel } from '@/app/dashboard/entregadores/_components/EntregadoresManagePanel'
 import { dashboardFetch } from '@/lib/dashboard-fetch.client'
+import { notifyStoreOrdersChanged, subscribeStoreOrdersSync } from '@/lib/store-operational-realtime.client'
 import type {
   CourierBalanceGroup,
   DeliveryOpsPayload,
@@ -64,7 +65,7 @@ function deliveryFeeNumber(o: OrderOnRouteDTO): number {
   return 0
 }
 
-export function EntregadoresOpsClient() {
+export function EntregadoresOpsClient({ storeId }: { storeId: string }) {
   const [tab, setTab] = useState<OpsTab>('na_rua')
   const [payload, setPayload] = useState<DeliveryOpsPayload | null>(null)
   const [loading, setLoading] = useState(true)
@@ -122,6 +123,15 @@ export function EntregadoresOpsClient() {
     const id = window.setInterval(() => void loadOps(true), 30_000)
     return () => window.clearInterval(id)
   }, [loadOps])
+
+  useEffect(() => {
+    if (!storeId) return
+    const unsubscribe = subscribeStoreOrdersSync(storeId, (detail) => {
+      if (detail.source !== 'orders' && detail.source !== 'order_items') return
+      void loadOps(true)
+    })
+    return unsubscribe
+  }, [storeId, loadOps])
 
   const onRouteIds = useMemo(
     () => new Set(payload?.on_route.map((o) => o.entregador_id).filter(Boolean)),
@@ -185,6 +195,7 @@ export function EntregadoresOpsClient() {
         return
       }
       setDeliveryOrder(null)
+      notifyStoreOrdersChanged(storeId, { eventType: 'UPDATE' })
       await loadOps(true)
     } finally {
       setDelSubmitting(false)

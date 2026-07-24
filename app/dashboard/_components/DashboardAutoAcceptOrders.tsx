@@ -258,7 +258,8 @@ export function DashboardAutoAcceptOrders({
 
           const { error: upErr } = await updateOrderStatus(
             order.id,
-            'preparing'
+            'preparing',
+            { storeId }
           )
 
           if (upErr) {

@@ -52,7 +52,7 @@ import { IconPrinter } from '@/app/dashboard/_components/NavIcons'
 import { updateStore } from '@/services/store'
 import { updateOrderStatus } from '@/services/orders'
 import {
-  dispatchStoreOrdersSync,
+  notifyStoreOrdersChanged,
   subscribeStoreOrdersSync,
 } from '@/lib/store-operational-realtime.client'
 
@@ -865,6 +865,7 @@ export function WaiterClient({
         }
       }
       void pullOpenOrders()
+      notifyStoreOrdersChanged(storeId, { eventType: 'INSERT' })
       returnToTableMap()
     } finally {
       setSaving(false)
@@ -904,6 +905,7 @@ export function WaiterClient({
       if (json.order) {
         setOpenOrders((prev) => prev.map((x) => (x.id === json.order!.id ? (json.order as StoreOrderRow) : x)))
       }
+      notifyStoreOrdersChanged(storeId, { eventType: 'UPDATE', source: 'order_items' })
     } finally {
       setSaving(false)
     }
@@ -919,26 +921,24 @@ export function WaiterClient({
           : null
     if (!next) return
     setBusyOrderId(order.id)
-    const { error: upError } = await updateOrderStatus(order.id, next)
+    const { error: upError } = await updateOrderStatus(order.id, next, { storeId })
     setBusyOrderId(null)
     if (upError) {
       setError(upError.message)
       return
     }
     setOpenOrders((prev) => prev.map((x) => (x.id === order.id ? { ...x, status: next } : x)))
-    dispatchStoreOrdersSync({ storeId, source: 'orders', eventType: 'UPDATE' })
   }
 
   async function confirmToTable(order: StoreOrderRow) {
     setBusyOrderId(order.id)
-    const { error: upError } = await updateOrderStatus(order.id, 'confirmed')
+    const { error: upError } = await updateOrderStatus(order.id, 'confirmed', { storeId })
     setBusyOrderId(null)
     if (upError) {
       setError(upError.message)
       return
     }
     setOpenOrders((prev) => prev.map((x) => (x.id === order.id ? { ...x, status: 'confirmed' } : x)))
-    dispatchStoreOrdersSync({ storeId, source: 'orders', eventType: 'UPDATE' })
   }
 
   function printSavedOrderTicket(order: StoreOrderRow) {
@@ -1064,6 +1064,7 @@ export function WaiterClient({
         return
       }
       setOpenOrders((prev) => prev.filter((x) => x.id !== order.id))
+      notifyStoreOrdersChanged(storeId, { eventType: 'UPDATE' })
       returnToTableMap()
       setSuccess(
         mesaCloseMode === 'immediate'

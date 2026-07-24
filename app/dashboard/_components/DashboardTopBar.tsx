@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react'
 import type { Plan } from '@/lib/plan'
 import { planTitle } from '@/lib/plan'
 import { orderIsVisibleAfterPixConfirmation } from '@/lib/store-order'
+import { createClient } from '@/lib/supabase/client'
 import { subscribeStoreOrdersSync } from '@/lib/store-operational-realtime.client'
 import { slugChannelSourcesForSupabaseIn } from '@/lib/slug-channel-orders'
 import { IconBell, IconSearch } from './NavIcons'
@@ -45,10 +46,10 @@ export function DashboardTopBar({
 
   useEffect(() => {
     if (!storeId) return
-    const supabase = createClient()
     let disposed = false
 
     async function refreshPendingCount() {
+      const supabase = createClient()
       let q = supabase
         .from('orders')
         .select('id, payment_method, payment_status')
@@ -72,25 +73,12 @@ export function DashboardTopBar({
       }
     }
 
-    const channel = supabase
-      .channel(`dashboard-topbar-pending-${storeId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'orders',
-          filter: `store_id=eq.${storeId}`,
-        },
-        () => {
-          void refreshPendingCount()
-        }
-      )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          void refreshPendingCount()
-        }
-      })
+    void refreshPendingCount()
+
+    const unsubscribe = subscribeStoreOrdersSync(storeId, (detail) => {
+      if (detail.source !== 'orders' && detail.source !== 'order_items') return
+      void refreshPendingCount()
+    })
 
     const poll = window.setInterval(() => {
       if (document.visibilityState !== 'visible') return
@@ -100,7 +88,7 @@ export function DashboardTopBar({
     return () => {
       disposed = true
       window.clearInterval(poll)
-      void supabase.removeChannel(channel)
+      unsubscribe()
     }
   }, [storeId, slugChannelSourcesOnly])
 

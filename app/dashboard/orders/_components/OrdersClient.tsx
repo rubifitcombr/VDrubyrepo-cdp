@@ -26,7 +26,7 @@ import {
   tryReconnectKnownBluetoothPrinter,
 } from '@/lib/bluetooth-print-client'
 import {
-  dispatchStoreOrdersSync,
+  notifyStoreOrdersChanged,
   subscribeStoreOrdersSync,
 } from '@/lib/store-operational-realtime.client'
 import { updateOrderStatus } from '@/services/orders'
@@ -1551,7 +1551,7 @@ export function OrdersClient({
   async function patchStatus(orderId: string, status: string) {
     const orderBefore = orders.find((o) => o.id === orderId)
     setBusyId(orderId)
-    const { error, fiscal } = await updateOrderStatus(orderId, status)
+    const { error, fiscal } = await updateOrderStatus(orderId, status, { storeId })
     setBusyId(null)
     if (error) {
       alert(error.message)
@@ -1560,7 +1560,6 @@ export function OrdersClient({
     setOrders((prev) =>
       prev.map((o) => (o.id === orderId ? { ...o, status } : o))
     )
-    dispatchStoreOrdersSync({ storeId, source: 'orders', eventType: 'UPDATE' })
     if (status === 'cancelled' && fiscal?.attempted) {
       if (fiscal.ok) {
         setNfceStateById((prev) => {
@@ -1688,6 +1687,7 @@ export function OrdersClient({
         )
       }
       setDeliveryModal(null)
+      notifyStoreOrdersChanged(storeId, { eventType: 'UPDATE' })
     } finally {
       setDelSubmitting(false)
     }
@@ -1712,6 +1712,7 @@ export function OrdersClient({
         }
         setOrders((prev) => prev.map((x) => (x.id === o.id ? { ...x, status: 'delivered' } : x)))
         setDeliveryModal(null)
+        notifyStoreOrdersChanged(storeId, { eventType: 'UPDATE' })
         return
       }
 
@@ -1786,6 +1787,7 @@ export function OrdersClient({
         setOrderIdsComEntrega((prev) => new Set(prev).add(o.id))
       }
       setDeliveryModal(null)
+      notifyStoreOrdersChanged(storeId, { eventType: 'UPDATE' })
     } finally {
       setDelSubmitting(false)
     }

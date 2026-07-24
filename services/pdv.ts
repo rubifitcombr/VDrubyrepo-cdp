@@ -1,6 +1,7 @@
 'use client'
 
 import { dashboardFetch } from '@/lib/dashboard-fetch.client'
+import { notifyStoreOrdersChanged } from '@/lib/store-operational-realtime.client'
 import type { OrderPaymentLine } from '@/lib/order-payments'
 
 export type PdvPaymentMethod = 'cash' | 'pix' | 'card' | 'card_credit' | 'card_debit'
@@ -134,6 +135,10 @@ export async function submitPdvSale(params: {
             typeof fiscalRaw.motivo === 'string' ? fiscalRaw.motivo : undefined,
         }
       : undefined
+
+  notifyStoreOrdersChanged(params.storeId, {
+    eventType: 'INSERT',
+  })
 
   return {
     ok: true,
