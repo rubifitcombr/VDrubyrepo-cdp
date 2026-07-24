@@ -5,7 +5,7 @@ import {
   clientIpFromRequest,
   rateLimitResponse,
 } from '@/lib/rate-limit.server'
-import { fetchStoreByPublicSlug } from '@/lib/store-public-slug.server'
+import { fetchPublicStoreForSlugPage } from '@/lib/store-public-slug.server'
 import { pixPaymentStatusIsConfirmed } from '@/lib/store-order'
 import { tryAutoThermalPrint } from '@/services/thermal-print.server'
 
@@ -125,7 +125,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (!result.alreadyConfirmed) {
-      const { data: store } = await fetchStoreByPublicSlug(supabase, slug, 'id')
+      const { data: store } = await fetchPublicStoreForSlugPage(slug, 'id')
       const storeId = store ? String((store as { id: string }).id) : ''
       if (storeId) {
         void tryAutoThermalPrint({

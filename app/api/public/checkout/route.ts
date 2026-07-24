@@ -5,7 +5,7 @@ import {
   clientIpFromRequest,
   rateLimitResponse,
 } from '@/lib/rate-limit.server'
-import { fetchStoreByPublicSlug } from '@/lib/store-public-slug.server'
+import { fetchPublicStoreForSlugPage } from '@/lib/store-public-slug.server'
 import {
   evaluateDeliveryForCustomer,
   type StoreDeliveryConfig,
@@ -211,8 +211,7 @@ export async function POST(req: NextRequest) {
     const customerPhone = customerPhoneRaw || null
 
     const supabase = createPublicAnonClient()
-    const { data: store, error: storeErr } = await fetchStoreByPublicSlug(
-      supabase,
+    const { data: store, error: storeErr } = await fetchPublicStoreForSlugPage(
       slug,
       'id, name, plan, plano, address, delivery_fee, delivery_free_above, delivery_max_km, store_geo_lat, store_geo_lng, auto_accept_orders, manual_closed, business_hours, auto_notify_new_order, salao_attendance_mode, operation_mode, pix_enabled, pix_key, pix_key_type, pix_receiver_name, pix_receiver_city'
     )

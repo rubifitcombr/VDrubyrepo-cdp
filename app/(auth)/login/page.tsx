@@ -9,6 +9,26 @@ import { authErrorMessagePt } from '@/lib/auth-error-message'
 import { setRememberLoginPreference } from '@/services/auth'
 import { useSearchParams } from 'next/navigation'
 
+const POST_LOGIN_FETCH_MS = 12_000
+
+async function fetchJsonWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs = POST_LOGIN_FETCH_MS
+): Promise<{ ok: boolean; json: Record<string, unknown> }> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const res = await fetch(url, { ...init, signal: controller.signal })
+    const json = (await res.json().catch(() => ({}))) as Record<string, unknown>
+    return { ok: res.ok, json }
+  } catch {
+    return { ok: false, json: {} }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 const inputClass =
   'mt-2 w-full rounded-xl border border-[var(--card-border)] bg-white px-4 py-3 text-sm text-vyria-navy outline-none transition-colors placeholder:text-vyria-navy-muted/70 focus:border-vyria-plum focus:ring-2 focus:ring-vyria-orange/20'
 
@@ -54,21 +74,20 @@ function LoginForm() {
 
       setRememberLoginPreference(rememberLogin)
 
-      await fetch('/api/auth/sync-usuario', {
+      await fetchJsonWithTimeout('/api/auth/sync-usuario', {
         method: 'POST',
         credentials: 'include',
-      }).catch(() => null)
+      })
 
       const next = safeNextPath(searchParams.get('next'))
-      const destRes = await fetch(
+      const { ok: destOk, json: destJson } = await fetchJsonWithTimeout(
         `/api/auth/post-login-redirect?next=${encodeURIComponent(next)}`,
         { credentials: 'include' }
       )
-      const destJson = (await destRes.json().catch(() => ({}))) as {
-        redirectTo?: string
-      }
       const destination =
-        destRes.ok && destJson.redirectTo ? destJson.redirectTo : next
+        destOk && typeof destJson.redirectTo === 'string'
+          ? destJson.redirectTo
+          : next
 
       beginNavigation()
       window.location.assign(destination)

@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createPublicAnonClient } from '@/lib/supabase/public.server'
 import {
   checkRateLimit,
   clientIpFromRequest,
   rateLimitResponse,
 } from '@/lib/rate-limit.server'
-import { fetchStoreByPublicSlug } from '@/lib/store-public-slug.server'
+import { fetchPublicStoreForSlugPage } from '@/lib/store-public-slug.server'
 import {
   evaluateDeliveryForCustomer,
   type StoreDeliveryConfig,
@@ -40,9 +39,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const supabase = createPublicAnonClient()
-    const { data: store, error } = await fetchStoreByPublicSlug(
-      supabase,
+    const { data: store, error } = await fetchPublicStoreForSlugPage(
       slug,
       'name, address, delivery_fee, delivery_free_above, delivery_max_km, store_geo_lat, store_geo_lng'
     )

@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { supabaseServerGlobalOptions } from '@/lib/supabase/client-options'
 
 /**
  * Cliente anon puro (sem cookies) para cardápio/checkout público.
@@ -16,5 +17,6 @@ export function createPublicAnonClient(): SupabaseClient {
   }
   return createClient(url, anon, {
     auth: { autoRefreshToken: false, persistSession: false },
+    ...supabaseServerGlobalOptions(),
   })
 }

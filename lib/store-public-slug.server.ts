@@ -2,6 +2,11 @@ import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { slugifyStoreSlug } from '@/lib/store-slug'
+import { readStoreStatus } from '@/lib/store-columns'
+import { tryCreateServiceRoleClient } from '@/lib/supabase/service-role.server'
+import { withTimeout } from '@/lib/supabase/fetch-with-timeout'
+import { createPublicAnonClient } from '@/lib/supabase/public.server'
+import { SUPABASE_SERVER_FETCH_TIMEOUT_MS } from '@/lib/supabase/client-options'
 
 function escapeIlikeExactPattern(segment: string): string {
   return segment
@@ -18,6 +23,20 @@ export function normalizePublicSlugSegment(raw: string): string {
     /* ignora */
   }
   return s.normalize('NFC').trim()
+}
+
+function isStorePublicActiveRow(row: Record<string, unknown>): boolean {
+  const status = String(readStoreStatus(row) ?? '')
+    .trim()
+    .toLowerCase()
+  return status === 'ativo'
+}
+
+async function timed<T>(
+  label: string,
+  promise: Promise<T>
+): Promise<T> {
+  return withTimeout(promise, SUPABASE_SERVER_FETCH_TIMEOUT_MS, label)
 }
 
 async function fetchStoreViaPublicRpc(
@@ -72,6 +91,10 @@ export async function fetchStoreByPublicSlug(
     return { data: null, error: null }
   }
 
+  if (opts?.allowDirectTable) {
+    return fetchStoreDirectTable(supabase, seg, columns)
+  }
+
   const rpcResult = await fetchStoreViaPublicRpc(supabase, seg)
   if (rpcResult.data) {
     const row = rpcResult.data as Record<string, unknown>
@@ -88,6 +111,23 @@ export async function fetchStoreByPublicSlug(
     return { data: null, error: rpcResult.error ?? null }
   }
 
+  return fetchStoreDirectTable(supabase, seg, columns)
+}
+
+function projectStoreColumns(
+  row: Record<string, unknown>,
+  columns: string
+): Record<string, unknown> {
+  const trimmed = columns.trim()
+  if (!trimmed || trimmed === '*') return row
+  return pickPublicStoreFields(row, columns)
+}
+
+async function fetchStoreDirectTable(
+  supabase: SupabaseClient,
+  seg: string,
+  columns: string
+): Promise<{ data: unknown; error: unknown }> {
   const candidates = Array.from(
     new Set([seg, seg.toLowerCase(), slugifyStoreSlug(seg)])
   ).filter(Boolean)
@@ -95,7 +135,7 @@ export async function fetchStoreByPublicSlug(
   for (const candidate of candidates) {
     const exact = await supabase
       .from('stores')
-      .select(columns)
+      .select('*')
       .eq('slug', candidate)
       .limit(1)
       .maybeSingle()
@@ -103,14 +143,18 @@ export async function fetchStoreByPublicSlug(
       return { data: null, error: exact.error }
     }
     if (exact.data) {
-      return { data: exact.data, error: null }
+      const row = exact.data as unknown as Record<string, unknown>
+      if (!isStorePublicActiveRow(row)) {
+        return { data: null, error: null }
+      }
+      return { data: projectStoreColumns(row, columns), error: null }
     }
   }
 
   for (const candidate of candidates) {
     const insensitive = await supabase
       .from('stores')
-      .select(columns)
+      .select('*')
       .ilike('slug', escapeIlikeExactPattern(candidate))
       .limit(1)
       .maybeSingle()
@@ -119,7 +163,54 @@ export async function fetchStoreByPublicSlug(
       return { data: null, error: insensitive.error }
     }
     if (insensitive.data) {
-      return { data: insensitive.data, error: null }
+      const row = insensitive.data as unknown as Record<string, unknown>
+      if (!isStorePublicActiveRow(row)) {
+        return { data: null, error: null }
+      }
+      return { data: projectStoreColumns(row, columns), error: null }
+    }
+  }
+
+  return { data: null, error: null }
+}
+
+/**
+ * Leitura da loja no cardápio público (server).
+ * Preferência: RPC (segura, independente de colunas opcionais); fallback service role + tabela.
+ */
+export async function fetchPublicStoreForSlugPage(
+  slugFromPath: string,
+  columns: string
+): Promise<{ data: unknown; error: unknown }> {
+  const anon = createPublicAnonClient()
+  try {
+    const rpc = await timed(
+      'loja pública (rpc)',
+      fetchStoreByPublicSlug(anon, slugFromPath, columns)
+    )
+    if (rpc.data) return rpc
+    if (rpc.error) {
+      console.warn('[fetchPublicStoreForSlugPage] rpc', rpc.error)
+    }
+  } catch (e) {
+    console.error('[fetchPublicStoreForSlugPage] rpc timeout', e)
+  }
+
+  const svc = tryCreateServiceRoleClient()
+  if (svc) {
+    try {
+      const direct = await timed(
+        'loja pública (service role)',
+        fetchStoreByPublicSlug(svc, slugFromPath, columns, {
+          allowDirectTable: true,
+        })
+      )
+      if (direct.data) return direct
+      if (direct.error) {
+        console.error('[fetchPublicStoreForSlugPage] direct', direct.error)
+      }
+    } catch (e) {
+      console.error('[fetchPublicStoreForSlugPage] direct timeout', e)
     }
   }
 

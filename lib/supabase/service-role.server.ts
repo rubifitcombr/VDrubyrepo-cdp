@@ -1,8 +1,10 @@
 import 'server-only'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { supabaseServerGlobalOptions } from '@/lib/supabase/client-options'
 
 const serviceOpts = {
   auth: { autoRefreshToken: false, persistSession: false },
+  ...supabaseServerGlobalOptions(),
 } as const
 
 function readEnv(...keys: string[]): string | null {

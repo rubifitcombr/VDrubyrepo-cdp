@@ -1,14 +1,13 @@
 import { APP_RESERVED_FIRST_SEGMENTS } from '@/lib/app-reserved-routes'
 import { createPublicAnonClient } from '@/lib/supabase/public.server'
 import {
-  fetchStoreByPublicSlug,
+  fetchPublicStoreForSlugPage,
   normalizePublicSlugSegment,
 } from '@/lib/store-public-slug.server'
 import { readStorePlano } from '@/lib/store-columns'
 import { parsePlan, planTier } from '@/lib/plan'
 import { publicDineInCheckoutAllowed } from '@/lib/salao-attendance'
 import { getStoreOpenState, getTodayClosingDisplayHM } from '@/lib/business-hours'
-import { syncAutoCloseOutsideHoursForStore } from '@/services/store-hours-automation.server'
 import {
   baseProductPriceForChannel,
   effectiveProductPrice,
@@ -24,7 +23,6 @@ import {
 import { resolveStoreTheme } from '@/lib/store-theme'
 import { storePixCheckoutEnabled } from '@/lib/pix/key'
 import { notFound, redirect } from 'next/navigation'
-import { after } from 'next/server'
 import { StorefrontMenuClient } from './StorefrontMenuClient'
 import type { StorefrontMenuProduct } from './storefront-menu-types'
 
@@ -115,14 +113,19 @@ export default async function StorefrontPage({ params, searchParams }: Props) {
     }
   }
 
-  const supabase = createPublicAnonClient()
-  const { data: store, error: storeError } = await fetchStoreByPublicSlug(
-    supabase,
+  const { data: store, error: storeError } = await fetchPublicStoreForSlugPage(
     slugSegment,
     STORE_PUBLIC_SELECT
   )
 
-  if (storeError || !store) {
+  if (storeError) {
+    const message =
+      storeError instanceof Error
+        ? storeError.message
+        : 'Não foi possível carregar a loja.'
+    throw new Error(message)
+  }
+  if (!store) {
     notFound()
   }
 
@@ -145,10 +148,7 @@ export default async function StorefrontPage({ params, searchParams }: Props) {
   }
   const theme = resolveStoreTheme(s.theme_preset)
 
-  after(async () => {
-    await syncAutoCloseOutsideHoursForStore(s as Record<string, unknown>, supabase)
-  })
-
+  const supabase = createPublicAnonClient()
   const manualClosedEffective = s.manual_closed === true
 
   const { open: storeOpen, mode: hoursMode } = getStoreOpenState(

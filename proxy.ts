@@ -14,6 +14,7 @@ import {
   type LojistaGateResult,
 } from '@/middleware/verificarLojistaGates.edge'
 import { applySecurityHeaders } from '@/lib/security-headers.edge'
+import { supabaseServerGlobalOptions } from '@/lib/supabase/client-options'
 import { NextResponse, type NextRequest } from 'next/server'
 
 const IS_PRODUCTION = process.env.NODE_ENV === 'production'
@@ -92,6 +93,7 @@ export async function proxy(request: NextRequest) {
   }
 
   const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+    ...supabaseServerGlobalOptions(),
     cookieOptions: {
       maxAge: 60 * 60 * 24 * 30,
     },

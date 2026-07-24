@@ -55,12 +55,20 @@ GRANT EXECUTE ON FUNCTION public.store_owner_can_operate(uuid) TO authenticated,
 ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
 
 GRANT INSERT, UPDATE, DELETE ON public.orders TO anon, authenticated;
-GRANT SELECT ON public.orders TO authenticated;
+GRANT SELECT ON public.orders TO anon, authenticated;
 
 DROP POLICY IF EXISTS orders_public_insert ON public.orders;
 CREATE POLICY orders_public_insert ON public.orders
   FOR INSERT TO anon, authenticated
   WITH CHECK (public.store_is_public_active(store_id));
+
+DROP POLICY IF EXISTS orders_public_select_recent ON public.orders;
+CREATE POLICY orders_public_select_recent ON public.orders
+  FOR SELECT TO anon
+  USING (
+    public.store_is_public_active(store_id)
+    AND created_at > (now() - interval '2 hours')
+  );
 
 DROP POLICY IF EXISTS orders_public_update_checkout ON public.orders;
 CREATE POLICY orders_public_update_checkout ON public.orders
