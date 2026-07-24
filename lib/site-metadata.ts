@@ -23,7 +23,7 @@ export function getSiteMetadataBase(): URL {
   return (
     normalizeSiteOrigin(process.env.NEXT_PUBLIC_VYRIA_PUBLIC_URL) ??
     normalizeSiteOrigin(process.env.VYRIA_PUBLIC_URL) ??
-    new URL('https://acesso.vyriadelivery.com.br')
+    new URL('http://acesseseusistemavyria.online')
   )
 }
 

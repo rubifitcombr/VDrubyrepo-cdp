@@ -150,7 +150,7 @@ console.log('\n--- Checkout público (API produção) ---')
 const base =
   process.env.NEXT_PUBLIC_VYRIA_PUBLIC_URL?.trim() ||
   process.env.VYRIA_PUBLIC_URL?.trim() ||
-  'https://acesso.vyriadelivery.com.br'
+  'http://acesseseusistemavyria.online'
 if (activeStore?.slug) {
   const { data: prod } = await svc
     .from('products')

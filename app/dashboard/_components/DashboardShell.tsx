@@ -493,7 +493,7 @@ export function DashboardShell({
                 Vyria
               </span>
               <span className="block text-[11px] font-medium text-white/50">
-                Painel Admin
+                {vyriaDualAccount ? 'Conta Vyria' : 'Painel da loja'}
               </span>
             </span>
           </Link>
@@ -596,6 +596,16 @@ export function DashboardShell({
               >
                 Pagar agora
               </a>
+            </div>
+          </div>
+        ) : null}
+        {isOperationalHub && vyriaDualAccount ? (
+          <div className="pointer-events-none fixed inset-x-0 top-0 z-50 flex justify-end p-3 sm:p-4">
+            <div className="pointer-events-auto w-full max-w-[17rem] rounded-2xl border border-black/10 bg-[var(--dash-sidebar)] shadow-xl shadow-black/30">
+              <VyriaPanelModeSwitcher
+                variant="dashboard"
+                currentMode={vyriaDualAccount.mode}
+              />
             </div>
           </div>
         ) : null}
