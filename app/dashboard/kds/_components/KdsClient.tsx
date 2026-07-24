@@ -11,6 +11,10 @@ import {
 } from '@/lib/store-order'
 import type { StorePrintingState } from '@/lib/store-printing'
 import { openOrderTicketAutoPrintOnConfirm } from '@/lib/order-print-window'
+import {
+  dispatchStoreOrdersSync,
+  subscribeStoreOrdersSync,
+} from '@/lib/store-operational-realtime.client'
 import { updateOrderStatus } from '@/services/orders'
 
 const money = new Intl.NumberFormat('pt-BR', {
@@ -106,46 +110,13 @@ export function KdsClient({
   }, [storeId])
 
   useEffect(() => {
-    const supabase = createClient()
-    const channel = supabase
-      .channel(`kds-${storeId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'orders',
-          filter: `store_id=eq.${storeId}`,
-        },
-        (payload) => {
-          if (payload.eventType === 'INSERT' && payload.new) {
-            const row = mapStoreOrderRow(payload.new as Record<string, unknown>)
-            if (!orderIsVisibleAfterPixConfirmation(row)) return
-            setOrders((prev) => {
-              if (prev.some((p) => p.id === row.id)) return prev
-              return [row, ...prev]
-            })
-          } else if (payload.eventType === 'UPDATE' && payload.new) {
-            const row = mapStoreOrderRow(payload.new as Record<string, unknown>)
-            if (!orderIsVisibleAfterPixConfirmation(row)) {
-              setOrders((prev) => prev.filter((p) => p.id !== row.id))
-              return
-            }
-            setOrders((prev) =>
-              prev.some((p) => p.id === row.id)
-                ? prev.map((p) => (p.id === row.id ? row : p))
-                : [row, ...prev]
-            )
-          } else if (payload.eventType === 'DELETE' && payload.old) {
-            const id = String((payload.old as { id?: string }).id ?? '')
-            if (id) setOrders((prev) => prev.filter((p) => p.id !== id))
-          }
-        }
-      )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') setLiveOk(true)
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') setLiveOk(false)
-      })
+    void pullOrders()
+
+    const unsubscribe = subscribeStoreOrdersSync(storeId, (detail) => {
+      if (detail.source !== 'orders' && detail.source !== 'order_items') return
+      void pullOrders()
+      setLiveOk(true)
+    })
 
     const poll = window.setInterval(() => {
       if (document.visibilityState !== 'visible') return
@@ -154,7 +125,7 @@ export function KdsClient({
 
     return () => {
       window.clearInterval(poll)
-      void supabase.removeChannel(channel)
+      unsubscribe()
     }
   }, [storeId, pullOrders])
 
@@ -191,6 +162,7 @@ export function KdsClient({
     setOrders((prev) =>
       prev.map((o) => (o.id === orderId ? { ...o, status } : o))
     )
+    dispatchStoreOrdersSync({ storeId, source: 'orders', eventType: 'UPDATE' })
     if (
       status === 'preparing' &&
       printing.print_auto_on_confirm &&

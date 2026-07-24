@@ -21,7 +21,9 @@ import {
 } from '@/lib/print-agent-client'
 import type { StorePrintingState } from '@/lib/store-printing'
 import type { StoreOrderRow } from '@/lib/store-order'
-import { createClient } from '@/lib/supabase/client'
+import {
+  subscribeStoreOrdersSync,
+} from '@/lib/store-operational-realtime.client'
 import { IconPrinter } from '@/app/dashboard/_components/NavIcons'
 import { ComandaSplitPaymentModal } from './ComandaSplitPaymentModal'
 import { comandaDisplayName } from '@/lib/order-payments'
@@ -495,7 +497,6 @@ function OperacaoView({
 
   useEffect(() => {
     if (!storeId) return
-    const supabase = createClient()
     let refreshTimer: number | null = null
 
     function scheduleRefresh() {
@@ -507,39 +508,9 @@ function OperacaoView({
       }, 350)
     }
 
-    const ch = supabase
-      .channel(`cashier-ops-${storeId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'orders',
-          filter: `store_id=eq.${storeId}`,
-        },
-        scheduleRefresh
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'caixas_turnos',
-          filter: `store_id=eq.${storeId}`,
-        },
-        scheduleRefresh
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'caixa_movimentacoes',
-          filter: `store_id=eq.${storeId}`,
-        },
-        scheduleRefresh
-      )
-      .subscribe()
+    const unsubscribe = subscribeStoreOrdersSync(storeId, () => {
+      scheduleRefresh()
+    })
 
     const poll = window.setInterval(() => {
       if (document.visibilityState !== 'visible') return
@@ -550,7 +521,7 @@ function OperacaoView({
     return () => {
       if (refreshTimer) window.clearTimeout(refreshTimer)
       window.clearInterval(poll)
-      void supabase.removeChannel(ch)
+      unsubscribe()
     }
   }, [storeId, router, reloadEntregas])
 

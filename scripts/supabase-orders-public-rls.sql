@@ -68,6 +68,11 @@ CREATE POLICY orders_public_select_recent ON public.orders
     AND created_at > (now() - interval '2 hours')
   );
 
+DROP POLICY IF EXISTS orders_owner_select ON public.orders;
+CREATE POLICY orders_owner_select ON public.orders
+  FOR SELECT TO authenticated
+  USING (public.auth_owns_store(store_id));
+
 DROP POLICY IF EXISTS orders_public_update_checkout ON public.orders;
 CREATE POLICY orders_public_update_checkout ON public.orders
   FOR UPDATE TO anon

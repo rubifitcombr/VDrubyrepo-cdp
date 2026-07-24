@@ -55,6 +55,14 @@ const InstallAppBanner = dynamic(
     })),
   { ssr: false }
 )
+
+const StoreOperationalRealtimeBridge = dynamic(
+  () =>
+    import('./StoreOperationalRealtimeBridge').then((mod) => ({
+      default: mod.StoreOperationalRealtimeBridge,
+    })),
+  { ssr: false }
+)
 import {
   IconBag,
   IconBolt,
@@ -557,6 +565,9 @@ export function DashboardShell({
           isOperationalHub || sidebarCollapsed ? '' : 'md:pl-60 lg:pl-64'
         }`}
       >
+        {isAuthenticated && storeId ? (
+          <StoreOperationalRealtimeBridge storeId={storeId} />
+        ) : null}
         {isAuthenticated && notifyOnNewOrder && storeId ? (
           <DashboardOrderRealtimeNotifier
             storeId={storeId}

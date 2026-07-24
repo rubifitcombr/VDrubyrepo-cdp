@@ -25,6 +25,10 @@ import {
   sendOrderTicketToBluetooth,
   tryReconnectKnownBluetoothPrinter,
 } from '@/lib/bluetooth-print-client'
+import {
+  dispatchStoreOrdersSync,
+  subscribeStoreOrdersSync,
+} from '@/lib/store-operational-realtime.client'
 import { updateOrderStatus } from '@/services/orders'
 import { dashboardFetch } from '@/lib/dashboard-fetch.client'
 import { type Plan, hasFeature, merchantEntregadoresEnabled } from '@/lib/plan'
@@ -686,29 +690,15 @@ function useOrdersRealtime(
       setOrders(rows)
     }
 
-    const channel = supabase
-      .channel(`orders-live-${storeId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'orders',
-          filter: `store_id=eq.${storeId}`,
-        },
-        (payload) => {
-          if (payload.eventType === 'INSERT' && payload.new) {
-            void pullOrders({ beepOnNew: true })
-            return
-          }
-          void pullOrders()
-        }
-      )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') setLiveOk(true)
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT')
-          setLiveOk(false)
+    void pullOrders().then(() => setLiveOk(true))
+
+    const unsubscribe = subscribeStoreOrdersSync(storeId, (detail) => {
+      if (detail.source !== 'orders' && detail.source !== 'order_items') return
+      void pullOrders({
+        beepOnNew: detail.source === 'orders' && detail.eventType === 'INSERT',
       })
+      setLiveOk(true)
+    })
 
     const poll = window.setInterval(() => {
       if (document.visibilityState !== 'visible') return
@@ -717,7 +707,7 @@ function useOrdersRealtime(
 
     return () => {
       window.clearInterval(poll)
-      void supabase.removeChannel(channel)
+      unsubscribe()
     }
   }, [storeId, slugChannelSourcesOnly])
 
@@ -1570,6 +1560,7 @@ export function OrdersClient({
     setOrders((prev) =>
       prev.map((o) => (o.id === orderId ? { ...o, status } : o))
     )
+    dispatchStoreOrdersSync({ storeId, source: 'orders', eventType: 'UPDATE' })
     if (status === 'cancelled' && fiscal?.attempted) {
       if (fiscal.ok) {
         setNfceStateById((prev) => {

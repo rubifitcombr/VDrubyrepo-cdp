@@ -51,6 +51,10 @@ import type { StorePrintingState } from '@/lib/store-printing'
 import { IconPrinter } from '@/app/dashboard/_components/NavIcons'
 import { updateStore } from '@/services/store'
 import { updateOrderStatus } from '@/services/orders'
+import {
+  dispatchStoreOrdersSync,
+  subscribeStoreOrdersSync,
+} from '@/lib/store-operational-realtime.client'
 
 type CartLine = {
   productId: string
@@ -415,72 +419,33 @@ export function WaiterClient({
   }, [initialOpenOrders, sortOpenOrders])
 
   useEffect(() => {
-    const supabase = createClient()
+    void pullOpenOrders()
+    void pullTables()
 
-    const channel = supabase
-      .channel(`waiter-map-orders-${storeId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'orders',
-          filter: `store_id=eq.${storeId}`,
-        },
-        (payload) => {
-          if (payload.eventType === 'DELETE' && payload.old) {
-            const id = String((payload.old as { id?: unknown }).id ?? '')
-            if (id) {
-              setOpenOrders((prev) => prev.filter((o) => o.id !== id))
-            }
-          }
-          void pullOpenOrders()
-        }
-      )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') void pullOpenOrders()
-      })
+    const unsubscribe = subscribeStoreOrdersSync(storeId, (detail) => {
+      if (detail.source === 'store_tables') {
+        void pullTables()
+        return
+      }
+      if (detail.source === 'orders' || detail.source === 'order_items') {
+        void pullOpenOrders()
+      }
+    })
 
-    const poll = window.setInterval(() => {
+    const ordersPoll = window.setInterval(() => {
       if (document.visibilityState === 'visible') void pullOpenOrders()
     }, 15000)
 
-    return () => {
-      window.clearInterval(poll)
-      void supabase.removeChannel(channel)
-    }
-  }, [storeId, pullOpenOrders])
-
-  useEffect(() => {
-    const supabase = createClient()
-
-    const tablesChannel = supabase
-      .channel(`waiter-tables-${storeId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'store_tables',
-          filter: `store_id=eq.${storeId}`,
-        },
-        () => {
-          void pullTables()
-        }
-      )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') void pullTables()
-      })
-
-    const poll = window.setInterval(() => {
+    const tablesPoll = window.setInterval(() => {
       if (document.visibilityState === 'visible') void pullTables()
     }, 30000)
 
     return () => {
-      window.clearInterval(poll)
-      void supabase.removeChannel(tablesChannel)
+      window.clearInterval(ordersPoll)
+      window.clearInterval(tablesPoll)
+      unsubscribe()
     }
-  }, [storeId, pullTables])
+  }, [storeId, pullOpenOrders, pullTables])
 
   const displayNumberById = useMemo(() => {
     const sorted = [...visibleOpenOrders].sort(
@@ -961,6 +926,7 @@ export function WaiterClient({
       return
     }
     setOpenOrders((prev) => prev.map((x) => (x.id === order.id ? { ...x, status: next } : x)))
+    dispatchStoreOrdersSync({ storeId, source: 'orders', eventType: 'UPDATE' })
   }
 
   async function confirmToTable(order: StoreOrderRow) {
@@ -972,6 +938,7 @@ export function WaiterClient({
       return
     }
     setOpenOrders((prev) => prev.map((x) => (x.id === order.id ? { ...x, status: 'confirmed' } : x)))
+    dispatchStoreOrdersSync({ storeId, source: 'orders', eventType: 'UPDATE' })
   }
 
   function printSavedOrderTicket(order: StoreOrderRow) {
