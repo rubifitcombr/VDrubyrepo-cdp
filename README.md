@@ -13,7 +13,7 @@ App Next.js (painel + cardápio público). Variáveis de ambiente: ver `.env.exa
 O painel **Impressão** (`/dashboard/printing`) guarda URL do agente local, token, IP da impressora e toggles por origem. A API `POST /api/print` gera ESC/POS e envia para o agente (`agent/`), que abre TCP **9100** na impressora.
 
 - **Agente na loja:** na pasta `agent/`, `npm install`, opcional `set AGENT_TOKEN=...` (Windows) ou `export AGENT_TOKEN=...`, depois `node print-agent.js` (porta **3001**, `GET /health`, `POST /print` com header `x-agent-token`). O dispositivo tem de estar na mesma Wi-Fi que a impressora.
-- **Base de dados:** aplica `supabase/migrations/20260513120000_store_thermal_print_agent.sql` para criar as colunas em `stores`.
+- **Base de dados:** as colunas de impressão térmica em `stores` devem existir no Supabase (configuração gerida pela equipa Vyria).
 - **Quando imprime sozinha (toggle ativo + agente configurado):**
   - **Delivery / link / retirada no site** — na **criação** do pedido (`POST /api/public/checkout`). Não volta a imprimir em `POST /api/orders/status` ao passar a «A caminho» (`confirmed`), para evitar cupom duplicado.
   - **QR autoatendimento (mesa)** — na criação em `checkout` (`source: autoatendimento`).
@@ -31,7 +31,7 @@ O plano da loja (`stores.plano`: `start` \| `growth` \| `pro`; o valor legado `m
 
 Campos opcionais de faturação (`billing_*`) podem ser usados para estado de subscrição, URLs de pagamento e histórico de faturas, preenchidos à mão ou por processos internos.
 
-Colunas legadas de gateway/trial na tabela `stores` são removidas pela migration `20260420120000_stores_status_plano_manual.sql`.
+Colunas legadas de gateway/trial na tabela `stores` foram removidas em migrações anteriores na base de dados.
 
 ## Painel admin (`/admin`)
 
@@ -39,9 +39,7 @@ Colunas legadas de gateway/trial na tabela `stores` são removidas pela migratio
 
 ### Base de dados
 
-1. Aplica a migration em `supabase/migrations/20260419120000_admin_usuarios_lojistas.sql` (tabelas `usuarios`, `admin_logs`, colunas em `stores`, trigger em `auth.users`).
-2. Aplica `supabase/migrations/20260420120000_stores_status_plano_manual.sql` (`status`, `plano` como texto, remoção de colunas legadas, índices). Se `plano` for enum `plan_type`, o bloco `DO` cria coluna temporária, faz `UPDATE`, remove o enum e renomeia — não depende de `ALTER TYPE ... USING`.
-3. Opcional: `scripts/admin-backfill-usuarios.sql` para sincronizar utilizadores antigos com `usuarios`.
+O schema do Supabase é gerido directamente no projeto Supabase (Dashboard / SQL). O repositório da app não inclui ficheiros de migração.
 
 **Requisito:** `SUPABASE_SERVICE_ROLE_KEY` no servidor (rotas admin usam service role para listar lojas e gravar logs).
 

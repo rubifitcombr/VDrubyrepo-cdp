@@ -147,7 +147,7 @@ export async function POST(req: NextRequest) {
             error:
               catErr?.message?.includes('categories') ||
               catErr?.message?.includes('category_id')
-                ? 'Executa scripts/supabase-categories.sql no Supabase (tabela categories).'
+                ? 'Executa a configuração de categorias no Supabase (tabela categories). Contacta o suporte Vyria.'
                 : catErr?.message || 'Erro ao criar categoria.',
           },
           { status: 500 }
@@ -196,7 +196,7 @@ export async function POST(req: NextRequest) {
             {
               error:
                 insErr.message?.includes('category_id')
-                  ? 'Coluna category_id em falta — executa scripts/supabase-categories.sql.'
+                  ? 'Coluna category_id em falta na base de dados. Contacta o suporte Vyria.'
                   : insErr.message,
             },
             { status: 500 }

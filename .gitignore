@@ -4,5 +4,6 @@ out
 .env*
 !.env.example
 .migration-export
+supabase/.temp
 *.log
 *.tsbuildinfo

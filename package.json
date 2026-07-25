@@ -7,11 +7,7 @@
     "build": "next build",
     "build:clean": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\" && next build",
     "start": "next start",
-    "lint": "eslint",
-    "test:fiscal": "node scripts/verify-fiscal.mjs",
-    "test:security": "node scripts/security/run-security-tests.mjs",
-    "docs:lp-diagrama": "node scripts/generate-lp-producao-pdf.mjs",
-    "icons:round": "node scripts/generate-round-icons.mjs"
+    "lint": "eslint"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.0",

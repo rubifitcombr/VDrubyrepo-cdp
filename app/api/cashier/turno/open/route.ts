@@ -66,7 +66,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           error:
-            'Tabelas de caixa não encontradas. Aplica a migração SQL em supabase/migrations no teu projeto Supabase.',
+            'Tabelas de caixa não encontradas na base de dados. Contacta o suporte Vyria.',
         },
         { status: 503 }
       )

@@ -86,7 +86,7 @@ export async function insertPublicCheckoutOrder(
       return {
         ok: false,
         error:
-          'Checkout temporariamente indisponível (permissões da base de dados). A equipa Vyria precisa aplicar scripts/supabase-orders-public-rls.sql no Supabase.',
+          'Checkout temporariamente indisponível (permissões da base de dados). Contacta o suporte Vyria.',
       }
     }
     return { ok: false, error: msg || 'Não foi possível criar o pedido.' }

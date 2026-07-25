@@ -230,7 +230,7 @@ export function PrintingClient({
       const msg = upErr.message || ''
       setError(
         /print_|column/i.test(msg) || upErr.code === 'PGRST204'
-          ? 'Aplica a migração SQL em supabase/migrations/20260513120000_store_thermal_print_agent.sql (ou equivalente) no Supabase.'
+          ? 'Configuração de impressão térmica em falta na base de dados. Contacta o suporte Vyria.'
           : msg || 'Não foi possível guardar.'
       )
     }
@@ -249,7 +249,7 @@ export function PrintingClient({
       const msg = upErr.message || ''
       setError(
         /print_paper|column/i.test(msg) || upErr.code === 'PGRST204'
-          ? 'Executa o script scripts/supabase-store-print-paper.sql no Supabase.'
+          ? 'Configuração de impressão em falta na base de dados. Contacta o suporte Vyria.'
           : msg || 'Não foi possível guardar.'
       )
     }
@@ -271,7 +271,7 @@ export function PrintingClient({
       const msg = upErr.message || ''
       setError(
         /print_|column/i.test(msg) || upErr.code === 'PGRST204'
-          ? 'Aplica a migração SQL em supabase/migrations/20260513120000_store_thermal_print_agent.sql no Supabase.'
+          ? 'Configuração de impressão térmica em falta na base de dados. Contacta o suporte Vyria.'
           : msg || 'Não foi possível guardar.'
       )
       return false

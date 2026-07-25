@@ -451,7 +451,7 @@ export default function SettingsPage() {
         error.message.includes('address')
       ) {
         alert(
-          `${error.message}\n\nExecuta scripts/supabase-store-settings-extra.sql no Supabase (e adiciona subtitle na stores, se necessário) para criar colunas em falta.`
+          `${error.message}\n\nColunas em falta na base de dados. Contacta o suporte Vyria.`
         )
       } else {
         alert(error.message)
@@ -481,7 +481,7 @@ export default function SettingsPage() {
     if (!file || !storeId) return
     if (!supportsLogoUrl) {
       alert(
-        'A coluna logo_url ainda não existe. Executa scripts/supabase-product-images-storage.sql no Supabase.'
+        'A coluna logo_url ainda não existe na base de dados. Contacta o suporte Vyria.'
       )
       return
     }
@@ -504,7 +504,7 @@ export default function SettingsPage() {
     if (dbErr) {
       alert(
         dbErr.message?.includes('logo_url') || dbErr.code === 'PGRST204'
-          ? 'Executa o script scripts/supabase-product-images-storage.sql no Supabase (coluna logo_url).'
+          ? 'Coluna logo_url em falta na base de dados. Contacta o suporte Vyria.'
           : dbErr.message || 'Não foi possível guardar o logo.'
       )
       return
@@ -522,7 +522,7 @@ export default function SettingsPage() {
     if (dbErr) {
       alert(
         dbErr.message?.includes('logo_url') || dbErr.code === 'PGRST204'
-          ? 'Executa o script scripts/supabase-product-images-storage.sql no Supabase (coluna logo_url).'
+          ? 'Coluna logo_url em falta na base de dados. Contacta o suporte Vyria.'
           : dbErr.message || 'Não foi possível remover o logo.'
       )
       return
@@ -615,7 +615,7 @@ export default function SettingsPage() {
                 {!supportsLogoUrl ? (
                   <p className="text-xs text-amber-700">
                     A coluna <code>logo_url</code> ainda não existe no teu Supabase — executa{' '}
-                    <code className="rounded bg-amber-100 px-1">scripts/supabase-product-images-storage.sql</code>
+                    Configuração de imagens em falta na base de dados. Contacta o suporte Vyria.
                     .
                   </p>
                 ) : null}
@@ -762,7 +762,7 @@ export default function SettingsPage() {
           ) : null}
           {!supportsPixFields ? (
             <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-              Executa <code className="font-mono">scripts/supabase-store-pix.sql</code> no Supabase
+              Configuração PIX em falta na base de dados. Contacta o suporte Vyria.
               para activar esta secção.
             </p>
           ) : (

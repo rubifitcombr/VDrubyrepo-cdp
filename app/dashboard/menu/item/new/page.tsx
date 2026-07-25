@@ -230,7 +230,7 @@ function MenuItemWizardContent() {
       if (upErr) {
         setSaving(false)
         alert(
-          `${upErr.message}\n\nCria o bucket "product-images" no Supabase (público) e as políticas em scripts/supabase-product-images-storage.sql, ou usa só URL.`
+          `${upErr.message}\n\nCria o bucket "product-images" no Supabase (público) ou usa só URL. Contacta o suporte Vyria se precisares de ajuda.`
         )
         return
       }
@@ -284,7 +284,7 @@ function MenuItemWizardContent() {
       setSaving(false)
       if (error) {
         alert(
-          `${error.message}\n\nSe o erro mencionar coluna inexistente, executa o SQL em scripts/supabase-product-images-storage.sql no Supabase.`
+          `${error.message}\n\nSe o erro mencionar coluna inexistente, contacta o suporte Vyria.`
         )
         return
       }
@@ -328,7 +328,7 @@ function MenuItemWizardContent() {
     setSaving(false)
     if (error) {
       alert(
-        `${error.message}\n\nSe o erro mencionar coluna inexistente, executa o SQL em scripts/supabase-product-images-storage.sql no Supabase.`
+        `${error.message}\n\nSe o erro mencionar coluna inexistente, contacta o suporte Vyria.`
       )
       return
     }

@@ -110,7 +110,7 @@ export function AppearanceThemeClient({
       const msg = dbErr.message || ''
       if (msg.includes('theme_preset') || dbErr.code === 'PGRST204') {
         setError(
-          'Executa o script scripts/supabase-store-theme.sql no Supabase (coluna theme_preset).'
+          'Coluna theme_preset em falta na base de dados. Contacta o suporte Vyria.'
         )
         return
       }
@@ -120,7 +120,7 @@ export function AppearanceThemeClient({
         dbErr.code === 'PGRST204'
       ) {
         setError(
-          'Executa o script scripts/supabase-product-images-storage.sql no Supabase (coluna storefront_banner_url e bucket product-images).'
+          'Configuração de banner em falta na base de dados. Contacta o suporte Vyria.'
         )
         return
       }

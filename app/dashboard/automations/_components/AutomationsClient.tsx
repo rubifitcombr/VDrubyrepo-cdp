@@ -120,7 +120,7 @@ export function AutomationsClient({
       setError(
         /auto_accept|auto_notify|auto_close|column/i.test(msg) ||
           upErr.code === 'PGRST204'
-          ? 'Executa o script scripts/supabase-store-automations.sql no Supabase.'
+          ? 'Configuração de automações em falta na base de dados. Contacta o suporte Vyria.'
           : msg || 'Não foi possível guardar.'
       )
     }

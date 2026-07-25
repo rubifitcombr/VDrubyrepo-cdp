@@ -2,6 +2,7 @@
 
 import { adminPlanOptionsForOperationMode } from '@/lib/admin-plans'
 import { AdminFiscalControl } from '@/app/admin/lojistas/_components/AdminFiscalControl'
+import { AdminLojistaOrdersModal } from '@/app/admin/lojistas/_components/AdminLojistaOrdersModal'
 import {
   ANNUAL_CONTRACT_DISCOUNT_PCT,
   addCalendarMonthsIso,
@@ -217,6 +218,25 @@ function faturaStatusLabel(s: FaturaRow['status']) {
     default:
       return s
   }
+}
+
+function IconClipboardList(props: { className?: string }) {
+  return (
+    <svg
+      className={props.className}
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.5}
+      stroke="currentColor"
+      aria-hidden
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0ZM3.75 12h.007v.008H3.75V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm-.375 5.25h.007v.008H3.75v-.008Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"
+      />
+    </svg>
+  )
 }
 
 function IconReceipt(props: { className?: string }) {
@@ -463,6 +483,7 @@ export function LojistasPageClient() {
   const [confirmBlock, setConfirmBlock] = useState<LojistaRow | null>(null)
   const [confirmCancel, setConfirmCancel] = useState<LojistaRow | null>(null)
   const [confirmPurge, setConfirmPurge] = useState<LojistaRow | null>(null)
+  const [ordersModalRow, setOrdersModalRow] = useState<LojistaRow | null>(null)
   const [purgeConfirmName, setPurgeConfirmName] = useState('')
   const [busyId, setBusyId] = useState<string | null>(null)
   const [busyPurge, setBusyPurge] = useState(false)
@@ -1666,6 +1687,15 @@ export function LojistasPageClient() {
                       )}
                       <button
                         type="button"
+                        disabled={isGhost}
+                        onClick={() => setOrdersModalRow(row)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-[var(--card-border)] bg-white px-2.5 py-1.5 text-[11px] font-semibold text-[#374151] hover:bg-[#f9fafb] disabled:opacity-50"
+                      >
+                        <IconClipboardList className="h-3.5 w-3.5 opacity-70" />
+                        Histórico
+                      </button>
+                      <button
+                        type="button"
                         disabled={busyId === row.id || isGhost}
                         onClick={() => {
                           setFaturaModalRow(row)
@@ -2228,6 +2258,14 @@ export function LojistasPageClient() {
                         </dd>
                       </div>
                     </dl>
+                    <button
+                      type="button"
+                      onClick={() => setOrdersModalRow(drawerLojista)}
+                      className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--card-border)] bg-white px-3 py-2.5 text-xs font-semibold text-[#374151] hover:bg-[#f9fafb]"
+                    >
+                      <IconClipboardList className="h-4 w-4 opacity-70" />
+                      Ver histórico de pedidos
+                    </button>
                   </section>
 
                   <section className="rounded-2xl border border-[var(--card-border)] bg-[#fafafa] p-4">
@@ -2489,6 +2527,13 @@ export function LojistasPageClient() {
           </aside>
         </div>
       ) : null}
+
+      <AdminLojistaOrdersModal
+        open={!!ordersModalRow}
+        storeId={ordersModalRow?.id ?? null}
+        storeName={ordersModalRow?.nome ?? 'Lojista'}
+        onClose={() => setOrdersModalRow(null)}
+      />
     </div>
   )
 }

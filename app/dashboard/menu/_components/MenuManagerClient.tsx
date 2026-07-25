@@ -637,7 +637,7 @@ export function MenuManagerClient({
       setFormSaving(false)
       if (addonErr) {
         alert(
-          `${addonErr.message}\n\nProduto atualizado; adicionais não foram gravados. Executa scripts/supabase-product-addons.sql no Supabase.`
+          `${addonErr.message}\n\nProduto atualizado; adicionais não foram gravados. Contacta o suporte Vyria.`
         )
         void refresh()
         return
@@ -677,7 +677,7 @@ export function MenuManagerClient({
     setFormSaving(false)
     if (addonErr) {
       alert(
-        `${addonErr.message}\n\nProduto criado; executa scripts/supabase-product-addons.sql para gravar adicionais.`
+        `${addonErr.message}\n\nProduto criado; contacta o suporte Vyria para configurar adicionais.`
       )
     }
     closeProductModal()

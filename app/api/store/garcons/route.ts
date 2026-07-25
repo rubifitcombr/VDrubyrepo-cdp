@@ -26,7 +26,7 @@ function garconsDbErrorResponse(msg: string, status = 500) {
     return NextResponse.json(
       {
         error:
-          'Tabela store_garcons não existe. Executa scripts/supabase-store-garcons.sql no Supabase.',
+          'Tabela store_garcons não existe na base de dados. Contacta o suporte Vyria.',
         missingTable: true,
       },
       { status: 503 }

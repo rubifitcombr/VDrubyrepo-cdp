@@ -351,8 +351,8 @@ export function StorePublicQrPanel({
                       ? 'São dois QRs por loja (entrega/retirada vs mesa); entre contas, o slug não se repete — nenhum QR coincide com o de outro lojista.'
                       : 'São dois QRs por loja (este e o de mesa no Garçom); entre contas, o slug é único — o QR não coincide com o de outro lojista.'
                     : isDineIn
-                      ? 'O QR codifica o URL completo (inclui ?auto=1), por isso é diferente do QR das Configurações. Na Vyria, cada slug de loja é único entre contas; conflitos ao gravar são resolvidos automaticamente. Para a base de dados em concorrência, aplica `scripts/supabase-stores-slug-unique.sql` no Supabase.'
-                      : 'O QR codifica o URL exacto (sem modo mesa). Na Vyria, cada slug é único entre contas; o QR de mesa (Garçom) é outro URL no mesmo slug. Para garantir unicidade na base de dados, aplica `scripts/supabase-stores-slug-unique.sql` no Supabase.'}
+                      ? 'O QR codifica o URL completo (inclui ?auto=1), por isso é diferente do QR das Configurações. Na Vyria, cada slug de loja é único entre contas; conflitos ao gravar são resolvidos automaticamente.'
+                      : 'O QR codifica o URL exacto (sem modo mesa). Na Vyria, cada slug é único entre contas; o QR de mesa (Garçom) é outro URL no mesmo slug.'}
                 </p>
               ) : null}
             </>

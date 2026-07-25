@@ -283,9 +283,7 @@ export function GarconsManageClient({
 
       {missingTable ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          A tabela de garçons ainda não existe no banco. Executa{' '}
-          <code className="rounded bg-amber-100 px-1">scripts/supabase-store-garcons.sql</code> no
-          Supabase.
+          A tabela de garçons ainda não existe no banco. Contacta o suporte Vyria.
         </div>
       ) : null}
 
