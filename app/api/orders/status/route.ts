@@ -1,29 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { gateMerchantMenuKey } from '@/lib/merchant-api-gate.server'
+import {
+  isOrderStatusTransitionAllowed,
+  ORDER_STATUS_SET,
+} from '@/lib/order-status-transitions'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
 import { tryAutoCancelNfceForOrder, tryAutoEmitNfceForOrder } from '@/services/fiscal'
 
 export const dynamic = 'force-dynamic'
-
-const STATUS_SET = new Set([
-  'pending',
-  'preparing',
-  'ready',
-  'confirmed',
-  'delivered',
-  'cancelled',
-])
-
-/** Transições permitidas (painel Pedidos / KDS). */
-const ALLOWED_NEXT: Record<string, Set<string>> = {
-  pending: new Set(['preparing', 'cancelled']),
-  preparing: new Set(['ready', 'cancelled']),
-  ready: new Set(['confirmed', 'cancelled']),
-  confirmed: new Set(['delivered', 'cancelled']),
-  delivered: new Set(),
-  cancelled: new Set(),
-}
 
 export async function POST(req: NextRequest) {
   try {
@@ -50,7 +35,7 @@ export async function POST(req: NextRequest) {
     const newStatus =
       typeof body.status === 'string' ? body.status.trim() : ''
 
-    if (!orderId || !newStatus || !STATUS_SET.has(newStatus)) {
+    if (!orderId || !newStatus || !ORDER_STATUS_SET.has(newStatus)) {
       return NextResponse.json(
         { error: 'Pedido ou estado inválido.' },
         { status: 400 }
@@ -61,7 +46,9 @@ export async function POST(req: NextRequest) {
 
     const { data: order, error: fetchErr } = await supabase
       .from('orders')
-      .select('id, store_id, status, customer_phone, customer_name, source')
+      .select(
+        'id, store_id, status, customer_phone, customer_name, source, delivery_address, notes'
+      )
       .eq('id', orderId)
       .eq('store_id', storeId)
       .maybeSingle()
@@ -78,23 +65,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true })
     }
 
-    const src = String((order as { source?: string }).source ?? '').trim().toLowerCase()
-    const waiterToDelivered =
-      (src === 'waiter' || src === 'autoatendimento') &&
-      newStatus === 'delivered' &&
-      ['pending', 'preparing', 'ready', 'confirmed'].includes(current)
-
-    const presencialReadyToDelivered =
-      (src === 'pdv' || src === 'waiter' || src === 'autoatendimento') &&
-      current === 'ready' &&
-      newStatus === 'delivered'
-
-    const allowed = waiterToDelivered
-      ? new Set(['delivered'])
-      : presencialReadyToDelivered
-        ? new Set(['delivered'])
-        : ALLOWED_NEXT[current]
-    if (!allowed || !allowed.has(newStatus)) {
+    if (
+      !isOrderStatusTransitionAllowed(
+        current,
+        newStatus,
+        order as { source?: string | null; delivery_address?: string | null },
+        gate.ctx.store
+      )
+    ) {
       return NextResponse.json(
         { error: 'Transição de estado não permitida.' },
         { status: 409 }

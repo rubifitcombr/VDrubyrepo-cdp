@@ -29,6 +29,10 @@ import {
   loadAddonCatalogForProducts,
   parseCheckoutAddons,
 } from '@/lib/public-checkout-pricing.server'
+import {
+  getStoreOpenState,
+  publicStoreOrdersBlockedMessage,
+} from '@/lib/business-hours'
 import { insertPublicCheckoutOrder } from '@/services/public-checkout-order.server'
 import {
   MENU_PRODUCT_SELECT,
@@ -226,6 +230,19 @@ export async function POST(req: NextRequest) {
     const storeRow = store as StoreDeliveryConfig & {
       id: string
       name?: string | null
+      manual_closed?: boolean | null
+      business_hours?: unknown
+    }
+
+    const { open: storeAcceptsOrders, mode: storeHoursMode } = getStoreOpenState(
+      storeRow.business_hours,
+      { manualClosed: storeRow.manual_closed === true }
+    )
+    if (!storeAcceptsOrders) {
+      return NextResponse.json(
+        { error: publicStoreOrdersBlockedMessage(storeHoursMode) },
+        { status: 403 }
+      )
     }
 
     const priceChannel: ProductPriceChannel =

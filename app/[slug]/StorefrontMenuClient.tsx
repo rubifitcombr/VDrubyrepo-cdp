@@ -539,6 +539,7 @@ export function StorefrontMenuClient({
   }
 
   function incrementProduct(product: StorefrontMenuProduct) {
+    if (!storeOpen) return
     const existing = items.find(
       (item) => item.productId === product.id && !item.addons?.length
     )
@@ -732,14 +733,11 @@ export function StorefrontMenuClient({
                   </div>
       </div>
 
-      {hoursMode === 'manual' && !storeOpen ? (
+      {!storeOpen ? (
         <div className="border-b border-amber-200/80 bg-[#FFF8E7] px-4 py-2.5 text-center text-[13px] font-medium text-amber-950 sm:px-6">
-          Loja fechada no painel — o logista pode reabrir quando quiser.
-        </div>
-      ) : null}
-      {hoursMode === 'scheduled' && !storeOpen ? (
-        <div className="border-b border-amber-200/80 bg-[#FFF8E7] px-4 py-2.5 text-center text-[13px] font-medium text-amber-950 sm:px-6">
-          Fora do horário — ainda podes ver o cardápio; o envio fica ao critério da loja.
+          {hoursMode === 'manual'
+            ? 'Loja fechada — podes ver o cardápio, mas novos pedidos estão indisponíveis.'
+            : 'Fora do horário de funcionamento — podes ver o cardápio, mas novos pedidos estão indisponíveis.'}
         </div>
       ) : null}
 
@@ -993,11 +991,12 @@ export function StorefrontMenuClient({
                                 </span>
                                 <button
                                   type="button"
+                                  disabled={!storeOpen}
                                   onClick={(e) => {
                                     e.stopPropagation()
                                     incrementProduct(p)
                                   }}
-                                  className={autoMode ? 'flex h-6 w-6 items-center justify-center rounded-full text-sm font-bold text-white active:brightness-90' : 'flex h-8 w-8 items-center justify-center rounded-full text-lg font-bold text-white active:brightness-90'}
+                                  className={autoMode ? 'flex h-6 w-6 items-center justify-center rounded-full text-sm font-bold text-white active:brightness-90 disabled:cursor-not-allowed disabled:opacity-40' : 'flex h-8 w-8 items-center justify-center rounded-full text-lg font-bold text-white active:brightness-90 disabled:cursor-not-allowed disabled:opacity-40'}
                                   style={{ backgroundColor: theme.primary }}
                                   aria-label={`Adicionar mais uma unidade de ${p.name}`}
                                 >
@@ -1035,13 +1034,14 @@ export function StorefrontMenuClient({
                                   <span className="min-w-5 text-center text-[10px] font-extrabold tabular-nums text-neutral-900">
                                     {qtyInCart}
                                   </span>
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      incrementProduct(p)
-                                    }}
-                                    className="flex h-6 w-6 items-center justify-center rounded-full text-sm font-bold text-white active:brightness-90"
+                                <button
+                                  type="button"
+                                  disabled={!storeOpen}
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    incrementProduct(p)
+                                  }}
+                                  className="flex h-6 w-6 items-center justify-center rounded-full text-sm font-bold text-white active:brightness-90 disabled:cursor-not-allowed disabled:opacity-40"
                                     style={{ backgroundColor: theme.primary }}
                                     aria-label={`Adicionar mais uma unidade de ${p.name}`}
                                   >
@@ -1051,11 +1051,12 @@ export function StorefrontMenuClient({
                               ) : (
                                 <button
                                   type="button"
+                                  disabled={!storeOpen}
                                   onClick={(e) => {
                                     e.stopPropagation()
                                     incrementProduct(p)
                                   }}
-                                  className="flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 bg-white text-base font-bold shadow-sm active:bg-neutral-100"
+                                  className="flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 bg-white text-base font-bold shadow-sm active:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-40"
                                   style={{ color: theme.primary }}
                                   aria-label={`Adicionar ${p.name}`}
                                 >
@@ -1123,6 +1124,7 @@ export function StorefrontMenuClient({
         <ProductDetailModal
           product={detailProduct}
           theme={theme}
+          storeOpen={storeOpen}
           onClose={() => setDetailProduct(null)}
         />
       ) : null}
@@ -1290,11 +1292,12 @@ export function StorefrontMenuClient({
                     <button
                       type="button"
                       onClick={() => {
+                        if (!storeOpen) return
                         setCartOpen(false)
                         scrollToCheckout()
                         setCheckoutOpenSignal((v) => v + 1)
                       }}
-                      disabled={items.length === 0}
+                      disabled={items.length === 0 || !storeOpen}
                       className="rounded-xl px-4 py-3 text-sm font-semibold text-white shadow-sm transition-[filter] disabled:opacity-50 enabled:active:brightness-[0.88]"
                       style={{ backgroundColor: theme.primary }}
                     >
@@ -1324,6 +1327,8 @@ export function StorefrontMenuClient({
             locationAddress={locationAddress ?? null}
             locationLabel={locationLabel ?? null}
             openSignal={checkoutOpenSignal}
+            storeOpen={storeOpen}
+            hoursMode={hoursMode}
             dineInSelfService={selfServiceFromQr}
             merchantPixConfigured={merchantPixConfigured}
             primaryColor={theme.primary}
@@ -1348,8 +1353,12 @@ export function StorefrontMenuClient({
                 </div>
                 <button
                   type="button"
-                  onClick={() => setCheckoutOpenSignal((v) => v + 1)}
-                  className="h-11 min-w-[86px] shrink-0 rounded-lg border border-neutral-900 bg-white px-3 text-[12px] font-extrabold leading-tight text-neutral-950 active:bg-neutral-100"
+                  onClick={() => {
+                    if (!storeOpen) return
+                    setCheckoutOpenSignal((v) => v + 1)
+                  }}
+                  disabled={!storeOpen}
+                  className="h-11 min-w-[86px] shrink-0 rounded-lg border border-neutral-900 bg-white px-3 text-[12px] font-extrabold leading-tight text-neutral-950 active:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Finalizar<br />→
                 </button>
@@ -1377,6 +1386,8 @@ export function StorefrontMenuClient({
               locationAddress={locationAddress ?? null}
               locationLabel={locationLabel ?? null}
               openSignal={checkoutOpenSignal}
+              storeOpen={storeOpen}
+              hoursMode={hoursMode}
               dineInSelfService={selfServiceFromQr}
               merchantPixConfigured={merchantPixConfigured}
               primaryColor={theme.primary}

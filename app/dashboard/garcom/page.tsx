@@ -1,4 +1,6 @@
 import Link from 'next/link'
+import { createClient } from '@/lib/supabase/server'
+import { getOpenCaixaTurno } from '@/services/caixa-turnos.server'
 import { getUser } from '@/services/auth.server'
 import { getProductStocksForStore } from '@/services/inventory.server'
 import { getMenuProductsForStore } from '@/services/menu.server'
@@ -49,7 +51,8 @@ export default async function GarcomPage({
   const rawPlan = readStorePlano(s)
   const planEffective = effectiveDashboardPlan(user.email ?? null, rawPlan)
 
-  const [products, openOrders, configuredTables, stockMap] = await Promise.all([
+  const [products, openOrders, configuredTables, stockMap, turnoAberto] =
+    await Promise.all([
     getMenuProductsForStore(storeId),
     getWaiterOpenOrdersForStore(storeId),
     getStoreTablesForStore(storeId),
@@ -61,6 +64,9 @@ export default async function GarcomPage({
             { quantity: number; lowStockAlert: number | null; updatedAt: string | null }
           >()
         ),
+    hasFeature(planEffective, 'cashier')
+      ? getOpenCaixaTurno(await createClient(), storeId)
+      : Promise.resolve(null),
   ])
   const stockQuantityByProductId: Record<string, number> = {}
   for (const [pid, row] of stockMap) {
@@ -123,6 +129,7 @@ export default async function GarcomPage({
       printing={printing}
       tablesOnlyView={tablesOnlyView}
       forceWaiterView={forceWaiterView}
+      initialCaixaTurnoOpen={Boolean(turnoAberto)}
     />
   )
 }

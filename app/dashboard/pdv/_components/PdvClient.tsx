@@ -22,7 +22,9 @@ import {
   type PdvCloseMode,
 } from '@/services/pdv'
 import { ComandaSplitPaymentModal } from '@/app/dashboard/caixa/_components/ComandaSplitPaymentModal'
+import { CAIXA_BALCAO_HREF } from '@/lib/caixa-hub-links'
 import type { OrderPaymentLine } from '@/lib/order-payments'
+import { useCaixaTurnoOpen } from '@/lib/use-caixa-turno-open.client'
 
 const money = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
@@ -48,12 +50,15 @@ export function PdvClient({
   storeId,
   initialProducts,
   cashierPanelEnabled,
+  initialCaixaTurnoOpen = false,
 }: {
   storeId: string
   initialProducts: MenuProductRow[]
   /** Plano com módulo Caixa: mostra «Enviar para o Caixa». Sem Caixa (ex.: Start presencial), só receber no balcão. */
   cashierPanelEnabled: boolean
+  initialCaixaTurnoOpen?: boolean
 }) {
+  const caixaTurnoOpen = useCaixaTurnoOpen(storeId, initialCaixaTurnoOpen)
   const [cart, setCart] = useState<CartLine[]>([])
   const [customerName, setCustomerName] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -765,25 +770,23 @@ export function PdvClient({
               </div>
             )}
             {closeMode === 'immediate' ? (
-              <p className="mt-1.5 text-xs text-vyria-navy-muted">
-                {cashierPanelEnabled ? (
-                  <>
-                    Exige{' '}
-                    <Link
-                      href="/dashboard/caixa"
-                      className="font-semibold text-[var(--dash-primary)] underline"
-                    >
-                      turno de caixa aberto
-                    </Link>{' '}
-                    e permissão de Caixa. O pedido fica fechado e pago.
-                  </>
-                ) : (
-                  <>
-                    O pedido fica <strong>concluído e pago</strong> no balcão (sem módulo Caixa neste
-                    plano).
-                  </>
-                )}
-              </p>
+              cashierPanelEnabled && !caixaTurnoOpen ? (
+                <p className="mt-1.5 text-xs text-vyria-navy-muted">
+                  Exige{' '}
+                  <Link
+                    href={CAIXA_BALCAO_HREF}
+                    className="font-semibold text-[var(--dash-primary)] underline"
+                  >
+                    turno de caixa aberto
+                  </Link>{' '}
+                  e permissão de Caixa. O pedido fica fechado e pago.
+                </p>
+              ) : !cashierPanelEnabled ? (
+                <p className="mt-1.5 text-xs text-vyria-navy-muted">
+                  O pedido fica <strong>concluído e pago</strong> no balcão (sem módulo Caixa neste
+                  plano).
+                </p>
+              ) : null
             ) : (
               <p className="mt-1.5 text-xs text-vyria-navy-muted">
                 O pedido fica pendente até alguém fechar no módulo Caixa.

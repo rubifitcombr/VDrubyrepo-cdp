@@ -29,6 +29,7 @@ import {
   notifyStoreOrdersChanged,
   subscribeStoreOrdersSync,
 } from '@/lib/store-operational-realtime.client'
+import { isDeliveryFlowOrder } from '@/lib/order-status-transitions'
 import { updateOrderStatus } from '@/services/orders'
 import { dashboardFetch } from '@/lib/dashboard-fetch.client'
 import { type Plan, hasFeature, merchantEntregadoresEnabled } from '@/lib/plan'
@@ -39,6 +40,10 @@ import {
   parseSectorFromNotes,
   parseTableFromNotes,
 } from '@/lib/waiter-order-notes'
+import {
+  isPresencialComandaActive,
+  isPresencialNaMesaOrder,
+} from '@/lib/presencial-table-orders'
 import {
   ordersDeliveryChannelVisible,
   ordersPresencialChannelVisible,
@@ -184,7 +189,7 @@ function kanbanLabel(id: TabId, channel: ChannelFilter): string {
       case 'preparing':
         return 'Produção'
       case 'ready':
-        return 'Pronto para entrega'
+        return 'Pronto para servir'
       case 'delivered':
         return 'Fechadas'
       case 'delivering':
@@ -205,7 +210,16 @@ function kanbanLabel(id: TabId, channel: ChannelFilter): string {
   }
 }
 
-function statusLabel(status: string | null, deliveryPipeline: boolean): string {
+function statusLabel(
+  status: string | null,
+  deliveryPipeline: boolean,
+  order?: StoreOrderRow,
+  channel?: ChannelFilter
+): string {
+  if (channel === 'presencial' && order && isPresencialNaMesaOrder(order)) {
+    const st = String(order.status ?? '').trim().toLowerCase()
+    if (st === 'delivered' || st === 'confirmed') return 'Na mesa'
+  }
   switch (status) {
     case 'pending':
       return 'Aguardando preparação'
@@ -363,23 +377,6 @@ function pixNeedsWhatsAppProofCheck(order: StoreOrderRow): boolean {
   const method = paymentKind(order.payment_method)
   const status = String(order.payment_status ?? '').trim().toLowerCase()
   return method === 'pix' && status === 'customer_reported'
-}
-
-/** Entrega com endereço (não retirada no balcão / garçom / pickup no site / QR mesa). */
-function isDeliveryFlowOrder(o: StoreOrderRow): boolean {
-  const source = (o.source ?? '').trim().toLowerCase()
-  if (
-    source === 'pdv' ||
-    source === 'waiter' ||
-    source === 'site_pickup' ||
-    source === 'autoatendimento'
-  ) {
-    return false
-  }
-  const addr = (o.delivery_address ?? '').trim()
-  if (!addr) return false
-  if (/^retirada/i.test(addr)) return false
-  return true
 }
 
 function orderChannelLabel(source: string): string {
@@ -739,6 +736,7 @@ function OrderCard({
   orderRef,
   plan,
   deliveryPipelineEnabled,
+  channelFilter,
   busy,
   thermalBusy,
   showManualComandaPrint,
@@ -752,6 +750,7 @@ function OrderCard({
   orderRef: string
   plan: Plan
   deliveryPipelineEnabled: boolean
+  channelFilter: ChannelFilter
   busy: boolean
   thermalBusy: boolean
   showManualComandaPrint: boolean
@@ -843,7 +842,7 @@ function OrderCard({
       id={`order-card-${order.id}`}
       data-order-card
       data-status={st ?? 'unknown'}
-      aria-label={`Pedido ${orderRef}, ${statusLabel(st, deliveryPipelineEnabled)}`}
+      aria-label={`Pedido ${orderRef}, ${statusLabel(st, deliveryPipelineEnabled, order, channelFilter)}`}
       className={`group scroll-mt-28 rounded-xl shadow-sm transition hover:border-slate-300 hover:shadow-md ${statusCardSurfaceClass(st)} ${
         st === 'cancelled' ? 'opacity-70' : ''
       }`}
@@ -861,7 +860,7 @@ function OrderCard({
                 {priority.label}
               </span>
               <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-slate-600 ring-1 ring-slate-200">
-                {statusLabel(st, deliveryPipelineEnabled)}
+                {statusLabel(st, deliveryPipelineEnabled, order, channelFilter)}
               </span>
             </div>
           </div>
@@ -1368,17 +1367,21 @@ export function OrdersClient({
   }, [orders])
 
   const channelCounts = useMemo(() => {
-    const isActive = (o: StoreOrderRow) =>
-      o.status !== 'delivered' && o.status !== 'cancelled'
-    const activeOrders = orders.filter(isActive)
+    const isActive = (o: StoreOrderRow) => {
+      if ((o.status ?? '') === 'cancelled') return false
+      return o.status !== 'delivered' && o.status !== 'cancelled'
+    }
+    const activeOrders = orders.filter((o) => {
+      if ((o.status ?? '') === 'cancelled') return false
+      if (isInPersonOrder(o)) return isPresencialComandaActive(o)
+      return o.status !== 'delivered'
+    })
     const delivery = orders.filter((o) => !isInPersonOrder(o)).length
     const presencial = orders.filter((o) => isInPersonOrder(o)).length
     const deliveryActive = orders.filter(
       (o) => !isInPersonOrder(o) && isActive(o)
     ).length
-    const presencialActive = orders.filter(
-      (o) => isInPersonOrder(o) && isActive(o)
-    ).length
+    const presencialActive = orders.filter((o) => isPresencialComandaActive(o)).length
     const lateActive = orders.filter((o) => {
       if (!isActive(o)) return false
       const expected = Math.max(1, o.entrega_prazo_minutos ?? 20)
@@ -1408,10 +1411,13 @@ export function OrdersClient({
     const pending = channelFilteredOrders.filter((o) => o.status === 'pending').length
     const preparing = channelFilteredOrders.filter((o) => o.status === 'preparing').length
     const ready = channelFilteredOrders.filter((o) => o.status === 'ready').length
-    const delivering = channelFilteredOrders.filter((o) => o.status === 'confirmed').length
+    const delivering =
+      channelFilter === 'presencial'
+        ? channelFilteredOrders.filter((o) => isPresencialNaMesaOrder(o)).length
+        : channelFilteredOrders.filter((o) => o.status === 'confirmed').length
     const delivered = channelFilteredOrders.filter((o) => o.status === 'delivered').length
     return { total, pending, preparing, ready, delivering, delivered }
-  }, [channelFilteredOrders])
+  }, [channelFilter, channelFilteredOrders])
 
   const visibleColumns = useMemo(() => {
     if (channelFilter === 'presencial') {
@@ -1428,14 +1434,30 @@ export function OrdersClient({
       visibleColumns.map((column) => ({
         ...column,
         label: kanbanLabel(column.id, channelFilter),
-        orders: channelFilteredOrders.filter((o) => column.match(o.status)),
+        orders: channelFilteredOrders.filter((o) => {
+          if (channelFilter === 'presencial' && column.id === 'delivering') {
+            return isPresencialNaMesaOrder(o)
+          }
+          if (channelFilter === 'presencial' && column.id !== 'delivering') {
+            return column.match(o.status) && !isPresencialNaMesaOrder(o)
+          }
+          return column.match(o.status)
+        }),
       })),
     [channelFilter, channelFilteredOrders, visibleColumns]
   )
 
   const historyOrders = useMemo(
-    () => channelFilteredOrders.filter((o) => o.status === 'delivered'),
-    [channelFilteredOrders]
+    () =>
+      channelFilteredOrders.filter((o) => {
+        if (channelFilter === 'presencial') {
+          const status = String(o.status ?? '').trim().toLowerCase()
+          if (status !== 'delivered') return false
+          return !isPresencialNaMesaOrder(o)
+        }
+        return o.status === 'delivered'
+      }),
+    [channelFilter, channelFilteredOrders]
   )
 
   const actionOrders = useMemo(
@@ -2210,6 +2232,7 @@ export function OrdersClient({
                   orderRef={`#${displayNumberById.get(order.id) ?? '—'}`}
                   plan={plan}
                   deliveryPipelineEnabled={deliveryPipelineEnabled}
+                  channelFilter={channelFilter}
                   busy={busyId === order.id}
                   thermalBusy={thermalBusyId === order.id}
                   showManualComandaPrint={showManualComandaPrint}

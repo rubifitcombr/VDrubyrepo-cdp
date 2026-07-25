@@ -56,10 +56,12 @@ function ProductThumbPlaceholder({ name }: { name: string }) {
 export function ProductDetailModal({
   product,
   theme,
+  storeOpen = true,
   onClose,
 }: {
   product: StorefrontMenuProduct
   theme: { primary: string; secondary: string }
+  storeOpen?: boolean
   onClose: () => void
 }) {
   const { addItem } = useCart()
@@ -131,7 +133,7 @@ export function ProductDetailModal({
     return true
   }, [groups, selectedQty])
 
-  const canAdd = requiredOk && !loadingAddons
+  const canAdd = storeOpen && requiredOk && !loadingAddons
 
   function changeAddonQty(g: number, i: number, delta: number) {
     const k = pickKey(g, i)
@@ -415,7 +417,9 @@ export function ProductDetailModal({
               background: `linear-gradient(135deg, ${theme.primary}, ${theme.secondary})`,
             }}
           >
-            Adicionar ao carrinho · {money.format(unitTotal * qty)}
+            {storeOpen
+              ? `Adicionar ao carrinho · ${money.format(unitTotal * qty)}`
+              : 'Pedidos indisponíveis no momento'}
           </button>
         </div>
       </div>

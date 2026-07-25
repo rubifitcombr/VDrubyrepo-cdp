@@ -159,6 +159,16 @@ export function getTodayClosingDisplayHM(
   return `${h}:${m}`
 }
 
+/** Mensagem quando o cardápio público não aceita novos pedidos. */
+export function publicStoreOrdersBlockedMessage(
+  mode: 'always' | 'scheduled' | 'manual'
+): string {
+  if (mode === 'manual') {
+    return 'A loja está fechada no momento. Não é possível fazer pedidos pelo link.'
+  }
+  return 'Estamos fora do horário de funcionamento. Não é possível fazer pedidos neste momento.'
+}
+
 export function todayHoursLine(
   businessHoursJson: unknown,
   date = new Date()

@@ -22,6 +22,10 @@ import {
 import type { StorePrintingState } from '@/lib/store-printing'
 import type { StoreOrderRow } from '@/lib/store-order'
 import { mapStoreOrderRow, ORDER_SELECT } from '@/lib/store-order'
+import {
+  isOpenCaixaComanda,
+  orderPaymentRegisteredInCaixa,
+} from '@/lib/cashier-comanda-close'
 import { isPdvWaiterComandaSource } from '@/lib/cashier-pro-delivery-scope'
 import { createClient } from '@/lib/supabase/client'
 import {
@@ -448,17 +452,16 @@ function OperacaoView({
   const shiftBreakdown = useMemo(() => {
     if (!turno || turno.status !== 'aberto') return null
     return aggregateTurnClosedOrders(
-      orders.filter((o) => o.caixa_turno_id === turno.id && o.status === 'delivered'),
+      orders.filter(
+        (o) =>
+          o.caixa_turno_id === turno.id && orderPaymentRegisteredInCaixa(o.notes)
+      ),
       turnoSplitPayments
     )
   }, [orders, turno, turnoSplitPayments])
 
   const openComandas = useMemo(() => {
-    return orders.filter((o) => {
-      if (o.status === 'cancelled' || o.status === 'delivered') return false
-      const src = mapSource(o.source)
-      return src === 'pdv' || src === 'waiter'
-    })
+    return orders.filter((o) => isOpenCaixaComanda(o))
   }, [orders])
 
   const movimentacoesTurnoAtual = turno ? movMap[turno.id] ?? [] : []

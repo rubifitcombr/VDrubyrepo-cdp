@@ -38,6 +38,8 @@ import {
 import { GarcomSessionBadge } from '@/app/dashboard/garcom/_components/GarcomSalaoPinGate'
 import { GarcomMesaComandasPanel, comandaListSubtitle } from '@/app/dashboard/garcom/_components/GarcomMesaComandasPanel'
 import { ComandaSplitPaymentModal } from '@/app/dashboard/caixa/_components/ComandaSplitPaymentModal'
+import { CAIXA_BALCAO_HREF } from '@/lib/caixa-hub-links'
+import { useCaixaTurnoOpen } from '@/lib/use-caixa-turno-open.client'
 import { comandaDisplayName, type OrderPaymentLine } from '@/lib/order-payments'
 import {
   openOrderTicketPrint,
@@ -231,6 +233,7 @@ export function WaiterClient({
   printing,
   tablesOnlyView = false,
   forceWaiterView = false,
+  initialCaixaTurnoOpen = false,
 }: {
   storeId: string
   storeName: string
@@ -247,7 +250,9 @@ export function WaiterClient({
   printing: StorePrintingState
   tablesOnlyView?: boolean
   forceWaiterView?: boolean
+  initialCaixaTurnoOpen?: boolean
 }) {
+  const caixaTurnoOpen = useCaixaTurnoOpen(storeId, initialCaixaTurnoOpen)
   const [tables, setTables] = useState(initialTables)
   const [sectorsEditText, setSectorsEditText] = useState(() => initialSectors.join('\n'))
 
@@ -2207,19 +2212,21 @@ export function WaiterClient({
             </div>
 
             {mesaCloseMode === 'immediate' ? (
-              <div className="mt-3">
-                <p className="text-xs text-[#6b7280]">
-                  Regista no{' '}
-                  <Link
-                    href="/dashboard/caixa"
-                    className="font-semibold text-[var(--dash-primary)] underline"
-                  >
-                    turno de caixa
-                  </Link>{' '}
-                  aberto (exige permissão de Caixa). Lance cada forma de pagamento até completar o
-                  total.
-                </p>
-              </div>
+              hasFeature(plan, 'cashier') && !caixaTurnoOpen ? (
+                <div className="mt-3">
+                  <p className="text-xs text-[#6b7280]">
+                    Regista no{' '}
+                    <Link
+                      href={CAIXA_BALCAO_HREF}
+                      className="font-semibold text-[var(--dash-primary)] underline"
+                    >
+                      turno de caixa
+                    </Link>{' '}
+                    aberto (exige permissão de Caixa). Lance cada forma de pagamento até completar o
+                    total.
+                  </p>
+                </div>
+              ) : null
             ) : (
               <p className="mt-3 text-xs text-[#6b7280]">
                 A mesa fica livre no mapa do Garçom. A conta continua em aberto no Caixa até o pagamento.

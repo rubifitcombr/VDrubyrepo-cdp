@@ -3,6 +3,7 @@ import {
   caixaProDeliveryOnlyScope,
   isPdvWaiterComandaSource,
 } from '@/lib/cashier-pro-delivery-scope'
+import { orderPaymentRegisteredInCaixa } from '@/lib/cashier-comanda-close'
 import { gateMerchantMenuKey } from '@/lib/merchant-api-gate.server'
 import { parseOperationModeFromStore } from '@/lib/merchant-operation-mode'
 import {
@@ -141,9 +142,15 @@ export async function POST(request: Request) {
   }
 
   const status = String(order.status ?? '').trim().toLowerCase()
-  if (status === 'cancelled' || status === 'delivered') {
+  if (status === 'cancelled') {
     return NextResponse.json(
       { error: 'Comanda já encerrada.' },
+      { status: 409 }
+    )
+  }
+  if (orderPaymentRegisteredInCaixa(order.notes as string | null)) {
+    return NextResponse.json(
+      { error: 'Pagamento já registado para esta comanda.' },
       { status: 409 }
     )
   }

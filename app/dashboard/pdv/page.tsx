@@ -3,6 +3,8 @@ import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
 import { hasFeature } from '@/lib/plan'
 import { readStorePlano } from '@/lib/store-columns'
 import { getUser } from '@/services/auth.server'
+import { createClient } from '@/lib/supabase/server'
+import { getOpenCaixaTurno } from '@/services/caixa-turnos.server'
 import { getPdvProductsForStore } from '@/services/pdv.server'
 import { getStoreByUser } from '@/services/store.server'
 import { PdvClient } from './_components/PdvClient'
@@ -36,13 +38,19 @@ export default async function PdvPage() {
   const row = store as Record<string, unknown>
   const plan = effectiveDashboardPlan(user.email, readStorePlano(row))
   const cashierPanelEnabled = hasFeature(plan, 'cashier')
-  const initialProducts = await getPdvProductsForStore(storeId)
+  const [initialProducts, turnoAberto] = await Promise.all([
+    getPdvProductsForStore(storeId),
+    cashierPanelEnabled
+      ? getOpenCaixaTurno(await createClient(), storeId)
+      : Promise.resolve(null),
+  ])
 
   return (
     <PdvClient
       storeId={storeId}
       initialProducts={initialProducts}
       cashierPanelEnabled={cashierPanelEnabled}
+      initialCaixaTurnoOpen={Boolean(turnoAberto)}
     />
   )
 }
