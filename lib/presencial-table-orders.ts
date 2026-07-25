@@ -2,16 +2,18 @@ import { orderPaymentRegisteredInCaixa } from '@/lib/cashier-comanda-close'
 import {
   isSalonMapOrderSource,
   notesIndicateWaiterReleasedToCaixa,
-  parseTableFromNotes,
+  parseTableFromOrder,
 } from '@/lib/waiter-order-notes'
 
-/** Pedido de mesa (garçom ou QR salão). */
+/** Pedido de mesa (garçom ou QR salão) com mesa identificável. */
 export function isTableSalonOrder(order: {
+  status?: string | null
   source?: string | null
   notes?: string | null
+  delivery_address?: string | null
 }): boolean {
-  if (isSalonMapOrderSource(order.source)) return true
-  return Boolean(parseTableFromNotes(order.notes))
+  if (!isSalonMapOrderSource(order.source)) return false
+  return Boolean(parseTableFromOrder(order))
 }
 
 /** Comanda de mesa ainda sem pagamento registado. */
@@ -19,6 +21,7 @@ export function isOpenTableComanda(order: {
   status?: string | null
   source?: string | null
   notes?: string | null
+  delivery_address?: string | null
 }): boolean {
   const status = String(order.status ?? '').trim().toLowerCase()
   if (status === 'cancelled') return false
@@ -33,6 +36,7 @@ export function isPresencialNaMesaOrder(order: {
   status?: string | null
   source?: string | null
   notes?: string | null
+  delivery_address?: string | null
 }): boolean {
   if (!isOpenTableComanda(order)) return false
   if (notesIndicateWaiterReleasedToCaixa(order.notes)) return false
@@ -45,6 +49,7 @@ export function isWaiterSalonOpenOrder(order: {
   status?: string | null
   source?: string | null
   notes?: string | null
+  delivery_address?: string | null
 }): boolean {
   if (!isOpenTableComanda(order)) return false
   if (notesIndicateWaiterReleasedToCaixa(order.notes)) return false
@@ -62,6 +67,7 @@ export function isPresencialComandaActive(order: {
   status?: string | null
   source?: string | null
   notes?: string | null
+  delivery_address?: string | null
 }): boolean {
   const source = String(order.source ?? '').trim().toLowerCase()
   const isPresencialSource =

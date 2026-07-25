@@ -120,8 +120,17 @@ export function kitchenReadyActionLabel(
   deliveryPipelineEnabled: boolean,
   entregadoresEnabled = false
 ): string {
-  return statusAfterKitchenReady(order, deliveryPipelineEnabled, entregadoresEnabled) ===
-    'confirmed'
-    ? 'Saiu / entrega'
-    : 'Servido'
+  if (dispatchHandledInPedidos(order, deliveryPipelineEnabled, entregadoresEnabled)) {
+    return 'Saiu / entrega'
+  }
+  if (deliveryPipelineEnabled && isDeliveryFlowOrder(order)) {
+    return 'Saiu para entrega'
+  }
+  const source = String(order.source ?? '').trim().toLowerCase()
+  if (source === 'waiter' || source === 'autoatendimento') {
+    return 'Servido na mesa'
+  }
+  if (source === 'pdv') return 'Pronto no balcão'
+  if (source === 'site_pickup') return 'Pronto p/ retirada'
+  return 'Servido'
 }

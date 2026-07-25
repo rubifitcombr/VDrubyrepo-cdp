@@ -38,8 +38,9 @@ import { slugChannelSourcesForSupabaseIn } from '@/lib/slug-channel-orders'
 import {
   extractUserNotes,
   parseSectorFromNotes,
-  parseTableFromNotes,
+  parseTableFromOrder,
 } from '@/lib/waiter-order-notes'
+import { comandaDisplayName } from '@/lib/order-payments'
 import {
   isPresencialComandaActive,
   isPresencialNaMesaOrder,
@@ -325,16 +326,22 @@ function orderDisplayLocation(o: StoreOrderRow): {
   title: string
   detail?: string
 } {
-  const table = parseTableFromNotes(o.notes)
+  const table = parseTableFromOrder(o)
   const sector = parseSectorFromNotes(o.notes)
   const source = (o.source ?? '').trim().toLowerCase()
   const address = o.delivery_address?.trim()
 
   if (table) {
     const normalizedTable = table.replace(/^mesa\s+/i, '').trim() || table
-    const detail =
-      sector && !/^sal[aã]o$/i.test(sector.trim()) ? sector.trim() : undefined
-    return { title: `Mesa ${normalizedTable}`, detail }
+    const sectorLabel =
+      sector && !/^sal[aã]o$/i.test(sector.trim()) ? sector.trim() : null
+    const comanda = comandaDisplayName(o.customer_name, '')
+    const titleParts = [`Mesa ${normalizedTable}`]
+    if (sectorLabel) titleParts.push(sectorLabel)
+    return {
+      title: titleParts.join(' · '),
+      detail: comanda || undefined,
+    }
   }
 
   if (address && /^mesa\b/i.test(address)) {

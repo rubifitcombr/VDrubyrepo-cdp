@@ -10,11 +10,25 @@ import {
   type StoreOrderRow,
 } from '@/lib/store-order'
 import type { StorePrintingState } from '@/lib/store-printing'
-import { openOrderTicketAutoPrintOnConfirm } from '@/lib/order-print-window'
+import {
+  openOrderTicketAutoPrintOnConfirm,
+  orderTicketVariantFromSource,
+} from '@/lib/order-print-window'
 import {
   notifyStoreOrdersChanged,
   subscribeStoreOrdersSync,
 } from '@/lib/store-operational-realtime.client'
+import {
+  type KdsChannelFilter,
+  isKdsKitchenQueueOrder,
+  kdsChannelBadgeClass,
+  kdsKitchenChannel,
+  kdsKitchenChannelLabel,
+  kdsKitchenFilterGroup,
+  kdsOrderMatchesChannelFilter,
+  kdsOrderSubtitle,
+  KDS_KITCHEN_STATUSES,
+} from '@/lib/kds-order-display'
 import { updateOrderStatus } from '@/services/orders'
 import {
   kitchenReadyActionLabel,
@@ -61,14 +75,35 @@ export function KdsClient({
   entregadoresEnabled?: boolean
 }) {
   const [orders, setOrders] = useState<StoreOrderRow[]>(initialOrders)
+  const [channelFilter, setChannelFilter] = useState<KdsChannelFilter>('all')
   const [busyId, setBusyId] = useState<string | null>(null)
   const [liveOk, setLiveOk] = useState(false)
   const [waNotice, setWaNotice] = useState<string | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const waNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  const kitchenOrders = useMemo(
+    () => orders.filter(isKdsKitchenQueueOrder),
+    [orders]
+  )
+
+  const filteredKitchenOrders = useMemo(
+    () => kitchenOrders.filter((o) => kdsOrderMatchesChannelFilter(o, channelFilter)),
+    [channelFilter, kitchenOrders]
+  )
+
+  const channelCounts = useMemo(() => {
+    let delivery = 0
+    let presencial = 0
+    for (const o of kitchenOrders) {
+      if (kdsKitchenFilterGroup(kdsKitchenChannel(o)) === 'delivery') delivery += 1
+      else presencial += 1
+    }
+    return { all: kitchenOrders.length, delivery, presencial }
+  }, [kitchenOrders])
+
   const displayNumberById = useMemo(() => {
-    const sorted = [...orders].sort(
+    const sorted = [...filteredKitchenOrders].sort(
       (a, b) =>
         new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
     )
@@ -77,7 +112,7 @@ export function KdsClient({
       m.set(o.id, String(i + 1).padStart(3, '0'))
     })
     return m
-  }, [orders])
+  }, [filteredKitchenOrders])
 
   const byColumn = useMemo(() => {
     const map: Record<Col, StoreOrderRow[]> = {
@@ -85,7 +120,7 @@ export function KdsClient({
       preparing: [],
       ready: [],
     }
-    for (const o of orders) {
+    for (const o of filteredKitchenOrders) {
       const st = o.status
       for (const c of COLS) {
         if (c.match(st)) {
@@ -101,7 +136,7 @@ export function KdsClient({
       )
     }
     return map
-  }, [orders])
+  }, [filteredKitchenOrders])
 
   const pullOrders = useCallback(async () => {
     const supabase = createClient()
@@ -109,7 +144,9 @@ export function KdsClient({
       .from('orders')
       .select(ORDER_SELECT)
       .eq('store_id', storeId)
+      .in('status', [...KDS_KITCHEN_STATUSES])
       .order('created_at', { ascending: false })
+      .limit(300)
     if (error || !data) return
     setOrders(
       (data as Record<string, unknown>[])
@@ -169,8 +206,11 @@ export function KdsClient({
       return
     }
     setOrders((prev) =>
-      prev.map((o) => (o.id === orderId ? { ...o, status } : o))
+      prev
+        .map((o) => (o.id === orderId ? { ...o, status } : o))
+        .filter(isKdsKitchenQueueOrder)
     )
+    notifyStoreOrdersChanged(storeId, { eventType: 'UPDATE' })
     if (
       status === 'preparing' &&
       printing.print_auto_on_confirm &&
@@ -190,7 +230,7 @@ export function KdsClient({
             print_delivery_copy: printing.print_delivery_copy,
             print_paper_mm: printing.print_paper_mm,
           },
-          variant: 'kitchen',
+          variant: orderTicketVariantFromSource(orderBefore.source, orderBefore),
         },
         printing
       )
@@ -207,6 +247,12 @@ export function KdsClient({
     if (!el) return
     void el.requestFullscreen?.().catch(() => {})
   }
+
+  const filterTabs: { id: KdsChannelFilter; label: string; count: number }[] = [
+    { id: 'all', label: 'Todos', count: channelCounts.all },
+    { id: 'delivery', label: 'Delivery', count: channelCounts.delivery },
+    { id: 'presencial', label: 'Presencial', count: channelCounts.presencial },
+  ]
 
   return (
     <div
@@ -236,6 +282,9 @@ export function KdsClient({
               </span>
             )}
           </div>
+          <p className="mt-1 text-xs text-white/45">
+            Cozinha unificada — delivery e presencial sincronizados com Pedidos e Garçom.
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Link
@@ -243,6 +292,12 @@ export function KdsClient({
             className="rounded-xl border border-white/20 bg-white/5 px-3 py-2 text-sm font-semibold text-white hover:bg-white/10"
           >
             Pedidos
+          </Link>
+          <Link
+            href="/dashboard/garcom"
+            className="rounded-xl border border-white/20 bg-white/5 px-3 py-2 text-sm font-semibold text-white hover:bg-white/10"
+          >
+            Garçom
           </Link>
           <button
             type="button"
@@ -253,6 +308,26 @@ export function KdsClient({
           </button>
         </div>
       </header>
+
+      <div className="border-b border-white/10 px-3 py-2 md:px-4">
+        <div className="flex flex-wrap gap-2">
+          {filterTabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setChannelFilter(tab.id)}
+              className={`rounded-xl px-3 py-2 text-xs font-bold uppercase tracking-wide ring-1 transition ${
+                channelFilter === tab.id
+                  ? 'bg-white text-black ring-white'
+                  : 'bg-white/5 text-white/75 ring-white/15 hover:bg-white/10'
+              }`}
+            >
+              {tab.label}
+              <span className="ml-1.5 tabular-nums opacity-80">({tab.count})</span>
+            </button>
+          ))}
+        </div>
+      </div>
 
       {waNotice ? (
         <div
@@ -302,31 +377,51 @@ export function KdsClient({
                   const busy = busyId === o.id
                   const items =
                     o.items_summary?.trim() || 'Sem resumo de itens.'
+                  const channel = kdsKitchenChannel(o)
+                  const channelLabel = kdsKitchenChannelLabel(channel)
+                  const subtitle = kdsOrderSubtitle(o)
+                  const needsPedidosDispatch =
+                    col.id === 'ready' &&
+                    !kitchenReadyAdvancesFromReady(
+                      o,
+                      deliveryPipelineEnabled,
+                      entregadoresEnabled
+                    )
                   return (
                     <li
                       key={o.id}
                       className="rounded-xl border border-white/10 bg-black/30 p-3 shadow-sm"
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <span className="text-lg font-black text-[var(--dash-primary)]">
-                          {ref}
-                        </span>
-                        <span className="text-sm font-bold tabular-nums text-emerald-300">
+                        <div className="min-w-0">
+                          <span className="text-lg font-black text-[var(--dash-primary)]">
+                            {ref}
+                          </span>
+                          <span
+                            className={`ml-2 inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ring-1 ${kdsChannelBadgeClass(channel)}`}
+                          >
+                            {channelLabel}
+                          </span>
+                        </div>
+                        <span className="shrink-0 text-sm font-bold tabular-nums text-emerald-300">
                           {money.format(parseTotal(o.total))}
                         </span>
                       </div>
+                      <p className="mt-1.5 truncate text-xs font-semibold text-white/65">
+                        {subtitle}
+                      </p>
                       <p className="mt-2 line-clamp-4 text-sm leading-snug text-white/85">
                         {items}
                       </p>
-                      <div className="mt-3 flex flex-wrap gap-2">
+                      <div className="mt-3 flex flex-col gap-2">
                         {col.id === 'pending' ? (
                           <button
                             type="button"
                             disabled={busy}
                             onClick={() => void patch(o.id, 'preparing')}
-                            className="flex-1 rounded-lg bg-amber-500 px-3 py-2.5 text-sm font-bold text-black min-[480px]:flex-none"
+                            className="w-full rounded-lg bg-amber-500 px-3 py-2.5 text-sm font-bold text-black"
                           >
-                            Cozinhar
+                            {busy ? '…' : 'Cozinhar'}
                           </button>
                         ) : null}
                         {col.id === 'preparing' ? (
@@ -334,17 +429,20 @@ export function KdsClient({
                             type="button"
                             disabled={busy}
                             onClick={() => void patch(o.id, 'ready')}
-                            className="flex-1 rounded-lg bg-emerald-500 px-3 py-2.5 text-sm font-bold text-black min-[480px]:flex-none"
+                            className="w-full rounded-lg bg-emerald-500 px-3 py-2.5 text-sm font-bold text-black"
                           >
-                            Pronto
+                            {busy ? '…' : 'Pronto'}
                           </button>
                         ) : null}
                         {col.id === 'ready' ? (
-                          kitchenReadyAdvancesFromReady(
-                            o,
-                            deliveryPipelineEnabled,
-                            entregadoresEnabled
-                          ) ? (
+                          needsPedidosDispatch ? (
+                            <Link
+                              href="/dashboard/orders"
+                              className="flex w-full items-center justify-center rounded-lg border border-sky-400/40 bg-sky-500/15 px-3 py-2.5 text-center text-xs font-bold text-sky-100 hover:bg-sky-500/25"
+                            >
+                              Despachar em Pedidos →
+                            </Link>
+                          ) : (
                             <button
                               type="button"
                               disabled={busy}
@@ -358,18 +456,16 @@ export function KdsClient({
                                   )
                                 )
                               }
-                              className="flex-1 rounded-lg bg-sky-500 px-3 py-2.5 text-sm font-bold text-white min-[480px]:flex-none"
+                              className="w-full rounded-lg bg-sky-500 px-3 py-2.5 text-sm font-bold text-white"
                             >
-                              {kitchenReadyActionLabel(
-                                o,
-                                deliveryPipelineEnabled,
-                                entregadoresEnabled
-                              )}
+                              {busy
+                                ? '…'
+                                : kitchenReadyActionLabel(
+                                    o,
+                                    deliveryPipelineEnabled,
+                                    entregadoresEnabled
+                                  )}
                             </button>
-                          ) : (
-                            <p className="flex-1 rounded-lg border border-dashed border-white/20 px-2 py-2 text-center text-[11px] font-medium text-white/55">
-                              Despachar em Pedidos
-                            </p>
                           )
                         ) : null}
                       </div>

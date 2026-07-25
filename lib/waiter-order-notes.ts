@@ -25,6 +25,18 @@ export function parseTableFromNotes(notes: string | null | undefined): string | 
   return m?.[1]?.trim() || null
 }
 
+/** Mesa identificável nas notas ou, em legado, em `delivery_address` («Mesa 12»). */
+export function parseTableFromOrder(order: {
+  notes?: string | null
+  delivery_address?: string | null
+}): string | null {
+  const fromNotes = parseTableFromNotes(order.notes)
+  if (fromNotes) return fromNotes
+  const addr = String(order.delivery_address ?? '').trim()
+  const m = addr.match(/^mesa\s+(.+)$/i)
+  return m?.[1]?.trim() || null
+}
+
 /** Normaliza rótulo de mesa para comparar "12", "Mesa 12", "mesa 12". */
 export function normalizeTableLabel(value: string): string {
   return String(value ?? '')
@@ -51,12 +63,12 @@ function isDefaultSalonSector(sector: string): boolean {
 
 /** Associa comanda aberta à célula do mapa (nome + ambiente). */
 export function orderMatchesSalonTable(
-  o: { notes?: string | null; source?: string | null },
+  o: { notes?: string | null; source?: string | null; delivery_address?: string | null },
   tableName: string,
   ambiente: string,
   configuredTables: { name: string; ambiente: string }[] = []
 ): boolean {
-  const tn = parseTableFromNotes(o.notes) || ''
+  const tn = parseTableFromOrder(o) || ''
   if (!tableNamesMatch(tn, tableName)) return false
 
   const orderSector = parseSectorFromNotes(o.notes)

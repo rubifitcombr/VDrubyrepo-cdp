@@ -34,7 +34,7 @@ export default async function KdsPage() {
   }
 
   const storeId = store.id as string
-  const initialOrders = await getStoreOrders(storeId)
+  const initialOrders = await getStoreOrders(storeId, { kitchenOnly: true, limit: 300 })
   const row = store as Record<string, unknown>
   const storeName =
     typeof row.name === 'string' ? String(row.name) : 'Loja'
