@@ -363,8 +363,8 @@ export function PdvClient({
           <div className="rounded-xl border border-emerald-500/40 bg-emerald-600 px-4 py-3 text-center text-sm font-semibold text-white shadow-lg shadow-emerald-900/20">
             {successKind === 'immediate'
               ? cashierPanelEnabled
-                ? 'Pagamento registado no turno de caixa. Comanda fechada.'
-                : 'Pagamento registado. Comanda fechada.'
+                ? 'Pagamento registado no turno de caixa. Pedido enviado para preparação.'
+                : 'Pagamento registado. Pedido enviado para preparação.'
               : 'Comanda enviada ao Caixa para fecho e pagamento.'}
             {fiscalHint ? (
               <span className="mt-1 block text-xs font-medium text-emerald-50/95">

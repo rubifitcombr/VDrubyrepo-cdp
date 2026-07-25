@@ -231,7 +231,7 @@ export async function POST(request: Request) {
     store_id: storeId,
     customer_name: customerName,
     total,
-    status: closeMode === 'immediate' ? 'delivered' : 'pending',
+    status: 'pending',
     source: 'pdv',
     payment_method: closeMode === 'immediate' ? paymentMethod : null,
     items_summary: itemsSummary,

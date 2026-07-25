@@ -44,6 +44,7 @@ import {
   isPresencialComandaActive,
   isPresencialNaMesaOrder,
 } from '@/lib/presencial-table-orders'
+import { orderPaymentRegisteredInCaixa } from '@/lib/cashier-comanda-close'
 import {
   ordersDeliveryChannelVisible,
   ordersPresencialChannelVisible,
@@ -771,6 +772,7 @@ function OrderCard({
   const userNotes = extractUserNotes(order.notes)
   const isTrocoNote = Boolean(userNotes && /troco/i.test(userNotes))
   const payKind = paymentKind(order.payment_method)
+  const paidInAdvance = orderPaymentRegisteredInCaixa(order.notes)
   const showPaymentHighlight = payKind === 'pix' || payKind === 'card'
   const showPixProofWarning = pixNeedsWhatsAppProofCheck(order)
   const source = (order.source ?? '').trim().toLowerCase()
@@ -896,6 +898,16 @@ function OrderCard({
                 </span>
                 <IconCreditCard className="h-4 w-4 shrink-0 text-slate-400" />
                 <span className="whitespace-nowrap">{payment}</span>
+              </>
+            ) : null}
+            {paidInAdvance ? (
+              <>
+                <span aria-hidden className="px-0.5 text-slate-300">
+                  ·
+                </span>
+                <span className="whitespace-nowrap rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-emerald-800 ring-1 ring-emerald-200">
+                  Pago
+                </span>
               </>
             ) : null}
             {order.entregador_nome ? (
