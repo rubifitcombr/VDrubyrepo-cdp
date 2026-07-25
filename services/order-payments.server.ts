@@ -27,7 +27,7 @@ export async function insertOrderPayments(
       return {
         ok: false,
         error:
-          'Tabela order_payments em falta. Aplica a migração 20260720140000_order_split_payments.sql no Supabase.',
+          'Tabela order_payments em falta. Aplica a migração supabase/migrations/20260725190002_pedidos_schema.sql no Supabase.',
       }
     }
     return { ok: false, error: msg || 'Não foi possível gravar os pagamentos.' }

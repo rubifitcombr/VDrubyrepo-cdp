@@ -83,6 +83,8 @@ export type ReportFinanceData = {
 
 export type ReportsDashboardData = {
   hasEnoughData: boolean
+  /** Pedidos / itens em falta no banco (schema incompleto). */
+  missingOrdersSchema?: boolean
   insights: string[]
   recommendations: string[]
   performance: {

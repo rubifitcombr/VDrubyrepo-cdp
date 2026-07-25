@@ -2,8 +2,12 @@ import { orderPaymentRegisteredInCaixa } from '@/lib/cashier-comanda-close'
 import {
   isSalonMapOrderSource,
   notesIndicateWaiterReleasedToCaixa,
+  orderMapsToConfiguredSalonTable,
   parseTableFromOrder,
+  type SalonMapTableRef,
 } from '@/lib/waiter-order-notes'
+
+export type { SalonMapTableRef }
 
 /** Pedido de mesa (garçom ou QR salão) com mesa identificável. */
 export function isTableSalonOrder(order: {
@@ -31,28 +35,47 @@ export function isOpenTableComanda(order: {
 
 const MESA_SERVED_STATUSES = new Set(['confirmed', 'delivered'])
 
-/** Coluna «Na mesa»: comanda de mesa já servida, ainda sem pagamento (não está na cozinha). */
-export function isPresencialNaMesaOrder(order: {
-  status?: string | null
-  source?: string | null
-  notes?: string | null
-  delivery_address?: string | null
-}): boolean {
+function mapsToSalonLayout(
+  order: {
+    notes?: string | null
+    source?: string | null
+    delivery_address?: string | null
+  },
+  configuredTables?: SalonMapTableRef[]
+): boolean {
+  return orderMapsToConfiguredSalonTable(order, configuredTables ?? [])
+}
+
+/** Coluna «Na mesa»: comanda servida na mesa do mapa, ainda sem pagamento. */
+export function isPresencialNaMesaOrder(
+  order: {
+    status?: string | null
+    source?: string | null
+    notes?: string | null
+    delivery_address?: string | null
+  },
+  configuredTables?: SalonMapTableRef[]
+): boolean {
   if (!isOpenTableComanda(order)) return false
   if (notesIndicateWaiterReleasedToCaixa(order.notes)) return false
+  if (!mapsToSalonLayout(order, configuredTables)) return false
   const status = String(order.status ?? '').trim().toLowerCase()
   return MESA_SERVED_STATUSES.has(status)
 }
 
 /** Comanda de mesa visível no mapa do Garçom (cozinha ou servida, sem pagamento). */
-export function isWaiterSalonOpenOrder(order: {
-  status?: string | null
-  source?: string | null
-  notes?: string | null
-  delivery_address?: string | null
-}): boolean {
+export function isWaiterSalonOpenOrder(
+  order: {
+    status?: string | null
+    source?: string | null
+    notes?: string | null
+    delivery_address?: string | null
+  },
+  configuredTables?: SalonMapTableRef[]
+): boolean {
   if (!isOpenTableComanda(order)) return false
   if (notesIndicateWaiterReleasedToCaixa(order.notes)) return false
+  if (!mapsToSalonLayout(order, configuredTables)) return false
   const status = String(order.status ?? '').trim().toLowerCase()
   return (
     status === 'pending' ||
@@ -60,6 +83,27 @@ export function isWaiterSalonOpenOrder(order: {
     status === 'ready' ||
     MESA_SERVED_STATUSES.has(status)
   )
+}
+
+const PEDIDOS_CANCEL_STATUSES = new Set([
+  'pending',
+  'preparing',
+  'ready',
+  'confirmed',
+])
+
+/** Comanda/pedido que pode ser cancelado no painel Pedidos. */
+export function canCancelOrderFromPedidos(order: {
+  status?: string | null
+  source?: string | null
+  notes?: string | null
+  delivery_address?: string | null
+}): boolean {
+  const status = String(order.status ?? '').trim().toLowerCase()
+  if (status === 'cancelled') return false
+  if (orderPaymentRegisteredInCaixa(order.notes)) return false
+  if (isPresencialComandaActive(order)) return true
+  return PEDIDOS_CANCEL_STATUSES.has(status)
 }
 
 /** Comanda presencial ainda activa (inclui «na mesa» com status entregue). */

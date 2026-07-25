@@ -112,7 +112,7 @@ async function ensureStoreForOwner(
       storeId: null,
       created: false,
       error: missingCol
-        ? 'Coluna operation_mode em falta na base de dados. Contacta o suporte Vyria.'
+        ? 'Coluna operation_mode em falta na base de dados. Aplica supabase/migrations/20260725190010_configuracoes_schema.sql no Supabase.'
         : msg,
     }
   }

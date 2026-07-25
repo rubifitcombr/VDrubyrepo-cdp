@@ -53,9 +53,16 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (stErr || !storeRow) {
+    const msg = stErr?.message || 'Loja não encontrada.'
+    const missingSchema =
+      /print_|column|schema cache|does not exist/i.test(msg)
     return NextResponse.json(
-      { error: stErr?.message || 'Loja não encontrada.' },
-      { status: 404 }
+      {
+        error: missingSchema
+          ? 'Schema de impressão em falta. Aplica supabase/migrations/20260725190014_impressao_schema.sql no Supabase.'
+          : msg,
+      },
+      { status: missingSchema ? 500 : 404 }
     )
   }
 

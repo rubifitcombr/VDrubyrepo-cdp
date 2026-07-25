@@ -128,9 +128,11 @@ export function GarconsReportClient({ pinsConfigured }: { pinsConfigured: boolea
 
       {report?.missingColumns ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          Colunas de garçom em pedidos ainda não existem. Executa{' '}
-          <code className="rounded bg-amber-100 px-1">supabase/garcons-orders.sql</code> no
-          Supabase.
+          Colunas de garçom em pedidos ainda não existem. Aplica a migração{' '}
+          <code className="rounded bg-amber-100 px-1">
+            supabase/migrations/20260725190004_garcons_schema.sql
+          </code>{' '}
+          no Supabase.
         </div>
       ) : null}
 

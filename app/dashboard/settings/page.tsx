@@ -451,7 +451,7 @@ export default function SettingsPage() {
         error.message.includes('address')
       ) {
         alert(
-          `${error.message}\n\nColunas em falta na base de dados. Contacta o suporte Vyria.`
+          `${error.message}\n\nColunas em falta na base de dados. Aplica supabase/migrations/20260725190010_configuracoes_schema.sql no Supabase.`
         )
       } else {
         alert(error.message)
@@ -481,7 +481,7 @@ export default function SettingsPage() {
     if (!file || !storeId) return
     if (!supportsLogoUrl) {
       alert(
-        'A coluna logo_url ainda não existe na base de dados. Contacta o suporte Vyria.'
+        'Coluna logo_url em falta. Aplica supabase/migrations/20260725190010_configuracoes_schema.sql no Supabase.'
       )
       return
     }
@@ -504,7 +504,7 @@ export default function SettingsPage() {
     if (dbErr) {
       alert(
         dbErr.message?.includes('logo_url') || dbErr.code === 'PGRST204'
-          ? 'Coluna logo_url em falta na base de dados. Contacta o suporte Vyria.'
+          ? 'Coluna logo_url em falta. Aplica supabase/migrations/20260725190010_configuracoes_schema.sql no Supabase.'
           : dbErr.message || 'Não foi possível guardar o logo.'
       )
       return
@@ -522,7 +522,7 @@ export default function SettingsPage() {
     if (dbErr) {
       alert(
         dbErr.message?.includes('logo_url') || dbErr.code === 'PGRST204'
-          ? 'Coluna logo_url em falta na base de dados. Contacta o suporte Vyria.'
+          ? 'Coluna logo_url em falta. Aplica supabase/migrations/20260725190010_configuracoes_schema.sql no Supabase.'
           : dbErr.message || 'Não foi possível remover o logo.'
       )
       return
@@ -614,9 +614,8 @@ export default function SettingsPage() {
                 ) : null}
                 {!supportsLogoUrl ? (
                   <p className="text-xs text-amber-700">
-                    A coluna <code>logo_url</code> ainda não existe no teu Supabase — executa{' '}
-                    Configuração de imagens em falta na base de dados. Contacta o suporte Vyria.
-                    .
+                    A coluna <code>logo_url</code> ainda não existe no teu Supabase — aplica{' '}
+                    <code>supabase/migrations/20260725190010_configuracoes_schema.sql</code>.
                   </p>
                 ) : null}
               </div>
@@ -762,8 +761,8 @@ export default function SettingsPage() {
           ) : null}
           {!supportsPixFields ? (
             <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-              Configuração PIX em falta na base de dados. Contacta o suporte Vyria.
-              para activar esta secção.
+              Configuração PIX em falta na base de dados. Aplica{' '}
+              <code>supabase/migrations/20260725190010_configuracoes_schema.sql</code> no Supabase.
             </p>
           ) : (
             <div
@@ -858,8 +857,8 @@ export default function SettingsPage() {
           ) : null}
           {!supportsLocationFields ? (
             <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-              As colunas de localização ainda não existem no banco. Execute a migration de
-              localização da tabela <code>stores</code>.
+              As colunas de localização ainda não existem no banco. Aplica{' '}
+              <code>supabase/migrations/20260725190010_configuracoes_schema.sql</code> no Supabase.
             </p>
           ) : null}
           <div className="mt-4 flex items-center justify-between gap-3 rounded-xl border border-[var(--card-border)] bg-[#fafafa] px-4 py-3">
@@ -941,8 +940,8 @@ export default function SettingsPage() {
           </p>
           {!supportsHubPins ? (
             <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-              As colunas dos PINs ainda não existem no banco. Execute a migration
-              dos PINs dos atalhos do hub.
+              As colunas dos PINs ainda não existem no banco. Aplica{' '}
+              <code>supabase/migrations/20260725190010_configuracoes_schema.sql</code> no Supabase.
             </p>
           ) : null}
           <div className="mt-5 grid gap-3 md:grid-cols-2">

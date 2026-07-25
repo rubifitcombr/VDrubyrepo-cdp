@@ -227,7 +227,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           error:
-            'Coluna caixa_turno_id em orders em falta. Aplica a migração SQL do caixa no Supabase.',
+            'Coluna caixa_turno_id em orders em falta. Aplica supabase/migrations/20260725190005_pdv_schema.sql no Supabase.',
         },
         { status: 503 }
       )

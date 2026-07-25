@@ -48,7 +48,12 @@ export function DashboardBusinessHoursCard({
     })
     setSaving(false)
     if (error) {
-      alert(error.message)
+      const msg = error.message || ''
+      alert(
+        /column|schema cache|does not exist/i.test(msg)
+          ? `${msg}\n\nAplica supabase/migrations/20260725190010_configuracoes_schema.sql no Supabase.`
+          : msg
+      )
       return
     }
     setSaved(true)

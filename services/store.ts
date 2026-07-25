@@ -176,7 +176,7 @@ export async function updateStore(
     return {
       error: {
         message:
-          'Nenhuma configuração foi atualizada. Verifica políticas RLS da tabela stores e se a loja pertence ao utilizador autenticado (owner_id).',
+          'Nenhuma configuração foi atualizada. Verifica se a loja pertence ao utilizador autenticado (owner_id) e aplica supabase/migrations/20260725190010_configuracoes_schema.sql (RLS em stores).',
         code: 'NO_ROWS_UPDATED',
       },
     }

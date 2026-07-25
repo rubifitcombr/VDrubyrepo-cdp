@@ -147,7 +147,7 @@ export async function POST(req: NextRequest) {
             error:
               catErr?.message?.includes('categories') ||
               catErr?.message?.includes('category_id')
-                ? 'Executa a configuração de categorias no Supabase (tabela categories). Contacta o suporte Vyria.'
+                ? 'Executa a migração supabase/migrations/20260725190001_produtos_schema.sql no Supabase (tabela categories).'
                 : catErr?.message || 'Erro ao criar categoria.',
           },
           { status: 500 }

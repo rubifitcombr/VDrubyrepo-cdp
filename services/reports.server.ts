@@ -300,9 +300,16 @@ async function fetchOrderLines(
   return out
 }
 
-function emptyData(): ReportsDashboardData {
+function isMissingOrdersSchema(message: string): boolean {
+  return /relation|does not exist|schema cache|42P01|orders\.|order_items\./i.test(
+    message
+  )
+}
+
+function emptyData(missingOrdersSchema = false): ReportsDashboardData {
   return {
     hasEnoughData: false,
+    missingOrdersSchema,
     insights: [],
     recommendations: [],
     performance: { today: [], d7: [], d30: [] },
@@ -350,7 +357,11 @@ export async function getReportsDashboardData(
 
   if (error) {
     console.error('[reports] orders:', error.message)
-    return { ...emptyData(), finance: await financePromise }
+    const missingOrders = isMissingOrdersSchema(error.message ?? '')
+    return {
+      ...emptyData(missingOrders),
+      finance: await financePromise,
+    }
   }
 
   const orders = (ordRaw ?? []).filter((r) => !isCancelled(r.status as string))

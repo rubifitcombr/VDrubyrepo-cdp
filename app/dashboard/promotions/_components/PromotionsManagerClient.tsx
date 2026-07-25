@@ -91,15 +91,18 @@ function PromoActiveSwitch({
 export function PromotionsManagerClient({
   storeId,
   initialPromotions,
+  initialMissingTable = false,
   initialProducts,
   initialSuggestion,
 }: {
   storeId: string
   initialPromotions: StorePromotionRow[]
+  initialMissingTable?: boolean
   initialProducts: MenuProductRow[]
   initialSuggestion: PromotionSuggestionDTO | null
 }) {
   const [rows, setRows] = useState<StorePromotionRow[]>(initialPromotions)
+  const [missingTable, setMissingTable] = useState(initialMissingTable)
   const [busyIds, setBusyIds] = useState<Set<string>>(new Set())
   const [wizardOpen, setWizardOpen] = useState(false)
   const [wizardEditing, setWizardEditing] = useState<StorePromotionRow | null>(
@@ -110,14 +113,16 @@ export function PromotionsManagerClient({
     suggestion: PromotionSuggestionDTO
   } | null>(null)
 
+  useEffect(() => {
+    setRows(initialPromotions)
+    setMissingTable(initialMissingTable)
+  }, [initialPromotions, initialMissingTable])
+
   const refresh = useCallback(async () => {
     const data = await getStorePromotionsClient(storeId)
     setRows(data)
+    if (data.length > 0) setMissingTable(false)
   }, [storeId])
-
-  useEffect(() => {
-    setRows(initialPromotions)
-  }, [initialPromotions])
 
   const sortedRows = useMemo(() => {
     return [...rows].sort((a, b) => {
@@ -165,6 +170,9 @@ export function PromotionsManagerClient({
       return n
     })
     if (error) {
+      if (/relation|does not exist|schema cache|42P01|column.*name|column.*active/i.test(error.message)) {
+        setMissingTable(true)
+      }
       alert(error.message)
       return
     }
@@ -200,6 +208,16 @@ export function PromotionsManagerClient({
           + Nova promoção
         </button>
       </header>
+
+      {missingTable ? (
+        <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          A tabela de promoções está desatualizada no banco. Aplica a migração{' '}
+          <code className="rounded bg-amber-100 px-1">
+            supabase/migrations/20260725190008_promocoes_schema.sql
+          </code>{' '}
+          no Supabase.
+        </div>
+      ) : null}
 
       {initialSuggestion ? (
         <div className="mt-8 rounded-2xl border border-violet-200/90 bg-gradient-to-br from-violet-50/95 via-white to-amber-50/40 p-5 shadow-sm sm:p-6">

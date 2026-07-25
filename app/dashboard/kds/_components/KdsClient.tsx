@@ -78,6 +78,7 @@ export function KdsClient({
   const [channelFilter, setChannelFilter] = useState<KdsChannelFilter>('all')
   const [busyId, setBusyId] = useState<string | null>(null)
   const [liveOk, setLiveOk] = useState(false)
+  const [schemaError, setSchemaError] = useState<string | null>(null)
   const [waNotice, setWaNotice] = useState<string | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const waNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -147,7 +148,16 @@ export function KdsClient({
       .in('status', [...KDS_KITCHEN_STATUSES])
       .order('created_at', { ascending: false })
       .limit(300)
-    if (error || !data) return
+    if (error) {
+      if (/column|does not exist|42P01/i.test(error.message)) {
+        setSchemaError(
+          'Colunas de pedidos em falta. Aplica supabase/migrations/20260725190006_kds_schema.sql no Supabase.'
+        )
+      }
+      return
+    }
+    setSchemaError(null)
+    if (!data) return
     setOrders(
       (data as Record<string, unknown>[])
         .map(mapStoreOrderRow)
@@ -259,6 +269,12 @@ export function KdsClient({
       ref={rootRef}
       className="flex min-h-[calc(100vh-4rem)] flex-col bg-[#0f0f0f] text-white"
     >
+      {schemaError ? (
+        <div className="border-b border-amber-500/40 bg-amber-500/15 px-4 py-3 text-sm text-amber-100 md:px-6">
+          {schemaError}
+        </div>
+      ) : null}
+
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-3 md:px-6">
         <div>
           <nav className="text-xs text-white/50">

@@ -56,9 +56,52 @@ export function tableNamesMatch(orderTable: string, configuredName: string): boo
   return false
 }
 
+export type SalonMapTableRef = { name: string; ambiente: string }
+
 function isDefaultSalonSector(sector: string): boolean {
   const s = sector.trim().toLowerCase()
   return s === 'salão' || s === 'salao'
+}
+
+/** Mesas do layout que correspondem à comanda (mesmo critério do mapa do Garçom). */
+export function resolveSalonMapTablesForOrder(
+  o: { notes?: string | null; source?: string | null; delivery_address?: string | null },
+  configuredTables: SalonMapTableRef[] = []
+): SalonMapTableRef[] {
+  const tn = parseTableFromOrder(o)
+  if (!tn || configuredTables.length === 0) return []
+
+  const candidates = configuredTables.filter((t) => tableNamesMatch(tn, t.name))
+  if (candidates.length === 0) return []
+
+  const orderSector = parseSectorFromNotes(o.notes).trim()
+  const orderSectorLower = orderSector.toLowerCase()
+
+  const bySector = candidates.filter(
+    (t) => t.ambiente.trim().toLowerCase() === orderSectorLower
+  )
+  if (bySector.length > 0) return bySector
+
+  if (candidates.length === 1) return candidates
+
+  if (isDefaultSalonSector(orderSector)) {
+    const salonCandidates = candidates.filter((t) =>
+      isDefaultSalonSector(t.ambiente)
+    )
+    if (salonCandidates.length > 0) return salonCandidates
+  }
+
+  return []
+}
+
+/** Comanda com mesa reconhecida no layout configurado (coerente com o mapa). */
+export function orderMapsToConfiguredSalonTable(
+  o: { notes?: string | null; source?: string | null; delivery_address?: string | null },
+  configuredTables: SalonMapTableRef[] = []
+): boolean {
+  if (!parseTableFromOrder(o)) return false
+  if (configuredTables.length === 0) return true
+  return resolveSalonMapTablesForOrder(o, configuredTables).length > 0
 }
 
 /** Associa comanda aberta à célula do mapa (nome + ambiente). */
@@ -66,25 +109,13 @@ export function orderMatchesSalonTable(
   o: { notes?: string | null; source?: string | null; delivery_address?: string | null },
   tableName: string,
   ambiente: string,
-  configuredTables: { name: string; ambiente: string }[] = []
+  configuredTables: SalonMapTableRef[] = []
 ): boolean {
-  const tn = parseTableFromOrder(o) || ''
-  if (!tableNamesMatch(tn, tableName)) return false
-
-  const orderSector = parseSectorFromNotes(o.notes)
-  if (orderSector.trim().toLowerCase() === ambiente.trim().toLowerCase()) return true
-
-  const source = String(o.source ?? '').trim().toLowerCase()
-  if (source !== 'autoatendimento' || !isDefaultSalonSector(orderSector)) return false
-
-  const candidates = configuredTables.filter((t) => tableNamesMatch(tn, t.name))
-  if (candidates.length <= 1) {
-    return (
-      candidates.length === 1 &&
-      candidates[0]!.ambiente.trim().toLowerCase() === ambiente.trim().toLowerCase()
-    )
-  }
-  return isDefaultSalonSector(ambiente)
+  return resolveSalonMapTablesForOrder(o, configuredTables).some(
+    (t) =>
+      tableNamesMatch(t.name, tableName) &&
+      t.ambiente.trim().toLowerCase() === ambiente.trim().toLowerCase()
+  )
 }
 
 export function parseSectorFromNotes(notes: string | null | undefined): string {

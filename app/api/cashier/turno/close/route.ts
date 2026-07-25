@@ -125,6 +125,15 @@ export async function POST(request: Request) {
     .eq('status', 'aberto')
 
   if (upErr) {
+    if (/relation|does not exist|schema cache|42P01/i.test(upErr.message ?? '')) {
+      return NextResponse.json(
+        {
+          error:
+            'Tabelas de caixa em falta. Aplica supabase/migrations/20260725190007_caixa_schema.sql no Supabase.',
+        },
+        { status: 503 }
+      )
+    }
     return NextResponse.json(
       { error: upErr.message ?? 'Não foi possível fechar o turno.' },
       { status: 500 }

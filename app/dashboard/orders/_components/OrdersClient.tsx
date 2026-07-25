@@ -42,9 +42,15 @@ import {
 } from '@/lib/waiter-order-notes'
 import { comandaDisplayName } from '@/lib/order-payments'
 import {
+  canCancelOrderFromPedidos,
   isPresencialComandaActive,
   isPresencialNaMesaOrder,
+  type SalonMapTableRef,
 } from '@/lib/presencial-table-orders'
+import {
+  mapStoreTableRow,
+  STORE_TABLES_SELECT,
+} from '@/lib/store-tables'
 import { orderPaymentRegisteredInCaixa } from '@/lib/cashier-comanda-close'
 import {
   ordersDeliveryChannelVisible,
@@ -216,9 +222,14 @@ function statusLabel(
   status: string | null,
   deliveryPipeline: boolean,
   order?: StoreOrderRow,
-  channel?: ChannelFilter
+  channel?: ChannelFilter,
+  salonMapTables?: SalonMapTableRef[]
 ): string {
-  if (channel === 'presencial' && order && isPresencialNaMesaOrder(order)) {
+  if (
+    channel === 'presencial' &&
+    order &&
+    isPresencialNaMesaOrder(order, salonMapTables)
+  ) {
     const st = String(order.status ?? '').trim().toLowerCase()
     if (st === 'delivered' || st === 'confirmed') return 'Na mesa'
   }
@@ -234,7 +245,7 @@ function statusLabel(
     case 'delivered':
       return 'Entregue'
     case 'cancelled':
-      return 'Recusado'
+      return 'Cancelado'
     default:
       return status?.trim() || '—'
   }
@@ -721,7 +732,7 @@ function useOrdersRealtime(
 
 type OrderCardActions = {
   patchStatus: (orderId: string, status: string) => void
-  reject: (orderId: string) => void
+  reject: (orderId: string, order: StoreOrderRow) => void
   dispatch: (order: StoreOrderRow) => void
   markDelivered: (order: StoreOrderRow) => void
   print: (order: StoreOrderRow) => void
@@ -752,6 +763,7 @@ function OrderCard({
   fiscalActive,
   nfceBusy,
   nfceState,
+  salonMapTables,
   onAction,
 }: {
   order: StoreOrderRow
@@ -766,6 +778,7 @@ function OrderCard({
   fiscalActive: boolean
   nfceBusy: boolean
   nfceState?: NfceState
+  salonMapTables: SalonMapTableRef[]
   onAction: OrderCardActions
 }) {
   const st = order.status
@@ -797,9 +810,14 @@ function OrderCard({
     !orderHasDeliveryRegistration
   const showManualPrintAction =
     showManualComandaPrint && canPrintComandaStatus(st)
+  const isPresencialNaMesa = isPresencialNaMesaOrder(order, salonMapTables)
+  const canCancel = canCancelOrderFromPedidos(order)
+  const cancelActionLabel = isInPersonOrder(order)
+    ? 'Cancelar comanda'
+    : 'Cancelar pedido'
   const isActiveStatus =
     st === 'pending' || st === 'preparing' || st === 'ready' || st === 'confirmed'
-  const showPrimaryStatusAction = isActiveStatus
+  const showPrimaryStatusAction = isActiveStatus && !isPresencialNaMesa
   const showSecondaryWhatsapp = Boolean(st === 'ready' || st === 'confirmed' ? waOut || wa : wa)
   const readyIsDelivery = deliveryPipelineEnabled && isDeliveryFlowOrder(order)
   const showNfce =
@@ -851,7 +869,7 @@ function OrderCard({
       id={`order-card-${order.id}`}
       data-order-card
       data-status={st ?? 'unknown'}
-      aria-label={`Pedido ${orderRef}, ${statusLabel(st, deliveryPipelineEnabled, order, channelFilter)}`}
+      aria-label={`Pedido ${orderRef}, ${statusLabel(st, deliveryPipelineEnabled, order, channelFilter, salonMapTables)}`}
       className={`group scroll-mt-28 rounded-xl shadow-sm transition hover:border-slate-300 hover:shadow-md ${statusCardSurfaceClass(st)} ${
         st === 'cancelled' ? 'opacity-70' : ''
       }`}
@@ -869,7 +887,7 @@ function OrderCard({
                 {priority.label}
               </span>
               <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-slate-600 ring-1 ring-slate-200">
-                {statusLabel(st, deliveryPipelineEnabled, order, channelFilter)}
+                {statusLabel(st, deliveryPipelineEnabled, order, channelFilter, salonMapTables)}
               </span>
             </div>
           </div>
@@ -1024,16 +1042,6 @@ function OrderCard({
                   WhatsApp
                 </a>
               ) : null}
-              {isActiveStatus ? (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => onAction.reject(order.id)}
-                  className={secondaryButtonClass}
-                >
-                  Recusar
-                </button>
-              ) : null}
               {showNfce ? (
                 nfceAuthorized ? (
                   <div className="flex flex-wrap items-center gap-1.5">
@@ -1116,6 +1124,24 @@ function OrderCard({
             </div>
           </div>
         ) : null}
+
+        {canCancel ? (
+          <div className="mt-2 border-t border-slate-50 pt-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onAction.reject(order.id, order)}
+              className="block w-full text-center text-[10px] font-medium text-slate-400 underline-offset-2 opacity-60 transition hover:text-rose-600 hover:underline hover:opacity-100 focus:text-rose-600 focus:underline focus:opacity-100 disabled:cursor-not-allowed disabled:opacity-30"
+              title={
+                isInPersonOrder(order)
+                  ? 'Anular comanda antes do pagamento'
+                  : 'Cancelar pedido em andamento'
+              }
+            >
+              {cancelActionLabel}
+            </button>
+          </div>
+        ) : null}
       </div>
     </li>
   )
@@ -1174,6 +1200,7 @@ export function OrdersClient({
   operationMode = null,
   slugChannelSourcesOnly = false,
   initialChannelFilter = 'delivery',
+  initialSalonTables = [],
 }: {
   initialOrders: StoreOrderRow[]
   storeId: string
@@ -1188,9 +1215,12 @@ export function OrdersClient({
   slugChannelSourcesOnly?: boolean
   /** Hub `?hub=comandas` abre direto no canal presencial (quando disponível). */
   initialChannelFilter?: ChannelFilter
+  /** Mesas do salão — alinha «Na mesa» em Pedidos com o mapa do Garçom. */
+  initialSalonTables?: SalonMapTableRef[]
 }) {
   const showDeliveryChannel = ordersDeliveryChannelVisible(operationMode)
   const showPresencialChannel = ordersPresencialChannelVisible(operationMode)
+  const [salonTables, setSalonTables] = useState<SalonMapTableRef[]>(initialSalonTables)
   const { orders, setOrders, liveOk } = useOrdersRealtime(
     storeId,
     initialOrders,
@@ -1199,6 +1229,46 @@ export function OrdersClient({
   useEffect(() => {
     setOrders(initialOrders)
   }, [initialOrders, setOrders])
+  useEffect(() => {
+    setSalonTables(initialSalonTables)
+  }, [initialSalonTables])
+  useEffect(() => {
+    const supabase = createClient()
+
+    async function pullSalonTables() {
+      const { data, error } = await supabase
+        .from('store_tables')
+        .select(STORE_TABLES_SELECT)
+        .eq('store_id', storeId)
+        .eq('active', true)
+        .order('ambiente', { ascending: true })
+        .order('sort_order', { ascending: true })
+        .order('name', { ascending: true })
+
+      if (error || !data) return
+      setSalonTables(
+        (data as Record<string, unknown>[])
+          .map(mapStoreTableRow)
+          .filter((t) => t.active)
+          .map((t) => ({ name: t.name, ambiente: t.ambiente }))
+      )
+    }
+
+    void pullSalonTables()
+
+    const unsubscribe = subscribeStoreOrdersSync(storeId, (detail) => {
+      if (detail.source === 'store_tables') void pullSalonTables()
+    })
+
+    const poll = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void pullSalonTables()
+    }, 30000)
+
+    return () => {
+      window.clearInterval(poll)
+      unsubscribe()
+    }
+  }, [storeId])
   const [channelFilter, setChannelFilter] = useState<ChannelFilter>(() =>
     resolveOrdersChannelFilter(operationMode, initialChannelFilter)
   )
@@ -1438,11 +1508,13 @@ export function OrdersClient({
     const ready = channelFilteredOrders.filter((o) => o.status === 'ready').length
     const delivering =
       channelFilter === 'presencial'
-        ? channelFilteredOrders.filter((o) => isPresencialNaMesaOrder(o)).length
+        ? channelFilteredOrders.filter((o) =>
+            isPresencialNaMesaOrder(o, salonTables)
+          ).length
         : channelFilteredOrders.filter((o) => o.status === 'confirmed').length
     const delivered = channelFilteredOrders.filter((o) => o.status === 'delivered').length
     return { total, pending, preparing, ready, delivering, delivered }
-  }, [channelFilter, channelFilteredOrders])
+  }, [channelFilter, channelFilteredOrders, salonTables])
 
   const visibleColumns = useMemo(() => {
     if (channelFilter === 'presencial') {
@@ -1461,15 +1533,15 @@ export function OrdersClient({
         label: kanbanLabel(column.id, channelFilter),
         orders: channelFilteredOrders.filter((o) => {
           if (channelFilter === 'presencial' && column.id === 'delivering') {
-            return isPresencialNaMesaOrder(o)
+            return isPresencialNaMesaOrder(o, salonTables)
           }
           if (channelFilter === 'presencial' && column.id !== 'delivering') {
-            return column.match(o.status) && !isPresencialNaMesaOrder(o)
+            return column.match(o.status) && !isPresencialNaMesaOrder(o, salonTables)
           }
           return column.match(o.status)
         }),
       })),
-    [channelFilter, channelFilteredOrders, visibleColumns]
+    [channelFilter, channelFilteredOrders, visibleColumns, salonTables]
   )
 
   const historyOrders = useMemo(
@@ -1478,11 +1550,11 @@ export function OrdersClient({
         if (channelFilter === 'presencial') {
           const status = String(o.status ?? '').trim().toLowerCase()
           if (status !== 'delivered') return false
-          return !isPresencialNaMesaOrder(o)
+          return !isPresencialNaMesaOrder(o, salonTables)
         }
         return o.status === 'delivered'
       }),
-    [channelFilter, channelFilteredOrders]
+    [channelFilter, channelFilteredOrders, salonTables]
   )
 
   const actionOrders = useMemo(
@@ -1595,8 +1667,14 @@ export function OrdersClient({
     printComanda(o)
   }
 
-  async function patchStatus(orderId: string, status: string) {
+  async function patchStatus(
+    orderId: string,
+    status: string,
+    options?: { presencial?: boolean }
+  ) {
     const orderBefore = orders.find((o) => o.id === orderId)
+    const presencial =
+      options?.presencial ?? Boolean(orderBefore && isInPersonOrder(orderBefore))
     setBusyId(orderId)
     const { error, fiscal } = await updateOrderStatus(orderId, status, { storeId })
     setBusyId(null)
@@ -1607,7 +1685,11 @@ export function OrdersClient({
     setOrders((prev) =>
       prev.map((o) => (o.id === orderId ? { ...o, status } : o))
     )
+    if (status === 'cancelled') {
+      notifyStoreOrdersChanged(storeId, { eventType: 'UPDATE' })
+    }
     if (status === 'cancelled' && fiscal?.attempted) {
+      const cancelledLabel = presencial ? 'Comanda cancelada' : 'Pedido cancelado'
       if (fiscal.ok) {
         setNfceStateById((prev) => {
           const next = new Map(prev)
@@ -1622,14 +1704,16 @@ export function OrdersClient({
           })
           return next
         })
-        flashWaNotice('Pedido recusado. NFC-e cancelada.')
+        flashWaNotice(`${cancelledLabel}. NFC-e cancelada.`)
       } else {
         flashWaNotice(
-          `Pedido recusado, mas a NFC-e não foi cancelada: ${
+          `${cancelledLabel}, mas a NFC-e não foi cancelada: ${
             fiscal.motivo || 'erro desconhecido'
           }. Use «Cancelar NFC-e» se ainda estiver no prazo.`
         )
       }
+    } else if (status === 'cancelled') {
+      flashWaNotice(presencial ? 'Comanda cancelada.' : 'Pedido cancelado.')
     }
     if (
       status === 'preparing' &&
@@ -1855,9 +1939,24 @@ export function OrdersClient({
     }
   }
 
-  function confirmReject(orderId: string) {
-    if (!confirm('Recusar este pedido?')) return
-    void patchStatus(orderId, 'cancelled')
+  function confirmReject(orderId: string, order: StoreOrderRow) {
+    const presencial = isInPersonOrder(order)
+    const ref = displayNumberById.get(orderId) ?? '—'
+    const total = money.format(Number(order.total) || 0)
+    const msg = presencial
+      ? `Cancelar a comanda #${ref} (${total})?\n\nEla deixa de contar na mesa e não pode ser reaberta.`
+      : `Cancelar o pedido #${ref} (${total})?\n\nEsta ação não pode ser desfeita. Avise o cliente se necessário.`
+    if (!confirm(msg)) return
+    const typed = window.prompt(
+      `Para confirmar, escreva CANCELAR (pedido #${ref}):`
+    )
+    if (typed?.trim().toUpperCase() !== 'CANCELAR') {
+      if (typed !== null) {
+        flashWaNotice('Cancelamento não confirmado.')
+      }
+      return
+    }
+    void patchStatus(orderId, 'cancelled', { presencial })
   }
 
   async function emitNfce(order: StoreOrderRow) {
@@ -2280,6 +2379,7 @@ export function OrdersClient({
                   fiscalActive={fiscalActive}
                   nfceBusy={nfceBusyId === order.id}
                   nfceState={nfceStateById.get(order.id)}
+                  salonMapTables={salonTables}
                   onAction={{
                     patchStatus: (orderId, status) =>
                       void patchStatus(orderId, status),

@@ -117,10 +117,14 @@ export function AutomationsClient({
     if (upErr) {
       setValues((v) => ({ ...v, [key]: prev }))
       const msg = upErr.message || ''
+      const missingSchema =
+        /auto_accept|auto_notify|auto_close|plano_atualizado|column|schema cache|does not exist/i.test(
+          msg
+        ) || upErr.code === 'PGRST204'
+      const rlsBlocked = upErr.code === 'NO_ROWS_UPDATED'
       setError(
-        /auto_accept|auto_notify|auto_close|column/i.test(msg) ||
-          upErr.code === 'PGRST204'
-          ? 'Colunas de automações em falta na base de dados. Aplica a migração supabase/migrations/20260725140000_stores_automations_columns.sql no SQL Editor do Supabase.'
+        missingSchema || rlsBlocked
+          ? `${msg || 'Não foi possível guardar.'}\n\nAplica supabase/migrations/20260725190013_automacoes_schema.sql no Supabase.`
           : msg || 'Não foi possível guardar.'
       )
     }
@@ -154,7 +158,7 @@ export function AutomationsClient({
 
       {error ? (
         <p
-          className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+          className="mt-4 whitespace-pre-line rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
           role="alert"
         >
           {error}

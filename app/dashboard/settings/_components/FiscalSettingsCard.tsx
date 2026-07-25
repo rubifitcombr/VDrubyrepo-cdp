@@ -127,6 +127,8 @@ export function FiscalSettingsCard({
           cscId: '',
           cscToken: '',
         })
+      } else if (!res.ok && data.error) {
+        setMsg(data.error)
       }
     } finally {
       setLoading(false)

@@ -77,6 +77,20 @@ async function requireCashierAccess() {
   return { ok: true as const, storeId: gate.ctx.storeId }
 }
 
+function financeiroDbErrorResponse(msg: string) {
+  if (/relation|does not exist|schema cache|42P01/i.test(msg)) {
+    return NextResponse.json(
+      {
+        error:
+          'Tabelas do Financeiro em falta. Aplica supabase/migrations/20260725190016_financeiro_schema.sql no Supabase.',
+        missingTable: true,
+      },
+      { status: 503 }
+    )
+  }
+  return NextResponse.json({ error: msg }, { status: 500 })
+}
+
 export async function GET() {
   const access = await requireCashierAccess()
   if (!access.ok) return access.response
@@ -155,7 +169,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, entry })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Erro'
-    return NextResponse.json({ error: msg }, { status: 500 })
+    return financeiroDbErrorResponse(msg)
   }
 }
 
@@ -184,7 +198,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ ok: true, entry })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Erro'
-    return NextResponse.json({ error: msg }, { status: 500 })
+    return financeiroDbErrorResponse(msg)
   }
 }
 
@@ -210,6 +224,6 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'Recurso inválido.' }, { status: 400 })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Erro'
-    return NextResponse.json({ error: msg }, { status: 500 })
+    return financeiroDbErrorResponse(msg)
   }
 }

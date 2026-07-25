@@ -2,6 +2,7 @@ import {
   isDeliveryPipelineEnabled,
   parseOperationModeFromStore,
 } from '@/lib/merchant-operation-mode'
+import { canCancelOrderFromPedidos } from '@/lib/presencial-table-orders'
 
 export const ORDER_STATUS_SET = new Set([
   'pending',
@@ -45,10 +46,18 @@ export function isDeliveryFlowOrder(order: {
 export function isOrderStatusTransitionAllowed(
   current: string,
   newStatus: string,
-  order: { source?: string | null; delivery_address?: string | null },
+  order: {
+    source?: string | null
+    delivery_address?: string | null
+    notes?: string | null
+  },
   store?: Record<string, unknown> | null
 ): boolean {
   if (current === newStatus) return true
+
+  if (newStatus === 'cancelled') {
+    return canCancelOrderFromPedidos({ ...order, status: current })
+  }
 
   const src = String(order.source ?? '').trim().toLowerCase()
   const pipeline = isDeliveryPipelineEnabled(

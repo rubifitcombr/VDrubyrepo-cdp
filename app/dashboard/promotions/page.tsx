@@ -3,7 +3,7 @@ import { PromotionsManagerClient } from './_components/PromotionsManagerClient'
 import { getUser } from '@/services/auth.server'
 import { getMenuProductsForStore } from '@/services/menu.server'
 import { getPromotionSuggestionsForStore } from '@/services/promo-suggestions.server'
-import { getStorePromotions } from '@/services/promotions.server'
+import { getStorePromotionsPageData } from '@/services/promotions.server'
 import { getStoreByUser } from '@/services/store.server'
 
 export default async function PromotionsPage() {
@@ -31,16 +31,18 @@ export default async function PromotionsPage() {
   }
 
   const storeId = store.id as string
-  const [initial, products, suggestion] = await Promise.all([
-    getStorePromotions(storeId),
-    getMenuProductsForStore(storeId),
-    getPromotionSuggestionsForStore(storeId),
-  ])
+  const [{ promotions: initial, missingTable: initialMissingTable }, products, suggestion] =
+    await Promise.all([
+      getStorePromotionsPageData(storeId),
+      getMenuProductsForStore(storeId),
+      getPromotionSuggestionsForStore(storeId),
+    ])
 
   return (
     <PromotionsManagerClient
       storeId={storeId}
       initialPromotions={initial}
+      initialMissingTable={initialMissingTable}
       initialProducts={products}
       initialSuggestion={suggestion}
     />

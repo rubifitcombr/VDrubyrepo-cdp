@@ -32,6 +32,19 @@ type DiscoveredPrinter = {
   model?: string | null
 }
 
+const PRINT_SCHEMA_MIGRATION =
+  'supabase/migrations/20260725190014_impressao_schema.sql'
+
+function printSchemaError(msg: string, code?: string): string | null {
+  if (
+    /print_|column|schema cache|does not exist/i.test(msg) ||
+    code === 'PGRST204' ||
+    code === 'NO_ROWS_UPDATED'
+  ) {
+    return `${msg || 'Configuração de impressão em falta.'}\n\nAplica ${PRINT_SCHEMA_MIGRATION} no Supabase.`
+  }
+  return null
+}
 function diagnosticMessage(error: string | undefined, code?: string, detail?: string): string {
   if (error) return detail ? `${error} (${detail})` : error
   if (code === 'agent_offline') return 'Agente offline ou URL incorreta.'
@@ -229,9 +242,7 @@ export function PrintingClient({
       setValues((v) => ({ ...v, [key]: prev }))
       const msg = upErr.message || ''
       setError(
-        /print_|column/i.test(msg) || upErr.code === 'PGRST204'
-          ? 'Configuração de impressão térmica em falta na base de dados. Contacta o suporte Vyria.'
-          : msg || 'Não foi possível guardar.'
+        printSchemaError(msg, upErr.code) ?? msg || 'Não foi possível guardar.'
       )
     }
   }
@@ -248,9 +259,7 @@ export function PrintingClient({
       setValues((v) => ({ ...v, print_paper_mm: prev }))
       const msg = upErr.message || ''
       setError(
-        /print_paper|column/i.test(msg) || upErr.code === 'PGRST204'
-          ? 'Configuração de impressão em falta na base de dados. Contacta o suporte Vyria.'
-          : msg || 'Não foi possível guardar.'
+        printSchemaError(msg, upErr.code) ?? msg || 'Não foi possível guardar.'
       )
     }
   }
@@ -270,9 +279,7 @@ export function PrintingClient({
     if (upErr) {
       const msg = upErr.message || ''
       setError(
-        /print_|column/i.test(msg) || upErr.code === 'PGRST204'
-          ? 'Configuração de impressão térmica em falta na base de dados. Contacta o suporte Vyria.'
-          : msg || 'Não foi possível guardar.'
+        printSchemaError(msg, upErr.code) ?? msg || 'Não foi possível guardar.'
       )
       return false
     }
@@ -562,7 +569,7 @@ export function PrintingClient({
 
       {error ? (
         <p
-          className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+          className="whitespace-pre-line rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
           role="alert"
         >
           {error}

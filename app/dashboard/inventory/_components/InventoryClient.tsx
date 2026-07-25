@@ -184,10 +184,15 @@ export function InventoryClient({ initialRows }: { initialRows: Row[] }) {
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) {
-        setError(
+        const errMsg =
           typeof json.error === 'string'
             ? json.error
             : 'Não foi possível guardar.'
+        setError(
+          /store_product_stock|does not exist|schema cache/i.test(errMsg) &&
+            !errMsg.includes('20260725190015')
+            ? `${errMsg}\n\nAplica supabase/migrations/20260725190015_estoque_schema.sql no Supabase.`
+            : errMsg
         )
         return
       }
@@ -302,7 +307,7 @@ export function InventoryClient({ initialRows }: { initialRows: Row[] }) {
 
       {error ? (
         <div
-          className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+          className="whitespace-pre-line rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
           role="alert"
         >
           {error}

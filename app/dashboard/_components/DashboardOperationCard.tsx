@@ -119,7 +119,7 @@ export function DashboardOperationCard({
         error.message.includes('delivery') ||
           error.message.includes('geo') ||
           error.message.includes('column')
-          ? `${error.message}\n\nColunas em falta na base de dados. Contacta o suporte Vyria.`
+          ? `${error.message}\n\nColunas em falta na base de dados. Aplica supabase/migrations/20260725190010_configuracoes_schema.sql no Supabase.`
           : error.message
       )
       return

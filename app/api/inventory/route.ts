@@ -93,7 +93,7 @@ export async function PUT(request: Request) {
       return NextResponse.json(
         {
           error:
-            'Estrutura de estoque em falta ou desatualizada na base de dados. Aplica a migração supabase/migrations/20260725160000_store_product_stock_schema.sql no SQL Editor do Supabase.',
+            'Estrutura de estoque em falta ou desatualizada na base de dados. Aplica supabase/migrations/20260725190015_estoque_schema.sql no Supabase.',
         },
         { status: 503 }
       )

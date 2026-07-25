@@ -130,8 +130,11 @@ export function EntregadoresManagePanel() {
       </p>
       {entregadoresMissing ? (
         <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-          Tabelas de entregadores ainda não criadas. Executa o script SQL de entregadores no
-          Supabase.
+          Tabelas de entregadores ainda não criadas. Aplica a migração{' '}
+          <code className="rounded bg-amber-100 px-0.5">
+            supabase/migrations/20260725190003_entregadores_schema.sql
+          </code>{' '}
+          no Supabase.
         </p>
       ) : null}
 

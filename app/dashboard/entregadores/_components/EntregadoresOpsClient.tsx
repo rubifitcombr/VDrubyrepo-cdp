@@ -268,8 +268,10 @@ export function EntregadoresOpsClient({ storeId }: { storeId: string }) {
     <div className="space-y-6">
       {payload?.missingColumns ? (
         <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          Migração operacional pendente. Executa{' '}
-          <code className="rounded bg-amber-100 px-1 text-xs">20260609180000_delivery_ops.sql</code>{' '}
+          Migração operacional pendente. Aplica{' '}
+          <code className="rounded bg-amber-100 px-1 text-xs">
+            supabase/migrations/20260725190003_entregadores_schema.sql
+          </code>{' '}
           no Supabase para despacho e painel completo.
         </p>
       ) : null}

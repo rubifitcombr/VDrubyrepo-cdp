@@ -139,7 +139,17 @@ export async function POST(req: NextRequest) {
     .from('store_fiscal_config')
     .upsert(patch, { onConflict: 'store_id' })
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    const msg = error.message || ''
+    const missingSchema =
+      /store_fiscal_config|column|schema cache|does not exist/i.test(msg)
+    return NextResponse.json(
+      {
+        error: missingSchema
+          ? 'Schema fiscal em falta. Aplica supabase/migrations/20260725190011_fiscal_schema.sql no Supabase.'
+          : msg,
+      },
+      { status: 500 }
+    )
   }
 
   return NextResponse.json({ ok: true, status: patch.status })

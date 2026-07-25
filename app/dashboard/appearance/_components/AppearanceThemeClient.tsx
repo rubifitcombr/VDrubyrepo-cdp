@@ -108,19 +108,20 @@ export function AppearanceThemeClient({
 
     if (dbErr) {
       const msg = dbErr.message || ''
-      if (msg.includes('theme_preset') || dbErr.code === 'PGRST204') {
+      if (
+        msg.includes('theme_preset') ||
+        msg.includes('storefront_banner_url') ||
+        dbErr.code === 'PGRST204' ||
+        /column|schema cache|does not exist/i.test(msg)
+      ) {
         setError(
-          'Coluna theme_preset em falta na base de dados. Contacta o suporte Vyria.'
+          `${msg || 'Colunas de aparência em falta.'}\n\nAplica supabase/migrations/20260725190012_aparencia_schema.sql no Supabase.`
         )
         return
       }
-      if (
-        msg.includes('storefront_banner_url') ||
-        msg.includes('banner') ||
-        dbErr.code === 'PGRST204'
-      ) {
+      if (msg.includes('banner')) {
         setError(
-          'Configuração de banner em falta na base de dados. Contacta o suporte Vyria.'
+          `${msg}\n\nAplica supabase/migrations/20260725190012_aparencia_schema.sql no Supabase.`
         )
         return
       }
@@ -175,7 +176,7 @@ export function AppearanceThemeClient({
 
       {error ? (
         <p
-          className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+          className="mt-4 whitespace-pre-line rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
           role="alert"
         >
           {error}

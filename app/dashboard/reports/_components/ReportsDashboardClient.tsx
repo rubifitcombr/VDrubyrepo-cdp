@@ -122,7 +122,11 @@ function FinanceBlock({ data }: { data: ReportsDashboardData }) {
 
       {finance.missingTable ? (
         <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-          Aplica a migração do Financeiro para os relatórios exibirem lançamentos e fornecedores.
+          Aplica a migração{' '}
+          <code className="rounded bg-amber-100 px-1">
+            supabase/migrations/20260725190016_financeiro_schema.sql
+          </code>{' '}
+          no Supabase para exibir lançamentos e fornecedores.
         </p>
       ) : !finance.hasData ? (
         <p className="mt-4 text-sm text-[#9ca3af]">Sem lançamentos financeiros cadastrados ainda.</p>
@@ -626,11 +630,27 @@ export function ReportsDashboardClient({
         <ReportsExportButton data={data} allowExport={canExportPdf} />
       </header>
 
+      {data.missingOrdersSchema ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          Schema de pedidos incompleto para relatórios. Aplica{' '}
+          <code className="rounded bg-amber-100 px-1">
+            supabase/migrations/20260725190009_relatorios_schema.sql
+          </code>{' '}
+          no Supabase.
+        </div>
+      ) : null}
+
       {!data.hasEnoughData ? (
         <>
           <div className="rounded-2xl border border-dashed border-[var(--card-border)] bg-white px-6 py-14 text-center text-sm text-[#6b7280]">
-            Ainda há poucos pedidos para gerar relatórios. Com pelo menos{' '}
-            <strong>3 pedidos</strong> nos últimos dias, aparecem gráficos e insights aqui.
+            {data.missingOrdersSchema
+              ? 'Não foi possível carregar pedidos para os relatórios. Verifica a migração acima.'
+              : (
+                <>
+                  Ainda há poucos pedidos para gerar relatórios. Com pelo menos{' '}
+                  <strong>3 pedidos</strong> nos últimos dias, aparecem gráficos e insights aqui.
+                </>
+              )}
           </div>
           <FinanceBlock data={data} />
         </>

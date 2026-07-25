@@ -13,12 +13,17 @@ import {
   isWaiterSalonOpenOrder,
 } from '@/lib/presencial-table-orders'
 import { createClient } from '@/lib/supabase/server'
+import { getStoreTablesForStore } from '@/services/waiter-tables.server'
 
 const OPEN_STATUSES = ['pending', 'preparing', 'ready', 'confirmed', 'delivered']
 
 export async function getWaiterOpenOrdersForStore(
   storeId: string
 ): Promise<StoreOrderRow[]> {
+  const configuredTables = (await getStoreTablesForStore(storeId)).map((t) => ({
+    name: t.name,
+    ambiente: t.ambiente,
+  }))
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('orders')
@@ -38,7 +43,7 @@ export async function getWaiterOpenOrdersForStore(
       (o) =>
         isSalonMapOrderSource(o.source) &&
         orderIsVisibleAfterPixConfirmation(o) &&
-        isWaiterSalonOpenOrder(o)
+        isWaiterSalonOpenOrder(o, configuredTables)
     )
 }
 

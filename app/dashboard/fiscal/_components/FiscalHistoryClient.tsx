@@ -117,7 +117,13 @@ export function FiscalHistoryClient({
         invoices?: HistoryInvoice[]
       }
       if (!res.ok) {
-        setError(json.error || 'Não foi possível carregar o histórico.')
+        setError(
+          /fiscal_invoices|store_fiscal_config|column|schema cache|does not exist/i.test(
+            json.error || ''
+          )
+            ? `${json.error || 'Não foi possível carregar o histórico.'}\n\nAplica supabase/migrations/20260725190011_fiscal_schema.sql no Supabase.`
+            : json.error || 'Não foi possível carregar o histórico.'
+        )
         setInvoices([])
         return
       }
@@ -305,7 +311,7 @@ export function FiscalHistoryClient({
       ) : null}
 
       {error ? (
-        <p className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+        <p className="mt-4 whitespace-pre-line rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
           {error}
         </p>
       ) : null}

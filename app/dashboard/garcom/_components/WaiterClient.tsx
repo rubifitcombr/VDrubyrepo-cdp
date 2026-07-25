@@ -144,11 +144,14 @@ function canPrintComandaStatus(status: string | null | undefined): boolean {
   return s === 'pending' || s === 'preparing' || s === 'ready' || s === 'confirmed'
 }
 
-function isOpenSalonMapOrder(order: StoreOrderRow): boolean {
+function isOpenSalonMapOrder(
+  order: StoreOrderRow,
+  configuredTables: { name: string; ambiente: string }[]
+): boolean {
   return (
     isSalonMapOrderSource(order.source) &&
     orderIsVisibleAfterPixConfirmation(order) &&
-    isWaiterSalonOpenOrder(order)
+    isWaiterSalonOpenOrder(order, configuredTables)
   )
 }
 
@@ -400,10 +403,10 @@ export function WaiterClient({
       sortOpenOrders(
         (data as Record<string, unknown>[])
           .map(mapStoreOrderRow)
-          .filter(isOpenSalonMapOrder)
+          .filter((o) => isOpenSalonMapOrder(o, tables))
       )
     )
-  }, [storeId, sortOpenOrders])
+  }, [storeId, sortOpenOrders, tables])
 
   const pullTables = useCallback(async () => {
     if (configOpenRef.current) return
@@ -437,11 +440,11 @@ export function WaiterClient({
       const byId = new Map<string, StoreOrderRow>()
       for (const o of initialOpenOrders) byId.set(o.id, o)
       for (const o of prev) {
-        if (isOpenSalonMapOrder(o)) byId.set(o.id, o)
+        if (isOpenSalonMapOrder(o, tables)) byId.set(o.id, o)
       }
       return sortOpenOrders(Array.from(byId.values()))
     })
-  }, [initialOpenOrders, sortOpenOrders])
+  }, [initialOpenOrders, sortOpenOrders, tables])
 
   useEffect(() => {
     void pullOpenOrders()
@@ -883,7 +886,7 @@ export function WaiterClient({
       setSuccess('Pedido registado.')
       if (json.order) {
         const row = json.order as StoreOrderRow
-        if (isOpenSalonMapOrder(row)) {
+        if (isOpenSalonMapOrder(row, tables)) {
           setOpenOrders((prev) =>
             sortOpenOrders([row, ...prev.filter((o) => o.id !== row.id)])
           )

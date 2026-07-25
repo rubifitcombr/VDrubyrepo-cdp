@@ -19,7 +19,7 @@ type TableInput = {
 
 function publicDbError(message: string): string {
   if (/row-level security|violates row-level security policy/i.test(message)) {
-    return 'Sem permissão para alterar mesas. Aplica as políticas RLS em sql/store_tables.sql no Supabase.'
+    return 'Sem permissão para alterar mesas. Aplica a migração supabase/migrations/20260725190000_salao_mesas_schema.sql no Supabase.'
   }
   return message
 }
@@ -95,7 +95,7 @@ export async function PUT(request: Request) {
       return NextResponse.json(
         {
           error:
-            'Tabela store_tables não existe. Executa o SQL em sql/store_tables.sql no Supabase.',
+            'Tabela store_tables não existe. Aplica a migração supabase/migrations/20260725190000_salao_mesas_schema.sql no Supabase.',
         },
         { status: 503 }
       )

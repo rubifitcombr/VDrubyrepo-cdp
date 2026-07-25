@@ -23,12 +23,17 @@ export async function POST(req: NextRequest) {
     const gate = await requireLojistaAtivoApi(user.id)
     if (!gate.ok) return gate.response
 
-    const deny = gateMerchantMenuKey(
+    const denyPedidos = gateMerchantMenuKey(
       gate.ctx.store,
       user.email ?? undefined,
       'pedidos'
     )
-    if (deny) return deny
+    const denyKds = gateMerchantMenuKey(
+      gate.ctx.store,
+      user.email ?? undefined,
+      'kds'
+    )
+    if (denyPedidos && denyKds) return denyPedidos
 
     const body = (await req.json()) as { orderId?: string; status?: string }
     const orderId = typeof body.orderId === 'string' ? body.orderId.trim() : ''
@@ -54,8 +59,18 @@ export async function POST(req: NextRequest) {
       .maybeSingle()
 
     if (fetchErr || !order) {
+      const msg = fetchErr?.message ?? ''
+      if (/column|does not exist|42P01/i.test(msg)) {
+        return NextResponse.json(
+          {
+            error:
+              'Schema de pedidos incompleto para o KDS. Aplica supabase/migrations/20260725190006_kds_schema.sql no Supabase.',
+          },
+          { status: 503 }
+        )
+      }
       return NextResponse.json(
-        { error: fetchErr?.message || 'Pedido não encontrado.' },
+        { error: msg || 'Pedido não encontrado.' },
         { status: 404 }
       )
     }
@@ -69,7 +84,11 @@ export async function POST(req: NextRequest) {
       !isOrderStatusTransitionAllowed(
         current,
         newStatus,
-        order as { source?: string | null; delivery_address?: string | null },
+        order as {
+          source?: string | null
+          delivery_address?: string | null
+          notes?: string | null
+        },
         gate.ctx.store
       )
     ) {
@@ -86,8 +105,18 @@ export async function POST(req: NextRequest) {
       .eq('store_id', storeId)
 
     if (upErr) {
+      const msg = upErr.message ?? ''
+      if (/column|does not exist|42P01/i.test(msg)) {
+        return NextResponse.json(
+          {
+            error:
+              'Schema de pedidos incompleto para o KDS. Aplica supabase/migrations/20260725190006_kds_schema.sql no Supabase.',
+          },
+          { status: 503 }
+        )
+      }
       return NextResponse.json(
-        { error: upErr.message || 'Não foi possível atualizar o pedido.' },
+        { error: msg || 'Não foi possível atualizar o pedido.' },
         { status: 500 }
       )
     }

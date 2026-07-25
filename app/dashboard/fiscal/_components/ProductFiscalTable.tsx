@@ -43,7 +43,12 @@ export function ProductFiscalTable({
       setRows(data)
       setDirty(new Set())
     } catch (e) {
-      setMsg(e instanceof Error ? e.message : 'Falha ao carregar produtos.')
+      const msg = e instanceof Error ? e.message : 'Falha ao carregar produtos.'
+      setMsg(
+        /ncm|cfop|column|schema cache|does not exist/i.test(msg)
+          ? `${msg}\n\nAplica supabase/migrations/20260725190011_fiscal_schema.sql no Supabase.`
+          : msg
+      )
     } finally {
       setLoading(false)
     }
@@ -105,7 +110,9 @@ export function ProductFiscalTable({
         if (error) failed += 1
       }
       if (failed > 0) {
-        setMsg(`${failed} produto(s) não puderam ser salvos. Tente novamente.`)
+        setMsg(
+          `${failed} produto(s) não puderam ser salvos. Verifica NCM/CFOP e aplica supabase/migrations/20260725190011_fiscal_schema.sql se faltarem colunas fiscais em products.`
+        )
       } else {
         setMsg(`Dados fiscais salvos (${toSave.length} produto(s)).`)
         setDirty(new Set())
@@ -219,7 +226,7 @@ export function ProductFiscalTable({
         </div>
       )}
 
-      {msg ? <p className="mt-3 text-sm text-[#374151]">{msg}</p> : null}
+      {msg ? <p className="mt-3 whitespace-pre-line text-sm text-[#374151]">{msg}</p> : null}
 
       {!loading && rows.length > 0 ? (
         <div className="mt-3 flex items-center justify-end gap-2">

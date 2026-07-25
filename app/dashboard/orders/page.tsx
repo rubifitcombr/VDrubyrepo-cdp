@@ -12,6 +12,7 @@ import { OrdersClient } from './_components/OrdersClient'
 import { getUser } from '@/services/auth.server'
 import { getStoreOrders } from '@/services/orders.server'
 import { getStoreByUser } from '@/services/store.server'
+import { getStoreTablesForStore } from '@/services/waiter-tables.server'
 
 /** Evita RSC em cache no router do Next ao navegar pelo painel. */
 export const dynamic = 'force-dynamic'
@@ -58,6 +59,10 @@ export default async function OrdersPage({
   const initialOrders = await getStoreOrders(storeId, {
     slugChannelSourcesOnly,
   })
+  const salonTables = (await getStoreTablesForStore(storeId)).map((t) => ({
+    name: t.name,
+    ambiente: t.ambiente,
+  }))
 
   const printing = parsePrintingFromStore(row)
   const storeName =
@@ -78,6 +83,7 @@ export default async function OrdersPage({
         operationMode,
         preferPresencial ? 'presencial' : 'delivery'
       )}
+      initialSalonTables={salonTables}
     />
   )
 }
