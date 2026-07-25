@@ -81,10 +81,34 @@ export function isOrderStatusTransitionAllowed(
 }
 
 /** Próximo estado ao concluir preparo na cozinha (KDS). */
+export function dispatchHandledInPedidos(
+  order: { source?: string | null; delivery_address?: string | null },
+  deliveryPipelineEnabled: boolean,
+  entregadoresEnabled: boolean
+): boolean {
+  return (
+    entregadoresEnabled &&
+    deliveryPipelineEnabled &&
+    isDeliveryFlowOrder(order)
+  )
+}
+
+export function kitchenReadyAdvancesFromReady(
+  order: { source?: string | null; delivery_address?: string | null },
+  deliveryPipelineEnabled: boolean,
+  entregadoresEnabled = false
+): boolean {
+  return !dispatchHandledInPedidos(order, deliveryPipelineEnabled, entregadoresEnabled)
+}
+
 export function statusAfterKitchenReady(
   order: { source?: string | null; delivery_address?: string | null },
-  deliveryPipelineEnabled: boolean
+  deliveryPipelineEnabled: boolean,
+  entregadoresEnabled = false
 ): 'confirmed' | 'delivered' {
+  if (dispatchHandledInPedidos(order, deliveryPipelineEnabled, entregadoresEnabled)) {
+    return 'confirmed'
+  }
   if (deliveryPipelineEnabled && isDeliveryFlowOrder(order)) {
     return 'confirmed'
   }
@@ -93,9 +117,11 @@ export function statusAfterKitchenReady(
 
 export function kitchenReadyActionLabel(
   order: { source?: string | null; delivery_address?: string | null },
-  deliveryPipelineEnabled: boolean
+  deliveryPipelineEnabled: boolean,
+  entregadoresEnabled = false
 ): string {
-  return statusAfterKitchenReady(order, deliveryPipelineEnabled) === 'confirmed'
+  return statusAfterKitchenReady(order, deliveryPipelineEnabled, entregadoresEnabled) ===
+    'confirmed'
     ? 'Saiu / entrega'
     : 'Servido'
 }

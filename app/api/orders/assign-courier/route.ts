@@ -28,6 +28,7 @@ export async function POST(req: NextRequest) {
     entregadorId?: unknown
     entregadorNomeAvulso?: unknown
     prazoMinutos?: unknown
+    semEntregador?: unknown
   }
   try {
     body = (await req.json()) as typeof body
@@ -38,18 +39,25 @@ export async function POST(req: NextRequest) {
   const orderId = typeof body.orderId === 'string' ? body.orderId.trim() : ''
   if (!orderId) return NextResponse.json({ error: 'Pedido em falta.' }, { status: 400 })
 
+  const semEntregador = body.semEntregador === true
   const entId =
-    typeof body.entregadorId === 'string' && body.entregadorId.trim()
+    !semEntregador &&
+    typeof body.entregadorId === 'string' &&
+    body.entregadorId.trim()
       ? body.entregadorId.trim()
       : null
   const avulso =
+    !semEntregador &&
     typeof body.entregadorNomeAvulso === 'string'
       ? body.entregadorNomeAvulso.trim()
       : ''
 
-  if (!entId && !avulso) {
+  if (!semEntregador && !entId && !avulso) {
     return NextResponse.json(
-      { error: 'Seleciona um entregador ou indica nome avulso.' },
+      {
+        error:
+          'Seleciona um entregador cadastrado, indica nome avulso ou despacha sem entregador.',
+      },
       { status: 400 }
     )
   }
@@ -91,7 +99,7 @@ export async function POST(req: NextRequest) {
   }
 
   let nomeSnapshot = avulso
-  if (entId) {
+  if (!semEntregador && entId) {
     const ativos = await listEntregadoresAtivos(supabase, storeId)
     const ent = ativos.find((e) => e.id === entId)
     if (!ent) {
@@ -116,13 +124,21 @@ export async function POST(req: NextRequest) {
   }
 
   const now = new Date().toISOString()
-  const updatePayload: Record<string, unknown> = {
-    status: 'confirmed',
-    entregador_id: entId,
-    entregador_nome: nomeSnapshot,
-    entrega_despachada_em: now,
-    entrega_prazo_minutos: prazoMinutos,
-  }
+  const updatePayload: Record<string, unknown> = semEntregador
+    ? {
+        status: 'confirmed',
+        entregador_id: null,
+        entregador_nome: null,
+        entrega_despachada_em: now,
+        entrega_prazo_minutos: prazoMinutos,
+      }
+    : {
+        status: 'confirmed',
+        entregador_id: entId,
+        entregador_nome: nomeSnapshot,
+        entrega_despachada_em: now,
+        entrega_prazo_minutos: prazoMinutos,
+      }
 
   let { error: upErr } = await supabase
     .from('orders')
@@ -147,7 +163,7 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  if (entId) {
+  if (!semEntregador && entId) {
     await setEntregadorStatusOperacional(supabase, storeId, entId, 'em_rota')
   }
 

@@ -4,6 +4,9 @@ import {
   isDeliveryPipelineEnabled,
   parseOperationModeFromStore,
 } from '@/lib/merchant-operation-mode'
+import { merchantEntregadoresEnabled } from '@/lib/plan'
+import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
+import { readStorePlano } from '@/lib/store-columns'
 import { KdsClient } from './_components/KdsClient'
 import { getUser } from '@/services/auth.server'
 import { getStoreOrders } from '@/services/orders.server'
@@ -38,6 +41,8 @@ export default async function KdsPage() {
   const printing = parsePrintingFromStore(row)
   const operationMode = parseOperationModeFromStore(row)
   const deliveryPipelineEnabled = isDeliveryPipelineEnabled(operationMode)
+  const plan = effectiveDashboardPlan(user.email, readStorePlano(row))
+  const entregadoresEnabled = merchantEntregadoresEnabled(plan)
 
   return (
     <KdsClient
@@ -46,6 +51,7 @@ export default async function KdsPage() {
       storeName={storeName}
       printing={printing}
       deliveryPipelineEnabled={deliveryPipelineEnabled}
+      entregadoresEnabled={entregadoresEnabled}
     />
   )
 }

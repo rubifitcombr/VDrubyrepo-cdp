@@ -40,6 +40,10 @@ import {
 import { GarcomSessionBadge } from '@/app/dashboard/garcom/_components/GarcomSalaoPinGate'
 import { GarcomMesaComandasPanel, comandaListSubtitle } from '@/app/dashboard/garcom/_components/GarcomMesaComandasPanel'
 import { ComandaSplitPaymentModal } from '@/app/dashboard/caixa/_components/ComandaSplitPaymentModal'
+import {
+  mapStoreTableRow,
+  STORE_TABLES_SELECT,
+} from '@/lib/store-tables'
 import { CAIXA_BALCAO_HREF } from '@/lib/caixa-hub-links'
 import { useCaixaTurnoOpen } from '@/lib/use-caixa-turno-open.client'
 import { comandaDisplayName, type OrderPaymentLine } from '@/lib/order-payments'
@@ -299,6 +303,10 @@ export function WaiterClient({
   const [mobileScreenOpen, setMobileScreenOpen] = useState(false)
   const fullscreenRootRef = useRef<HTMLDivElement>(null)
   const [configOpen, setConfigOpen] = useState(false)
+  const configOpenRef = useRef(false)
+  const [tablesConfigSnapshot, setTablesConfigSnapshot] = useState<StoreTableDTO[] | null>(
+    null
+  )
   const [configAmbTab, setConfigAmbTab] = useState<string>(sectors[0] || 'Salão')
   const [newTableName, setNewTableName] = useState('')
   const [newAmbienteName, setNewAmbienteName] = useState('')
@@ -398,10 +406,11 @@ export function WaiterClient({
   }, [storeId, sortOpenOrders])
 
   const pullTables = useCallback(async () => {
+    if (configOpenRef.current) return
     const supabase = createClient()
     const { data, error } = await supabase
       .from('store_tables')
-      .select('id, name, ambiente, sort_order, active')
+      .select(STORE_TABLES_SELECT)
       .eq('store_id', storeId)
       .eq('active', true)
       .order('ambiente', { ascending: true })
@@ -410,13 +419,16 @@ export function WaiterClient({
 
     if (error || !data) return
     setTables(
-      (data as Record<string, unknown>[]).map((row) => ({
-        id: String(row.id ?? ''),
-        name: String(row.name ?? '').trim() || '—',
-        ambiente: String(row.ambiente ?? 'Salão').trim() || 'Salão',
-        sort_order: Math.round(Number(row.sort_order) || 0),
-        active: row.active !== false,
-      }))
+      (data as Record<string, unknown>[]).map((row) => {
+        const mapped = mapStoreTableRow(row)
+        return {
+          id: mapped.id,
+          name: mapped.name,
+          ambiente: mapped.ambiente,
+          sort_order: mapped.sort_order,
+          active: mapped.active,
+        }
+      })
     )
   }, [storeId])
 
@@ -1130,6 +1142,23 @@ export function WaiterClient({
     }
   }
 
+  useEffect(() => {
+    configOpenRef.current = configOpen
+  }, [configOpen])
+
+  function openTableConfig() {
+    setTablesConfigSnapshot(tables.map((t) => ({ ...t })))
+    setTablesSaveError(null)
+    setConfigOpen(true)
+  }
+
+  function closeTableConfigWithoutSave() {
+    if (tablesConfigSnapshot) setTables(tablesConfigSnapshot)
+    setTablesConfigSnapshot(null)
+    setConfigOpen(false)
+    setTablesSaveError(null)
+  }
+
   async function saveTableConfig() {
     setSavingTables(true)
     setTablesSaveError(null)
@@ -1149,6 +1178,7 @@ export function WaiterClient({
       const json = (await res.json().catch(() => ({}))) as { error?: string; tables?: StoreTableDTO[] }
       if (!res.ok) {
         setTablesSaveError(json.error || 'Erro ao guardar mesas.')
+        if (tablesConfigSnapshot) setTables(tablesConfigSnapshot)
         return
       }
       const nextTables = json.tables ?? tables
@@ -1167,6 +1197,7 @@ export function WaiterClient({
         }
       }
 
+      setTablesConfigSnapshot(null)
       setConfigOpen(false)
       setTablesSaveError(null)
       setError(null)
@@ -1664,10 +1695,9 @@ export function WaiterClient({
                 <button
                   type="button"
                   onClick={() => {
-                    setTablesSaveError(null)
                     setSuccess(null)
-                    setConfigOpen(true)
                     setConfigAmbTab(sectors[0] || 'Salão')
+                    openTableConfig()
                   }}
                   className="inline-flex items-center gap-1 rounded-lg border border-[var(--card-border)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#374151] shadow-sm transition hover:border-[var(--dash-primary)]/40 hover:bg-[#f9fafb] hover:text-[var(--dash-primary)]"
                 >
@@ -1866,10 +1896,9 @@ export function WaiterClient({
               <button
                 type="button"
                 onClick={() => {
-                  setTablesSaveError(null)
                   setSuccess(null)
-                  setConfigOpen(true)
                   setConfigAmbTab(sectors[0] || 'Salão')
+                  openTableConfig()
                 }}
                 className="rounded-lg border border-[var(--card-border)] bg-white px-2.5 py-1.5 text-xs font-semibold text-[#374151] shadow-sm hover:bg-[#f9fafb]"
               >
@@ -2065,10 +2094,7 @@ export function WaiterClient({
           <button
             type="button"
             className="absolute inset-0 bg-black/45"
-            onClick={() => {
-              setConfigOpen(false)
-              setTablesSaveError(null)
-            }}
+            onClick={() => closeTableConfigWithoutSave()}
           />
           <div className="relative z-10 max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-xl">
             <h3 className="text-lg font-bold text-[#1a1614]">Configurar mesas</h3>

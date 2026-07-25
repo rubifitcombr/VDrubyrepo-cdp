@@ -1328,7 +1328,13 @@ export function OrdersClient({
     }
     const o = deliveryModal.order
     const preAssigned = o.entregador_id?.trim() || ''
-    setDelSel(preAssigned || '')
+    setDelSel(
+      preAssigned
+        ? preAssigned
+        : deliveryModal.mode === 'on_deliver' && !o.entregador_nome?.trim()
+          ? '__sem_entregador__'
+          : ''
+    )
     setDelNomeAvulso('')
     setDelValorCorrida('')
     setDelClientePagou(false)
@@ -1682,11 +1688,15 @@ export function OrdersClient({
   async function submitDispatchModal() {
     if (!deliveryModal || deliveryModal.mode !== 'dispatch') return
     const o = deliveryModal.order
+    const semEntregador = delSel === '__sem_entregador__'
     const avulso = delSel === '__avulso__'
-    const entregadorId = !avulso && delSel.trim() ? delSel.trim() : null
+    const entregadorId =
+      !semEntregador && !avulso && delSel.trim() ? delSel.trim() : null
     const nomeAvulso = avulso ? delNomeAvulso.trim() : ''
-    if (!entregadorId && !nomeAvulso) {
-      alert('Seleciona um entregador ou indica nome avulso.')
+    if (!semEntregador && !entregadorId && !nomeAvulso) {
+      alert(
+        'Seleciona um entregador cadastrado, indica nome avulso ou despacha sem entregador (apps externos).'
+      )
       return
     }
     setDelSubmitting(true)
@@ -1696,6 +1706,7 @@ export function OrdersClient({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           orderId: o.id,
+          semEntregador,
           entregadorId,
           entregadorNomeAvulso: avulso ? nomeAvulso : undefined,
           prazoMinutos: 45,
@@ -1751,11 +1762,21 @@ export function OrdersClient({
       }
 
       const avulso = delSel === '__avulso__'
+      const semEntregador = delSel === '__sem_entregador__'
       const entregadorId =
-        !avulso && delSel.trim() ? delSel.trim() : null
+        !avulso && !semEntregador && delSel.trim() ? delSel.trim() : null
       const nomeAvulso = avulso ? delNomeAvulso.trim() : ''
+      if (
+        deliveryModal.mode === 'on_deliver' &&
+        (semEntregador || (!entregadorId && !nomeAvulso && !o.entregador_id?.trim()))
+      ) {
+        await submitDeliveryModal(true)
+        return
+      }
       if (!entregadorId && !nomeAvulso) {
-        alert('Seleciona um entregador ou indica nome avulso.')
+        alert(
+          'Seleciona um entregador cadastrado, indica nome avulso ou marca sem entregador.'
+        )
         return
       }
       const valorCorrida = parseMoneyInputLocal(delValorCorrida)
@@ -2338,7 +2359,7 @@ export function OrdersClient({
                 deliveryModal.mode === 'late'
                   ? `Registar entrega — ${ref}`
                   : deliveryModal.mode === 'dispatch'
-                    ? `Despachar pedido — ${ref}`
+                    ? `Sair para entrega — ${ref}`
                     : `Confirmar entrega — ${ref}`
               return (
                 <>
@@ -2365,7 +2386,10 @@ export function OrdersClient({
                               {e.tipo === 'autonomo' ? ' (Autônomo)' : ' (Fixo)'}
                             </option>
                           ))}
-                          <option value="__avulso__">+ Adicionar entregador avulso</option>
+                          <option value="__sem_entregador__">
+                            Sem entregador (iFood, Uber Eats, etc.)
+                          </option>
+                          <option value="__avulso__">+ Entregador avulso (nome livre)</option>
                         </select>
                       </label>
                       <p className="mt-2 text-right">
@@ -2386,6 +2410,12 @@ export function OrdersClient({
                             placeholder="Nome"
                           />
                         </label>
+                      ) : delSel === '__sem_entregador__' ? (
+                        <p className="mt-3 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2.5 text-xs text-sky-950">
+                          O pedido vai para <strong>A caminho</strong> sem entregador vinculado —
+                          use quando a entrega for feita por app externo ou motoboy próprio não
+                          cadastrado.
+                        </p>
                       ) : null}
 
                       {deliveryModal.mode !== 'dispatch' ? (
@@ -2471,9 +2501,10 @@ export function OrdersClient({
                       </>
                       ) : (
                         <p className="mt-4 rounded-xl border border-[#e8ecf1] bg-[#f8fafc] px-3 py-2.5 text-xs text-[#64748b]">
-                          O entregador será vinculado ao pedido e aparecerá em{' '}
-                          <strong>Entregadores → Na rua</strong>. Os valores da corrida
-                          são registados ao marcar como entregue.
+                          Escolhe um entregador cadastrado, um avulso ou{' '}
+                          <strong>sem entregador</strong> para apps externos. Com entregador
+                          cadastrado, o pedido aparece em{' '}
+                          <strong>Entregadores → Na rua</strong>.
                         </p>
                       )}
 
@@ -2493,7 +2524,7 @@ export function OrdersClient({
                             onClick={() => void submitDispatchModal()}
                             className="rounded-xl bg-[var(--dash-primary)] px-4 py-2.5 text-sm font-semibold text-white shadow-sm disabled:opacity-50"
                           >
-                            {delSubmitting ? 'A despachar…' : 'Despachar pedido'}
+                            {delSubmitting ? 'A despachar…' : 'Sair para entrega'}
                           </button>
                         ) : deliveryModal.mode === 'on_deliver' ? (
                           <button

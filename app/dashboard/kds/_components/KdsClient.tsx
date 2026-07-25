@@ -18,6 +18,7 @@ import {
 import { updateOrderStatus } from '@/services/orders'
 import {
   kitchenReadyActionLabel,
+  kitchenReadyAdvancesFromReady,
   statusAfterKitchenReady,
 } from '@/lib/order-status-transitions'
 
@@ -50,12 +51,14 @@ export function KdsClient({
   storeName,
   printing,
   deliveryPipelineEnabled = true,
+  entregadoresEnabled = false,
 }: {
   initialOrders: StoreOrderRow[]
   storeId: string
   storeName: string
   printing: StorePrintingState
   deliveryPipelineEnabled?: boolean
+  entregadoresEnabled?: boolean
 }) {
   const [orders, setOrders] = useState<StoreOrderRow[]>(initialOrders)
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -337,19 +340,37 @@ export function KdsClient({
                           </button>
                         ) : null}
                         {col.id === 'ready' ? (
-                          <button
-                            type="button"
-                            disabled={busy}
-                            onClick={() =>
-                              void patch(
-                                o.id,
-                                statusAfterKitchenReady(o, deliveryPipelineEnabled)
-                              )
-                            }
-                            className="flex-1 rounded-lg bg-sky-500 px-3 py-2.5 text-sm font-bold text-white min-[480px]:flex-none"
-                          >
-                            {kitchenReadyActionLabel(o, deliveryPipelineEnabled)}
-                          </button>
+                          kitchenReadyAdvancesFromReady(
+                            o,
+                            deliveryPipelineEnabled,
+                            entregadoresEnabled
+                          ) ? (
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() =>
+                                void patch(
+                                  o.id,
+                                  statusAfterKitchenReady(
+                                    o,
+                                    deliveryPipelineEnabled,
+                                    entregadoresEnabled
+                                  )
+                                )
+                              }
+                              className="flex-1 rounded-lg bg-sky-500 px-3 py-2.5 text-sm font-bold text-white min-[480px]:flex-none"
+                            >
+                              {kitchenReadyActionLabel(
+                                o,
+                                deliveryPipelineEnabled,
+                                entregadoresEnabled
+                              )}
+                            </button>
+                          ) : (
+                            <p className="flex-1 rounded-lg border border-dashed border-white/20 px-2 py-2 text-center text-[11px] font-medium text-white/55">
+                              Despachar em Pedidos
+                            </p>
+                          )
                         ) : null}
                       </div>
                     </li>

@@ -3,6 +3,11 @@ import { gateMerchantMenuKey } from '@/lib/merchant-api-gate.server'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
 import { getUser } from '@/services/auth.server'
 import { createClient } from '@/lib/supabase/server'
+import {
+  STORE_TABLES_SELECT,
+  buildStoreTableInsertRow,
+  mapStoreTableRow,
+} from '@/lib/store-tables'
 
 type TableInput = {
   id?: string
@@ -32,7 +37,7 @@ export async function GET() {
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('store_tables')
-    .select('id, store_id, name, ambiente, active, sort_order')
+    .select(STORE_TABLES_SELECT)
     .eq('store_id', gate.ctx.storeId)
     .order('ambiente', { ascending: true })
     .order('sort_order', { ascending: true })
@@ -45,7 +50,11 @@ export async function GET() {
     return NextResponse.json({ error: publicDbError(error.message) }, { status: 500 })
   }
 
-  return NextResponse.json({ tables: data ?? [] })
+  return NextResponse.json({
+    tables: (data ?? []).map((row) =>
+      mapStoreTableRow(row as Record<string, unknown>)
+    ),
+  })
 }
 
 export async function PUT(request: Request) {
@@ -98,18 +107,12 @@ export async function PUT(request: Request) {
     return NextResponse.json({ ok: true, tables: [] })
   }
 
-  const insertRows = cleaned.map((t) => ({
-    store_id: storeId,
-    name: t.name,
-    ambiente: t.ambiente,
-    sort_order: t.sort_order,
-    active: t.active,
-  }))
+  const insertRows = cleaned.map((t) => buildStoreTableInsertRow(storeId, t))
 
   const { data: inserted, error: insErr } = await supabase
     .from('store_tables')
     .insert(insertRows)
-    .select('id, store_id, name, ambiente, active, sort_order')
+    .select(STORE_TABLES_SELECT)
 
   if (insErr) {
     return NextResponse.json(
@@ -118,5 +121,10 @@ export async function PUT(request: Request) {
     )
   }
 
-  return NextResponse.json({ ok: true, tables: inserted ?? [] })
+  return NextResponse.json({
+    ok: true,
+    tables: (inserted ?? []).map((row) =>
+      mapStoreTableRow(row as Record<string, unknown>)
+    ),
+  })
 }
