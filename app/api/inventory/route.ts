@@ -87,12 +87,13 @@ export async function PUT(request: Request) {
   if (upErr) {
     if (
       upErr.message.includes('store_product_stock') ||
-      upErr.message.includes('does not exist')
+      upErr.message.includes('does not exist') ||
+      upErr.code === 'PGRST204'
     ) {
       return NextResponse.json(
         {
           error:
-            'Tabela de estoque em falta. Executa supabase/phase3.sql no Supabase.',
+            'Estrutura de estoque em falta ou desatualizada na base de dados. Aplica a migração supabase/migrations/20260725160000_store_product_stock_schema.sql no SQL Editor do Supabase.',
         },
         { status: 503 }
       )
