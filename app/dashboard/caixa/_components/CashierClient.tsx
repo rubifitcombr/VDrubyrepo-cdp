@@ -9,7 +9,7 @@ import type { CaixaMovimentacaoDTO, CaixaTurnoDTO } from '@/lib/caixa-types'
 import { openCaixaTurnoEscPosPrint } from '@/lib/caixa-print-window'
 import { dashboardFetch } from '@/lib/dashboard-fetch.client'
 import type { EntregaDTO, StoreEntregadorDTO } from '@/lib/entregas-types'
-import { saldoEntregaLinha } from '@/lib/entregas-types'
+import { entregaPendenteAcerto, saldoEntregaLinha } from '@/lib/entregas-types'
 import type { PaperMm } from '@/lib/print/layout'
 import {
   openOrderTicketPrint,
@@ -115,6 +115,14 @@ function round2(n: number): number {
 
 function entregaGroupKey(e: EntregaDTO): string {
   return e.entregador_id ? e.entregador_id : `av:${e.entregador_nome.trim().toLowerCase()}`
+}
+
+function entregasPendentesAcerto(items: EntregaDTO[]): EntregaDTO[] {
+  return items.filter(entregaPendenteAcerto)
+}
+
+function saldoPendenteEntregas(items: EntregaDTO[]): number {
+  return round2(entregasPendentesAcerto(items).reduce((s, e) => s + saldoEntregaLinha(e), 0))
 }
 
 function movTipoLabel(t: CaixaMovimentacaoDTO['tipo']): string {
@@ -241,6 +249,8 @@ function OperacaoView({
         tipo: 'fixo' | 'autonomo' | null
         n: number
         saldo: number
+        entregadorId: string | null
+        entregaIds: string[]
       }
   >(null)
   const [acertoValor, setAcertoValor] = useState('')
@@ -589,6 +599,24 @@ function OperacaoView({
   )
   const totEntSaldo = useMemo(() => round2(totEntRec - totEntCorr), [totEntRec, totEntCorr])
 
+  const resumoEntregasPendentes = useMemo(() => {
+    let receber = 0
+    let pagar = 0
+    let count = 0
+    for (const e of entregasApi) {
+      if (!entregaPendenteAcerto(e)) continue
+      count += 1
+      const s = saldoEntregaLinha(e)
+      if (s > 0) receber += s
+      else if (s < 0) pagar += Math.abs(s)
+    }
+    return {
+      count,
+      receber: round2(receber),
+      pagar: round2(pagar),
+    }
+  }, [entregasApi])
+
   const gruposEntregador = useMemo(() => {
     const m = new Map<
       string,
@@ -616,9 +644,25 @@ function OperacaoView({
         const tc = round2(g.items.reduce((s, x) => s + x.valor_corrida, 0))
         const tr = round2(g.items.reduce((s, x) => s + x.valor_recebido_cliente, 0))
         const saldo = round2(tr - tc)
-        return { ...g, tc, tr, saldo, n: g.items.length }
+        const pendentes = entregasPendentesAcerto(g.items)
+        const saldoPendente = saldoPendenteEntregas(g.items)
+        return {
+          ...g,
+          tc,
+          tr,
+          saldo,
+          saldoPendente,
+          n: g.items.length,
+          nPendentes: pendentes.length,
+          pendentes,
+        }
       })
-      .sort((a, b) => a.nome.localeCompare(b.nome, 'pt'))
+      .sort((a, b) => {
+        const aPend = Math.abs(a.saldoPendente) >= 0.005 ? 0 : 1
+        const bPend = Math.abs(b.saldoPendente) >= 0.005 ? 0 : 1
+        if (aPend !== bPend) return aPend - bPend
+        return a.nome.localeCompare(b.nome, 'pt')
+      })
   }, [entregasTabela, entregadores])
 
   const gruposFechoTurno = useMemo(() => {
@@ -647,16 +691,20 @@ function OperacaoView({
       const tc = round2(g.items.reduce((s, x) => s + x.valor_corrida, 0))
       const tr = round2(g.items.reduce((s, x) => s + x.valor_recebido_cliente, 0))
       const saldo = round2(tr - tc)
-      return { ...g, tc, tr, saldo, n: g.items.length }
+      const pendentes = entregasPendentesAcerto(g.items)
+      const saldoPendente = saldoPendenteEntregas(g.items)
+      return {
+        ...g,
+        tc,
+        tr,
+        saldo,
+        saldoPendente,
+        n: g.items.length,
+        nPendentes: pendentes.length,
+        pendentes,
+      }
     })
   }, [entregasTurnoAtual, entregadores])
-
-  function temAcertoRegistado(nome: string): boolean {
-    const prefix = `Acerto com ${nome}`
-    return movimentacoesTurnoAtual.some(
-      (m) => m.tipo === 'acerto_entregador' && (m.motivo ?? '').startsWith(prefix)
-    )
-  }
 
   async function closeComanda(order: StoreOrderRow, payments: OrderPaymentLine[]) {
     setCashierError(null)
@@ -795,29 +843,37 @@ function OperacaoView({
     setInfC(String(shiftBreakdown.cartao.total.toFixed(2)).replace('.', ','))
     setInfCr(String(shiftBreakdown.credito.total.toFixed(2)).replace('.', ','))
     setFundoProximo('0,00')
-    setAcertoFeitoPorKey({})
+    const initialAcertos: Record<string, boolean> = {}
+    for (const g of gruposFechoTurno) {
+      initialAcertos[g.key] = Math.abs(g.saldoPendente) < 0.005
+    }
+    setAcertoFeitoPorKey(initialAcertos)
     setCloseFlow({ step: 'summary', comandasCount: openComandas.length })
   }
 
   async function confirmarAcertoEntregador() {
     if (!acertoModal || !turno) return
+    if (acertoModal.entregaIds.length === 0) {
+      showToast('Não há entregas pendentes de acerto para este entregador.')
+      return
+    }
     const v = parseMoneyInput(acertoValor)
     if (v <= 0) {
       showToast('Indica um valor válido para o acerto.')
       return
     }
-    const formaLabel = acertoForma === 'pix' ? 'PIX' : 'Dinheiro'
-    const base = `Acerto com ${acertoModal.nome} — ${acertoModal.n} entrega(s)`
-    const motivo = [base, formaLabel, acertoObs.trim()].filter(Boolean).join(' · ')
     setBusyAcerto(true)
     try {
-      const res = await dashboardFetch('/api/cashier/movimentacao', {
+      const res = await dashboardFetch('/api/delivery-ops/settlement', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          tipo: 'acerto_entregador',
+          entregadorId: acertoModal.entregadorId,
+          entregadorNome: acertoModal.nome,
+          entregaIds: acertoModal.entregaIds,
           valor: v,
-          motivo,
+          forma: acertoForma,
+          observacao: acertoObs.trim() || undefined,
         }),
       })
       const json = (await res.json().catch(() => ({}))) as { error?: string }
@@ -828,7 +884,9 @@ function OperacaoView({
       setAcertoModal(null)
       setAcertoValor('')
       setAcertoObs('')
+      setAcertoFeitoPorKey((prev) => ({ ...prev, [acertoModal.key]: true }))
       showToast('Acerto registado.')
+      await reloadEntregas()
       router.refresh()
     } finally {
       setBusyAcerto(false)
@@ -847,7 +905,7 @@ function OperacaoView({
     ]
     const lines = entregasTabela.map((e) => {
       const saldo = saldoEntregaLinha(e)
-      const acerto = temAcertoRegistado(e.entregador_nome) ? 'Sim' : 'Não'
+      const acerto = e.acertado_em ? 'Sim' : 'Não'
       return [
         e.criado_em,
         e.order_id,
@@ -1275,6 +1333,14 @@ function OperacaoView({
             </Link>
             <button
               type="button"
+              disabled={busyEntregas}
+              onClick={() => void reloadEntregas()}
+              className="rounded-lg border border-[var(--card-border)] bg-white px-3 py-1.5 text-xs font-semibold text-[#374151] shadow-sm hover:bg-[#f9fafb] disabled:opacity-50"
+            >
+              {busyEntregas ? 'A atualizar…' : 'Atualizar'}
+            </button>
+            <button
+              type="button"
               onClick={() => exportarEntregasCsv()}
               disabled={entregasTabela.length === 0}
               className="rounded-lg border border-[var(--card-border)] bg-white px-3 py-1.5 text-xs font-semibold text-[#374151] shadow-sm hover:bg-[#f9fafb] disabled:opacity-50"
@@ -1285,8 +1351,40 @@ function OperacaoView({
         </div>
         <p className="mt-1 text-xs text-[#6b7280]">
           Corridas e valores recebidos dos clientes; saldo positivo = entregador deve repassar à
-          loja.
+          loja. O acerto marca as entregas como liquidadas no turno.
         </p>
+
+        {entregasApi.length > 0 ? (
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="rounded-xl border border-[var(--card-border)] bg-[#fafafa] px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-[#6b7280]">
+                Entregas no período
+              </p>
+              <p className="mt-1 text-xl font-bold tabular-nums text-[#1a1614]">
+                {entregasApi.length}
+              </p>
+            </div>
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-800">
+                A receber dos entregadores
+              </p>
+              <p className="mt-1 text-xl font-bold tabular-nums text-emerald-900">
+                {money.format(resumoEntregasPendentes.receber)}
+              </p>
+              <p className="mt-0.5 text-[11px] text-emerald-800">
+                {resumoEntregasPendentes.count} pendente(s)
+              </p>
+            </div>
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-red-800">
+                A pagar aos entregadores
+              </p>
+              <p className="mt-1 text-xl font-bold tabular-nums text-red-900">
+                {money.format(resumoEntregasPendentes.pagar)}
+              </p>
+            </div>
+          </div>
+        ) : null}
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
           {(['all', 'pendente', 'by_driver'] as const).map((id) => (
@@ -1343,6 +1441,10 @@ function OperacaoView({
           </p>
         ) : busyEntregas && entregasTabela.length === 0 ? (
           <p className="mt-4 text-sm text-[#6b7280]">A carregar entregas…</p>
+        ) : entFilterQuick === 'by_driver' && !entDriverKey ? (
+          <p className="mt-4 text-sm text-[#6b7280]">
+            Escolhe um entregador para ver as corridas dele.
+          </p>
         ) : entregasTabela.length === 0 ? (
           <p className="mt-4 text-sm text-[#6b7280]">Nenhuma entrega neste filtro.</p>
         ) : (
@@ -1356,7 +1458,8 @@ function OperacaoView({
                     <th className="py-2 pr-3">Entregador</th>
                     <th className="py-2 pr-3 text-right">Valor corrida</th>
                     <th className="py-2 pr-3 text-right">Recebeu do cliente</th>
-                    <th className="py-2 text-right">Saldo</th>
+                    <th className="py-2 pr-3 text-right">Saldo</th>
+                    <th className="py-2 text-right">Status</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1368,13 +1471,31 @@ function OperacaoView({
                         : saldo > 0
                           ? 'text-emerald-700'
                           : 'text-red-600'
+                    const pedidoRef =
+                      displayNumberById.get(e.order_id) ?? e.order_id.slice(0, 8)
+                    const statusLabel = e.acertado_em
+                      ? 'Acertado'
+                      : entregaPendenteAcerto(e)
+                        ? 'Pendente'
+                        : 'Sem saldo'
+                    const statusCls = e.acertado_em
+                      ? 'bg-[#f3f4f6] text-[#374151]'
+                      : entregaPendenteAcerto(e)
+                        ? 'bg-amber-100 text-amber-900'
+                        : 'bg-[#f3f4f6] text-[#9ca3af]'
                     return (
                       <tr key={e.id} className="border-b border-[var(--card-border)]/80">
                         <td className="py-2.5 pr-3 text-[#374151]">
                           {timeOnlyFmt.format(new Date(e.criado_em))}
                         </td>
                         <td className="py-2.5 pr-3 font-mono text-xs text-[#1a1614]">
-                          …{e.order_id.slice(0, 8)}
+                          <Link
+                            href="/dashboard/orders"
+                            className="hover:text-[var(--dash-primary)] hover:underline"
+                            title="Ver em Pedidos"
+                          >
+                            #{pedidoRef}
+                          </Link>
                         </td>
                         <td className="py-2.5 pr-3 text-[#1a1614]">{e.entregador_nome}</td>
                         <td className="py-2.5 pr-3 text-right tabular-nums">
@@ -1383,9 +1504,16 @@ function OperacaoView({
                         <td className="py-2.5 pr-3 text-right tabular-nums">
                           {money.format(e.valor_recebido_cliente)}
                         </td>
-                        <td className={`py-2.5 text-right font-semibold tabular-nums ${saldoCls}`}>
+                        <td className={`py-2.5 pr-3 text-right font-semibold tabular-nums ${saldoCls}`}>
                           {saldo > 0 ? '+' : ''}
                           {money.format(saldo)}
+                        </td>
+                        <td className="py-2.5 text-right">
+                          <span
+                            className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${statusCls}`}
+                          >
+                            {statusLabel}
+                          </span>
                         </td>
                       </tr>
                     )
@@ -1399,7 +1527,7 @@ function OperacaoView({
                     <td className="py-3 pr-3 text-right tabular-nums">{money.format(totEntCorr)}</td>
                     <td className="py-3 pr-3 text-right tabular-nums">{money.format(totEntRec)}</td>
                     <td
-                      className={`py-3 text-right tabular-nums ${
+                      className={`py-3 pr-3 text-right tabular-nums ${
                         Math.abs(totEntSaldo) < 0.005
                           ? 'text-[#6b7280]'
                           : totEntSaldo > 0
@@ -1410,6 +1538,7 @@ function OperacaoView({
                       {totEntSaldo > 0 ? '+' : ''}
                       {money.format(totEntSaldo)}
                     </td>
+                    <td className="py-3" />
                   </tr>
                 </tfoot>
               </table>
@@ -1429,7 +1558,9 @@ function OperacaoView({
             {gruposEntregador.map((g) => {
               const tipoBadge =
                 g.tipo === 'autonomo' ? 'Autônomo' : g.tipo === 'fixo' ? 'Fixo' : 'Avulso'
-              const podeAcerto = Math.abs(g.saldo) >= 0.005
+              const podeAcerto =
+                g.nPendentes > 0 && Math.abs(g.saldoPendente) >= 0.005
+              const emDia = g.n > 0 && g.nPendentes === 0
               return (
                 <div
                   key={g.key}
@@ -1441,8 +1572,22 @@ function OperacaoView({
                       <span className="ml-2 rounded-full bg-[#f3f4f6] px-2 py-0.5 text-[10px] font-bold text-[#374151] ring-1 ring-[var(--card-border)]">
                         {tipoBadge}
                       </span>
+                      {emDia ? (
+                        <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
+                          Em dia
+                        </span>
+                      ) : podeAcerto ? (
+                        <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900">
+                          Acerto pendente
+                        </span>
+                      ) : null}
                     </p>
-                    <span className="text-xs font-semibold text-[#6b7280]">{g.n} entrega(s)</span>
+                    <span className="text-xs font-semibold text-[#6b7280]">
+                      {g.n} entrega(s)
+                      {g.nPendentes > 0 && g.nPendentes < g.n
+                        ? ` · ${g.nPendentes} pendente(s)`
+                        : null}
+                    </span>
                   </div>
                   <div className="space-y-1 px-4 py-3 text-sm text-[#374151]">
                     <div className="flex justify-between">
@@ -1458,20 +1603,20 @@ function OperacaoView({
                       <span>Deve repassar à loja:</span>
                       <span
                         className={`font-semibold tabular-nums ${
-                          g.saldo > 0.005 ? 'text-emerald-700' : 'text-[#9ca3af]'
+                          g.saldoPendente > 0.005 ? 'text-emerald-700' : 'text-[#9ca3af]'
                         }`}
                       >
-                        {money.format(g.saldo > 0 ? g.saldo : 0)}
+                        {money.format(g.saldoPendente > 0 ? g.saldoPendente : 0)}
                       </span>
                     </div>
                     <div className="flex justify-between">
                       <span>Loja deve ao entregador:</span>
                       <span
                         className={`font-semibold tabular-nums ${
-                          g.saldo < -0.005 ? 'text-red-600' : 'text-[#9ca3af]'
+                          g.saldoPendente < -0.005 ? 'text-red-600' : 'text-[#9ca3af]'
                         }`}
                       >
-                        {money.format(g.saldo < 0 ? Math.abs(g.saldo) : 0)}
+                        {money.format(g.saldoPendente < 0 ? Math.abs(g.saldoPendente) : 0)}
                       </span>
                     </div>
                   </div>
@@ -1481,7 +1626,7 @@ function OperacaoView({
                       disabled={!podeAcerto || !turno || turno.status !== 'aberto'}
                       onClick={() => {
                         setAcertoValor(
-                          String(Math.abs(g.saldo).toFixed(2)).replace('.', ',')
+                          String(Math.abs(g.saldoPendente).toFixed(2)).replace('.', ',')
                         )
                         setAcertoForma('dinheiro')
                         setAcertoObs('')
@@ -1489,13 +1634,15 @@ function OperacaoView({
                           key: g.key,
                           nome: g.nome,
                           tipo: g.tipo,
-                          n: g.n,
-                          saldo: g.saldo,
+                          n: g.nPendentes,
+                          saldo: g.saldoPendente,
+                          entregadorId: g.key.startsWith('av:') ? null : g.key,
+                          entregaIds: g.pendentes.map((e) => e.id),
                         })
                       }}
                       className="rounded-lg bg-[var(--dash-primary)] px-3 py-2 text-xs font-semibold text-white shadow-sm disabled:opacity-50"
                     >
-                      Registrar acerto
+                      {emDia ? 'Acerto em dia' : 'Registrar acerto'}
                     </button>
                     <button
                       type="button"
@@ -1875,6 +2022,18 @@ function OperacaoView({
                 year: 'numeric',
               })}
             </h3>
+            <p className="mt-2 text-sm text-[#374151]">
+              {acertoModal.n} entrega(s) pendente(s) de acerto neste período.
+            </p>
+            {acertoModal.saldo > 0.005 ? (
+              <p className="mt-1 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-900">
+                Entregador repassa à loja: {money.format(acertoModal.saldo)}
+              </p>
+            ) : acertoModal.saldo < -0.005 ? (
+              <p className="mt-1 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-900">
+                Loja paga ao entregador: {money.format(Math.abs(acertoModal.saldo))}
+              </p>
+            ) : null}
             <label className="mt-4 block text-xs font-medium text-[#6b7280]">
               Valor do acerto (R$)
               <input
@@ -2051,7 +2210,7 @@ function OperacaoView({
                           <tr className="border-b border-[var(--card-border)] text-[10px] font-semibold uppercase text-[#6b7280]">
                             <th className="py-1.5 pr-2">Entregador</th>
                             <th className="py-1.5 pr-2 text-right">Corridas</th>
-                            <th className="py-1.5 text-right">Saldo</th>
+                            <th className="py-1.5 text-right">Saldo pendente</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -2061,18 +2220,18 @@ function OperacaoView({
                               <td className="py-1.5 pr-2 text-right">{g.n}</td>
                               <td
                                 className={`py-1.5 text-right font-semibold ${
-                                  Math.abs(g.saldo) < 0.005
+                                  Math.abs(g.saldoPendente) < 0.005
                                     ? 'text-[#6b7280]'
-                                    : g.saldo > 0
+                                    : g.saldoPendente > 0
                                       ? 'text-emerald-700'
                                       : 'text-red-600'
                                 }`}
                               >
-                                {g.saldo > 0 ? '+' : ''}
-                                {money.format(g.saldo)}
-                                {Math.abs(g.saldo) < 0.005
+                                {g.saldoPendente > 0 ? '+' : ''}
+                                {money.format(g.saldoPendente)}
+                                {Math.abs(g.saldoPendente) < 0.005
                                   ? ''
-                                  : g.saldo > 0
+                                  : g.saldoPendente > 0
                                     ? ' (repassa)'
                                     : ' (loja paga)'}
                               </td>
@@ -2084,18 +2243,18 @@ function OperacaoView({
                     <p
                       className={`mt-2 border-t border-[var(--card-border)] pt-2 text-sm font-bold ${
                         Math.abs(
-                          gruposFechoTurno.reduce((s, g) => s + g.saldo, 0)
+                          gruposFechoTurno.reduce((s, g) => s + g.saldoPendente, 0)
                         ) < 0.005
                           ? 'text-[#6b7280]'
-                          : gruposFechoTurno.reduce((s, g) => s + g.saldo, 0) > 0
+                          : gruposFechoTurno.reduce((s, g) => s + g.saldoPendente, 0) > 0
                             ? 'text-emerald-700'
                             : 'text-red-600'
                       }`}
                     >
-                      Saldo líquido entregadores:{' '}
+                      Saldo pendente no turno:{' '}
                       {(() => {
                         const net = round2(
-                          gruposFechoTurno.reduce((s, g) => s + g.saldo, 0)
+                          gruposFechoTurno.reduce((s, g) => s + g.saldoPendente, 0)
                         )
                         return (
                           <>
@@ -2106,27 +2265,39 @@ function OperacaoView({
                       })()}
                     </p>
                     <div className="mt-3 space-y-2 border-t border-[var(--card-border)] pt-2">
-                      {gruposFechoTurno.map((g) => (
-                        <label key={g.key} className="flex cursor-pointer items-center gap-2">
-                          <input
-                            type="checkbox"
-                            checked={Boolean(acertoFeitoPorKey[g.key])}
-                            onChange={(e) =>
-                              setAcertoFeitoPorKey((prev) => ({
-                                ...prev,
-                                [g.key]: e.target.checked,
-                              }))
-                            }
-                            className="rounded border-[var(--card-border)]"
-                          />
-                          <span>
-                            Acerto realizado — <span className="font-semibold">{g.nome}</span>
-                          </span>
-                        </label>
-                      ))}
+                      {gruposFechoTurno.map((g) => {
+                        const pendente = Math.abs(g.saldoPendente) >= 0.005
+                        return (
+                          <label key={g.key} className="flex cursor-pointer items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(acertoFeitoPorKey[g.key])}
+                              disabled={!pendente}
+                              onChange={(e) =>
+                                setAcertoFeitoPorKey((prev) => ({
+                                  ...prev,
+                                  [g.key]: e.target.checked,
+                                }))
+                              }
+                              className="rounded border-[var(--card-border)] disabled:opacity-50"
+                            />
+                            <span>
+                              Acerto realizado — <span className="font-semibold">{g.nome}</span>
+                              {pendente ? (
+                                <span className="ml-1 text-amber-800">
+                                  ({g.saldoPendente > 0 ? 'receber' : 'pagar'}{' '}
+                                  {money.format(Math.abs(g.saldoPendente))})
+                                </span>
+                              ) : (
+                                <span className="ml-1 text-[#9ca3af]">(sem saldo pendente)</span>
+                              )}
+                            </span>
+                          </label>
+                        )
+                      })}
                     </div>
                     {gruposFechoTurno.some(
-                      (g) => Math.abs(g.saldo) >= 0.005 && !acertoFeitoPorKey[g.key]
+                      (g) => Math.abs(g.saldoPendente) >= 0.005 && !acertoFeitoPorKey[g.key]
                     ) ? (
                       <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] font-medium text-amber-900">
                         Há entregadores com acerto pendente

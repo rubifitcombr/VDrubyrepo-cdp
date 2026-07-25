@@ -4,7 +4,7 @@ import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
 import { saldoEntregaLinha } from '@/lib/entregas-types'
 import { getUser } from '@/services/auth.server'
 import { getOpenCaixaTurno } from '@/services/caixa-turnos.server'
-import { listEntregasForStore, markEntregasAsSettled } from '@/services/entregas.server'
+import { getEntregasByIds, markEntregasAsSettled } from '@/services/entregas.server'
 import { createClient } from '@/lib/supabase/server'
 
 function parseMoney(v: unknown): number {
@@ -74,10 +74,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Não há turno aberto no caixa.' }, { status: 409 })
   }
 
-  const d = new Date()
-  d.setHours(0, 0, 0, 0)
-  const entregas = await listEntregasForStore(supabase, storeId, { fromMs: d.getTime() })
-  const selected = entregas.filter((e) => entregaIds.includes(e.id))
+  const selected = await getEntregasByIds(supabase, storeId, entregaIds)
   if (selected.length !== entregaIds.length) {
     return NextResponse.json({ error: 'Uma ou mais entregas não foram encontradas.' }, { status: 404 })
   }

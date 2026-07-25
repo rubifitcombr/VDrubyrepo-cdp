@@ -169,6 +169,27 @@ export async function deleteEntregaById(
   if (error) throw new Error(error.message)
 }
 
+export async function getEntregasByIds(
+  svc: SupabaseClient,
+  storeId: string,
+  ids: string[]
+): Promise<EntregaDTO[]> {
+  const unique = [...new Set(ids.filter((id) => id.trim()))]
+  if (unique.length === 0) return []
+
+  const { data, error } = await svc
+    .from('entregas')
+    .select('*')
+    .eq('store_id', storeId)
+    .in('id', unique)
+
+  if (error) {
+    if (/relation|does not exist|42P01/i.test(error.message)) return []
+    throw new Error(error.message)
+  }
+  return (data ?? []).map((r) => mapEntrega(r as Record<string, unknown>))
+}
+
 export async function markEntregasAsSettled(
   svc: SupabaseClient,
   storeId: string,
