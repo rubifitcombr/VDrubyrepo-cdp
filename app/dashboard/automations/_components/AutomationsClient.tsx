@@ -120,7 +120,7 @@ export function AutomationsClient({
       setError(
         /auto_accept|auto_notify|auto_close|column/i.test(msg) ||
           upErr.code === 'PGRST204'
-          ? 'Configuração de automações em falta na base de dados. Contacta o suporte Vyria.'
+          ? 'Colunas de automações em falta na base de dados. Aplica a migração supabase/migrations/20260725140000_stores_automations_columns.sql no SQL Editor do Supabase.'
           : msg || 'Não foi possível guardar.'
       )
     }
