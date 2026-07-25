@@ -79,3 +79,23 @@ export function isOrderStatusTransitionAllowed(
   const allowed = ORDER_ALLOWED_NEXT[current]
   return Boolean(allowed?.has(newStatus))
 }
+
+/** Próximo estado ao concluir preparo na cozinha (KDS). */
+export function statusAfterKitchenReady(
+  order: { source?: string | null; delivery_address?: string | null },
+  deliveryPipelineEnabled: boolean
+): 'confirmed' | 'delivered' {
+  if (deliveryPipelineEnabled && isDeliveryFlowOrder(order)) {
+    return 'confirmed'
+  }
+  return 'delivered'
+}
+
+export function kitchenReadyActionLabel(
+  order: { source?: string | null; delivery_address?: string | null },
+  deliveryPipelineEnabled: boolean
+): string {
+  return statusAfterKitchenReady(order, deliveryPipelineEnabled) === 'confirmed'
+    ? 'Saiu / entrega'
+    : 'Servido'
+}

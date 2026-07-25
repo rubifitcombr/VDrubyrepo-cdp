@@ -1,5 +1,9 @@
 import Link from 'next/link'
 import { parsePrintingFromStore } from '@/lib/store-printing'
+import {
+  isDeliveryPipelineEnabled,
+  parseOperationModeFromStore,
+} from '@/lib/merchant-operation-mode'
 import { KdsClient } from './_components/KdsClient'
 import { getUser } from '@/services/auth.server'
 import { getStoreOrders } from '@/services/orders.server'
@@ -32,6 +36,8 @@ export default async function KdsPage() {
   const storeName =
     typeof row.name === 'string' ? String(row.name) : 'Loja'
   const printing = parsePrintingFromStore(row)
+  const operationMode = parseOperationModeFromStore(row)
+  const deliveryPipelineEnabled = isDeliveryPipelineEnabled(operationMode)
 
   return (
     <KdsClient
@@ -39,6 +45,7 @@ export default async function KdsPage() {
       storeId={storeId}
       storeName={storeName}
       printing={printing}
+      deliveryPipelineEnabled={deliveryPipelineEnabled}
     />
   )
 }

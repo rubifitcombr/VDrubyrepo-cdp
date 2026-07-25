@@ -19,9 +19,11 @@ import {
   type StoreOrderRow,
 } from '@/lib/store-order'
 import {
+  isWaiterSalonOpenOrder,
+} from '@/lib/presencial-table-orders'
+import {
   extractUserNotes,
   isSalonMapOrderSource,
-  notesIndicateWaiterReleasedToCaixa,
   orderMatchesSalonTable,
   parseDiscountFromNotes,
   parseSectorFromNotes,
@@ -86,7 +88,13 @@ const money = new Intl.NumberFormat('pt-BR', {
   currency: 'BRL',
 })
 
-const WAITER_OPEN_STATUSES = new Set(['pending', 'preparing', 'ready', 'confirmed'])
+const WAITER_OPEN_STATUSES = new Set([
+  'pending',
+  'preparing',
+  'ready',
+  'confirmed',
+  'delivered',
+])
 
 function escapeHtml(raw: string): string {
   return raw
@@ -120,6 +128,8 @@ function statusLabel(status: string | null): string {
       return 'Pronto'
     case 'confirmed':
       return 'Entregue à mesa'
+    case 'delivered':
+      return 'Entregue à mesa'
     default:
       return status?.trim() || '—'
   }
@@ -131,12 +141,10 @@ function canPrintComandaStatus(status: string | null | undefined): boolean {
 }
 
 function isOpenSalonMapOrder(order: StoreOrderRow): boolean {
-  const status = String(order.status ?? '').trim().toLowerCase()
   return (
-    WAITER_OPEN_STATUSES.has(status) &&
     isSalonMapOrderSource(order.source) &&
     orderIsVisibleAfterPixConfirmation(order) &&
-    !notesIndicateWaiterReleasedToCaixa(order.notes)
+    isWaiterSalonOpenOrder(order)
   )
 }
 

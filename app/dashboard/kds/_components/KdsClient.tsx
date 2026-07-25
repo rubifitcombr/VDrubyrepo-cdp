@@ -16,6 +16,10 @@ import {
   subscribeStoreOrdersSync,
 } from '@/lib/store-operational-realtime.client'
 import { updateOrderStatus } from '@/services/orders'
+import {
+  kitchenReadyActionLabel,
+  statusAfterKitchenReady,
+} from '@/lib/order-status-transitions'
 
 const money = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
@@ -45,11 +49,13 @@ export function KdsClient({
   storeId,
   storeName,
   printing,
+  deliveryPipelineEnabled = true,
 }: {
   initialOrders: StoreOrderRow[]
   storeId: string
   storeName: string
   printing: StorePrintingState
+  deliveryPipelineEnabled?: boolean
 }) {
   const [orders, setOrders] = useState<StoreOrderRow[]>(initialOrders)
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -334,10 +340,15 @@ export function KdsClient({
                           <button
                             type="button"
                             disabled={busy}
-                            onClick={() => void patch(o.id, 'confirmed')}
+                            onClick={() =>
+                              void patch(
+                                o.id,
+                                statusAfterKitchenReady(o, deliveryPipelineEnabled)
+                              )
+                            }
                             className="flex-1 rounded-lg bg-sky-500 px-3 py-2.5 text-sm font-bold text-white min-[480px]:flex-none"
                           >
-                            Saiu / entrega
+                            {kitchenReadyActionLabel(o, deliveryPipelineEnabled)}
                           </button>
                         ) : null}
                       </div>

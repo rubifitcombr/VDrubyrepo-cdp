@@ -8,11 +8,13 @@ import {
 } from '@/lib/store-order'
 import {
   isSalonMapOrderSource,
-  notesIndicateWaiterReleasedToCaixa,
 } from '@/lib/waiter-order-notes'
+import {
+  isWaiterSalonOpenOrder,
+} from '@/lib/presencial-table-orders'
 import { createClient } from '@/lib/supabase/server'
 
-const OPEN_STATUSES = ['pending', 'preparing', 'ready', 'confirmed']
+const OPEN_STATUSES = ['pending', 'preparing', 'ready', 'confirmed', 'delivered']
 
 export async function getWaiterOpenOrdersForStore(
   storeId: string
@@ -36,7 +38,7 @@ export async function getWaiterOpenOrdersForStore(
       (o) =>
         isSalonMapOrderSource(o.source) &&
         orderIsVisibleAfterPixConfirmation(o) &&
-        !notesIndicateWaiterReleasedToCaixa(o.notes)
+        isWaiterSalonOpenOrder(o)
     )
 }
 
