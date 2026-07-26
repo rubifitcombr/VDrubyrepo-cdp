@@ -23,6 +23,7 @@ export function PixPaymentPanel({
   qrCodeDataUrl,
   storeSlug,
   orderId,
+  accessToken,
   onReportedPaid,
   onClose,
 }: {
@@ -33,6 +34,7 @@ export function PixPaymentPanel({
   qrCodeDataUrl: string
   storeSlug: string
   orderId: string
+  accessToken: string
   onReportedPaid: () => void
   onClose: () => void
 }) {
@@ -63,7 +65,11 @@ export function PixPaymentPanel({
   const checkPaymentStatus = useCallback(async () => {
     if (confirmedRef.current) return
     try {
-      const params = new URLSearchParams({ slug: storeSlug, orderId })
+      const params = new URLSearchParams({
+        slug: storeSlug,
+        orderId,
+        accessToken,
+      })
       const resp = await fetch(`/api/public/orders/pix-status?${params.toString()}`, {
         cache: 'no-store',
       })
@@ -84,7 +90,7 @@ export function PixPaymentPanel({
     } catch (e) {
       setStatusError(e instanceof Error ? e.message : 'Erro de rede.')
     }
-  }, [onReportedPaid, orderId, storeSlug])
+  }, [accessToken, onReportedPaid, orderId, storeSlug])
 
   useEffect(() => {
     const first = window.setTimeout(() => {
@@ -106,7 +112,7 @@ export function PixPaymentPanel({
       const resp = await fetch('/api/public/orders/pix-status', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slug: storeSlug, orderId }),
+        body: JSON.stringify({ slug: storeSlug, orderId, accessToken }),
       })
       const data = (await resp.json().catch(() => ({}))) as {
         ok?: boolean

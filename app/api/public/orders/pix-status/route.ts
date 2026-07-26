@@ -7,7 +7,7 @@ import {
 } from '@/lib/rate-limit.server'
 import { fetchPublicStoreForSlugPage } from '@/lib/store-public-slug.server'
 import { pixPaymentStatusIsConfirmed } from '@/lib/store-order'
-import { tryAutoThermalPrint } from '@/services/thermal-print.server'
+import { verifyCheckoutAccessToken } from '@/lib/checkout-access-token.server'
 
 function toText(v: unknown): string {
   return typeof v === 'string' ? v.trim() : ''
@@ -16,17 +16,28 @@ function toText(v: unknown): string {
 export async function GET(req: NextRequest) {
   try {
     const ip = clientIpFromRequest(req)
-    const rl = checkRateLimit(`pix-status:${ip}`, 60, 60_000)
-    if (!rl.ok) return rateLimitResponse(rl.retryAfterSec)
+    const rl = checkRateLimit(ip, 'pix-status', 40, 60_000)
+    if (!rl.ok) {
+      return rateLimitResponse(
+        rl.retryAfterSec,
+        rl.guard?.message,
+        rl.guard?.status === 403 ? 403 : 429
+      )
+    }
 
     const slug = toText(req.nextUrl.searchParams.get('slug'))
     const orderId = toText(req.nextUrl.searchParams.get('orderId'))
+    const accessToken = toText(req.nextUrl.searchParams.get('accessToken'))
 
     if (!slug || !orderId || !/^[0-9a-f-]{36}$/i.test(orderId)) {
       return NextResponse.json(
         { error: 'Slug e pedido em falta.' },
         { status: 400 }
       )
+    }
+
+    if (!verifyCheckoutAccessToken(accessToken, slug, orderId)) {
+      return NextResponse.json({ error: 'Acesso ao pedido negado.' }, { status: 403 })
     }
 
     const supabase = createPublicAnonClient()
@@ -77,8 +88,14 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const ip = clientIpFromRequest(req)
-    const rl = checkRateLimit(`pix-report:${ip}`, 20, 60_000)
-    if (!rl.ok) return rateLimitResponse(rl.retryAfterSec)
+    const rl = checkRateLimit(ip, 'pix-report', 12, 60_000)
+    if (!rl.ok) {
+      return rateLimitResponse(
+        rl.retryAfterSec,
+        rl.guard?.message,
+        rl.guard?.status === 403 ? 403 : 429
+      )
+    }
 
     const body = await req.json()
     if (!body || typeof body !== 'object') {
@@ -88,12 +105,17 @@ export async function POST(req: NextRequest) {
     const raw = body as Record<string, unknown>
     const slug = toText(raw.slug)
     const orderId = toText(raw.orderId)
+    const accessToken = toText(raw.accessToken)
 
     if (!slug || !orderId || !/^[0-9a-f-]{36}$/i.test(orderId)) {
       return NextResponse.json(
         { error: 'Slug e pedido em falta.' },
         { status: 400 }
       )
+    }
+
+    if (!verifyCheckoutAccessToken(accessToken, slug, orderId)) {
+      return NextResponse.json({ error: 'Acesso ao pedido negado.' }, { status: 403 })
     }
 
     const supabase = createPublicAnonClient()

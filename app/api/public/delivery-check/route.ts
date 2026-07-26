@@ -17,8 +17,14 @@ function toText(v: unknown): string {
 export async function POST(req: NextRequest) {
   try {
     const ip = clientIpFromRequest(req)
-    const rl = checkRateLimit(`delivery-check:${ip}`, 40, 60_000)
-    if (!rl.ok) return rateLimitResponse(rl.retryAfterSec)
+    const rl = checkRateLimit(ip, 'delivery-check', 30, 60_000)
+    if (!rl.ok) {
+      return rateLimitResponse(
+        rl.retryAfterSec,
+        rl.guard?.message,
+        rl.guard?.status === 403 ? 403 : 429
+      )
+    }
 
     const body = await req.json()
     if (!body || typeof body !== 'object') {

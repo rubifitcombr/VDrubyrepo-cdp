@@ -19,6 +19,7 @@ type PixStepState = CheckoutPixPayload & {
   orderId: string
   orderRef: string
   whatsappText: string
+  accessToken: string
 }
 
 const money = new Intl.NumberFormat('pt-BR', {
@@ -295,6 +296,7 @@ export function WhatsAppCheckoutButton({
   function finishCheckoutAfterApi(
     payload: {
       orderId: string
+      accessToken?: string
       pix?: CheckoutPixPayload
     },
     whatsappText: string
@@ -310,11 +312,17 @@ export function WhatsAppCheckoutButton({
         )
         return
       }
+      if (!payload.accessToken?.trim()) {
+        setSubmitting(false)
+        setError('Sessão de pagamento inválida. Tenta finalizar o pedido de novo.')
+        return
+      }
       setPixStep({
         ...payload.pix,
         orderId: payload.orderId,
         orderRef: ref,
         whatsappText,
+        accessToken: payload.accessToken.trim(),
       })
       setSubmitting(false)
       return
@@ -400,6 +408,7 @@ export function WhatsAppCheckoutButton({
         ok?: boolean
         error?: string
         orderId?: string
+        accessToken?: string
         subtotal?: number
         deliveryCharge?: number
         orderTotal?: number
@@ -462,7 +471,11 @@ export function WhatsAppCheckoutButton({
         .join('\n')
       setSubmitting(false)
       finishCheckoutAfterApi(
-        { orderId: payload.orderId, pix: payload.pix },
+        {
+          orderId: payload.orderId,
+          accessToken: payload.accessToken,
+          pix: payload.pix,
+        },
         finalText
       )
     } catch (e) {
@@ -499,6 +512,7 @@ export function WhatsAppCheckoutButton({
         ok?: boolean
         error?: string
         orderId?: string
+        accessToken?: string
         orderTotal?: number
         pix?: CheckoutPixPayload
       }
@@ -569,6 +583,7 @@ export function WhatsAppCheckoutButton({
         ok?: boolean
         error?: string
         orderId?: string
+        accessToken?: string
         orderTotal?: number
         pix?: CheckoutPixPayload
       }
@@ -608,7 +623,11 @@ export function WhatsAppCheckoutButton({
         .filter(Boolean)
         .join('\n')
       finishCheckoutAfterApi(
-        { orderId: payload.orderId, pix: payload.pix },
+        {
+          orderId: payload.orderId,
+          accessToken: payload.accessToken,
+          pix: payload.pix,
+        },
         finalText
       )
     } catch (e) {
@@ -1069,6 +1088,7 @@ export function WhatsAppCheckoutButton({
                         qrCodeDataUrl={pixStep.qrCodeDataUrl}
                         storeSlug={storeSlug}
                         orderId={pixStep.orderId}
+                        accessToken={pixStep.accessToken}
                         onReportedPaid={() => {
                           openWhatsAppWithText(pixStep.whatsappText)
                           resetCheckoutModal()

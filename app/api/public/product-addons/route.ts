@@ -12,8 +12,14 @@ import {
  */
 export async function GET(req: NextRequest) {
   const ip = clientIpFromRequest(req)
-  const rl = checkRateLimit(`product-addons:${ip}`, 120, 60_000)
-  if (!rl.ok) return rateLimitResponse(rl.retryAfterSec)
+  const rl = checkRateLimit(ip, 'product-addons', 80, 60_000)
+  if (!rl.ok) {
+    return rateLimitResponse(
+      rl.retryAfterSec,
+      rl.guard?.message,
+      rl.guard?.status === 403 ? 403 : 429
+    )
+  }
 
   const productId = req.nextUrl.searchParams.get('productId')?.trim()
   if (!productId || !/^[0-9a-f-]{36}$/i.test(productId)) {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { enforceApiRateLimit } from '@/lib/api-security.server'
 import { gateMerchantMenuKey } from '@/lib/merchant-api-gate.server'
 import {
   isOrderStatusTransitionAllowed,
@@ -12,6 +13,9 @@ export const dynamic = 'force-dynamic'
 
 export async function POST(req: NextRequest) {
   try {
+    const limited = enforceApiRateLimit(req, 'orders-status', 120, 60_000)
+    if (limited) return limited
+
     const supabase = await createClient()
     const {
       data: { user },

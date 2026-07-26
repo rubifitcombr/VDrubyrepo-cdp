@@ -126,8 +126,14 @@ async function ensureStoreForOwner(
  */
 export async function POST(req: NextRequest) {
   const ip = clientIpFromRequest(req)
-  const rl = checkRateLimit(`auth-register:${ip}`, 8, 15 * 60_000)
-  if (!rl.ok) return rateLimitResponse(rl.retryAfterSec)
+  const rl = checkRateLimit(ip, 'auth-register', 5, 15 * 60_000)
+  if (!rl.ok) {
+    return rateLimitResponse(
+      rl.retryAfterSec,
+      rl.guard?.message,
+      rl.guard?.status === 403 ? 403 : 429
+    )
+  }
 
   let body: Record<string, unknown>
   try {

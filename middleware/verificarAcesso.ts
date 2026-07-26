@@ -15,6 +15,9 @@ export async function verificarAcessoLojista(userId: string): Promise<VerificarA
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
   if (!url || !key) {
+    if (process.env.NODE_ENV === 'production') {
+      return { ok: false, redirectPath: '/acesso-suspenso?error=config' }
+    }
     return { ok: true }
   }
 

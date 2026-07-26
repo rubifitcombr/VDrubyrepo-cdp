@@ -1,6 +1,10 @@
 import { createBrowserClient } from '@supabase/ssr'
 import { supabaseBrowserGlobalOptions } from '@/lib/supabase/client-options'
 
+/**
+ * Cliente browser (chave anon). A segurança real é RLS no Postgres — nunca confiar só no front.
+ * Escritas sensíveis (checkout, cancelamentos) passam pelas APIs com service role.
+ */
 export function createClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim()

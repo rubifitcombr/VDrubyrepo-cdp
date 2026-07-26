@@ -13,6 +13,11 @@ import {
   verificarLojistaGatesEdge,
   type LojistaGateResult,
 } from '@/middleware/verificarLojistaGates.edge'
+import {
+  checkEdgeRateLimit,
+  clientIpFromEdgeRequest,
+} from '@/lib/rate-limit.edge'
+import { guardIpAccess } from '@/lib/ip-abuse-guard'
 import { applySecurityHeaders } from '@/lib/security-headers.edge'
 import { supabaseServerGlobalOptions } from '@/lib/supabase/client-options'
 import { NextResponse, type NextRequest } from 'next/server'
@@ -69,6 +74,41 @@ export async function proxy(request: NextRequest) {
   }
 
   const p = pathnameWithoutTrailingSlash(rawPath)
+
+  const ip = clientIpFromEdgeRequest(request)
+  const blocked = guardIpAccess(ip)
+  if (!blocked.ok) {
+    return secure(
+      NextResponse.json(
+        { error: blocked.message },
+        { status: 403, headers: { 'Retry-After': String(blocked.retryAfterSec) } }
+      )
+    )
+  }
+
+  if (p.startsWith('/api/public/')) {
+    const rl = checkEdgeRateLimit(ip, 'public', 40, 60_000)
+    if (!rl.ok) {
+      const status = rl.guard?.status === 403 ? 403 : 429
+      return secure(
+        NextResponse.json(
+          { error: rl.guard?.message || 'Demasiados pedidos. Tenta novamente dentro de momentos.' },
+          { status, headers: { 'Retry-After': String(rl.retryAfterSec) } }
+        )
+      )
+    }
+  } else if (p.startsWith('/api/')) {
+    const rl = checkEdgeRateLimit(ip, 'api', 180, 60_000)
+    if (!rl.ok) {
+      const status = rl.guard?.status === 403 ? 403 : 429
+      return secure(
+        NextResponse.json(
+          { error: rl.guard?.message || 'Demasiados pedidos. Tenta novamente dentro de momentos.' },
+          { status, headers: { 'Retry-After': String(rl.retryAfterSec) } }
+        )
+      )
+    }
+  }
 
   const segments = p.split('/').filter(Boolean)
   if (segments.length >= 1) {

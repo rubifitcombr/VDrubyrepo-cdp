@@ -16,11 +16,10 @@ export type PublicCheckoutOrderItemInsert = {
 
 /**
  * Grava pedido + itens do checkout público.
- * Preferência: cliente anon (RLS). Se policies públicas ainda não foram aplicadas no Supabase,
- * faz fallback com service role após validação server-side (slug, produtos, zona).
+ * Preferência: service role (validação já feita na API). Anon só em dev sem service key.
  */
 export async function insertPublicCheckoutOrder(
-  anon: SupabaseClient,
+  _anon: SupabaseClient,
   orderInsert: PublicCheckoutOrderInsert,
   itemRows: PublicCheckoutOrderItemInsert[]
 ): Promise<
@@ -61,25 +60,27 @@ export async function insertPublicCheckoutOrder(
     return { orderErr: null, orderId, itemsErr: null, missingOrderItemsTable: false }
   }
 
-  let result = await attempt(anon)
+  const svc = tryCreateServiceRoleClient()
+  let result = svc ? await attempt(svc) : null
 
-  if (result.orderErr && isSupabaseRlsViolation(result.orderErr.message)) {
-    const svc = tryCreateServiceRoleClient()
-    if (svc) {
-      result = await attempt(svc)
-    }
+  if (!result) {
+    result = await attempt(_anon)
+  } else if (result.orderErr && isSupabaseRlsViolation(result.orderErr.message)) {
+    result = await attempt(_anon)
   }
 
   if (result.missingOrderItemsTable && result.orderId) {
-    return { ok: false, error: result.orderErr?.message ?? '', missingOrderItemsTable: true, orderId: result.orderId }
+    return {
+      ok: false,
+      error: result.orderErr?.message ?? '',
+      missingOrderItemsTable: true,
+      orderId: result.orderId,
+    }
   }
 
   if (result.orderErr || !result.orderId) {
     const msg = result.orderErr?.message ?? ''
-    if (
-      msg.includes('order_items') ||
-      msg.includes('does not exist')
-    ) {
+    if (msg.includes('order_items') || msg.includes('does not exist')) {
       return { ok: false, error: msg, missingOrderItemsTable: true }
     }
     if (isSupabaseRlsViolation(msg)) {

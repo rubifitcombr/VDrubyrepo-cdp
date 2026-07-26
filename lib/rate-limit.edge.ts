@@ -1,5 +1,3 @@
-import 'server-only'
-
 import {
   guardIpAccess,
   guardRateLimitExceeded,
@@ -10,19 +8,19 @@ type Bucket = { count: number; resetAt: number }
 
 const buckets = new Map<string, Bucket>()
 
-export type RateLimitResult =
+export type { IpGuardResult }
+
+export type EdgeRateLimitResult =
   | { ok: true; remaining: number }
   | { ok: false; retryAfterSec: number; guard?: IpGuardResult }
 
-/**
- * Rate limit in-memory (por instância serverless). Complementar com WAF/CDN em produção.
- */
-export function checkRateLimit(
+/** Bloqueio + rate limit no Edge (complementar com WAF/CDN). */
+export function checkEdgeRateLimit(
   ip: string,
   scope: string,
   limit: number,
   windowMs: number
-): RateLimitResult {
+): EdgeRateLimitResult {
   const blocked = guardIpAccess(ip)
   if (!blocked.ok) {
     return {
@@ -54,28 +52,11 @@ export function checkRateLimit(
   return { ok: true, remaining: limit - hit.count }
 }
 
-export function clientIpFromRequest(req: Request): string {
-  const fwd = req.headers.get('x-forwarded-for')
+export function clientIpFromEdgeRequest(request: Request): string {
+  const fwd = request.headers.get('x-forwarded-for')
   if (fwd) {
     const first = fwd.split(',')[0]?.trim()
     if (first) return first
   }
-  return req.headers.get('x-real-ip')?.trim() || 'unknown'
-}
-
-export function rateLimitResponse(
-  retryAfterSec: number,
-  message?: string,
-  status = 429
-): Response {
-  return Response.json(
-    {
-      error:
-        message || 'Demasiados pedidos. Tenta novamente dentro de momentos.',
-    },
-    {
-      status,
-      headers: { 'Retry-After': String(retryAfterSec) },
-    }
-  )
+  return request.headers.get('x-real-ip')?.trim() || 'unknown'
 }

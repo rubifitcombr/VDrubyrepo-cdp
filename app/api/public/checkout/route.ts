@@ -34,6 +34,8 @@ import {
   publicStoreOrdersBlockedMessage,
 } from '@/lib/business-hours'
 import { insertPublicCheckoutOrder } from '@/services/public-checkout-order.server'
+import { issueCheckoutAccessToken } from '@/lib/checkout-access-token.server'
+import { createPublicCheckoutDbClient } from '@/lib/supabase/public-checkout-db.server'
 import {
   MENU_PRODUCT_SELECT,
   normalizeMenuProductRow,
@@ -89,8 +91,14 @@ function formatDeliveryAddressFromParts(parts: {
 export async function POST(req: NextRequest) {
   try {
     const ip = clientIpFromRequest(req)
-    const rl = checkRateLimit(`checkout:${ip}`, 30, 60_000)
-    if (!rl.ok) return rateLimitResponse(rl.retryAfterSec)
+    const rl = checkRateLimit(ip, 'checkout', 15, 60_000)
+    if (!rl.ok) {
+      return rateLimitResponse(
+        rl.retryAfterSec,
+        rl.guard?.message,
+        rl.guard?.status === 403 ? 403 : 429
+      )
+    }
 
     const body = await req.json()
     if (!body || typeof body !== 'object') {
@@ -215,6 +223,7 @@ export async function POST(req: NextRequest) {
     const customerPhone = customerPhoneRaw || null
 
     const supabase = createPublicAnonClient()
+    const checkoutDb = createPublicCheckoutDbClient(supabase)
     const { data: store, error: storeErr } = await fetchPublicStoreForSlugPage(
       slug,
       'id, name, plan, plano, address, delivery_fee, delivery_free_above, delivery_max_km, store_geo_lat, store_geo_lng, auto_accept_orders, manual_closed, business_hours, auto_notify_new_order, salao_attendance_mode, operation_mode, pix_enabled, pix_key, pix_key_type, pix_receiver_name, pix_receiver_city'
@@ -500,7 +509,7 @@ export async function POST(req: NextRequest) {
     ) {
       const manualClosed = storeMeta.manual_closed === true
       if (!manualClosed) {
-        await supabase
+        await checkoutDb
           .from('orders')
           .update({ status: 'preparing' })
           .eq('id', order.id)
@@ -539,7 +548,7 @@ export async function POST(req: NextRequest) {
         infoAdicional: `Pedido ${String(order.id).slice(0, 8)}`,
       })
       if (pix?.pixPayload) {
-        const { error: pixUpdateErr } = await supabase
+        const { error: pixUpdateErr } = await checkoutDb
           .from('orders')
           .update({ pix_payload: pix.pixPayload })
           .eq('id', order.id)
@@ -549,8 +558,8 @@ export async function POST(req: NextRequest) {
         }
       }
       if (!pix?.copyPaste || !pix.qrCodeDataUrl) {
-        await supabase.from('order_items').delete().eq('order_id', order.id)
-        await supabase.from('orders').delete().eq('id', order.id)
+        await checkoutDb.from('order_items').delete().eq('order_id', order.id)
+        await checkoutDb.from('orders').delete().eq('id', order.id)
         return NextResponse.json(
           { error: 'Não foi possível gerar o QR Code PIX. Escolhe outro pagamento ou tenta de novo.' },
           { status: 500 }
@@ -558,9 +567,13 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const accessToken =
+      isPixPayment ? issueCheckoutAccessToken(slug, String(order.id)) : undefined
+
     return NextResponse.json({
       ok: true,
       orderId: String(order.id),
+      ...(accessToken ? { accessToken } : {}),
       mode: plan === 'START' ? 'history' : 'realtime',
       storeName: String(storeRow.name || ''),
       subtotal,
