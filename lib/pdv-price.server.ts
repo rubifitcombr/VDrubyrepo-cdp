@@ -10,6 +10,13 @@ import {
   normalizeMenuProductRow,
   type MenuProductRow,
 } from '@/lib/menu-product'
+import { roundWeightKg } from '@/lib/scale/price'
+import type { OrderItemUnitType } from '@/lib/scale/types'
+import {
+  effectivePricePerKg,
+  isSoldByWeight,
+  validateWeighableLineWeight,
+} from '@/lib/weighable-product'
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100
@@ -20,6 +27,9 @@ export type PdvPricedLine = {
   quantity: number
   unit_price: number
   name: string
+  unit_type: OrderItemUnitType
+  weight_kg?: number | null
+  price_per_kg?: number | null
 }
 
 /**
@@ -33,7 +43,9 @@ export async function pricePdvLinesFromCatalog(
     quantity?: unknown
     unit_price?: unknown
     name?: unknown
-  }>
+    unit_type?: unknown
+  }>,
+  channel: ProductPriceChannel = 'base'
 ): Promise<
   | { ok: true; lines: PdvPricedLine[] }
   | { ok: false; error: string; status: number }
@@ -67,7 +79,6 @@ export async function pricePdvLinesFromCatalog(
     if (row.id) byId.set(row.id, row)
   }
 
-  const channel: ProductPriceChannel = 'base'
   const lines: PdvPricedLine[] = []
 
   for (const item of items) {
@@ -75,6 +86,43 @@ export async function pricePdvLinesFromCatalog(
     if (!productId) continue
     const row = byId.get(productId)
     if (!row) continue
+
+    if (isSoldByWeight(row)) {
+      const pricePerKg = effectivePricePerKg(row)
+      if (pricePerKg == null || pricePerKg <= 0) {
+        return {
+          ok: false,
+          error: `«${row.name || 'produto'}» não tem preço por kg configurado.`,
+          status: 400,
+        }
+      }
+
+      const weightKg = roundWeightKg(Number(item.quantity) || 0)
+      const weightCheck = validateWeighableLineWeight(row, weightKg)
+      if (!weightCheck.ok) {
+        return { ok: false, error: weightCheck.error, status: 400 }
+      }
+
+      const clientUnit = round2(Math.max(0, Number(item.unit_price) || 0))
+      if (Math.abs(clientUnit - pricePerKg) > 0.02) {
+        return {
+          ok: false,
+          error: `O preço/kg de «${row.name || 'produto'}» mudou. Actualiza o PDV e tenta de novo.`,
+          status: 409,
+        }
+      }
+
+      lines.push({
+        product_id: productId,
+        quantity: weightKg,
+        unit_price: pricePerKg,
+        name: row.name?.trim() || String(item.name ?? '').trim() || 'Item',
+        unit_type: 'weight',
+        weight_kg: weightKg,
+        price_per_kg: pricePerKg,
+      })
+      continue
+    }
 
     const serverUnit = round2(effectiveProductPrice(row, channel))
     const clientUnit = round2(Math.max(0, Number(item.unit_price) || 0))
@@ -91,6 +139,7 @@ export async function pricePdvLinesFromCatalog(
       quantity: Math.max(1, Math.floor(Number(item.quantity) || 1)),
       unit_price: serverUnit,
       name: row.name?.trim() || String(item.name ?? '').trim() || 'Item',
+      unit_type: 'unit',
     })
   }
 
@@ -103,4 +152,26 @@ export async function pricePdvLinesFromCatalog(
   }
 
   return { ok: true, lines }
+}
+
+/** Mapeia linhas precificadas para insert em `order_items`. */
+export function mapPricedLinesToOrderItemRows(
+  orderId: string,
+  lines: PdvPricedLine[]
+): Array<Record<string, unknown>> {
+  return lines.map((l) => {
+    const isWeight = l.unit_type === 'weight'
+    const lineTotal = round2(l.unit_price * l.quantity)
+    return {
+      order_id: orderId,
+      product_id: l.product_id,
+      quantity: l.quantity,
+      price: lineTotal,
+      unit_price: l.unit_price,
+      name: l.name,
+      unit_type: l.unit_type,
+      weight_kg: isWeight ? l.quantity : null,
+      price_per_kg_snapshot: isWeight ? l.unit_price : null,
+    }
+  })
 }

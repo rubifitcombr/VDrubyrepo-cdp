@@ -19,6 +19,7 @@ import type { Plan } from '@/lib/plan'
 type PlanSlug = 'start' | 'growth' | 'pro'
 
 function planSlug(plan: Plan): PlanSlug {
+  if (plan === 'MASTER') return 'pro'
   return plan.toLowerCase() as PlanSlug
 }
 
@@ -39,6 +40,7 @@ const MENU_KEY_ORDER: DashboardMenuKey[] = [
   'aparencia',
   'automacoes',
   'impressao',
+  'balanca',
   'assinatura',
 ]
 

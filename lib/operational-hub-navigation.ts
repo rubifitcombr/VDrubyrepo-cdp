@@ -37,6 +37,7 @@ const ADMINISTRATION_MENU_KEYS: readonly DashboardMenuKey[] = [
   'relatorios',
   'aparencia',
   'impressao',
+  'balanca',
   'kds',
   'pdv',
   'garcom',

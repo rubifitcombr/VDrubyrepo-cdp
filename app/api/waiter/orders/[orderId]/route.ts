@@ -15,12 +15,20 @@ import { getUser } from '@/services/auth.server'
 import { createClient } from '@/lib/supabase/server'
 import { buildItemsSummaryWithLineTotals } from '@/lib/print/items-summary-format'
 import { resolveGarcomForOrder } from '@/services/store-garcons.server'
+import {
+  merchantHasScaleIntegration,
+} from '@/lib/merchant-api-gate.server'
+import {
+  mapPricedLinesToOrderItemRows,
+  pricePdvLinesFromCatalog,
+} from '@/lib/pdv-price.server'
 
 type BodyItem = {
   product_id: string
   quantity: number
   unit_price: number
   name: string
+  unit_type?: 'unit' | 'weight'
 }
 
 function round2(n: number): number {
@@ -64,7 +72,7 @@ export async function GET(
 
   const { data: items, error: iErr } = await supabase
     .from('order_items')
-    .select('id, product_id, quantity, unit_price, price, name')
+    .select('id, product_id, quantity, unit_price, price, name, unit_type, weight_kg, price_per_kg_snapshot')
     .eq('order_id', id)
 
   if (iErr) {
@@ -166,34 +174,37 @@ export async function PATCH(
     return NextResponse.json({ error: 'Adiciona ao menos um item.' }, { status: 400 })
   }
 
+  const hasWeightItems = items.some((i) => i.unit_type === 'weight')
+  if (hasWeightItems && !merchantHasScaleIntegration(gate.ctx.store, user.email)) {
+    return NextResponse.json(
+      {
+        error:
+          'Produtos por peso exigem o plano Pro em operação presencial ou híbrida.',
+      },
+      { status: 403 }
+    )
+  }
+
+  const priced = await pricePdvLinesFromCatalog(
+    supabase,
+    storeId,
+    items.map((i) => ({
+      product_id: i.product_id,
+      quantity: i.quantity,
+      unit_price: i.unit_price,
+      name: i.name,
+      unit_type: i.unit_type,
+    })),
+    'dine_in'
+  )
+  if (!priced.ok) {
+    return NextResponse.json({ error: priced.error }, { status: priced.status })
+  }
+  const cleanItems = priced.lines
+
   const discountBrl = round2(
     Math.max(0, Number(body.discount_brl) || 0)
   )
-
-  const productIds = items.map((i) => String(i.product_id ?? '')).filter(Boolean)
-  const { data: prodOk, error: prodErr } = await supabase
-    .from('products')
-    .select('id, name')
-    .eq('store_id', storeId)
-    .in('id', productIds)
-
-  if (prodErr) {
-    return NextResponse.json({ error: 'Não foi possível validar os produtos.' }, { status: 500 })
-  }
-
-  const allowed = new Set((prodOk ?? []).map((p) => String(p.id)))
-  const cleanItems = items
-    .filter((i) => allowed.has(String(i.product_id)))
-    .map((i) => ({
-      product_id: String(i.product_id),
-      quantity: Math.max(1, Math.floor(Number(i.quantity) || 1)),
-      unit_price: round2(Math.max(0, Number(i.unit_price) || 0)),
-      name: String(i.name ?? '').trim() || 'Item',
-    }))
-
-  if (cleanItems.length === 0) {
-    return NextResponse.json({ error: 'Nenhum item válido.' }, { status: 400 })
-  }
 
   const gross = round2(
     cleanItems.reduce((sum, line) => sum + line.unit_price * line.quantity, 0)
@@ -216,14 +227,7 @@ export async function PATCH(
     return NextResponse.json({ error: delItems.message }, { status: 500 })
   }
 
-  const rows = cleanItems.map((i) => ({
-    order_id: id,
-    product_id: i.product_id,
-    quantity: i.quantity,
-    price: i.unit_price,
-    unit_price: i.unit_price,
-    name: i.name,
-  }))
+  const rows = mapPricedLinesToOrderItemRows(id, cleanItems)
   const { error: insItems } = await supabase.from('order_items').insert(rows)
   if (insItems) {
     return NextResponse.json({ error: insItems.message ?? 'Erro ao gravar itens.' }, { status: 500 })

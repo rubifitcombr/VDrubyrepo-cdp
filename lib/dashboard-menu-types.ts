@@ -11,6 +11,7 @@ export type DashboardMenuKey =
   | 'relatorios'
   | 'aparencia'
   | 'impressao'
+  | 'balanca'
   | 'kds'
   | 'pdv'
   | 'garcom'

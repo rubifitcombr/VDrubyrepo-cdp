@@ -20,6 +20,7 @@ import {
   normalizeMenuProductRow,
   type MenuProductRow,
 } from '@/lib/menu-product'
+import { filterPublicMenuProducts } from '@/lib/weighable-product'
 import { resolveStoreTheme } from '@/lib/store-theme'
 import { storePixCheckoutEnabled } from '@/lib/pix/key'
 import { notFound, redirect } from 'next/navigation'
@@ -167,10 +168,11 @@ export default async function StorefrontPage({ params, searchParams }: Props) {
     .order('sort_order', { ascending: true, nullsFirst: false })
     .order('name', { ascending: true })
 
-  let list: MenuProductRow[] =
+  let list: MenuProductRow[] = filterPublicMenuProducts(
     ((ordered.data as Record<string, unknown>[] | null) ?? []).map((row) =>
       normalizeMenuProductRow(row, s.id)
     )
+  )
   if (ordered.error) {
     const fallback = await supabase
       .from('products')
@@ -178,8 +180,10 @@ export default async function StorefrontPage({ params, searchParams }: Props) {
       .eq('store_id', s.id)
       .eq('active', true)
       .order('name', { ascending: true })
-    list = ((fallback.data as Record<string, unknown>[] | null) ?? []).map(
-      (row) => normalizeMenuProductRow(row, s.id)
+    list = filterPublicMenuProducts(
+      ((fallback.data as Record<string, unknown>[] | null) ?? []).map((row) =>
+        normalizeMenuProductRow(row, s.id)
+      )
     )
   }
 

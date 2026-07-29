@@ -77,6 +77,7 @@ import {
   IconMenuBook,
   IconPalette,
   IconPrinter,
+  IconScale,
   IconReceipt,
   IconTag,
   IconTrendUp,
@@ -190,6 +191,13 @@ const nav: Array<{
     label: 'Impressão',
     icon: IconPrinter,
     menuKey: 'impressao',
+  },
+  {
+    href: '/dashboard/balanca',
+    label: 'Balança',
+    icon: IconScale,
+    menuKey: 'balanca',
+    administrationOnly: true,
   },
   {
     href: '/dashboard/assinatura',

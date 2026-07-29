@@ -81,6 +81,20 @@ export type ReportFinanceData = {
   topPendingSuppliers: ReportFinanceSupplierRow[]
 }
 
+export type ReportWeighableRow = {
+  name: string
+  weightKg: number
+  revenue: number
+  lines: number
+}
+
+export type ReportWeighableSummary = {
+  totalWeightKg: number
+  totalRevenue: number
+  weighableLines: number
+  topByWeight: ReportWeighableRow[]
+}
+
 export type ReportsDashboardData = {
   hasEnoughData: boolean
   /** Pedidos / itens em falta no banco (schema incompleto). */
@@ -112,6 +126,8 @@ export type ReportsDashboardData = {
   promo: ReportPromoSnapshot | null
   finance: ReportFinanceData
   conversionAvailable: false
+  /** Vendas por peso (plano Pro + balança) — últimos ~40 dias. */
+  weighable?: ReportWeighableSummary | null
   /** Plano Pro — comparativo extra e export PDF quando `reports_advanced` está ativo. */
   advanced?: ReportsAdvancedSummary | null
 }

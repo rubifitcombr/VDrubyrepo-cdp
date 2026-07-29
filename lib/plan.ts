@@ -34,6 +34,8 @@ export type Feature =
   | 'cashier'
   /** PIX no checkout público (QR / copia e cola) — exclusivo Pro. */
   | 'pix_checkout'
+  /** Integração de balança (produtos pesáveis, PDV/garçom) — exclusivo Pro, presencial. */
+  | 'scale_integration'
 
 const PLAN_FEATURES: Record<Plan, Record<Feature, boolean>> = {
   START: {
@@ -54,6 +56,7 @@ const PLAN_FEATURES: Record<Plan, Record<Feature, boolean>> = {
     waiter: false,
     cashier: false,
     pix_checkout: false,
+    scale_integration: false,
   },
   GROWTH: {
     dashboard: true,
@@ -73,6 +76,7 @@ const PLAN_FEATURES: Record<Plan, Record<Feature, boolean>> = {
     waiter: false,
     cashier: false,
     pix_checkout: false,
+    scale_integration: false,
   },
   PRO: {
     dashboard: true,
@@ -92,6 +96,7 @@ const PLAN_FEATURES: Record<Plan, Record<Feature, boolean>> = {
     waiter: true,
     cashier: true,
     pix_checkout: true,
+    scale_integration: true,
   },
 }
 
@@ -194,6 +199,7 @@ const FEATURE_MIN_PLAN: Partial<Record<Feature, MinPlanForFeature>> = {
   waiter: 'PRO',
   cashier: 'PRO',
   pix_checkout: 'PRO',
+  scale_integration: 'PRO',
 }
 
 export function minPlanForFeature(feature: Feature): MinPlanForFeature | null {

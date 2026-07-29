@@ -15,6 +15,7 @@ import {
   YAxis,
 } from 'recharts'
 import type { ReportSeriesPoint, ReportsDashboardData } from '@/lib/reports-data'
+import { formatWeightKg } from '@/lib/weighable-product'
 import { ReportsExportButton } from '@/app/dashboard/reports/_components/ReportsExportButton'
 
 const money = new Intl.NumberFormat('pt-BR', {
@@ -455,6 +456,63 @@ function ProductCol({
   )
 }
 
+function WeighableSalesBlock({ data }: { data: ReportsDashboardData }) {
+  const w = data.weighable
+  if (!w || w.weighableLines === 0) return null
+
+  return (
+    <section className="rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-sm md:p-6">
+      <h2 className="text-base font-bold text-[#1a1614] md:text-lg">Vendas por peso (kg)</h2>
+      <p className="mt-1 text-xs text-[#6b7280]">
+        Produtos pesáveis no PDV/garçom — últimos ~40 dias (linhas com{' '}
+        <code className="rounded bg-[#f3f4f6] px-1 text-[11px]">unit_type=weight</code>).
+      </p>
+      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+        <div className="rounded-xl border border-[var(--card-border)] bg-[#fafafa] p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
+            Total vendido
+          </p>
+          <p className="mt-2 text-2xl font-bold tabular-nums text-[#1a1614]">
+            {formatWeightKg(w.totalWeightKg)} kg
+          </p>
+        </div>
+        <div className="rounded-xl border border-[var(--card-border)] bg-[#fafafa] p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
+            Faturamento pesável
+          </p>
+          <p className="mt-2 text-2xl font-bold tabular-nums text-[#1a1614]">
+            {money.format(w.totalRevenue)}
+          </p>
+        </div>
+        <div className="rounded-xl border border-[var(--card-border)] bg-[#fafafa] p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
+            Pesagens
+          </p>
+          <p className="mt-2 text-2xl font-bold tabular-nums text-[#1a1614]">
+            {w.weighableLines}
+          </p>
+        </div>
+      </div>
+      {w.topByWeight.length > 0 ? (
+        <ul className="mt-5 divide-y divide-[var(--card-border)] rounded-xl border border-[var(--card-border)]">
+          {w.topByWeight.map((row) => (
+            <li
+              key={row.name}
+              className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm"
+            >
+              <span className="font-semibold text-[#1a1614]">{row.name}</span>
+              <span className="tabular-nums text-[#6b7280]">
+                {formatWeightKg(row.weightKg)} kg · {money.format(row.revenue)} · {row.lines}{' '}
+                {row.lines === 1 ? 'pesagem' : 'pesagens'}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
+  )
+}
+
 function ProductsBlock({ data }: { data: ReportsDashboardData }) {
   return (
     <section className="rounded-2xl border border-[var(--card-border)] bg-white p-5 shadow-sm md:p-6">
@@ -677,6 +735,8 @@ export function ReportsDashboardClient({
           </div>
 
           <ProductsBlock data={data} />
+
+          <WeighableSalesBlock data={data} />
 
           <div className="grid gap-5 lg:grid-cols-2">
             <PromoBlock data={data} />

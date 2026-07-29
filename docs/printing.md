@@ -26,6 +26,68 @@ Campos em `stores`:
 - `print_auto_delivery`, `print_auto_autoatendimento`, `print_auto_pdv`, `print_auto_garcom`: toggles de impressao automatica via agente.
 - `print_auto_on_confirm`: auto-impressao pelo navegador quando o pedido vai para preparo.
 
+### Balanca (PDV Pro, presencial)
+
+Campos em `stores` (migration `20260728100000_scale_integration_schema.sql`):
+
+- `scale_enabled`: ativa pesagem no PDV.
+- `scale_connection`: `web_serial` | `agent` | `barcode_only`.
+- `scale_brand`: `toledo` | `filizola` | `urano` | `generic` (opcional).
+- `scale_protocol`: protocolo serial; padrao `toledo_p03`.
+- `scale_baud_rate`: 2400, 4800, 9600 ou 19200; padrao `9600`.
+- `scale_auto_add_stable`: adiciona ao carrinho quando o peso estabiliza.
+- `scale_plu_prefix`: prefixo PLU para etiquetas EAN-13 (Fase 5); padrao `2`.
+- `scale_serial_port`: porta serial no PC do Print Agent (ex. `COM3`, `/dev/ttyUSB0`).
+
+Configuração em `/dashboard/balanca` (menu Administração), visível apenas com plano Pro e operação presencial/hibrida.
+
+Fallback de leitura ao vivo no PDV:
+
+1. Web Serial no navegador (`lib/scale-client.ts`) quando `scale_connection=web_serial` e Chrome/Edge.
+2. Print Agent (`GET /scale/weight`) quando Web Serial indisponivel ou `scale_connection=agent`.
+3. Entrada manual de peso (sempre disponivel).
+
+Variaveis de ambiente no agente (opcional, auto-open ao iniciar):
+
+- `SCALE_SERIAL_PATH` ou `SCALE_PORT_PATH`
+- `SCALE_BAUD_RATE`
+- `SCALE_PROTOCOL`
+
+Endpoints de balanca no Print Agent (`agent/print-agent.js`, header `x-agent-token`):
+
+| Metodo | Rota | Descricao |
+|--------|------|-----------|
+| GET | `/scale/ports` | Lista portas seriais no PC do agente |
+| GET | `/scale/status` | Estado da ligacao serial |
+| POST | `/scale/configure` | Body: `{ path, baudRate, protocol }` |
+| GET | `/scale/weight` | Ultima leitura: `{ weightKg, stable, tareKg, timestamp }` |
+| POST | `/scale/tare` | Zera tara em software |
+
+O health check (`GET /health`) inclui `scale` no JSON quando o agente suporta balanca.
+
+Cliente browser: `lib/scale-agent-client.ts` (`fetchScaleWeightFromAgent`, `postScaleConfigureToAgent`, etc.).
+
+### Modo etiqueta (Fase 5 — automático)
+
+Leitura de etiquetas EAN-13 pesáveis no PDV e Garçom, sem re-pesar:
+
+- Parser: `lib/scale/ean13-weight.ts` (layout `2 PPPPP WWWWW C`, peso em gramas).
+- Geração de etiqueta: `lib/scale/build-ean13-weighable.ts` + template `lib/print/templates/weighable-label.ts` (texto + código de barras ESC/POS).
+- API `POST /api/scale/parse-barcode` — resolve PLU → produto + peso (gate Pro/presencial).
+- API `POST /api/scale/print-label` — imprime etiqueta de teste/exemplo via Print Agent.
+- Leitor HID: `lib/use-barcode-scanner.ts` (USB emula teclado + Enter) no PDV e Garçom.
+- `scale_connection = barcode_only` — só escaneamento; clique em produto pesável pede o leitor.
+- Cardápio: botão «Imprimir etiqueta de exemplo» em produtos pesáveis (após guardar).
+
+### NFC-e e relatórios (Fase 6)
+
+- Emissão: `services/fiscal/index.ts` lê `unit_type`, `weight_kg` e `price_per_kg_snapshot` em `order_items`.
+- Itens pesáveis na NFC-e: `quantidade` = peso em kg (até 4 decimais), `valorUnitario` = R$/kg, `unidade` = `KG`.
+- Helper: `lib/fiscal/weighable-nfce.ts`.
+- Produtos pesáveis no cardápio gravam `unidade: KG` automaticamente.
+- Relatórios (`/dashboard/reports`): bloco **Vendas por peso (kg)** quando a loja tem integração de balança (Pro + presencial).
+- Export PDF inclui a tabela de produtos pesáveis vendidos no período.
+
 ## Fluxos
 
 ### Navegador

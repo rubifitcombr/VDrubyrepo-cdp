@@ -3,6 +3,7 @@ export type { DashboardMenuKey } from '@/lib/dashboard-menu-types'
 import { hasFeature, merchantEntregadoresEnabled, type Plan } from '@/lib/plan'
 import type { MerchantOperationMode } from '@/lib/merchant-operation-mode'
 import { menuKeysForOperationAndPlan } from '@/lib/merchant-menu-matrix'
+import { hasScaleIntegration } from '@/lib/scale/gate'
 
 /** Com pedidos e canal com entregas (exclui modo «só presencial»). */
 function entregadoresMenuContext(operationMode: MerchantOperationMode | null): boolean {
@@ -54,6 +55,7 @@ export const MENU_POR_PLANO: Record<
     'configuracoes',
     'aparencia',
     'impressao',
+    'balanca',
     'kds',
     'pdv',
     'assinatura',
@@ -72,6 +74,7 @@ const MENU_KEY_TO_PATH_PREFIX: Record<DashboardMenuKey, string> = {
   relatorios: '/dashboard/reports',
   aparencia: '/dashboard/appearance',
   impressao: '/dashboard/printing',
+  balanca: '/dashboard/balanca',
   kds: '/dashboard/kds',
   pdv: '/dashboard/pdv',
   garcom: '/dashboard/garcom',
@@ -129,6 +132,9 @@ export function menuKeysForMerchant(
     set.add('garcons')
   } else {
     set.delete('garcons')
+  }
+  if (hasScaleIntegration(plan, operationMode)) {
+    set.add('balanca')
   }
   return set
 }

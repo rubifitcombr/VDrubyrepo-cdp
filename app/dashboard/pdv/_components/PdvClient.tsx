@@ -22,7 +22,18 @@ import {
   type PdvCloseMode,
 } from '@/services/pdv'
 import { ComandaSplitPaymentModal } from '@/app/dashboard/caixa/_components/ComandaSplitPaymentModal'
+import { PdvWeighModal } from '@/app/dashboard/pdv/_components/PdvWeighModal'
+import { parseWeighableBarcode } from '@/lib/scale/weighable-barcode.client'
+import { useBarcodeScanner } from '@/lib/use-barcode-scanner'
 import { CAIXA_BALCAO_HREF } from '@/lib/caixa-hub-links'
+import type { OrderItemUnitType } from '@/lib/scale/types'
+import type { PdvScaleContext } from '@/lib/store-scale'
+import {
+  effectivePricePerKg,
+  formatPricePerKg,
+  formatWeightKg,
+  isSoldByWeight,
+} from '@/lib/weighable-product'
 import type { OrderPaymentLine } from '@/lib/order-payments'
 import { useCaixaTurnoOpen } from '@/lib/use-caixa-turno-open.client'
 
@@ -39,11 +50,17 @@ function normSearch(s: string): string {
 }
 
 type CartLine = {
+  lineId: string
   productId: string
   name: string
   imageUrl: string | null
   unitPrice: number
   quantity: number
+  unitType: OrderItemUnitType
+}
+
+function newCartLineId(): string {
+  return crypto.randomUUID()
 }
 
 export function PdvClient({
@@ -51,12 +68,16 @@ export function PdvClient({
   initialProducts,
   cashierPanelEnabled,
   initialCaixaTurnoOpen = false,
+  scaleIntegrationEnabled = false,
+  scaleConfig,
 }: {
   storeId: string
   initialProducts: MenuProductRow[]
   /** Plano com módulo Caixa: mostra «Enviar para o Caixa». Sem Caixa (ex.: Start presencial), só receber no balcão. */
   cashierPanelEnabled: boolean
   initialCaixaTurnoOpen?: boolean
+  scaleIntegrationEnabled?: boolean
+  scaleConfig?: PdvScaleContext
 }) {
   const caixaTurnoOpen = useCaixaTurnoOpen(storeId, initialCaixaTurnoOpen)
   const [cart, setCart] = useState<CartLine[]>([])
@@ -79,6 +100,29 @@ export function PdvClient({
   const [discountInput, setDiscountInput] = useState('')
   const [canFullscreen, setCanFullscreen] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [weighProduct, setWeighProduct] = useState<MenuProductRow | null>(null)
+  const [scanHint, setScanHint] = useState<string | null>(null)
+
+  const resolvedScaleConfig: PdvScaleContext = scaleConfig ?? {
+    scale_enabled: false,
+    scale_connection: 'web_serial',
+    scale_brand: null,
+    scale_protocol: 'toledo_p03',
+    scale_baud_rate: 9600,
+    scale_auto_add_stable: false,
+    scale_plu_prefix: '2',
+    scale_serial_port: '',
+    agentUrl: '',
+    agentToken: 'vyria-agent-2026',
+  }
+
+  const barcodeMode =
+    scaleIntegrationEnabled &&
+    resolvedScaleConfig.scale_enabled &&
+    resolvedScaleConfig.scale_connection === 'barcode_only'
+
+  const barcodeScannerEnabled =
+    scaleIntegrationEnabled && resolvedScaleConfig.scale_enabled
 
   const searchInputRef = useRef<HTMLInputElement>(null)
   const formRef = useRef<HTMLFormElement>(null)
@@ -141,7 +185,11 @@ export function PdvClient({
   )
 
   const cartItemCount = useMemo(
-    () => cart.reduce((s, l) => s + l.quantity, 0),
+    () =>
+      cart.reduce(
+        (s, l) => s + (l.unitType === 'weight' ? 1 : l.quantity),
+        0
+      ),
     [cart]
   )
 
@@ -199,7 +247,7 @@ export function PdvClient({
           const idx = parseInt(k, 10) - 1
           if (idx < cart.length) {
             e.preventDefault()
-            const id = cart[idx]?.productId
+            const id = cart[idx]?.lineId
             if (id) {
               const el = qtyInputRefs.current.get(id)
               el?.focus()
@@ -213,49 +261,135 @@ export function PdvClient({
     return () => window.removeEventListener('keydown', onKey)
   }, [cart, submitting])
 
-  const addProduct = useCallback((p: MenuProductRow) => {
-    setError(null)
-    setSuccessKind(null)
-    const price = effectiveProductPrice(p, 'dine_in')
-    const id = p.id
-    setCart((prev) => {
-      const i = prev.findIndex((l) => l.productId === id)
-      if (i >= 0) {
-        const next = [...prev]
-        next[i] = { ...next[i], quantity: next[i].quantity + 1 }
-        return next
+  const addProduct = useCallback(
+    (p: MenuProductRow) => {
+      setError(null)
+      setSuccessKind(null)
+
+      if (isSoldByWeight(p)) {
+        if (!scaleIntegrationEnabled) {
+          setError(
+            'Produtos por peso exigem o plano Pro em operação presencial ou híbrida.'
+          )
+          return
+        }
+        if (barcodeMode) {
+          setError('Escaneia a etiqueta com o leitor de código de barras.')
+          setScanHint('Modo etiqueta — usa o leitor USB.')
+          return
+        }
+        setWeighProduct(p)
+        return
       }
-      return [
+
+      const price = effectiveProductPrice(p, 'dine_in')
+      const id = p.id
+      setCart((prev) => {
+        const i = prev.findIndex(
+          (l) => l.productId === id && l.unitType === 'unit'
+        )
+        if (i >= 0) {
+          const next = [...prev]
+          next[i] = { ...next[i], quantity: next[i].quantity + 1 }
+          return next
+        }
+        return [
+          ...prev,
+          {
+            lineId: newCartLineId(),
+            productId: id,
+            name: p.name,
+            imageUrl: p.image_url,
+            unitPrice: price,
+            quantity: 1,
+            unitType: 'unit',
+          },
+        ]
+      })
+    },
+    [barcodeMode, scaleIntegrationEnabled]
+  )
+
+  const addWeighableLine = useCallback(
+    (p: MenuProductRow, weightKg: number) => {
+      const pricePerKg = effectivePricePerKg(p)
+      if (pricePerKg == null) {
+        setError('Preço por kg inválido para este produto.')
+        return
+      }
+      setError(null)
+      setSuccessKind(null)
+      setCart((prev) => [
         ...prev,
         {
-          productId: id,
+          lineId: newCartLineId(),
+          productId: p.id,
           name: p.name,
           imageUrl: p.image_url,
-          unitPrice: price,
-          quantity: 1,
+          unitPrice: pricePerKg,
+          quantity: weightKg,
+          unitType: 'weight',
         },
-      ]
+      ])
+    },
+    []
+  )
+
+  const handleBarcodeScan = useCallback(
+    async (raw: string) => {
+      if (!barcodeScannerEnabled) return
+      setError(null)
+      setScanHint(null)
+      const res = await parseWeighableBarcode(raw)
+      if (!res.ok) {
+        setError(res.message)
+        return
+      }
+      const product = products.find((p) => p.id === res.data.productId)
+      if (!product) {
+        setError('Produto da etiqueta não está disponível no PDV.')
+        return
+      }
+      addWeighableLine(product, res.data.weightKg)
+      setScanHint(`${res.data.name} · ${formatWeightKg(res.data.weightKg)} kg`)
+      window.setTimeout(() => setScanHint(null), 2500)
+    },
+    [addWeighableLine, barcodeScannerEnabled, products]
+  )
+
+  useBarcodeScanner({
+    enabled: barcodeScannerEnabled,
+    onScan: (code) => void handleBarcodeScan(code),
+    minLength: 8,
+  })
+
+  const setQty = useCallback((lineId: string, quantity: number) => {
+    setError(null)
+    setSuccessKind(null)
+    setCart((prev) => {
+      const line = prev.find((l) => l.lineId === lineId)
+      if (!line) return prev
+      if (line.unitType === 'weight') {
+        if (quantity <= 0) {
+          return prev.filter((l) => l.lineId !== lineId)
+        }
+        return prev.map((l) =>
+          l.lineId === lineId ? { ...l, quantity } : l
+        )
+      }
+      if (quantity < 1) {
+        return prev.filter((l) => l.lineId !== lineId)
+      }
+      return prev.map((l) =>
+        l.lineId === lineId ? { ...l, quantity: Math.floor(quantity) } : l
+      )
     })
   }, [])
 
-  const setQty = useCallback((productId: string, quantity: number) => {
+  const removeLine = useCallback((lineId: string) => {
     setError(null)
     setSuccessKind(null)
-    if (quantity < 1) {
-      setCart((prev) => prev.filter((l) => l.productId !== productId))
-      return
-    }
-    setCart((prev) =>
-      prev.map((l) =>
-        l.productId === productId ? { ...l, quantity } : l
-      )
-    )
-  }, [])
-
-  const removeLine = useCallback((productId: string) => {
-    setError(null)
-    setSuccessKind(null)
-    setCart((prev) => prev.filter((l) => l.productId !== productId))
+    setCart((prev) => prev.filter((l) => l.lineId !== lineId))
   }, [])
 
   const clearCart = useCallback(() => {
@@ -282,6 +416,7 @@ export function PdvClient({
           name: l.name,
           quantity: l.quantity,
           unitPrice: l.unitPrice,
+          unitType: l.unitType,
         })),
         discountBrl: discountApplied,
         internalNotes: internalNotes.trim() || null,
@@ -421,6 +556,13 @@ export function PdvClient({
               className="w-full rounded-xl border border-[var(--card-border)] bg-white px-3 py-2.5 text-sm outline-none ring-[var(--dash-primary)] focus:ring-2"
             />
           </div>
+          {barcodeScannerEnabled ? (
+            <p className="text-xs text-vyria-navy-muted">
+              {barcodeMode
+                ? 'Modo etiqueta: escaneia o código de barras para adicionar ao carrinho.'
+                : 'Leitor USB: escaneia etiquetas pesáveis a qualquer momento.'}
+            </p>
+          ) : null}
 
           {categories.length > 0 ? (
             <div className="flex flex-wrap gap-1.5">
@@ -473,9 +615,12 @@ export function PdvClient({
           ) : (
             <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
               {filteredProducts.map((p) => {
-                const price = effectiveProductPrice(p, 'dine_in')
+                const weighable = isSoldByWeight(p)
+                const price = weighable
+                  ? effectivePricePerKg(p) ?? 0
+                  : effectiveProductPrice(p, 'dine_in')
                 const base = baseProductPriceForChannel(p, 'dine_in')
-                const promo = hasActivePromotion(p, 'dine_in')
+                const promo = !weighable && hasActivePromotion(p, 'dine_in')
                 const img = p.image_url?.trim()
                 const thumbFallback = (
                   <div className="flex h-full items-center justify-center text-3xl text-zinc-300">
@@ -488,9 +633,18 @@ export function PdvClient({
                       type="button"
                       onClick={() => addProduct(p)}
                       className="flex w-full min-h-[100px] flex-col overflow-hidden rounded-2xl border border-[var(--card-border)] bg-white text-left shadow-sm transition hover:border-[var(--dash-primary)] hover:shadow-md active:scale-[0.98]"
-                      aria-label={`Adicionar ${p.name}, ${money.format(price)}`}
+                      aria-label={
+                        weighable
+                          ? `Pesar ${p.name}, ${formatPricePerKg(price)} por kg`
+                          : `Adicionar ${p.name}, ${money.format(price)}`
+                      }
                     >
                       <div className="relative aspect-square w-full bg-zinc-100">
+                        {weighable ? (
+                          <span className="absolute top-1.5 left-1.5 z-10 rounded-md bg-vyria-plum px-1.5 py-0.5 text-[10px] font-bold uppercase text-white shadow">
+                            kg
+                          </span>
+                        ) : null}
                         {promo ? (
                           <span className="absolute top-1.5 left-1.5 z-10 rounded-md bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold uppercase text-white shadow">
                             Promo
@@ -517,7 +671,9 @@ export function PdvClient({
                         </span>
                         <div className="flex flex-wrap items-baseline gap-1.5">
                           <span className="text-sm font-bold tabular-nums text-vyria-navy">
-                            {money.format(price)}
+                            {weighable
+                              ? `${formatPricePerKg(price)} / kg`
+                              : money.format(price)}
                           </span>
                           {promo && !Number.isNaN(base) ? (
                             <span className="text-xs tabular-nums text-zinc-400 line-through">
@@ -570,9 +726,10 @@ export function PdvClient({
             <ul className="space-y-2">
               {cart.map((line) => {
                 const lineTotal = line.unitPrice * line.quantity
+                const isWeight = line.unitType === 'weight'
                 return (
                   <li
-                    key={line.productId}
+                    key={line.lineId}
                     className="flex items-center gap-2 rounded-xl border border-[var(--card-border)] bg-white p-2 shadow-sm"
                   >
                     <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-zinc-100">
@@ -601,19 +758,49 @@ export function PdvClient({
                         {line.name}
                       </p>
                       <p className="text-xs tabular-nums text-vyria-navy-muted">
-                        {money.format(line.unitPrice)} × {line.quantity} ={' '}
+                        {isWeight ? (
+                          <>
+                            {formatPricePerKg(line.unitPrice)} ×{' '}
+                            {formatWeightKg(line.quantity)} kg ={' '}
+                          </>
+                        ) : (
+                          <>
+                            {money.format(line.unitPrice)} × {line.quantity} ={' '}
+                          </>
+                        )}
                         <span className="font-semibold text-vyria-navy">
                           {money.format(lineTotal)}
                         </span>
                       </p>
                     </div>
                     <div className="flex shrink-0 items-center gap-1">
+                      {isWeight ? (
+                        <input
+                          ref={(el) => {
+                            if (el) qtyInputRefs.current.set(line.lineId, el)
+                            else qtyInputRefs.current.delete(line.lineId)
+                          }}
+                          type="number"
+                          min={0.001}
+                          step={0.001}
+                          inputMode="decimal"
+                          aria-label={`Peso em kg — ${line.name}`}
+                          className="h-11 w-[4.5rem] rounded-xl border border-[var(--card-border)] bg-white px-1 text-center text-sm font-bold tabular-nums text-vyria-navy outline-none ring-[var(--dash-primary)] focus:ring-2"
+                          value={line.quantity}
+                          onChange={(e) => {
+                            const v = parseFloat(e.target.value.replace(',', '.'))
+                            if (Number.isNaN(v)) return
+                            setQty(line.lineId, v)
+                          }}
+                        />
+                      ) : (
+                        <>
                       <button
                         type="button"
                         className="flex h-11 min-w-[44px] items-center justify-center rounded-xl border border-[var(--card-border)] bg-white text-lg font-bold text-vyria-navy active:bg-zinc-100"
                         aria-label="Menos um"
                         onClick={() =>
-                          setQty(line.productId, line.quantity - 1)
+                          setQty(line.lineId, line.quantity - 1)
                         }
                       >
                         −
@@ -621,9 +808,9 @@ export function PdvClient({
                       <input
                         ref={(el) => {
                           if (el)
-                            qtyInputRefs.current.set(line.productId, el)
+                            qtyInputRefs.current.set(line.lineId, el)
                           else
-                            qtyInputRefs.current.delete(line.productId)
+                            qtyInputRefs.current.delete(line.lineId)
                         }}
                         type="number"
                         min={1}
@@ -637,12 +824,12 @@ export function PdvClient({
                           if (t === '') return
                           const v = parseInt(t, 10)
                           if (Number.isNaN(v)) return
-                          setQty(line.productId, Math.max(1, v))
+                          setQty(line.lineId, Math.max(1, v))
                         }}
                         onBlur={(e) => {
                           const t = e.target.value
                           if (t === '' || parseInt(t, 10) < 1) {
-                            setQty(line.productId, 1)
+                            setQty(line.lineId, 1)
                           }
                         }}
                       />
@@ -651,16 +838,18 @@ export function PdvClient({
                         className="flex h-11 min-w-[44px] items-center justify-center rounded-xl border border-[var(--card-border)] bg-white text-lg font-bold text-vyria-navy active:bg-zinc-100"
                         aria-label="Mais um"
                         onClick={() =>
-                          setQty(line.productId, line.quantity + 1)
+                          setQty(line.lineId, line.quantity + 1)
                         }
                       >
                         +
                       </button>
+                        </>
+                      )}
                       <button
                         type="button"
                         className="ml-1 flex h-11 w-11 items-center justify-center rounded-xl border border-red-200 bg-red-50 text-red-700 active:bg-red-100"
                         aria-label="Remover linha"
-                        onClick={() => removeLine(line.productId)}
+                        onClick={() => removeLine(line.lineId)}
                       >
                         <IconTrash className="h-5 w-5" />
                       </button>
@@ -683,6 +872,11 @@ export function PdvClient({
               role="alert"
             >
               {error}
+            </p>
+          ) : null}
+          {scanHint ? (
+            <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-900" role="status">
+              Etiqueta lida: {scanHint}
             </p>
           ) : null}
 
@@ -895,6 +1089,17 @@ export function PdvClient({
         busy={submitting}
         onClose={() => !submitting && setReceiveModalOpen(false)}
         onConfirm={(lines) => void executeSale(lines)}
+      />
+
+      <PdvWeighModal
+        open={weighProduct != null}
+        product={weighProduct}
+        scaleConfig={resolvedScaleConfig}
+        onClose={() => setWeighProduct(null)}
+        onConfirm={(weightKg) => {
+          if (weighProduct) addWeighableLine(weighProduct, weightKg)
+          setWeighProduct(null)
+        }}
       />
     </div>
   )

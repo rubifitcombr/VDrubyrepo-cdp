@@ -10,6 +10,7 @@ import {
   type MerchantOperationMode,
 } from '@/lib/merchant-operation-mode'
 import { hasFeature, merchantEntregadoresEnabled, type Plan } from '@/lib/plan'
+import { hasScaleIntegration } from '@/lib/scale/gate'
 import { readStorePlano } from '@/lib/store-columns'
 
 // Gating alinhado ao menu comercial: `merchant-menu-matrix`, `menuKeysForMerchant`.
@@ -116,4 +117,53 @@ export function gateMerchantDeliveryPipeline(
     return merchantApiForbidden('entregas')
   }
   return gateMerchantMenuKey(store, userEmail, 'entregadores')
+}
+
+/** Balança / produtos pesáveis — exclusivo Pro em presencial ou híbrido. */
+export function merchantHasScaleIntegration(
+  store: Record<string, unknown>,
+  userEmail: string | null | undefined
+): boolean {
+  const plan = effectivePlanFromStore(store, userEmail)
+  const mode = operationModeFromStore(store)
+  return hasScaleIntegration(plan, mode)
+}
+
+export function gateMerchantScaleIntegration(
+  store: Record<string, unknown>,
+  userEmail: string | null | undefined
+): NextResponse | null {
+  if (!merchantHasScaleIntegration(store, userEmail)) {
+    return NextResponse.json(
+      {
+        error:
+          'A integração de balança está disponível no plano Pro (operação presencial ou híbrida).',
+      },
+      { status: 403 }
+    )
+  }
+  return null
+}
+
+/** Módulos exclusivos do plano Master (WhatsApp / fidelidade / recuperador). */
+export function gateMerchantMasterFeature(
+  store: Record<string, unknown>,
+  userEmail: string | null | undefined,
+  feature: 'whatsapp_ai' | 'loyalty' | 'recovery'
+): NextResponse | null {
+  const plan = effectivePlanFromStore(store, userEmail)
+  if (!hasFeature(plan, feature)) {
+    const labels: Record<typeof feature, string> = {
+      whatsapp_ai: 'WhatsApp oficial e robô de IA',
+      loyalty: 'Programa de fidelidade',
+      recovery: 'Recuperador de clientes',
+    }
+    return NextResponse.json(
+      {
+        error: `${labels[feature]} está disponível no plano Master.`,
+      },
+      { status: 403 }
+    )
+  }
+  return null
 }

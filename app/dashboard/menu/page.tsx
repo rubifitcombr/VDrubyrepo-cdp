@@ -1,11 +1,12 @@
 import Link from 'next/link'
 import { MenuManagerClient } from './_components/MenuManagerClient'
-import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
-import { readStorePlano } from '@/lib/store-columns'
 import {
   isDeliveryPipelineEnabled,
   parseOperationModeFromStore,
 } from '@/lib/merchant-operation-mode'
+import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
+import { readStorePlano } from '@/lib/store-columns'
+import { hasScaleIntegration } from '@/lib/scale/gate'
 import { getUser } from '@/services/auth.server'
 import { getProductStocksForStore } from '@/services/inventory.server'
 import { getMenuProductsForStore } from '@/services/menu.server'
@@ -58,6 +59,8 @@ export default async function MenuManagerPage() {
   const showPublicStorefrontLink = isDeliveryPipelineEnabled(
     parseOperationModeFromStore(storeRecord)
   )
+  const operationMode = parseOperationModeFromStore(storeRecord)
+  const scaleIntegrationEnabled = hasScaleIntegration(plan, operationMode)
 
   return (
     <MenuManagerClient
@@ -67,6 +70,7 @@ export default async function MenuManagerPage() {
       storeSlug={storeSlug}
       plan={plan}
       showPublicStorefrontLink={showPublicStorefrontLink}
+      scaleIntegrationEnabled={scaleIntegrationEnabled}
     />
   )
 }

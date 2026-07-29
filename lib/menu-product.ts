@@ -1,14 +1,19 @@
 import { resolveMenuImageUrl } from '@/lib/menu-image-url'
+import {
+  normalizeWeighableFields,
+  WEIGHABLE_PRODUCT_COLUMNS,
+  type WeighableProductFields,
+} from '@/lib/weighable-product'
 
 /** Colunas lidas pelo gestor de cardápio (alinhado com migrations de preço por canal). */
 export const MENU_PRODUCT_SELECT =
-  'id, name, category, price, promotional_price, promotion_active, delivery_price, dine_in_price, delivery_promotional_price, delivery_promotion_active, dine_in_promotional_price, dine_in_promotion_active, image_url, active, description, sort_order'
+  `id, name, category, price, promotional_price, promotion_active, delivery_price, dine_in_price, delivery_promotional_price, delivery_promotion_active, dine_in_promotional_price, dine_in_promotion_active, image_url, active, description, sort_order, ${WEIGHABLE_PRODUCT_COLUMNS}`
 
 /**
  * PDV e listagens sem texto longo: omite `description` para menos payload JSON.
  */
 export const MENU_PRODUCT_PDV_SELECT =
-  'id, name, category, price, promotional_price, promotion_active, delivery_price, dine_in_price, delivery_promotional_price, delivery_promotion_active, dine_in_promotional_price, dine_in_promotion_active, image_url, active, sort_order'
+  `id, name, category, price, promotional_price, promotion_active, delivery_price, dine_in_price, delivery_promotional_price, delivery_promotion_active, dine_in_promotional_price, dine_in_promotion_active, image_url, active, sort_order, ${WEIGHABLE_PRODUCT_COLUMNS}`
 
 export type MenuProductRow = {
   id: string
@@ -27,7 +32,7 @@ export type MenuProductRow = {
   active: boolean | null
   description: string | null
   sort_order: number | null
-}
+} & WeighableProductFields
 
 export function normalizeMenuProductRow(
   row: Record<string, unknown>,
@@ -79,6 +84,7 @@ export function normalizeMenuProductRow(
       so != null && so !== '' && !Number.isNaN(Number(so))
         ? Number(so)
         : null,
+    ...normalizeWeighableFields(row),
   }
 }
 

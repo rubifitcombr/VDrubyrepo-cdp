@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import {
   effectivePlanFromStore,
   gateMerchantMenuKey,
+  merchantHasScaleIntegration,
 } from '@/lib/merchant-api-gate.server'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
 import { getUser } from '@/services/auth.server'
@@ -189,6 +190,17 @@ export async function POST(request: Request) {
   }
   const cleanItems = priced.lines
 
+  const hasWeighableLines = cleanItems.some((l) => l.unit_type === 'weight')
+  if (hasWeighableLines && !merchantHasScaleIntegration(gate.ctx.store, user.email)) {
+    return NextResponse.json(
+      {
+        error:
+          'Produtos por peso exigem o plano Pro em operação presencial ou híbrida.',
+      },
+      { status: 403 }
+    )
+  }
+
   const gross = round2(
     cleanItems.reduce((s, l) => s + l.unit_price * l.quantity, 0)
   )
@@ -276,14 +288,21 @@ export async function POST(request: Request) {
 
   const orderId = String(order.id)
 
-  const rows = cleanItems.map((l) => ({
-    order_id: orderId,
-    product_id: l.product_id,
-    quantity: l.quantity,
-    price: l.unit_price,
-    unit_price: l.unit_price,
-    name: l.name,
-  }))
+  const rows = cleanItems.map((l) => {
+    const isWeight = l.unit_type === 'weight'
+    const lineTotal = round2(l.unit_price * l.quantity)
+    return {
+      order_id: orderId,
+      product_id: l.product_id,
+      quantity: l.quantity,
+      price: lineTotal,
+      unit_price: l.unit_price,
+      name: l.name,
+      unit_type: l.unit_type,
+      weight_kg: isWeight ? l.quantity : null,
+      price_per_kg_snapshot: isWeight ? l.unit_price : null,
+    }
+  })
 
   const { error: itemsErr } = await supabase.from('order_items').insert(rows)
 

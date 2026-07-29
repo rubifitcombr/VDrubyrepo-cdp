@@ -13,6 +13,7 @@ export type PdvSaleLine = {
   name: string
   quantity: number
   unitPrice: number
+  unitType?: 'unit' | 'weight'
 }
 
 export async function submitPdvSale(params: {
@@ -81,6 +82,7 @@ export async function submitPdvSale(params: {
         quantity: l.quantity,
         unit_price: l.unitPrice,
         name: l.name,
+        unit_type: l.unitType ?? 'unit',
       })),
     }),
   })

@@ -11,6 +11,9 @@ import { readStorePlano } from '@/lib/store-columns'
 import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
 import { parsePlan, planTier, hasFeature } from '@/lib/plan'
 import { parsePrintingFromStore } from '@/lib/store-printing'
+import { parseOperationModeFromStore } from '@/lib/merchant-operation-mode'
+import { hasScaleIntegration } from '@/lib/scale/gate'
+import { parsePdvScaleContext } from '@/lib/store-scale'
 import { effectiveSalaoAttendanceMode } from '@/lib/salao-attendance'
 import { WaiterClient } from './_components/WaiterClient'
 
@@ -74,6 +77,9 @@ export default async function GarcomPage({
   }
   const plan = parsePlan(rawPlan)
   const printing = parsePrintingFromStore(s)
+  const operationMode = parseOperationModeFromStore(s)
+  const scaleIntegrationEnabled = hasScaleIntegration(planEffective, operationMode)
+  const scaleConfig = parsePdvScaleContext(s)
   if (planTier(plan) < planTier('GROWTH')) {
     return (
       <div className="mx-auto max-w-lg rounded-2xl border border-[var(--card-border)] bg-white p-8 text-center shadow-sm">
@@ -130,6 +136,8 @@ export default async function GarcomPage({
       tablesOnlyView={tablesOnlyView}
       forceWaiterView={forceWaiterView}
       initialCaixaTurnoOpen={Boolean(turnoAberto)}
+      scaleIntegrationEnabled={scaleIntegrationEnabled}
+      scaleConfig={scaleConfig}
     />
   )
 }

@@ -40,6 +40,16 @@ import {
 import { GarcomSessionBadge } from '@/app/dashboard/garcom/_components/GarcomSalaoPinGate'
 import { GarcomMesaComandasPanel, comandaListSubtitle } from '@/app/dashboard/garcom/_components/GarcomMesaComandasPanel'
 import { ComandaSplitPaymentModal } from '@/app/dashboard/caixa/_components/ComandaSplitPaymentModal'
+import { PdvWeighModal } from '@/app/dashboard/pdv/_components/PdvWeighModal'
+import { parseWeighableBarcode } from '@/lib/scale/weighable-barcode.client'
+import { useBarcodeScanner } from '@/lib/use-barcode-scanner'
+import type { OrderItemUnitType } from '@/lib/scale/types'
+import type { PdvScaleContext } from '@/lib/store-scale'
+import {
+  effectivePricePerKg,
+  formatWeightKg,
+  isSoldByWeight,
+} from '@/lib/weighable-product'
 import {
   mapStoreTableRow,
   STORE_TABLES_SELECT,
@@ -65,10 +75,16 @@ import {
 } from '@/lib/store-operational-realtime.client'
 
 type CartLine = {
+  lineId: string
   productId: string
   name: string
   quantity: number
   unitPrice: number
+  unitType: OrderItemUnitType
+}
+
+function newCartLineId(): string {
+  return crypto.randomUUID()
 }
 
 export type StoreTableDTO = {
@@ -85,6 +101,7 @@ type OrderItemDTO = {
   unit_price: number
   price?: number | null
   name: string
+  unit_type?: OrderItemUnitType
 }
 
 const money = new Intl.NumberFormat('pt-BR', {
@@ -249,6 +266,8 @@ export function WaiterClient({
   tablesOnlyView = false,
   forceWaiterView = false,
   initialCaixaTurnoOpen = false,
+  scaleIntegrationEnabled = false,
+  scaleConfig,
 }: {
   storeId: string
   storeName: string
@@ -266,6 +285,8 @@ export function WaiterClient({
   tablesOnlyView?: boolean
   forceWaiterView?: boolean
   initialCaixaTurnoOpen?: boolean
+  scaleIntegrationEnabled?: boolean
+  scaleConfig?: PdvScaleContext
 }) {
   const caixaTurnoOpen = useCaixaTurnoOpen(storeId, initialCaixaTurnoOpen)
   const [tables, setTables] = useState(initialTables)
@@ -292,6 +313,29 @@ export function WaiterClient({
   const [customerName, setCustomerName] = useState('')
   const [notes, setNotes] = useState('')
   const [cart, setCart] = useState<CartLine[]>([])
+  const [weighProduct, setWeighProduct] = useState<MenuProductRow | null>(null)
+  const [scanHint, setScanHint] = useState<string | null>(null)
+
+  const resolvedScaleConfig: PdvScaleContext = scaleConfig ?? {
+    scale_enabled: false,
+    scale_connection: 'web_serial',
+    scale_brand: null,
+    scale_protocol: 'toledo_p03',
+    scale_baud_rate: 9600,
+    scale_auto_add_stable: false,
+    scale_plu_prefix: '2',
+    scale_serial_port: '',
+    agentUrl: '',
+    agentToken: 'vyria-agent-2026',
+  }
+
+  const barcodeMode =
+    scaleIntegrationEnabled &&
+    resolvedScaleConfig.scale_enabled &&
+    resolvedScaleConfig.scale_connection === 'barcode_only'
+
+  const barcodeScannerEnabled =
+    scaleIntegrationEnabled && resolvedScaleConfig.scale_enabled
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null)
   const [discountBrl, setDiscountBrl] = useState(0)
   const [discountOpen, setDiscountOpen] = useState(false)
@@ -551,12 +595,19 @@ export function WaiterClient({
 
   const cartQtyByProduct = useMemo(() => {
     const map: Record<string, number> = {}
-    for (const line of cart) map[line.productId] = line.quantity
+    for (const line of cart) {
+      if (line.unitType !== 'unit') continue
+      map[line.productId] = (map[line.productId] ?? 0) + line.quantity
+    }
     return map
   }, [cart])
 
   const cartCount = useMemo(
-    () => cart.reduce((sum, line) => sum + line.quantity, 0),
+    () =>
+      cart.reduce(
+        (sum, line) => sum + (line.unitType === 'weight' ? 1 : line.quantity),
+        0
+      ),
     [cart]
   )
 
@@ -593,12 +644,22 @@ export function WaiterClient({
         return
       }
       const o = json.order ?? order
-      const lines = (json.items ?? []).map((it) => ({
-        productId: String(it.product_id),
-        name: String(it.name || 'Item'),
-        quantity: Math.max(1, Math.floor(Number(it.quantity) || 1)),
-        unitPrice: Number(it.unit_price ?? it.price) || 0,
-      }))
+      const lines = (json.items ?? []).map((it) => {
+        const unitType: OrderItemUnitType =
+          it.unit_type === 'weight' ? 'weight' : 'unit'
+        const qty = Number(it.quantity) || 0
+        return {
+          lineId: newCartLineId(),
+          productId: String(it.product_id),
+          name: String(it.name || 'Item'),
+          quantity:
+            unitType === 'weight'
+              ? Math.max(0.001, qty)
+              : Math.max(1, Math.floor(qty)),
+          unitPrice: Number(it.unit_price ?? it.price) || 0,
+          unitType,
+        }
+      })
       setActiveOrderId(o.id)
       setTable(parseTableFromNotes(o.notes) || '')
       setSector(parseSectorFromNotes(o.notes))
@@ -694,38 +755,117 @@ export function WaiterClient({
 
   function addProduct(product: MenuProductRow) {
     if (isOutOfStock(product.id)) return
+    if (isSoldByWeight(product)) {
+      if (!scaleIntegrationEnabled) {
+        setError('Produtos por peso exigem o plano Pro em operação presencial ou híbrida.')
+        return
+      }
+      if (barcodeMode) {
+        setError('Escaneia a etiqueta com o leitor de código de barras.')
+        setScanHint('Modo etiqueta — usa o leitor USB.')
+        return
+      }
+      setWeighProduct(product)
+      return
+    }
     const price = effectiveProductPrice(product, 'dine_in')
     setCart((prev) => {
-      const i = prev.findIndex((x) => x.productId === product.id)
+      const i = prev.findIndex((x) => x.productId === product.id && x.unitType === 'unit')
       if (i >= 0) {
         const next = [...prev]
         next[i] = { ...next[i], quantity: next[i].quantity + 1 }
         return next
       }
-      return [...prev, { productId: product.id, name: product.name, quantity: 1, unitPrice: price }]
+      return [
+        ...prev,
+        {
+          lineId: newCartLineId(),
+          productId: product.id,
+          name: product.name,
+          quantity: 1,
+          unitPrice: price,
+          unitType: 'unit',
+        },
+      ]
     })
     setError(null)
     setSuccess(null)
   }
 
+  function addWeighableLine(product: MenuProductRow, weightKg: number) {
+    const pricePerKg = effectivePricePerKg(product)
+    if (pricePerKg == null) {
+      setError('Preço por kg inválido para este produto.')
+      return
+    }
+    setCart((prev) => [
+      ...prev,
+      {
+        lineId: newCartLineId(),
+        productId: product.id,
+        name: product.name,
+        quantity: weightKg,
+        unitPrice: pricePerKg,
+        unitType: 'weight',
+      },
+    ])
+    setError(null)
+    setSuccess(null)
+  }
+
+  const handleBarcodeScan = useCallback(
+    async (raw: string) => {
+      if (!barcodeScannerEnabled) return
+      setError(null)
+      setScanHint(null)
+      const res = await parseWeighableBarcode(raw)
+      if (!res.ok) {
+        setError(res.message)
+        return
+      }
+      const product = initialProducts.find((p) => p.id === res.data.productId)
+      if (!product) {
+        setError('Produto da etiqueta não está no cardápio do garçom.')
+        return
+      }
+      addWeighableLine(product, res.data.weightKg)
+      setSuccess(`Etiqueta: ${res.data.name} · ${formatWeightKg(res.data.weightKg)} kg`)
+      setScanHint(`${res.data.name} · ${formatWeightKg(res.data.weightKg)} kg`)
+      window.setTimeout(() => setScanHint(null), 2500)
+    },
+    [barcodeScannerEnabled, initialProducts]
+  )
+
+  useBarcodeScanner({
+    enabled: barcodeScannerEnabled,
+    onScan: (code) => void handleBarcodeScan(code),
+    minLength: 8,
+  })
+
   function removeProductUnit(productId: string) {
     setCart((prev) => {
-      const i = prev.findIndex((x) => x.productId === productId)
+      const i = prev.findIndex((x) => x.productId === productId && x.unitType === 'unit')
       if (i < 0) return prev
       const next = [...prev]
       const q = next[i].quantity - 1
-      if (q <= 0) return next.filter((x) => x.productId !== productId)
+      if (q <= 0) return next.filter((x) => x.lineId !== next[i].lineId)
       next[i] = { ...next[i], quantity: q }
       return next
     })
   }
 
-  function setLineQty(productId: string, qty: number) {
+  function setLineQty(lineId: string, qty: number) {
     if (qty <= 0) {
-      setCart((prev) => prev.filter((x) => x.productId !== productId))
+      setCart((prev) => prev.filter((x) => x.lineId !== lineId))
       return
     }
-    setCart((prev) => prev.map((x) => (x.productId === productId ? { ...x, quantity: qty } : x)))
+    setCart((prev) =>
+      prev.map((x) => {
+        if (x.lineId !== lineId) return x
+        if (x.unitType === 'weight') return { ...x, quantity: qty }
+        return { ...x, quantity: Math.floor(qty) }
+      })
+    )
   }
 
   function printComanda() {
@@ -875,6 +1015,7 @@ export function WaiterClient({
             quantity: line.quantity,
             unit_price: line.unitPrice,
             name: line.name,
+            unit_type: line.unitType,
           })),
         }),
       })
@@ -921,6 +1062,7 @@ export function WaiterClient({
             quantity: line.quantity,
             unit_price: line.unitPrice,
             name: line.name,
+            unit_type: line.unitType,
           })),
         }),
       })
@@ -2609,6 +2751,16 @@ export function WaiterClient({
         />
       ) : null}
 
+      <PdvWeighModal
+        open={weighProduct != null}
+        product={weighProduct}
+        scaleConfig={resolvedScaleConfig}
+        onClose={() => setWeighProduct(null)}
+        onConfirm={(weightKg) => {
+          if (weighProduct) addWeighableLine(weighProduct, weightKg)
+          setWeighProduct(null)
+        }}
+      />
     </div>
   )
 }
@@ -2751,43 +2903,65 @@ function OrderPanelContent({
               ) : (
                 <ul className="space-y-2">
                   {cart.map((line) => (
-                    <li key={line.productId} className="flex items-center gap-2 rounded-xl border border-[var(--card-border)] bg-white p-2.5 shadow-sm">
+                    <li key={line.lineId} className="flex items-center gap-2 rounded-xl border border-[var(--card-border)] bg-white p-2.5 shadow-sm">
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-semibold text-[#1a1614]">{line.name}</p>
-                        <p className="text-[11px] text-[#9ca3af]">{money.format(line.unitPrice)} un.</p>
+                        <p className="text-[11px] text-[#9ca3af]">
+                          {line.unitType === 'weight'
+                            ? `${formatWeightKg(line.quantity)} kg · ${money.format(line.unitPrice)}/kg`
+                            : `${money.format(line.unitPrice)} un.`}
+                        </p>
                       </div>
-                      <div className="flex items-center gap-1 rounded-lg bg-[#f4f5f7] p-0.5">
-                        <button
-                          type="button"
-                          onClick={() => setLineQty(line.productId, line.quantity - 1)}
-                          className="flex h-7 w-7 items-center justify-center rounded-md bg-white text-base font-bold leading-none text-[#1a1614] shadow-sm transition active:scale-95"
-                          aria-label="Diminuir"
-                        >
-                          −
-                        </button>
-                        <span className="w-6 text-center text-sm font-bold tabular-nums">{line.quantity}</span>
-                        <button
-                          type="button"
-                          onClick={() => setLineQty(line.productId, line.quantity + 1)}
-                          className="flex h-7 w-7 items-center justify-center rounded-md bg-[var(--dash-primary)] text-base font-bold leading-none text-white shadow-sm transition active:scale-95"
-                          aria-label="Aumentar"
-                        >
-                          +
-                        </button>
-                      </div>
-                      <div className="flex w-16 shrink-0 flex-col items-end gap-1">
-                        <span className="text-sm font-bold tabular-nums text-[#1a1614]">
-                          {money.format(line.quantity * line.unitPrice)}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setLineQty(line.productId, 0)}
-                          className="text-[11px] font-medium text-[#9ca3af] transition hover:text-red-600"
-                          aria-label="Remover"
-                        >
-                          Remover
-                        </button>
-                      </div>
+                      {line.unitType === 'weight' ? (
+                        <div className="flex w-20 shrink-0 flex-col items-end gap-1">
+                          <span className="text-sm font-bold tabular-nums text-[#1a1614]">
+                            {money.format(line.quantity * line.unitPrice)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setLineQty(line.lineId, 0)}
+                            className="text-[11px] font-medium text-[#9ca3af] transition hover:text-red-600"
+                            aria-label="Remover"
+                          >
+                            Remover
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="flex items-center gap-1 rounded-lg bg-[#f4f5f7] p-0.5">
+                            <button
+                              type="button"
+                              onClick={() => setLineQty(line.lineId, line.quantity - 1)}
+                              className="flex h-7 w-7 items-center justify-center rounded-md bg-white text-base font-bold leading-none text-[#1a1614] shadow-sm transition active:scale-95"
+                              aria-label="Diminuir"
+                            >
+                              −
+                            </button>
+                            <span className="w-6 text-center text-sm font-bold tabular-nums">{line.quantity}</span>
+                            <button
+                              type="button"
+                              onClick={() => setLineQty(line.lineId, line.quantity + 1)}
+                              className="flex h-7 w-7 items-center justify-center rounded-md bg-[var(--dash-primary)] text-base font-bold leading-none text-white shadow-sm transition active:scale-95"
+                              aria-label="Aumentar"
+                            >
+                              +
+                            </button>
+                          </div>
+                          <div className="flex w-16 shrink-0 flex-col items-end gap-1">
+                            <span className="text-sm font-bold tabular-nums text-[#1a1614]">
+                              {money.format(line.quantity * line.unitPrice)}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setLineQty(line.lineId, 0)}
+                              className="text-[11px] font-medium text-[#9ca3af] transition hover:text-red-600"
+                              aria-label="Remover"
+                            >
+                              Remover
+                            </button>
+                          </div>
+                        </>
+                      )}
                     </li>
                   ))}
                 </ul>

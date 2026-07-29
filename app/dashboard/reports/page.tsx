@@ -4,9 +4,8 @@ import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
 import { hasFeature } from '@/lib/plan'
 import { readStorePlano } from '@/lib/store-columns'
 import { dashboardUsesSlugChannelOrdersOnly } from '@/lib/slug-channel-orders'
-import {
-  parseOperationModeFromStore,
-} from '@/lib/merchant-operation-mode'
+import { hasScaleIntegration } from '@/lib/scale/gate'
+import { parseOperationModeFromStore } from '@/lib/merchant-operation-mode'
 import { getUser } from '@/services/auth.server'
 import { getReportsDashboardData } from '@/services/reports.server'
 import { getStoreByUser } from '@/services/store.server'
@@ -48,9 +47,14 @@ export default async function ReportsPage() {
     plan,
     parseOperationModeFromStore(storeRow)
   )
+  const scaleIntegrationEnabled = hasScaleIntegration(
+    plan,
+    parseOperationModeFromStore(storeRow)
+  )
   const data = await getReportsDashboardData(storeId, {
     advanced: reportsAdvanced,
     slugChannelSourcesOnly,
+    weighable: scaleIntegrationEnabled,
   })
 
   return (

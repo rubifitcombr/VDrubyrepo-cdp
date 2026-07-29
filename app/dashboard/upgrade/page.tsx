@@ -28,6 +28,10 @@ const FEATURE_LABEL: Record<string, { title: string; minPlan: string }> = {
     title: 'Pagamento PIX no checkout (QR Code na conta do lojista)',
     minPlan: 'Pro',
   },
+  scale_integration: {
+    title: 'Balança integrada e produtos por peso (PDV / garçom)',
+    minPlan: 'Pro',
+  },
 }
 
 export default async function UpgradePage({

@@ -41,6 +41,7 @@ import {
   normalizeMenuProductRow,
   type MenuProductRow,
 } from '@/lib/menu-product'
+import { filterPublicMenuProducts, isSoldByWeight } from '@/lib/weighable-product'
 
 type CheckoutLine = {
   productId: string
@@ -301,6 +302,15 @@ export async function POST(req: NextRequest) {
       if (!row) {
         return NextResponse.json(
           { error: 'Um dos produtos do carrinho não está mais disponível.' },
+          { status: 400 }
+        )
+      }
+      if (isSoldByWeight(row)) {
+        return NextResponse.json(
+          {
+            error:
+              'Produtos vendidos por peso não estão disponíveis no checkout online.',
+          },
           { status: 400 }
         )
       }

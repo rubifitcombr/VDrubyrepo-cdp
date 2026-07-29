@@ -28,7 +28,9 @@ const KEY_LABEL: Record<DashboardMenuKey, string> = {
   aparencia: 'Aparência da loja online',
   automacoes: 'Automações (pedidos e loja)',
   impressao: 'Impressão automática',
+  balanca: 'Balança (produtos por peso)',
   assinatura: 'Assinatura e faturação',
+  master: 'Plano Master (WhatsApp, fidelidade)',
 }
 
 /** Ordem estável (alinhada ao sidebar) para listagens na página de planos. */
@@ -49,7 +51,9 @@ const KEY_ORDER: DashboardMenuKey[] = [
   'aparencia',
   'automacoes',
   'impressao',
+  'balanca',
   'assinatura',
+  'master',
 ]
 
 /**
@@ -84,8 +88,20 @@ export function planPreviewLinesForMerchant(
   }
   if (hasPixCheckout(plan)) {
     lines.push(PIX_CHECKOUT_BENEFIT_LINE)
-  } else {
+  } else if (plan !== 'MASTER') {
     lines.push(PIX_CHECKOUT_PRO_ONLY_LINE)
+  }
+  if (hasFeature(plan, 'whatsapp_ai')) {
+    lines.push('WhatsApp oficial (Cloud API) — número da loja')
+    lines.push('Robô de IA para atendimento ao cliente')
+  }
+  if (hasFeature(plan, 'loyalty')) {
+    lines.push('Programa de fidelidade com cashback')
+    lines.push('Consulta de pontos pelo WhatsApp')
+  }
+  if (hasFeature(plan, 'recovery')) {
+    lines.push('Recuperador de clientes inativos')
+    lines.push('Relatório de campanhas de recuperação')
   }
   return lines
 }

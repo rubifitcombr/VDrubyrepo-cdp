@@ -8,8 +8,10 @@ import type {
   ReportPromoSnapshot,
   ReportSeriesPoint,
   ReportsAdvancedSummary,
+  ReportWeighableSummary,
   ReportsDashboardData,
 } from '@/lib/reports-data'
+import { roundWeightKg } from '@/lib/scale/price'
 import { slugChannelSourcesForSupabaseIn } from '@/lib/slug-channel-orders'
 import { createClient } from '@/lib/supabase/server'
 import { getPromotionSuggestionsForStore } from '@/services/promo-suggestions.server'
@@ -259,6 +261,8 @@ async function fetchOrderLines(
     product_id: string
     quantity: number
     unit_price: number
+    unit_type: 'unit' | 'weight'
+    weight_kg: number | null
   }[]
 > {
   const out: {
@@ -266,13 +270,15 @@ async function fetchOrderLines(
     product_id: string
     quantity: number
     unit_price: number
+    unit_type: 'unit' | 'weight'
+    weight_kg: number | null
   }[] = []
   const CHUNK = 400
   for (let i = 0; i < orderIds.length; i += CHUNK) {
     const slice = orderIds.slice(i, i + CHUNK)
     const { data, error } = await supabase
       .from('order_items')
-      .select('order_id, product_id, quantity, unit_price, price')
+      .select('order_id, product_id, quantity, unit_price, price, unit_type, weight_kg')
       .in('order_id', slice)
     if (error) {
       if (
@@ -287,14 +293,26 @@ async function fetchOrderLines(
     for (const row of data ?? []) {
       const oid = String(row.order_id ?? '')
       const pid = String(row.product_id ?? '')
+      const unitType = row.unit_type === 'weight' ? 'weight' : 'unit'
       const q = Number(row.quantity) || 0
       const up =
         Number(
           (row as { unit_price?: unknown; price?: unknown }).unit_price ??
             (row as { price?: unknown }).price
         ) || 0
-      if (!oid || !pid || q < 1) continue
-      out.push({ order_id: oid, product_id: pid, quantity: q, unit_price: up })
+      if (!oid || !pid || q <= 0) continue
+      if (unitType === 'unit' && q < 1) continue
+      out.push({
+        order_id: oid,
+        product_id: pid,
+        quantity: q,
+        unit_price: up,
+        unit_type: unitType,
+        weight_kg:
+          unitType === 'weight'
+            ? roundWeightKg(Number(row.weight_kg ?? q) || q)
+            : null,
+      })
     }
   }
   return out
@@ -329,12 +347,17 @@ function emptyData(missingOrdersSchema = false): ReportsDashboardData {
     finance: emptyFinanceData(),
     conversionAvailable: false,
     advanced: undefined,
+    weighable: null,
   }
 }
 
 export async function getReportsDashboardData(
   storeId: string | null,
-  options?: { advanced?: boolean; slugChannelSourcesOnly?: boolean }
+  options?: {
+    advanced?: boolean
+    slugChannelSourcesOnly?: boolean
+    weighable?: boolean
+  }
 ): Promise<ReportsDashboardData> {
   if (!storeId) return emptyData()
 
@@ -549,23 +572,36 @@ export async function getReportsDashboardData(
 
   type Agg = { qty: number; rev: number }
   const agg = new Map<string, Agg>()
+  type WeighAgg = { weightKg: number; rev: number; lines: number }
+  const weighAgg = new Map<string, WeighAgg>()
   let promoLines = 0
   const ordersWithPromo = new Set<string>()
 
   for (const ln of lines) {
-    const a = agg.get(ln.product_id) ?? { qty: 0, rev: 0 }
-    a.qty += ln.quantity
-    a.rev += ln.unit_price * ln.quantity
-    agg.set(ln.product_id, a)
+    if (ln.unit_type === 'weight') {
+      const w = ln.weight_kg ?? ln.quantity
+      const a = weighAgg.get(ln.product_id) ?? { weightKg: 0, rev: 0, lines: 0 }
+      a.weightKg = roundWeightKg(a.weightKg + w)
+      a.rev += ln.unit_price * w
+      a.lines += 1
+      weighAgg.set(ln.product_id, a)
+    } else {
+      const a = agg.get(ln.product_id) ?? { qty: 0, rev: 0 }
+      a.qty += ln.quantity
+      a.rev += ln.unit_price * ln.quantity
+      agg.set(ln.product_id, a)
+    }
 
     const meta = prodMap.get(ln.product_id)
-    if (meta?.promotion_active) {
+    if (meta?.promotion_active && ln.unit_type !== 'weight') {
       promoLines += ln.quantity
       ordersWithPromo.add(ln.order_id)
     }
   }
 
-  const totalLineQty = lines.reduce((s, l) => s + l.quantity, 0)
+  const totalLineQty = lines
+    .filter((l) => l.unit_type !== 'weight')
+    .reduce((s, l) => s + l.quantity, 0)
   let promo: ReportPromoSnapshot | null = null
   if (lines.length > 0) {
     promo = {
@@ -600,6 +636,39 @@ export async function getReportsDashboardData(
   const slowMovers = slowPool
     .filter((p) => (p.price ?? 0) >= 8)
     .slice(0, 5)
+
+  let weighable: ReportWeighableSummary | null = null
+  if (options?.weighable === true && weighAgg.size > 0) {
+    const topByWeight = [...weighAgg.entries()]
+      .map(([pid, a]) => ({
+        name: prodMap.get(pid)?.name ?? 'Produto',
+        weightKg: roundWeightKg(a.weightKg),
+        revenue: Math.round(a.rev * 100) / 100,
+        lines: a.lines,
+      }))
+      .sort((a, b) => b.weightKg - a.weightKg)
+      .slice(0, 8)
+
+    const totalWeighableRevenue = round2(
+      [...weighAgg.values()].reduce((s, a) => s + a.rev, 0)
+    )
+    const weighableLines = [...weighAgg.values()].reduce((s, a) => s + a.lines, 0)
+
+    weighable = {
+      totalWeightKg: roundWeightKg(
+        [...weighAgg.values()].reduce((s, a) => s + a.weightKg, 0)
+      ),
+      totalRevenue: totalWeighableRevenue,
+      weighableLines,
+      topByWeight,
+    }
+
+    if (weighable.totalWeightKg > 0) {
+      insights.push(
+        `Produtos pesáveis: ${weighable.totalWeightKg.toFixed(3).replace('.', ',')} kg vendidos no período (${money.format(weighable.totalRevenue)}).`
+      )
+    }
+  }
 
   const hours: ReportHourRow[] = Array.from({ length: 24 }, (_, hour) => ({
     hour,
@@ -710,5 +779,6 @@ export async function getReportsDashboardData(
     finance,
     conversionAvailable: false,
     advanced,
+    weighable,
   }
 }

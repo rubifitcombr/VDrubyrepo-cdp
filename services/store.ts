@@ -55,6 +55,14 @@ const STORE_ALLOWED_FIELDS = new Set([
   'pix_key',
   'pix_receiver_name',
   'pix_receiver_city',
+  'scale_enabled',
+  'scale_connection',
+  'scale_brand',
+  'scale_protocol',
+  'scale_baud_rate',
+  'scale_auto_add_stable',
+  'scale_plu_prefix',
+  'scale_serial_port',
 ])
 
 export async function getStoreByUser(userId: string) {

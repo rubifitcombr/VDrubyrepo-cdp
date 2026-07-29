@@ -242,7 +242,7 @@ export function PrintingClient({
       setValues((v) => ({ ...v, [key]: prev }))
       const msg = upErr.message || ''
       setError(
-        printSchemaError(msg, upErr.code) ?? msg || 'Não foi possível guardar.'
+        printSchemaError(msg, upErr.code) ?? (msg || 'Não foi possível guardar.')
       )
     }
   }
@@ -259,7 +259,7 @@ export function PrintingClient({
       setValues((v) => ({ ...v, print_paper_mm: prev }))
       const msg = upErr.message || ''
       setError(
-        printSchemaError(msg, upErr.code) ?? msg || 'Não foi possível guardar.'
+        printSchemaError(msg, upErr.code) ?? (msg || 'Não foi possível guardar.')
       )
     }
   }
@@ -279,7 +279,7 @@ export function PrintingClient({
     if (upErr) {
       const msg = upErr.message || ''
       setError(
-        printSchemaError(msg, upErr.code) ?? msg || 'Não foi possível guardar.'
+        printSchemaError(msg, upErr.code) ?? (msg || 'Não foi possível guardar.')
       )
       return false
     }

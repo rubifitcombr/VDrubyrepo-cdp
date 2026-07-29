@@ -33,6 +33,19 @@ import {
   updateProduct,
 } from '@/services/products'
 import { MenuImportReviewModal } from './MenuImportReviewModal'
+import {
+  defaultWeighableFormValues,
+  weighableFormFromProduct,
+  weighablePayloadFromForm,
+  WeighableProductFields,
+  type WeighableFormValues,
+} from './WeighableProductFields'
+import {
+  effectivePricePerKg,
+  formatPricePerKg,
+  isSoldByWeight,
+  validateWeighableProductInput,
+} from '@/lib/weighable-product'
 
 type Product = MenuProductRow
 type StockInfo = {
@@ -355,6 +368,7 @@ export function MenuManagerClient({
   storeSlug,
   plan,
   showPublicStorefrontLink = true,
+  scaleIntegrationEnabled = false,
 }: {
   initialProducts: Product[]
   stockByProduct: Record<string, StockInfo>
@@ -362,6 +376,7 @@ export function MenuManagerClient({
   storeSlug: string | null
   plan: Plan
   showPublicStorefrontLink?: boolean
+  scaleIntegrationEnabled?: boolean
 }) {
   const [products, setProducts] = useState<Product[]>(initialProducts)
   const [extraCategories, setExtraCategories] = useState<string[]>([])
@@ -385,6 +400,9 @@ export function MenuManagerClient({
   const [aiDescBusy, setAiDescBusy] = useState(false)
   const [addonGroups, setAddonGroups] = useState<AddonGroupDraft[]>([])
   const [formSaving, setFormSaving] = useState(false)
+  const [weighableForm, setWeighableForm] = useState<WeighableFormValues>(
+    defaultWeighableFormValues
+  )
   const [searchQuery, setSearchQuery] = useState('')
   const deferredSearch = useDeferredValue(searchQuery)
   const [selectedCategory, setSelectedCategory] = useState('Todos')
@@ -511,6 +529,7 @@ export function MenuManagerClient({
     )
     setFormFile(null)
     setAddonGroups([])
+    setWeighableForm(defaultWeighableFormValues())
     setProductModalOpen(true)
   }
 
@@ -534,6 +553,7 @@ export function MenuManagerClient({
       addons = []
     }
     setAddonGroups(addons)
+    setWeighableForm(weighableFormFromProduct(p))
     setProductModalOpen(true)
   }
 
@@ -558,36 +578,82 @@ export function MenuManagerClient({
 
   async function submitProductForm() {
     const name = formName.trim()
+    const weighablePayload = weighablePayloadFromForm(weighableForm)
+    const weighableCheck = validateWeighableProductInput(weighablePayload)
+    if (!weighableCheck.ok) {
+      alert(weighableCheck.error)
+      return
+    }
+    if (weighableForm.soldByWeight && !scaleIntegrationEnabled) {
+      alert('Produtos por peso exigem o plano Pro em operação presencial ou híbrida.')
+      return
+    }
+
     const delivery = parsePriceInput(formDeliveryPrice)
     const dineIn = parsePriceInput(formDineInPrice)
     if (!name) {
       alert('Indica o nome do item.')
       return
     }
-    if (delivery == null && dineIn == null) {
-      alert('Indica ao menos o preço delivery ou presencial.')
-      return
-    }
-    const legacyPrice = delivery ?? dineIn ?? 0
-    const deliveryPromo = parsePriceInput(formDeliveryPromoPrice)
-    const dineInPromo = parsePriceInput(formDineInPromoPrice)
-    if (formDeliveryPromoActive && deliveryPromo == null) {
-      alert('Preço promocional delivery inválido.')
-      return
-    }
-    if (formDineInPromoActive && dineInPromo == null) {
-      alert('Preço promocional presencial inválido.')
-      return
-    }
 
-    const channelPatch = {
+    let legacyPrice = delivery ?? dineIn ?? 0
+    let channelPatch: Record<string, unknown> = {
       price: legacyPrice,
       delivery_price: delivery,
       dine_in_price: dineIn,
-      delivery_promotional_price: formDeliveryPromoActive ? deliveryPromo : null,
+      delivery_promotional_price: formDeliveryPromoActive ? parsePriceInput(formDeliveryPromoPrice) : null,
       delivery_promotion_active: formDeliveryPromoActive,
-      dine_in_promotional_price: formDineInPromoActive ? dineInPromo : null,
+      dine_in_promotional_price: formDineInPromoActive ? parsePriceInput(formDineInPromoPrice) : null,
       dine_in_promotion_active: formDineInPromoActive,
+      promotion_active: false,
+      promotional_price: null,
+    }
+
+    if (weighableForm.soldByWeight) {
+      const perKg = parsePriceInput(weighableForm.pricePerKg)
+      if (perKg == null || perKg <= 0) {
+        alert('Informe um preço por kg válido.')
+        return
+      }
+      legacyPrice = perKg
+      channelPatch = {
+        price: perKg,
+        delivery_price: null,
+        dine_in_price: perKg,
+        delivery_promotional_price: null,
+        delivery_promotion_active: false,
+        dine_in_promotional_price: null,
+        dine_in_promotion_active: false,
+        promotion_active: false,
+        promotional_price: null,
+        ...weighablePayload,
+      }
+    } else if (delivery == null && dineIn == null) {
+      alert('Indica ao menos o preço delivery ou presencial.')
+      return
+    } else {
+      const deliveryPromo = parsePriceInput(formDeliveryPromoPrice)
+      const dineInPromo = parsePriceInput(formDineInPromoPrice)
+      if (formDeliveryPromoActive && deliveryPromo == null) {
+        alert('Preço promocional delivery inválido.')
+        return
+      }
+      if (formDineInPromoActive && dineInPromo == null) {
+        alert('Preço promocional presencial inválido.')
+        return
+      }
+      channelPatch = {
+        price: legacyPrice,
+        delivery_price: delivery,
+        dine_in_price: dineIn,
+        delivery_promotional_price: formDeliveryPromoActive ? deliveryPromo : null,
+        delivery_promotion_active: formDeliveryPromoActive,
+        dine_in_promotional_price: formDineInPromoActive ? dineInPromo : null,
+        dine_in_promotion_active: formDineInPromoActive,
+        promotion_active: false,
+        promotional_price: null,
+        ...weighablePayload,
+      }
     }
 
     let uploadedUrl: string | null = null
@@ -656,6 +722,7 @@ export function MenuManagerClient({
       description: desc,
       active: true,
       sort_order: sort,
+      price: legacyPrice,
       promotion_active: false,
       promotional_price: null,
       ...channelPatch,
@@ -1026,6 +1093,22 @@ export function MenuManagerClient({
               className="mt-1 w-full rounded-lg border border-[var(--card-border)] px-3 py-2 text-sm"
             />
           </label>
+          <WeighableProductFields
+            scaleIntegrationEnabled={scaleIntegrationEnabled}
+            productId={editingId}
+            lockedWeighable={
+              editingId
+                ? isSoldByWeight(
+                    products.find((x) => x.id === editingId) ?? {}
+                  )
+                : false
+            }
+            values={weighableForm}
+            onChange={(patch) =>
+              setWeighableForm((prev) => ({ ...prev, ...patch }))
+            }
+          />
+          {!weighableForm.soldByWeight ? (
           <div className="rounded-xl border border-[var(--card-border)] bg-[#fafafa]/60 p-3 space-y-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-vyria-navy-muted">
               Preços por canal
@@ -1055,6 +1138,8 @@ export function MenuManagerClient({
               antigos sem canal usam o preço único como fallback.
             </p>
           </div>
+          ) : null}
+          {!weighableForm.soldByWeight ? (
           <div className="rounded-xl border border-vyria-plum/15 bg-vyria-plum/[0.04] p-3 space-y-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-vyria-plum">
               Promoção Delivery
@@ -1081,6 +1166,8 @@ export function MenuManagerClient({
               </label>
             ) : null}
           </div>
+          ) : null}
+          {!weighableForm.soldByWeight ? (
           <div className="rounded-xl border border-emerald-600/15 bg-emerald-50/40 p-3 space-y-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">
               Promoção Presencial
@@ -1107,6 +1194,7 @@ export function MenuManagerClient({
               </label>
             ) : null}
           </div>
+          ) : null}
           <label className="block text-sm font-medium text-vyria-navy">
             Categoria
             <input
@@ -1302,9 +1390,16 @@ export function MenuManagerClient({
                       <h2 className="min-w-0 flex-1 font-bold leading-snug text-[#1a1614]">
                         {p.name}
                       </h2>
-                      <span className="shrink-0 max-w-[42%] truncate text-right text-xs font-medium text-[#9ca3af]">
-                        {catLabel}
-                      </span>
+                      <div className="flex shrink-0 flex-col items-end gap-1">
+                        {isSoldByWeight(p) ? (
+                          <span className="rounded-full bg-vyria-plum/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-vyria-plum ring-1 ring-vyria-plum/20">
+                            kg
+                          </span>
+                        ) : null}
+                        <span className="max-w-[8rem] truncate text-right text-xs font-medium text-[#9ca3af]">
+                          {catLabel}
+                        </span>
+                      </div>
                     </div>
                     {stockBadge ? (
                       <div className="mt-2">
@@ -1326,14 +1421,25 @@ export function MenuManagerClient({
                     )}
                     <div className="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-[var(--card-border)] pt-4">
                       <div className="min-w-0 text-sm font-semibold tabular-nums text-[var(--dash-primary)]">
-                        <p>
-                          Delivery{' '}
-                          {money.format(effectiveProductPrice(p, 'delivery'))}
-                        </p>
-                        <p className="text-[#6b7280]">
-                          Presencial{' '}
-                          {money.format(effectiveProductPrice(p, 'dine_in'))}
-                        </p>
+                        {isSoldByWeight(p) ? (
+                          <>
+                            <p>{formatPricePerKg(effectivePricePerKg(p) ?? 0)} / kg</p>
+                            <p className="text-xs font-normal text-[#6b7280]">
+                              Só PDV e garçom
+                            </p>
+                          </>
+                        ) : (
+                          <>
+                            <p>
+                              Delivery{' '}
+                              {money.format(effectiveProductPrice(p, 'delivery'))}
+                            </p>
+                            <p className="text-[#6b7280]">
+                              Presencial{' '}
+                              {money.format(effectiveProductPrice(p, 'dine_in'))}
+                            </p>
+                          </>
+                        )}
                       </div>
                       <div className="flex items-center gap-1.5">
                         <ProductActiveSwitch

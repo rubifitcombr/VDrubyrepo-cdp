@@ -22,6 +22,12 @@ import {
   type NfceProdutoInput,
   type StoreFiscalConfig,
 } from '@/services/fiscal.server'
+import {
+  nfceLineTotalFromOrderItem,
+  nfceQuantityFromOrderItem,
+  nfceUnidadeFromOrderItem,
+  nfceUnitPriceFromOrderItem,
+} from '@/lib/fiscal/weighable-nfce'
 import { persistNfceArtifacts } from '@/services/fiscal-artifacts.server'
 
 /**
@@ -56,6 +62,9 @@ type OrderItemRow = {
   unit_price: number | string | null
   price: number | string | null
   name: string | null
+  unit_type?: string | null
+  weight_kg?: number | string | null
+  price_per_kg_snapshot?: number | string | null
   products: {
     ncm: string | null
     cfop: string | null
@@ -63,6 +72,7 @@ type OrderItemRow = {
     unidade: string | null
     origem: string | null
     cst_csosn: string | null
+    sold_by_weight?: boolean | null
   } | null
 }
 
@@ -206,7 +216,9 @@ export async function emitirNfce(
 
   const { data: itemsRaw, error: itemsErr } = await svc
     .from('order_items')
-    .select('quantity, unit_price, price, name, products(ncm, cfop, cest, unidade, origem, cst_csosn)')
+    .select(
+      'quantity, unit_price, price, name, unit_type, weight_kg, price_per_kg_snapshot, products(ncm, cfop, cest, unidade, origem, cst_csosn, sold_by_weight)'
+    )
     .eq('order_id', orderId)
   if (itemsErr) {
     return { ok: false, status: 'erro', motivo: 'Falha ao ler itens do pedido.' }
@@ -235,13 +247,21 @@ export async function emitirNfce(
       nome,
       ncm,
       cfop,
-      quantidade: toNumber(it.quantity) || 1,
-      valorUnitario: toNumber(it.unit_price) || toNumber(it.price),
-      unidade: it.products?.unidade?.trim() || 'UN',
+      quantidade: nfceQuantityFromOrderItem(it),
+      valorUnitario: nfceUnitPriceFromOrderItem(it),
+      unidade: nfceUnidadeFromOrderItem(it),
       origem: it.products?.origem?.trim() || '0',
       cstCsosn: it.products?.cst_csosn?.trim() || undefined,
       cest: it.products?.cest?.trim() || undefined,
     })
+  }
+  const invalidQty = produtos.filter((p) => !p.quantidade || p.quantidade <= 0)
+  if (invalidQty.length) {
+    return {
+      ok: false,
+      status: 'erro',
+      motivo: 'Há itens com quantidade inválida para a NFC-e (verifique pesos no PDV).',
+    }
   }
   if (semFiscal.length) {
     return {
@@ -259,8 +279,8 @@ export async function emitirNfce(
   }
 
   const itemsSum = Number(
-    produtos
-      .reduce((acc, p) => acc + (toNumber(p.quantidade) || 1) * toNumber(p.valorUnitario), 0)
+    items
+      .reduce((acc, it) => acc + nfceLineTotalFromOrderItem(it), 0)
       .toFixed(2)
   )
   const valorFrete = Math.max(0, toNumber(orderRow.delivery_fee))

@@ -8,6 +8,9 @@ import { getOpenCaixaTurno } from '@/services/caixa-turnos.server'
 import { getPdvProductsForStore } from '@/services/pdv.server'
 import { getStoreByUser } from '@/services/store.server'
 import { PdvClient } from './_components/PdvClient'
+import { parseOperationModeFromStore } from '@/lib/merchant-operation-mode'
+import { hasScaleIntegration } from '@/lib/scale/gate'
+import { parsePdvScaleContext } from '@/lib/store-scale'
 
 export default async function PdvPage() {
   const user = await getUser()
@@ -38,6 +41,9 @@ export default async function PdvPage() {
   const row = store as Record<string, unknown>
   const plan = effectiveDashboardPlan(user.email, readStorePlano(row))
   const cashierPanelEnabled = hasFeature(plan, 'cashier')
+  const operationMode = parseOperationModeFromStore(row)
+  const scaleIntegrationEnabled = hasScaleIntegration(plan, operationMode)
+  const scaleConfig = parsePdvScaleContext(row)
   const [initialProducts, turnoAberto] = await Promise.all([
     getPdvProductsForStore(storeId),
     cashierPanelEnabled
@@ -51,6 +57,8 @@ export default async function PdvPage() {
       initialProducts={initialProducts}
       cashierPanelEnabled={cashierPanelEnabled}
       initialCaixaTurnoOpen={Boolean(turnoAberto)}
+      scaleIntegrationEnabled={scaleIntegrationEnabled}
+      scaleConfig={scaleConfig}
     />
   )
 }

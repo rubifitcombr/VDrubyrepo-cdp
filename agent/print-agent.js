@@ -6,9 +6,12 @@
 const express = require('express')
 const net = require('net')
 const os = require('os')
+const cors = require('cors')
+const scaleSerial = require('./scale-serial')
 
 const app = express()
-app.use(express.json({ limit: '512kb' }))
+app.use(cors({ origin: true }))
+app.use(express.json({ limit: '512kb' })
 
 const agentToken = process.env.AGENT_TOKEN
 if (!agentToken || agentToken.length < 16) {
@@ -17,7 +20,7 @@ if (!agentToken || agentToken.length < 16) {
   )
   process.exit(1)
 }
-const DEFAULT_PRINTER_PORT = 9100
+const AGENT_VERSION = '1.3.0'
 
 function normalizePort(raw, fallback = DEFAULT_PRINTER_PORT) {
   return Math.min(
@@ -124,10 +127,11 @@ app.get('/health', (req, res) => {
   if (!printerIp) {
     return res.json({
       ok: true,
-      version: '1.2.0',
+      version: AGENT_VERSION,
       agent: 'vyria-print-agent',
       printer: null,
       interfaces: listLocalInterfaces(),
+      scale: scaleSerial.getStatus(),
     })
   }
 
@@ -140,14 +144,14 @@ app.get('/health', (req, res) => {
     if (printer.ok) {
       res.json({
         ok: true,
-        version: '1.2.0',
+        version: AGENT_VERSION,
         agent: 'vyria-print-agent',
         printer: { ok: true, ip: printerIp, port: printerPort },
       })
     } else {
       res.status(printer.code === 'printer_timeout' ? 504 : 502).json({
         ok: false,
-        version: '1.2.0',
+        version: AGENT_VERSION,
         agent: 'vyria-print-agent',
         printer: { ok: false, ip: printerIp, port: printerPort },
         code: printer.code,
@@ -261,6 +265,83 @@ app.post('/test-printer', async (req, res) => {
   res.json({ ok: true, printerIp, printerPort })
 })
 
+function requireAgentToken(req, res) {
+  const token = req.headers['x-agent-token']
+  if (token !== agentToken) {
+    res.status(401).json({ ok: false, code: 'unauthorized', error: 'unauthorized' })
+    return false
+  }
+  return true
+}
+
+/** Lista portas seriais disponíveis no PC do agente. */
+app.get('/scale/ports', async (req, res) => {
+  if (!requireAgentToken(req, res)) return
+  try {
+    const ports = await scaleSerial.listPorts()
+    res.json({ ok: true, ports })
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) })
+  }
+})
+
+/** Estado da balança serial (porta, baud, ligada). */
+app.get('/scale/status', (req, res) => {
+  if (!requireAgentToken(req, res)) return
+  res.json({ ok: true, ...scaleSerial.getStatus() })
+})
+
+/** Configura porta/baud da balança (persiste em memória até reiniciar o agente). */
+app.post('/scale/configure', async (req, res) => {
+  if (!requireAgentToken(req, res)) return
+  const path = String(req.body?.path || req.body?.serialPort || '').trim()
+  const baudRate = Number.parseInt(String(req.body?.baudRate || ''), 10) || undefined
+  const protocol = String(req.body?.protocol || '').trim() || undefined
+  const config = scaleSerial.configure({ path: path || undefined, baudRate, protocol })
+  try {
+    if (path) await scaleSerial.openPort(path, config.baudRate)
+    res.json({ ok: true, ...scaleSerial.getStatus() })
+  } catch (e) {
+    res.status(502).json({
+      ok: false,
+      code: 'scale_open_failed',
+      error: String(e?.message || e),
+      ...scaleSerial.getStatus(),
+    })
+  }
+})
+
+/** Última leitura de peso (abre a porta se configurada). */
+app.get('/scale/weight', async (req, res) => {
+  if (!requireAgentToken(req, res)) return
+  try {
+    const opened = await scaleSerial.ensureOpen()
+    if (!opened) {
+      return res.status(503).json({
+        ok: false,
+        code: 'scale_not_configured',
+        error:
+          'Balança não configurada. Defina SCALE_SERIAL_PATH no agente ou POST /scale/configure.',
+        ...scaleSerial.getStatus(),
+      })
+    }
+    res.json(scaleSerial.getReading())
+  } catch (e) {
+    res.status(502).json({
+      ok: false,
+      code: 'scale_read_failed',
+      error: String(e?.message || e),
+      ...scaleSerial.getStatus(),
+    })
+  }
+})
+
+/** Zera tara em software no agente. */
+app.post('/scale/tare', (req, res) => {
+  if (!requireAgentToken(req, res)) return
+  res.json(scaleSerial.tare())
+})
+
 app.post('/print', async (req, res) => {
   const token = req.headers['x-agent-token']
   if (token !== agentToken) {
@@ -294,5 +375,11 @@ app.post('/print', async (req, res) => {
 const PORT = process.env.PORT || 3001
 const HOST = process.env.AGENT_HOST || '127.0.0.1'
 app.listen(PORT, HOST, () => {
-  console.log(`Vyria Print Agent rodando em ${HOST}:${PORT}`)
+  console.log(`Vyria Print Agent v${AGENT_VERSION} em ${HOST}:${PORT}`)
+  const st = scaleSerial.getStatus()
+  if (st.path) {
+    scaleSerial.ensureOpen().catch((e) => {
+      console.warn('[scale] auto-open falhou:', e?.message || e)
+    })
+  }
 })

@@ -10,12 +10,20 @@ import { buildItemsSummaryWithLineTotals } from '@/lib/print/items-summary-forma
 import { isSupabaseRlsViolation } from '@/lib/supabase-rls-error'
 import { tryAutoThermalPrint } from '@/services/thermal-print.server'
 import { resolveGarcomForOrder } from '@/services/store-garcons.server'
+import {
+  merchantHasScaleIntegration,
+} from '@/lib/merchant-api-gate.server'
+import {
+  mapPricedLinesToOrderItemRows,
+  pricePdvLinesFromCatalog,
+} from '@/lib/pdv-price.server'
 
 type BodyItem = {
   product_id: string
   quantity: number
   unit_price: number
   name: string
+  unit_type?: 'unit' | 'weight'
 }
 
 function round2(n: number): number {
@@ -84,39 +92,36 @@ export async function POST(request: Request) {
     )
   }
 
+  const hasWeightItems = items.some((i) => i.unit_type === 'weight')
+  if (hasWeightItems && !merchantHasScaleIntegration(gate.ctx.store, user.email)) {
+    return NextResponse.json(
+      {
+        error:
+          'Produtos por peso exigem o plano Pro em operação presencial ou híbrida.',
+      },
+      { status: 403 }
+    )
+  }
+
   const storeId = gate.ctx.storeId
   const supabase = await createClient()
 
-  const productIds = items.map((i) => String(i.product_id ?? '')).filter(Boolean)
-  const { data: prodOk, error: prodErr } = await supabase
-    .from('products')
-    .select('id, name')
-    .eq('store_id', storeId)
-    .in('id', productIds)
-
-  if (prodErr) {
-    return NextResponse.json(
-      { error: 'Não foi possível validar os produtos.' },
-      { status: 500 }
-    )
+  const priced = await pricePdvLinesFromCatalog(
+    supabase,
+    storeId,
+    items.map((i) => ({
+      product_id: i.product_id,
+      quantity: i.quantity,
+      unit_price: i.unit_price,
+      name: i.name,
+      unit_type: i.unit_type,
+    })),
+    'dine_in'
+  )
+  if (!priced.ok) {
+    return NextResponse.json({ error: priced.error }, { status: priced.status })
   }
-
-  const allowed = new Set((prodOk ?? []).map((p) => String(p.id)))
-  const cleanItems = items
-    .filter((i) => allowed.has(String(i.product_id)))
-    .map((i) => ({
-      product_id: String(i.product_id),
-      quantity: Math.max(1, Math.floor(Number(i.quantity) || 1)),
-      unit_price: round2(Math.max(0, Number(i.unit_price) || 0)),
-      name: String(i.name ?? '').trim() || 'Item',
-    }))
-
-  if (cleanItems.length === 0) {
-    return NextResponse.json(
-      { error: 'Nenhum item válido para esta loja.' },
-      { status: 400 }
-    )
-  }
+  const cleanItems = priced.lines
 
   const gross = round2(
     cleanItems.reduce((sum, line) => sum + line.unit_price * line.quantity, 0)
@@ -174,14 +179,7 @@ export async function POST(request: Request) {
 
   const orderId = String(order.id)
 
-  const rows = cleanItems.map((i) => ({
-    order_id: orderId,
-    product_id: i.product_id,
-    quantity: i.quantity,
-    price: i.unit_price,
-    unit_price: i.unit_price,
-    name: i.name,
-  }))
+  const rows = mapPricedLinesToOrderItemRows(orderId, cleanItems)
   const { error: itemsErr } = await supabase.from('order_items').insert(rows)
 
   if (itemsErr) {

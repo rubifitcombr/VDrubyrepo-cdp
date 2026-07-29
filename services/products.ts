@@ -4,6 +4,11 @@ import {
   sortMenuProductRows,
   type MenuProductRow,
 } from '@/lib/menu-product'
+import {
+  buildWeighableProductDbPatch,
+  type WeighableProductInput,
+  validateWeighableProductInput,
+} from '@/lib/weighable-product'
 import { createClient } from '@/lib/supabase/client'
 import { normalizeMenuImageUrlForSave } from '@/lib/menu-image-url'
 
@@ -100,7 +105,7 @@ export type MenuProductPayload = {
   delivery_promotion_active?: boolean
   dine_in_promotional_price?: number | null
   dine_in_promotion_active?: boolean
-}
+} & WeighableProductInput
 
 export async function getNextProductSortOrder(
   storeId: string,
@@ -128,12 +133,21 @@ export async function getNextProductSortOrder(
 }
 
 export async function createMenuProduct(payload: MenuProductPayload) {
+  const weighableCheck = validateWeighableProductInput(payload)
+  if (!weighableCheck.ok) {
+    return { data: null, error: { message: weighableCheck.error } }
+  }
+
   const supabase = createClient()
   const row: Record<string, unknown> = {
     store_id: payload.store_id,
     name: payload.name,
     price: payload.price,
     active: payload.active ?? true,
+    ...buildWeighableProductDbPatch(payload),
+  }
+  if (payload.sold_by_weight) {
+    row.price = (row.price_per_kg as number) ?? payload.price
   }
   if (payload.description?.trim()) {
     row.description = payload.description.trim()
@@ -204,10 +218,21 @@ export async function updateProduct(
     delivery_promotion_active: boolean
     dine_in_promotional_price: number | null
     dine_in_promotion_active: boolean
-  }>
+  }> &
+    WeighableProductInput
 ) {
   const supabase = createClient()
   const normalized = { ...patch }
+  if ('sold_by_weight' in normalized) {
+    const weighableCheck = validateWeighableProductInput(normalized)
+    if (!weighableCheck.ok) {
+      return { data: null, error: { message: weighableCheck.error } }
+    }
+    Object.assign(normalized, buildWeighableProductDbPatch(normalized))
+    if (normalized.sold_by_weight && normalized.price_per_kg != null) {
+      normalized.price = Number(normalized.price_per_kg)
+    }
+  }
   if ('image_url' in normalized) {
     normalized.image_url = normalized.image_url
       ? normalizeMenuImageUrlForSave(normalized.image_url) ??

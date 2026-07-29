@@ -13,6 +13,18 @@ import {
   getProductById,
   updateProduct,
 } from '@/services/products'
+import {
+  defaultWeighableFormValues,
+  weighableFormFromProduct,
+  weighablePayloadFromForm,
+  WeighableProductFields,
+  type WeighableFormValues,
+} from '@/app/dashboard/menu/_components/WeighableProductFields'
+import { parseOperationModeFromStore } from '@/lib/merchant-operation-mode'
+import { parsePlan } from '@/lib/plan'
+import { readStorePlano } from '@/lib/store-columns'
+import { hasScaleIntegration } from '@/lib/scale/gate'
+import { validateWeighableProductInput } from '@/lib/weighable-product'
 
 const STEPS = [
   { id: 0, label: 'Item', desc: 'Informações do produto' },
@@ -63,6 +75,11 @@ function MenuItemWizardContent() {
   >('always')
   const [scheduleNote, setScheduleNote] = useState('')
 
+  const [scaleIntegrationEnabled, setScaleIntegrationEnabled] = useState(false)
+  const [weighableForm, setWeighableForm] = useState<WeighableFormValues>(
+    defaultWeighableFormValues
+  )
+
   const [saving, setSaving] = useState(false)
 
   const loadStore = useCallback(async () => {
@@ -71,6 +88,10 @@ function MenuItemWizardContent() {
     const store = await getStoreByUser(user.id)
     if (!store || typeof store !== 'object' || !('id' in store)) return
     setStoreId(store.id as string)
+    const storeRecord = store as Record<string, unknown>
+    const plan = parsePlan(readStorePlano(storeRecord))
+    const mode = parseOperationModeFromStore(storeRecord)
+    setScaleIntegrationEnabled(hasScaleIntegration(plan, mode))
     try {
       const rows = await getMenuProducts(store.id as string)
       const cats = new Set<string>()
@@ -175,6 +196,7 @@ function MenuItemWizardContent() {
       } else {
         setDietary([])
       }
+      setWeighableForm(weighableFormFromProduct(row))
     })()
     return () => {
       cancelled = true
@@ -201,6 +223,26 @@ function MenuItemWizardContent() {
       alert('Nome do item é obrigatório.')
       return false
     }
+
+    const weighablePayload = weighablePayloadFromForm(weighableForm)
+    const weighableCheck = validateWeighableProductInput(weighablePayload)
+    if (!weighableCheck.ok) {
+      alert(weighableCheck.error)
+      return false
+    }
+    if (weighableForm.soldByWeight) {
+      if (!scaleIntegrationEnabled) {
+        alert('Produtos por peso exigem o plano Pro em operação presencial ou híbrida.')
+        return false
+      }
+      const parsedKg = Number(weighableForm.pricePerKg.replace(',', '.'))
+      if (Number.isNaN(parsedKg) || parsedKg <= 0) {
+        alert('Preço por kg inválido.')
+        return false
+      }
+      return true
+    }
+
     const parsed = Number(price.replace(',', '.'))
     if (Number.isNaN(parsed) || parsed < 0) {
       alert('Preço inválido.')
@@ -218,7 +260,10 @@ function MenuItemWizardContent() {
 
   async function finalize() {
     if (!storeId || !validateStep0()) return
-    const parsedPrice = Number(price.replace(',', '.'))
+    const weighablePayload = weighablePayloadFromForm(weighableForm)
+    const parsedPrice = weighableForm.soldByWeight
+      ? Number(weighableForm.pricePerKg.replace(',', '.'))
+      : Number(price.replace(',', '.'))
     setSaving(true)
 
     let finalImageUrl = imageUrl.trim() || null
@@ -237,9 +282,43 @@ function MenuItemWizardContent() {
       if (publicUrl) finalImageUrl = publicUrl
     }
 
-    const parsedPromo = promotionActive
-      ? Number(promotionalPrice.replace(',', '.'))
-      : null
+    const parsedPromo =
+      !weighableForm.soldByWeight && promotionActive
+        ? Number(promotionalPrice.replace(',', '.'))
+        : null
+
+    const channelPrices = weighableForm.soldByWeight
+      ? {
+          price: parsedPrice,
+          delivery_price: null as number | null,
+          dine_in_price: parsedPrice,
+          promotional_price: null as number | null,
+          promotion_active: false,
+          delivery_promotional_price: null as number | null,
+          delivery_promotion_active: false,
+          dine_in_promotional_price: null as number | null,
+          dine_in_promotion_active: false,
+        }
+      : {
+          price: parsedPrice,
+          delivery_price: parsedPrice,
+          dine_in_price: parsedPrice,
+          promotional_price:
+            promotionActive && parsedPromo != null && !Number.isNaN(parsedPromo)
+              ? parsedPromo
+              : null,
+          promotion_active: promotionActive,
+          delivery_promotional_price:
+            promotionActive && parsedPromo != null && !Number.isNaN(parsedPromo)
+              ? parsedPromo
+              : null,
+          delivery_promotion_active: promotionActive,
+          dine_in_promotional_price:
+            promotionActive && parsedPromo != null && !Number.isNaN(parsedPromo)
+              ? parsedPromo
+              : null,
+          dine_in_promotion_active: promotionActive,
+        }
 
     const meta: Record<string, unknown> = {
       addonsMode,
@@ -257,28 +336,12 @@ function MenuItemWizardContent() {
     if (editingProductId) {
       const { error } = await updateProduct(editingProductId, {
         name: name.trim(),
-        price: parsedPrice,
-        delivery_price: parsedPrice,
-        dine_in_price: parsedPrice,
+        ...channelPrices,
+        ...weighablePayload,
         description: description.trim() || null,
         active: availability !== 'paused',
         category: resolvedCategory || null,
         image_url: finalImageUrl,
-        promotional_price:
-          promotionActive && parsedPromo != null && !Number.isNaN(parsedPromo)
-            ? parsedPromo
-            : null,
-        promotion_active: promotionActive,
-        delivery_promotional_price:
-          promotionActive && parsedPromo != null && !Number.isNaN(parsedPromo)
-            ? parsedPromo
-            : null,
-        delivery_promotion_active: promotionActive,
-        dine_in_promotional_price:
-          promotionActive && parsedPromo != null && !Number.isNaN(parsedPromo)
-            ? parsedPromo
-            : null,
-        dine_in_promotion_active: promotionActive,
         cardapio_meta: meta,
       })
       setSaving(false)
@@ -300,29 +363,13 @@ function MenuItemWizardContent() {
     const { error } = await createMenuProduct({
       store_id: storeId,
       name: name.trim(),
-      price: parsedPrice,
-      delivery_price: parsedPrice,
-      dine_in_price: parsedPrice,
+      ...channelPrices,
+      ...weighablePayload,
       description: description.trim() || null,
       active: availability !== 'paused',
       category: resolvedCategory || null,
       image_url: finalImageUrl,
       sort_order: nextSort,
-      promotional_price:
-        promotionActive && parsedPromo != null && !Number.isNaN(parsedPromo)
-          ? parsedPromo
-          : null,
-      promotion_active: promotionActive,
-      delivery_promotional_price:
-        promotionActive && parsedPromo != null && !Number.isNaN(parsedPromo)
-          ? parsedPromo
-          : null,
-      delivery_promotion_active: promotionActive,
-      dine_in_promotional_price:
-        promotionActive && parsedPromo != null && !Number.isNaN(parsedPromo)
-          ? parsedPromo
-          : null,
-      dine_in_promotion_active: promotionActive,
       cardapio_meta: meta,
     })
     setSaving(false)
@@ -478,6 +525,18 @@ function MenuItemWizardContent() {
                 </span>
               </label>
 
+              <WeighableProductFields
+                scaleIntegrationEnabled={scaleIntegrationEnabled}
+                lockedWeighable={
+                  editingProductId ? weighableForm.soldByWeight : false
+                }
+                values={weighableForm}
+                onChange={(patch) =>
+                  setWeighableForm((prev) => ({ ...prev, ...patch }))
+                }
+              />
+
+              {!weighableForm.soldByWeight ? (
               <label className="block text-sm font-medium text-vyria-navy">
                 Preço (R$) *
                 <input
@@ -488,7 +547,9 @@ function MenuItemWizardContent() {
                   onChange={(e) => setPrice(e.target.value)}
                 />
               </label>
+              ) : null}
 
+              {!weighableForm.soldByWeight ? (
               <div className="rounded-xl border border-[var(--card-border)] bg-[#f9f9f9] p-4">
                 <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-vyria-navy">
                   <input
@@ -508,6 +569,7 @@ function MenuItemWizardContent() {
                   />
                 ) : null}
               </div>
+              ) : null}
 
               <div className="grid gap-4 md:grid-cols-2">
                 <label className="block text-sm font-medium text-vyria-navy md:col-span-2">
@@ -673,7 +735,9 @@ function MenuItemWizardContent() {
                   4. Disponibilidade
                 </h2>
                 <p className="text-sm text-vyria-navy-muted">
-                  Controla se o item aparece no cardápio público
+                  {weighableForm.soldByWeight
+                    ? 'Produtos por peso não aparecem no cardápio público — só no PDV e garçom.'
+                    : 'Controla se o item aparece no cardápio público'}
                 </p>
               </div>
               <div className="rounded-lg border border-amber-100 bg-amber-50/80 px-4 py-2 text-sm text-amber-950">

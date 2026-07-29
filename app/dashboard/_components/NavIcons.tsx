@@ -22,6 +22,18 @@ export function IconCube({ className }: { className?: string }) {
   )
 }
 
+export function IconScale({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M12 3v18M6 9h12M5 9l2-4h10l2 4M8 13h8l-1.5 5H9.5L8 13z"
+      />
+    </svg>
+  )
+}
+
 export function IconCart({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">

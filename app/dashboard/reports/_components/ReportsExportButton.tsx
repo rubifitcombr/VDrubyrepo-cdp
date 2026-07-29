@@ -282,6 +282,34 @@ function buildPdf(data: ReportsDashboardData): jsPDF {
     y = nextAfterTable(doc, 10)
   }
 
+  if (data.weighable && data.weighable.weighableLines > 0) {
+    addHeading('Vendas por peso (kg)')
+    addLines([
+      `Total: ${data.weighable.totalWeightKg.toFixed(3).replace('.', ',')} kg`,
+      `Faturamento pesável: ${moneyFmt.format(data.weighable.totalRevenue)}`,
+      `Pesagens: ${data.weighable.weighableLines}`,
+    ])
+    if (data.weighable.topByWeight.length > 0) {
+      y = ensureSpace(doc, y, pageH, m, 30)
+      autoTable(doc, {
+        startY: y,
+        head: [['Produto', 'Kg', 'Receita', 'Pesagens']],
+        body: data.weighable.topByWeight.map((p) => [
+          p.name.length > 45 ? `${p.name.slice(0, 42)}...` : p.name,
+          p.weightKg.toFixed(3).replace('.', ','),
+          moneyFmt.format(p.revenue),
+          String(p.lines),
+        ]),
+        margin: { left: m, right: m },
+        headStyles: { fillColor: [16, 185, 129], textColor: 255 },
+        styles: { fontSize: 8 },
+        theme: 'striped',
+        showHead: 'everyPage',
+      })
+      y = nextAfterTable(doc, 10)
+    }
+  }
+
   if (data.promo) {
     addHeading('Promoções (aproximação)')
     addLines([
