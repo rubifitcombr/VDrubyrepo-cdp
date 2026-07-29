@@ -179,7 +179,7 @@ const BASE_TILES = {
     key: 'administracao',
     label: 'Administração',
     description: 'Abrir visão geral, métricas e painel completo.',
-    href: '/dashboard/visao',
+    href: '/dashboard/visao?hub=administracao',
     icon: 'admin',
     tone: 'slate',
     permission: { type: 'always' },

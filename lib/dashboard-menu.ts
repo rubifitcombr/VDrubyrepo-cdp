@@ -135,6 +135,8 @@ export function menuKeysForMerchant(
   }
   if (hasScaleIntegration(plan, operationMode)) {
     set.add('balanca')
+  } else {
+    set.delete('balanca')
   }
   return set
 }

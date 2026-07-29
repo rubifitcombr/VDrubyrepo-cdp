@@ -145,25 +145,22 @@ export function gateMerchantScaleIntegration(
   return null
 }
 
-/** Módulos exclusivos do plano Master (WhatsApp / fidelidade / recuperador). */
+/** Gate temporário para módulos Master (WhatsApp / fidelidade) até o plano ser lançado. */
 export function gateMerchantMasterFeature(
-  store: Record<string, unknown>,
-  userEmail: string | null | undefined,
+  _store: Record<string, unknown>,
+  _userEmail: string | null | undefined,
   feature: 'whatsapp_ai' | 'loyalty' | 'recovery'
 ): NextResponse | null {
-  const plan = effectivePlanFromStore(store, userEmail)
-  if (!hasFeature(plan, feature)) {
-    const labels: Record<typeof feature, string> = {
-      whatsapp_ai: 'WhatsApp oficial e robô de IA',
-      loyalty: 'Programa de fidelidade',
-      recovery: 'Recuperador de clientes',
-    }
-    return NextResponse.json(
-      {
-        error: `${labels[feature]} está disponível no plano Master.`,
-      },
-      { status: 403 }
-    )
+  const labels: Record<typeof feature, string> = {
+    whatsapp_ai: 'WhatsApp oficial e robô de IA',
+    loyalty: 'Programa de fidelidade',
+    recovery: 'Recuperador de clientes',
   }
-  return null
+  return NextResponse.json(
+    {
+      error: `${labels[feature]} está disponível no plano Master.`,
+    },
+    { status: 403 }
+  )
 }
+

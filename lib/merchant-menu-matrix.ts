@@ -19,7 +19,6 @@ import type { Plan } from '@/lib/plan'
 type PlanSlug = 'start' | 'growth' | 'pro'
 
 function planSlug(plan: Plan): PlanSlug {
-  if (plan === 'MASTER') return 'pro'
   return plan.toLowerCase() as PlanSlug
 }
 
@@ -125,6 +124,7 @@ const PRESENCIAL_PRO: DashboardMenuKey[] = [
   'configuracoes',
   'aparencia',
   'impressao',
+  'balanca',
   'kds',
   'assinatura',
 ]

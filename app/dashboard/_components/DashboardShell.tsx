@@ -272,7 +272,14 @@ function DashboardNavLinks({
     : null
   const items = nav.filter((item) => {
     if (!allowed.has(item.menuKey)) return false
-    if (item.administrationOnly && hubContext !== 'administracao') return false
+    // Itens de administração (ex.: balança, garçons) só ficam ocultos em hubs operacionais focados.
+    if (
+      item.administrationOnly &&
+      hubContext !== null &&
+      hubContext !== 'administracao'
+    ) {
+      return false
+    }
     if (!focusedKeys) return true
     return focusedKeys.has(item.menuKey)
   })
