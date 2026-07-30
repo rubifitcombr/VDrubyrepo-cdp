@@ -311,6 +311,8 @@ async function generateAiReply(
   ctx: WhatsAppAiContext,
   userMessage: string
 ): Promise<string | null> {
+  if (isOpenAiDisabled()) return null
+
   const apiKey = process.env.OPENAI_API_KEY?.trim()
   if (!apiKey) return null
 
@@ -332,62 +334,227 @@ async function generateAiReply(
     const text = completion.choices[0]?.message?.content?.trim()
     return text || null
   } catch (e) {
-    console.warn('[whatsapp-ai]', e instanceof Error ? e.message : e)
+    const msg = e instanceof Error ? e.message : String(e)
+    if (isOpenAiBillingError(msg)) {
+      console.warn('[whatsapp-ai] OpenAI indisponível (créditos/cota) — modo atendente local.')
+    } else {
+      console.warn('[whatsapp-ai]', msg)
+    }
     return null
   }
 }
 
-function buildKeywordFallbackReply(
+function normalizeForMatch(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+}
+
+function matchesAny(text: string, patterns: RegExp[]): boolean {
+  return patterns.some((p) => p.test(text))
+}
+
+function greetingReply(ctx: WhatsAppAiContext): string {
+  const openLine = ctx.storeOpen
+    ? ctx.tone === 'formal'
+      ? 'No momento estamos abertos para pedidos.'
+      : 'Estamos abertos agora!'
+    : ctx.tone === 'formal'
+      ? 'No momento estamos fora do horário de atendimento.'
+      : 'No momento estamos fechados.'
+
+  if (ctx.tone === 'formal') {
+    return `Olá! Sou o assistente de *${ctx.storeName}*. ${openLine}\n\nPara fazer seu pedido, acesse o cardápio: ${ctx.menuUrl}\n\nPosso informar status do pedido, horários, entrega ou pontos de fidelidade.`
+  }
+  return `Olá! 👋 Aqui é da *${ctx.storeName}*. ${openLine}\n\nPedidos só pelo cardápio: ${ctx.menuUrl}\n\nMe chama se quiser saber do seu pedido, horário ou pontos!`
+}
+
+function orderStatusReply(ctx: WhatsAppAiContext): string {
+  if (ctx.recentOrders.length === 0) {
+    return ctx.tone === 'formal'
+      ? `Não localizei pedidos recentes com este número.\n\nPara fazer um pedido: ${ctx.menuUrl}`
+      : `Não achei pedido recente com este número.\n\nPara pedir agora: ${ctx.menuUrl}`
+  }
+  const latest = ctx.recentOrders[0]!
+  const lines =
+    ctx.tone === 'formal'
+      ? [
+          `Seu pedido mais recente é *${latest.ref}*:`,
+          `Status: *${latest.status}*`,
+          `Valor: ${latest.total} — ${latest.createdAt}`,
+        ]
+      : [
+          `Seu último pedido *${latest.ref}*:`,
+          `*${latest.status}* — ${latest.createdAt}`,
+          `Total: ${latest.total}`,
+        ]
+  if (latest.itemsSummary) {
+    lines.push(
+      ctx.tone === 'formal'
+        ? `Itens: ${latest.itemsSummary.slice(0, 100)}`
+        : `📋 ${latest.itemsSummary.slice(0, 100)}`
+    )
+  }
+  lines.push('', `Novo pedido pelo cardápio: ${ctx.menuUrl}`)
+  return lines.join('\n')
+}
+
+function menuRedirectReply(ctx: WhatsAppAiContext, reason?: 'order' | 'menu'): string {
+  if (reason === 'order') {
+    return ctx.tone === 'formal'
+      ? `Para registrar seu pedido com segurança, utilize nosso cardápio online:\n${ctx.menuUrl}\n\nLá você escolhe itens, endereço e pagamento. Posso ajudar com dúvidas sobre pedido em andamento, horário ou fidelidade.`
+      : `Os pedidos são feitos pelo cardápio online 😊\n${ctx.menuUrl}\n\nÉ rapidinho: você monta o pedido, endereço e pagamento por lá. Aqui eu te ajudo com status, horário e pontos!`
+  }
+  return ctx.tone === 'formal'
+    ? `Acesse nosso cardápio para fazer o pedido:\n${ctx.menuUrl}`
+    : `Cardápio da loja:\n${ctx.menuUrl}`
+}
+
+function loyaltyReply(ctx: WhatsAppAiContext): string {
+  if (!ctx.loyaltyEnabled) {
+    return ctx.tone === 'formal'
+      ? 'Esta loja ainda não possui programa de fidelidade ativo.'
+      : 'Ainda não temos programa de pontos nesta loja.'
+  }
+  if (ctx.loyaltyBalance != null && ctx.loyaltyBalance > 0) {
+    return ctx.tone === 'formal'
+      ? `Você possui *${ctx.loyaltyBalance} pontos* de fidelidade. Utilize no próximo pedido pelo cardápio:\n${ctx.menuUrl}`
+      : `Você tem *${ctx.loyaltyBalance} pontos*! 🎁\nUse no próximo pedido: ${ctx.menuUrl}`
+  }
+  return ctx.tone === 'formal'
+    ? `Você ainda não possui pontos. Faça um pedido pelo cardápio e, ao ser entregue, enviaremos sua pontuação aqui:\n${ctx.menuUrl}`
+    : `Você ainda não tem pontos. Peça pelo cardápio e, na entrega, avisamos quantos pontos ganhou:\n${ctx.menuUrl}`
+}
+
+function hoursReply(ctx: WhatsAppAiContext): string {
+  if (ctx.storeOpen) {
+    const close = ctx.closingToday ? ` Fechamos hoje às ${ctx.closingToday}.` : ''
+    return ctx.tone === 'formal'
+      ? `Estamos *abertos* para pedidos.${close}\n\nCardápio: ${ctx.menuUrl}`
+      : `Estamos *abertos*!${close}\n\nPeça aqui: ${ctx.menuUrl}`
+  }
+  return ctx.tone === 'formal'
+    ? `No momento estamos *fechados*.\n\nHorários: ${ctx.hoursSummary}\n\nCardápio: ${ctx.menuUrl}`
+    : `Estamos *fechados* agora.\n\n🕐 ${ctx.hoursSummary}\n\nCardápio: ${ctx.menuUrl}`
+}
+
+function deliveryReply(ctx: WhatsAppAiContext): string {
+  const fee = ctx.deliveryFee
+    ? ctx.tone === 'formal'
+      ? `${ctx.deliveryFee}.`
+      : `${ctx.deliveryFee}.`
+    : ctx.tone === 'formal'
+      ? 'Consulte a taxa no cardápio ao informar seu endereço.'
+      : 'A taxa aparece no cardápio quando você coloca o endereço.'
+  return ctx.tone === 'formal'
+    ? `Fazemos entrega conforme a área da loja. ${fee}\n\nFaça o pedido pelo cardápio: ${ctx.menuUrl}`
+    : `Entregamos sim! ${fee}\n\nPedido pelo cardápio: ${ctx.menuUrl}`
+}
+
+function helpReply(ctx: WhatsAppAiContext): string {
+  return ctx.tone === 'formal'
+    ? `Sou o assistente de *${ctx.storeName}*. Posso ajudar com:\n• Status do seu pedido\n• Horário de funcionamento\n• Pontos de fidelidade\n• Link do cardápio\n\nPedidos são feitos somente pelo cardápio: ${ctx.menuUrl}`
+    : `Sou da *${ctx.storeName}* e posso te ajudar com:\n✅ Status do pedido\n✅ Horário\n✅ Pontos de fidelidade\n✅ Link do cardápio\n\nPedidos só por aqui: ${ctx.menuUrl}`
+}
+
+function thanksReply(ctx: WhatsAppAiContext): string {
+  return ctx.tone === 'formal'
+    ? `Por nada! Estamos à disposição. Cardápio: ${ctx.menuUrl}`
+    : `Por nada! 😊 Qualquer coisa, é só chamar.\n${ctx.menuUrl}`
+}
+
+/** Atendimento profissional sem OpenAI — cobre intenções comuns do cliente. */
+function buildProfessionalFallbackReply(
   ctx: WhatsAppAiContext,
   bodyText: string
 ): string | null {
-  const normalized = bodyText.trim().toLowerCase()
+  const n = normalizeForMatch(bodyText)
 
-  if (['oi', 'olá', 'ola', 'bom dia', 'boa tarde', 'boa noite', 'hey', 'e aí', 'eai'].some(
-    (w) => normalized === w || normalized.startsWith(`${w}!`) || normalized.startsWith(`${w},`)
-  )) {
+  if (
+    matchesAny(n, [
+      /^(oi|ola|hey|eai|e ai|bom dia|boa tarde|boa noite)([!.?]|$)/,
+      /^(ola|oi)\s+/,
+    ])
+  ) {
+    return greetingReply(ctx)
+  }
+
+  if (
+    matchesAny(n, [
+      /\b(obrigad|valeu|agradec|brigad)/,
+      /\b(tchau|ate mais|ate logo|flw|falou)\b/,
+    ])
+  ) {
+    return thanksReply(ctx)
+  }
+
+  if (
+    matchesAny(n, [
+      /\b(pedido|andamento|status|rastre|onde esta|cadê|cade|demora|previsao|chega)/,
+      /\b(ja saiu|saiu|entregador)\b/,
+    ])
+  ) {
+    return orderStatusReply(ctx)
+  }
+
+  if (
+    matchesAny(n, [
+      /\b(quero|gostaria|manda|pedir|pedindo|adiciona|coloca)\b/,
+      /\b(pizza|hamburg|lanche|combo|refrigerante|bebida|porcao|porção)\b/,
+      /\b(fazer um pedido|fazer pedido|novo pedido)\b/,
+    ]) &&
+    !matchesAny(n, [/\b(status|andamento|onde)\b/])
+  ) {
+    return menuRedirectReply(ctx, 'order')
+  }
+
+  if (matchesAny(n, [/\b(cardapio|menu|link)\b/, /\bver (o )?cardapio\b/])) {
+    return menuRedirectReply(ctx, 'menu')
+  }
+
+  if (matchesAny(n, [/\b(pontos|fidelidade|cashback|saldo)\b/])) {
+    return loyaltyReply(ctx)
+  }
+
+  if (
+    matchesAny(n, [
+      /\b(horario|aberto|aberta|fechad|funciona|abre|fecha)\b/,
+      /\besta aberto\b/,
+    ])
+  ) {
+    return hoursReply(ctx)
+  }
+
+  if (matchesAny(n, [/\b(entrega|entregar|frete|taxa|delivery)\b/])) {
+    return deliveryReply(ctx)
+  }
+
+  if (
+    matchesAny(n, [
+      /\b(pix|cartao|cartão|dinheiro|pagamento|pagar)\b/,
+    ])
+  ) {
     return ctx.tone === 'formal'
-      ? `Olá! Sou o assistente de *${ctx.storeName}*. Para fazer seu pedido, acesse nosso cardápio: ${ctx.menuUrl}\n\nPosso ajudar com status do pedido, horários ou pontos de fidelidade.`
-      : `Olá! 👋 Sou da *${ctx.storeName}*.\n\nPara pedir, é só pelo cardápio: ${ctx.menuUrl}\n\nQuer saber do seu pedido, horário ou pontos? É só perguntar!`
+      ? `Formas de pagamento disponíveis no checkout do cardápio (PIX, cartão ou dinheiro, conforme a loja).\n\nAcesse: ${ctx.menuUrl}`
+      : `Você escolhe o pagamento no cardápio (PIX, cartão ou dinheiro, conforme a loja) 💳\n\n${ctx.menuUrl}`
   }
 
-  if (normalized.includes('cardapio') || normalized.includes('cardápio') || normalized === 'menu') {
-    return `Acesse nosso cardápio para fazer o pedido: ${ctx.menuUrl}`
-  }
-
-  if (
-    normalized.includes('pedido') ||
-    normalized.includes('status') ||
-    normalized.includes('andamento')
-  ) {
-    if (ctx.recentOrders.length === 0) {
-      return `Não encontrei pedidos recentes com este número. Faça seu pedido pelo cardápio: ${ctx.menuUrl}`
-    }
-    const latest = ctx.recentOrders[0]!
-    return `Seu pedido mais recente é *${latest.ref}*: *${latest.status}* (${latest.createdAt}).\n\nPara um novo pedido: ${ctx.menuUrl}`
-  }
-
-  if (
-    normalized.includes('pontos') ||
-    normalized.includes('fidelidade') ||
-    normalized.includes('cashback')
-  ) {
-    if (!ctx.loyaltyEnabled) {
-      return 'Esta loja ainda não tem programa de fidelidade ativo.'
-    }
-    if (ctx.loyaltyBalance != null && ctx.loyaltyBalance > 0) {
-      return `Você tem *${ctx.loyaltyBalance} pontos*. Use no próximo pedido pelo cardápio: ${ctx.menuUrl}`
-    }
-    return `Você ainda não tem pontos. Faça um pedido pelo cardápio — ao entregar, avisamos aqui: ${ctx.menuUrl}`
-  }
-
-  if (normalized.includes('horário') || normalized.includes('horario') || normalized.includes('aberto')) {
-    return ctx.storeOpen
-      ? `Estamos *abertos* agora! Peça pelo cardápio: ${ctx.menuUrl}`
-      : `No momento estamos *fechados*. Horários: ${ctx.hoursSummary}`
+  if (matchesAny(n, [/\b(ajuda|help|duvida|dúvida|como funciona|o que voce)\b/])) {
+    return helpReply(ctx)
   }
 
   return null
+}
+
+function isOpenAiDisabled(): boolean {
+  const flag = process.env.WHATSAPP_AI_DISABLE_OPENAI?.trim().toLowerCase()
+  return flag === '1' || flag === 'true' || flag === 'yes'
+}
+
+function isOpenAiBillingError(message: string): boolean {
+  return /insufficient_quota|billing|exceeded|credit|payment|429/i.test(message)
 }
 
 /**
@@ -426,14 +593,11 @@ export async function tryWhatsAppAiReply(
 
   let reply = await generateAiReply(ctx, text)
   if (!reply) {
-    reply = buildKeywordFallbackReply(ctx, text)
+    reply = buildProfessionalFallbackReply(ctx, text)
   }
 
   if (!reply) {
-    reply =
-      ctx.tone === 'formal'
-        ? `Obrigado pelo contato! Para fazer pedidos, utilize nosso cardápio: ${ctx.menuUrl}\n\nPosso ajudar com status do pedido, horários ou fidelidade.`
-        : `Obrigado pela mensagem! 😊\n\nPedidos só pelo cardápio: ${ctx.menuUrl}\n\nPosso ajudar com status do pedido, horário ou pontos!`
+    reply = helpReply(ctx)
   }
 
   return sendStoreWhatsAppText(db, storeId, fromE164, reply)
