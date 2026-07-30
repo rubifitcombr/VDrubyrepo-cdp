@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { MasterModuleHeader } from '@/app/dashboard/master/_components/MasterModuleHeader'
+import { isVyriaAdminPanelUser } from '@/lib/admin-panel-user'
 import { getAdminWhatsappHref } from '@/lib/admin-whatsapp-href.server'
 import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
 import { hasFeature } from '@/lib/plan'
@@ -37,7 +38,10 @@ export default async function MasterWhatsAppPage() {
       />
 
       <div className="mt-8">
-        <WhatsAppMasterClient supportHref={supportHref} />
+        <WhatsAppMasterClient
+          allowManualConnect={isVyriaAdminPanelUser(user.id)}
+          supportHref={supportHref}
+        />
       </div>
     </div>
   )
