@@ -1,11 +1,9 @@
 import { redirect } from 'next/navigation'
 import { MasterModuleHeader } from '@/app/dashboard/master/_components/MasterModuleHeader'
-import { isVyriaAdminPanelUser } from '@/lib/admin-panel-user'
 import { getAdminWhatsappHref } from '@/lib/admin-whatsapp-href.server'
 import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
 import { hasFeature } from '@/lib/plan'
 import { readStorePlano } from '@/lib/store-columns'
-import { getEmbeddedSignupPublicConfig } from '@/lib/whatsapp/embedded-signup.server'
 import { getUser } from '@/services/auth.server'
 import { getStoreByUser } from '@/services/store.server'
 import { WhatsAppMasterClient } from './_components/WhatsAppMasterClient'
@@ -28,7 +26,6 @@ export default async function MasterWhatsAppPage() {
     redirect('/dashboard/upgrade?feature=whatsapp_ai')
   }
 
-  const embedded = getEmbeddedSignupPublicConfig()
   const supportHref = getAdminWhatsappHref()
 
   return (
@@ -40,11 +37,7 @@ export default async function MasterWhatsAppPage() {
       />
 
       <div className="mt-8">
-        <WhatsAppMasterClient
-          embeddedAvailable={embedded.available}
-          allowManualConnect={isVyriaAdminPanelUser(user.id)}
-          supportHref={supportHref}
-        />
+        <WhatsAppMasterClient supportHref={supportHref} />
       </div>
     </div>
   )

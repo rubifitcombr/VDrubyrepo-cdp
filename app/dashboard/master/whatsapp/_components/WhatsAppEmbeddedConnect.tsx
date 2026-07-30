@@ -54,13 +54,11 @@ async function waitForEmbeddedSession(
 
 export function WhatsAppEmbeddedConnect({
   disabled,
-  embeddedAvailable = true,
   supportHref = null,
   onConnected,
   onError,
 }: {
   disabled?: boolean
-  embeddedAvailable?: boolean
   supportHref?: string | null
   onConnected: () => void
   onError: (message: string) => void
@@ -69,6 +67,7 @@ export function WhatsAppEmbeddedConnect({
   const [loadingConfig, setLoadingConfig] = useState(true)
   const [connecting, setConnecting] = useState(false)
   const [fbReady, setFbReady] = useState(false)
+  const [sdkError, setSdkError] = useState<string | null>(null)
   const sessionRef = useRef<SessionInfo>({})
 
   useEffect(() => {
@@ -111,22 +110,53 @@ export function WhatsAppEmbeddedConnect({
   useEffect(() => {
     if (!config?.available || !config.appId) return
 
-    if (window.FB) {
+    const appId = config.appId
+
+    const markReady = () => {
       setFbReady(true)
-      return
+      setSdkError(null)
     }
+
+    const initFb = () => {
+      if (!window.FB) return false
+      try {
+        window.FB.init({
+          appId,
+          cookie: true,
+          xfbml: true,
+          version: 'v21.0',
+        })
+      } catch {
+        // SDK já inicializado
+      }
+      markReady()
+      return true
+    }
+
+    if (initFb()) return
 
     window.fbAsyncInit = () => {
-      window.FB?.init({
-        appId: config.appId!,
-        cookie: true,
-        xfbml: true,
-        version: 'v21.0',
-      })
-      setFbReady(true)
+      initFb()
     }
 
-    if (document.getElementById('facebook-jssdk')) return
+    const existing = document.getElementById('facebook-jssdk') as HTMLScriptElement | null
+    if (existing) {
+      const poll = window.setInterval(() => {
+        if (initFb()) window.clearInterval(poll)
+      }, 200)
+      const timeout = window.setTimeout(() => {
+        window.clearInterval(poll)
+        if (!window.FB) {
+          setSdkError(
+            'Não foi possível carregar o Facebook. Desactive bloqueadores e actualize a página.'
+          )
+        }
+      }, 15000)
+      return () => {
+        window.clearInterval(poll)
+        window.clearTimeout(timeout)
+      }
+    }
 
     const script = document.createElement('script')
     script.id = 'facebook-jssdk'
@@ -134,6 +164,16 @@ export function WhatsAppEmbeddedConnect({
     script.async = true
     script.defer = true
     script.crossOrigin = 'anonymous'
+    script.onload = () => {
+      if (!initFb() && window.fbAsyncInit) {
+        window.fbAsyncInit()
+      }
+    }
+    script.onerror = () => {
+      setSdkError(
+        'Não foi possível carregar o Facebook. Desactive bloqueadores e actualize a página.'
+      )
+    }
     document.body.appendChild(script)
   }, [config])
 
@@ -206,15 +246,14 @@ export function WhatsAppEmbeddedConnect({
     )
   }
 
-  if (!config?.available || !embeddedAvailable) {
+  if (!config?.available) {
     return (
-      <div className="rounded-2xl border border-violet-200 bg-violet-50/50 p-5 text-center">
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-center">
         <p className="font-brand text-base font-bold text-vyria-navy">
-          Conexão automática em activação
+          Conexão temporariamente indisponível
         </p>
         <p className="mt-2 text-sm text-vyria-navy-muted">
-          Em breve você ligará o WhatsApp com um clique. A Vyria está a finalizar a integração
-          com a Meta.
+          A integração com a Meta está a ser activada. Tente novamente em alguns minutos.
         </p>
         {supportHref ? (
           <a
@@ -223,7 +262,7 @@ export function WhatsAppEmbeddedConnect({
             rel="noopener noreferrer"
             className="mt-4 inline-flex rounded-xl bg-[#1877F2] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#166FE5]"
           >
-            Pedir ajuda ao suporte
+            Falar com suporte
           </a>
         ) : null}
       </div>
@@ -247,8 +286,11 @@ export function WhatsAppEmbeddedConnect({
         </svg>
         {connecting ? 'A conectar…' : 'Conectar com Facebook'}
       </button>
-      {!fbReady ? (
-        <p className="mt-2 text-xs text-vyria-navy-muted">A carregar SDK da Meta…</p>
+      {!fbReady && !sdkError ? (
+        <p className="mt-2 text-xs text-vyria-navy-muted">A preparar conexão com a Meta…</p>
+      ) : null}
+      {sdkError ? (
+        <p className="mt-2 text-xs text-red-700">{sdkError}</p>
       ) : null}
     </div>
   )
