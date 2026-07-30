@@ -10,6 +10,13 @@ import type {
   WhatsAppMessageRow,
 } from '@/lib/whatsapp/types'
 
+type VerifiedWhatsAppSender = {
+  phone_number_id: string
+  display_phone_e164: string | null
+  display_phone_formatted: string | null
+  verified_name: string | null
+}
+
 function statusLabel(status: string): string {
   switch (status) {
     case 'active':
@@ -37,10 +44,8 @@ function statusClass(status: string): string {
 }
 
 export function WhatsAppMasterClient({
-  allowManualConnect = false,
   supportHref = null,
 }: {
-  allowManualConnect?: boolean
   supportHref?: string | null
 }) {
   const [loading, setLoading] = useState(true)
@@ -48,14 +53,9 @@ export function WhatsAppMasterClient({
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [config, setConfig] = useState<StoreWhatsAppConfigPublic | null>(null)
+  const [verifiedSender, setVerifiedSender] = useState<VerifiedWhatsAppSender | null>(null)
   const [messages, setMessages] = useState<WhatsAppMessageRow[]>([])
-  const [webhookUrl, setWebhookUrl] = useState('')
-  const [wabaId, setWabaId] = useState('')
-  const [phoneNumberId, setPhoneNumberId] = useState('')
-  const [accessToken, setAccessToken] = useState('')
-  const [displayPhone, setDisplayPhone] = useState('')
   const [testPhone, setTestPhone] = useState('')
-  const [showManual, setShowManual] = useState(allowManualConnect)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -65,13 +65,8 @@ export function WhatsAppMasterClient({
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Falha ao carregar.')
       setConfig(json.config ?? null)
+      setVerifiedSender(json.verifiedSender ?? null)
       setMessages(json.messages ?? [])
-      setWebhookUrl(json.webhookUrl ?? '')
-      if (json.config) {
-        setWabaId(json.config.waba_id || '')
-        setPhoneNumberId(json.config.phone_number_id || '')
-        setDisplayPhone(json.config.display_phone_e164 || '')
-      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erro ao carregar.')
     } finally {
@@ -82,35 +77,6 @@ export function WhatsAppMasterClient({
   useEffect(() => {
     void load()
   }, [load])
-
-  async function handleConnect(e: React.FormEvent) {
-    e.preventDefault()
-    setSaving(true)
-    setError(null)
-    setSuccess(null)
-    try {
-      const res = await fetch('/api/master/whatsapp/connect', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          waba_id: wabaId,
-          phone_number_id: phoneNumberId,
-          access_token: accessToken,
-          display_phone_e164: displayPhone || null,
-        }),
-      })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error || 'Falha ao ligar.')
-      setConfig(json.config)
-      setAccessToken('')
-      setSuccess('WhatsApp ligado com sucesso.')
-      void load()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Erro ao ligar.')
-    } finally {
-      setSaving(false)
-    }
-  }
 
   async function patchSettings(patch: Record<string, unknown>) {
     setSaving(true)
@@ -162,7 +128,13 @@ export function WhatsAppMasterClient({
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Falha no envio.')
-      setSuccess('Mensagem de teste enviada.')
+      const fromLabel =
+        json.from_phone ||
+        json.phone_number_id ||
+        verifiedSender?.display_phone_formatted ||
+        'número ligado'
+      const nameSuffix = json.from_name ? ` (${json.from_name})` : ''
+      setSuccess(`Mensagem enviada pelo número ${fromLabel}${nameSuffix}.`)
       void load()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erro no envio.')
@@ -227,114 +199,27 @@ export function WhatsAppMasterClient({
           </div>
         ) : null}
 
-        {allowManualConnect ? (
-          <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50/50 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <p className="text-sm font-semibold text-vyria-navy">
-                  Ligação manual (Vyria Admin)
-                </p>
-                <p className="mt-0.5 text-xs text-vyria-navy-muted">
-                  Use enquanto a Meta analisa a verificação da empresa. Lojistas continuam só
-                  com Facebook.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowManual((v) => !v)}
-                className="text-sm font-semibold text-vyria-plum hover:underline"
-              >
-                {showManual ? 'Ocultar' : 'Abrir formulário'}
-              </button>
-            </div>
-
-            {showManual ? (
-              <form onSubmit={handleConnect} className="mt-4 grid gap-4 sm:grid-cols-2">
-                <label className="block text-sm">
-                  <span className="font-medium text-vyria-navy">WABA ID</span>
-                  <input
-                    className="mt-1 w-full rounded-xl border border-[var(--card-border)] bg-white px-3 py-2.5 text-sm"
-                    value={wabaId}
-                    onChange={(e) => setWabaId(e.target.value)}
-                    placeholder="123456789012345"
-                    required
-                  />
-                </label>
-                <label className="block text-sm">
-                  <span className="font-medium text-vyria-navy">Phone Number ID</span>
-                  <input
-                    className="mt-1 w-full rounded-xl border border-[var(--card-border)] bg-white px-3 py-2.5 text-sm"
-                    value={phoneNumberId}
-                    onChange={(e) => setPhoneNumberId(e.target.value)}
-                    placeholder="109876543210987"
-                    required
-                  />
-                </label>
-                <label className="block text-sm sm:col-span-2">
-                  <span className="font-medium text-vyria-navy">
-                    Token de acesso permanente
-                    {config?.has_token ? (
-                      <span className="ml-2 text-xs font-normal text-emerald-700">
-                        (token guardado — preencha só para substituir)
-                      </span>
-                    ) : null}
-                  </span>
-                  <input
-                    type="password"
-                    className="mt-1 w-full rounded-xl border border-[var(--card-border)] bg-white px-3 py-2.5 text-sm"
-                    value={accessToken}
-                    onChange={(e) => setAccessToken(e.target.value)}
-                    placeholder="EAAxxxx…"
-                    required={!config?.has_token}
-                  />
-                </label>
-                <label className="block text-sm">
-                  <span className="font-medium text-vyria-navy">Telefone exibido (opcional)</span>
-                  <input
-                    className="mt-1 w-full rounded-xl border border-[var(--card-border)] bg-white px-3 py-2.5 text-sm"
-                    value={displayPhone}
-                    onChange={(e) => setDisplayPhone(e.target.value)}
-                    placeholder="5562999999999"
-                  />
-                </label>
-                <div className="flex flex-wrap items-end gap-2 sm:col-span-2">
-                  <button
-                    type="submit"
-                    disabled={saving}
-                    className="btn-vyria-gradient rounded-xl px-5 py-2.5 text-sm font-semibold disabled:opacity-60"
-                  >
-                    {config?.status === 'active' ? 'Actualizar ligação' : 'Ligar WhatsApp'}
-                  </button>
-                  {config?.status === 'active' ? (
-                    <button
-                      type="button"
-                      disabled={saving}
-                      onClick={() => void handleDisconnect()}
-                      className="rounded-xl border border-[var(--card-border)] bg-white px-5 py-2.5 text-sm font-semibold text-vyria-navy hover:bg-zinc-50"
-                    >
-                      Desligar
-                    </button>
-                  ) : null}
-                </div>
-              </form>
-            ) : null}
-
-            {webhookUrl ? (
-              <div className="mt-4 rounded-lg bg-white/80 p-3 text-xs text-vyria-navy-muted">
-                <p className="font-semibold text-vyria-navy">Webhook Meta</p>
-                <p className="mt-1 break-all font-mono">{webhookUrl}</p>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-
         {config?.status === 'active' ? (
           <div className="mt-6 space-y-4">
             <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 px-4 py-3 text-sm text-emerald-950">
-              <p className="font-semibold">Número ligado</p>
+              <p className="font-semibold">Número de envio (confirmado pela Meta)</p>
               <p className="mt-1 font-mono text-xs">
-                {config.display_phone_e164 || config.phone_number_id || '—'}
+                {verifiedSender?.display_phone_formatted ||
+                  verifiedSender?.display_phone_e164 ||
+                  config.display_phone_e164 ||
+                  config.phone_number_id ||
+                  '—'}
               </p>
+              {verifiedSender?.verified_name ? (
+                <p className="mt-1 text-xs text-emerald-800">
+                  Nome verificado: {verifiedSender.verified_name}
+                </p>
+              ) : null}
+              {verifiedSender?.phone_number_id ? (
+                <p className="mt-1 text-xs text-emerald-800/80">
+                  Phone Number ID: {verifiedSender.phone_number_id}
+                </p>
+              ) : null}
               {config.webhook_verified_at ? (
                 <p className="mt-2 text-xs text-emerald-800">
                   Última actividade:{' '}
