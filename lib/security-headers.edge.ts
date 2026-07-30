@@ -14,7 +14,7 @@ export function applySecurityHeaders(
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
   response.headers.set('X-DNS-Prefetch-Control', 'off')
   response.headers.set('X-Permitted-Cross-Domain-Policies', 'none')
-  response.headers.set('Cross-Origin-Opener-Policy', 'same-origin')
+  response.headers.set('Cross-Origin-Opener-Policy', 'same-origin-allow-popups')
   response.headers.set(
     'Permissions-Policy',
     [
@@ -44,12 +44,13 @@ function buildContentSecurityPolicy(): string {
     "frame-ancestors 'none'",
     "object-src 'none'",
     // Next.js App Router (hydration) — sem unsafe-eval quebra em muitos deploys.
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+    // Meta Embedded Signup (WhatsApp Master) — connect.facebook.net + popups facebook.com
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://connect.facebook.net",
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob: https://*.supabase.co https://*.supabase.in",
+    "img-src 'self' data: blob: https://*.supabase.co https://*.supabase.in https://www.facebook.com https://*.facebook.com https://*.fbcdn.net https://platform-lookaside.fbsbx.com",
     "font-src 'self' data:",
-    "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://vitals.vercel-insights.com",
-    "frame-src 'self' https://pay.cakto.com.br https://*.cakto.com.br",
+    "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://vitals.vercel-insights.com https://www.facebook.com https://*.facebook.com https://graph.facebook.com",
+    "frame-src 'self' https://pay.cakto.com.br https://*.cakto.com.br https://www.facebook.com https://web.facebook.com https://facebook.com",
     "worker-src 'self' blob:",
     "manifest-src 'self'",
     'upgrade-insecure-requests',
@@ -84,7 +85,7 @@ export function expectedSecurityHeaderChecks(production: boolean): Array<{
     {
       name: 'Cross-Origin-Opener-Policy',
       get: (h: Headers) => h.get('cross-origin-opener-policy'),
-      ok: (v: string | null) => v === 'same-origin',
+      ok: (v: string | null) => v === 'same-origin-allow-popups',
     },
   ]
   if (production) {

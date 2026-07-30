@@ -68,6 +68,7 @@ export function WhatsAppEmbeddedConnect({
   const [connecting, setConnecting] = useState(false)
   const [fbReady, setFbReady] = useState(false)
   const [sdkError, setSdkError] = useState<string | null>(null)
+  const [sdkAttempt, setSdkAttempt] = useState(0)
   const sessionRef = useRef<SessionInfo>({})
 
   useEffect(() => {
@@ -110,9 +111,14 @@ export function WhatsAppEmbeddedConnect({
   useEffect(() => {
     if (!config?.available || !config.appId) return
 
+    setFbReady(false)
+    setSdkError(null)
+
     const appId = config.appId
+    let cancelled = false
 
     const markReady = () => {
+      if (cancelled) return
       setFbReady(true)
       setSdkError(null)
     }
@@ -139,23 +145,16 @@ export function WhatsAppEmbeddedConnect({
       initFb()
     }
 
+    const fail = () => {
+      if (cancelled) return
+      setSdkError(
+        'Não foi possível carregar o Facebook. Desactive bloqueadores e actualize a página.'
+      )
+    }
+
     const existing = document.getElementById('facebook-jssdk') as HTMLScriptElement | null
     if (existing) {
-      const poll = window.setInterval(() => {
-        if (initFb()) window.clearInterval(poll)
-      }, 200)
-      const timeout = window.setTimeout(() => {
-        window.clearInterval(poll)
-        if (!window.FB) {
-          setSdkError(
-            'Não foi possível carregar o Facebook. Desactive bloqueadores e actualize a página.'
-          )
-        }
-      }, 15000)
-      return () => {
-        window.clearInterval(poll)
-        window.clearTimeout(timeout)
-      }
+      existing.remove()
     }
 
     const script = document.createElement('script')
@@ -163,19 +162,24 @@ export function WhatsAppEmbeddedConnect({
     script.src = 'https://connect.facebook.net/pt_BR/sdk.js'
     script.async = true
     script.defer = true
-    script.crossOrigin = 'anonymous'
     script.onload = () => {
-      if (!initFb() && window.fbAsyncInit) {
-        window.fbAsyncInit()
-      }
+      if (initFb()) return
+      window.fbAsyncInit?.()
+      const poll = window.setInterval(() => {
+        if (initFb()) window.clearInterval(poll)
+      }, 200)
+      window.setTimeout(() => {
+        window.clearInterval(poll)
+        if (!window.FB) fail()
+      }, 15000)
     }
-    script.onerror = () => {
-      setSdkError(
-        'Não foi possível carregar o Facebook. Desactive bloqueadores e actualize a página.'
-      )
-    }
+    script.onerror = fail
     document.body.appendChild(script)
-  }, [config])
+
+    return () => {
+      cancelled = true
+    }
+  }, [config, sdkAttempt])
 
   const completeConnect = useCallback(
     async (code: string) => {
@@ -290,7 +294,20 @@ export function WhatsAppEmbeddedConnect({
         <p className="mt-2 text-xs text-vyria-navy-muted">A preparar conexão com a Meta…</p>
       ) : null}
       {sdkError ? (
-        <p className="mt-2 text-xs text-red-700">{sdkError}</p>
+        <div className="mt-2 space-y-2">
+          <p className="text-xs text-red-700">{sdkError}</p>
+          <button
+            type="button"
+            onClick={() => {
+              setFbReady(false)
+              setSdkError(null)
+              setSdkAttempt((n) => n + 1)
+            }}
+            className="text-xs font-semibold text-vyria-plum hover:underline"
+          >
+            Tentar novamente
+          </button>
+        </div>
       ) : null}
     </div>
   )
