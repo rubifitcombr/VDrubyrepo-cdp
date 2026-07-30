@@ -113,6 +113,8 @@ export type IpGuardResult =
   | { ok: true }
   | { ok: false; status: 403 | 429; retryAfterSec: number; message: string }
 
+export type IpGuardFailure = Extract<IpGuardResult, { ok: false }>
+
 /** Verifica blocklist + bloqueio automático antes do rate limit. */
 export function guardIpAccess(ip: string): IpGuardResult {
   const blocked = isIpBlocked(ip)
@@ -130,7 +132,7 @@ export function guardIpAccess(ip: string): IpGuardResult {
 export function guardRateLimitExceeded(
   ip: string,
   scope: string
-): IpGuardResult {
+): IpGuardFailure {
   recordIpAbuseViolation(ip, scope)
   const blocked = isIpBlocked(ip)
   if (blocked.blocked) {

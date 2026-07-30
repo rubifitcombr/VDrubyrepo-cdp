@@ -30,6 +30,9 @@ const KEY_LABEL: Record<DashboardMenuKey, string> = {
   impressao: 'Impressão automática',
   balanca: 'Balança (produtos por peso)',
   assinatura: 'Assinatura e faturação',
+  master_whatsapp: 'WhatsApp oficial e robô IA',
+  master_fidelidade: 'Programa de fidelidade',
+  master_recuperador: 'Recuperador de clientes',
 }
 
 /** Ordem estável (alinhada ao sidebar) para listagens na página de planos. */
@@ -52,6 +55,9 @@ const KEY_ORDER: DashboardMenuKey[] = [
   'impressao',
   'balanca',
   'assinatura',
+  'master_whatsapp',
+  'master_fidelidade',
+  'master_recuperador',
 ]
 
 /**

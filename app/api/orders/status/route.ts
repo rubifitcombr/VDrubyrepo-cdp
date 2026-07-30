@@ -8,6 +8,8 @@ import {
 } from '@/lib/order-status-transitions'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
 import { tryAutoCancelNfceForOrder, tryAutoEmitNfceForOrder } from '@/services/fiscal'
+import { earnLoyaltyForDeliveredOrder } from '@/services/loyalty.server'
+import { trackRecoveryConversionForOrder } from '@/services/recovery.server'
 
 export const dynamic = 'force-dynamic'
 
@@ -56,7 +58,7 @@ export async function POST(req: NextRequest) {
     const { data: order, error: fetchErr } = await supabase
       .from('orders')
       .select(
-        'id, store_id, status, customer_phone, customer_name, source, delivery_address, notes'
+        'id, store_id, status, customer_phone, customer_name, source, delivery_address, notes, total, created_at'
       )
       .eq('id', orderId)
       .eq('store_id', storeId)
@@ -134,6 +136,20 @@ export async function POST(req: NextRequest) {
     // Pedido entregue: tenta emitir NFC-e (delivery/manual) sem bloquear.
     if (newStatus === 'delivered') {
       const fiscal = await tryAutoEmitNfceForOrder(orderId)
+      void earnLoyaltyForDeliveredOrder(supabase, {
+        store_id: storeId,
+        order_id: orderId,
+        customer_phone: order.customer_phone as string | null,
+        customer_name: order.customer_name as string | null,
+        order_total: Number(order.total ?? 0),
+        order_created_at: String(order.created_at || ''),
+      }).catch((e) => console.warn('[loyalty earn]', e))
+      void trackRecoveryConversionForOrder(supabase, {
+        store_id: storeId,
+        order_id: orderId,
+        customer_phone: order.customer_phone as string | null,
+        order_total: Number(order.total ?? 0),
+      }).catch((e) => console.warn('[recovery conversion]', e))
       return NextResponse.json({ ok: true, fiscal })
     }
 

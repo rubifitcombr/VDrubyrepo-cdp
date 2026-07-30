@@ -19,6 +19,7 @@ import {
   hasFeature,
   hasMarketingAiDescription,
 } from '@/lib/plan'
+import { MARKETING_AI_NO_TOKENS_MESSAGE } from '@/lib/marketing-ai-quota'
 import { uploadProductImage } from '@/lib/storage-upload'
 import {
   fetchProductAddonTree,
@@ -453,7 +454,11 @@ export function MenuManagerClient({
       })
       const data = (await res.json()) as { description?: string; error?: string }
       if (!res.ok) {
-        alert(data.error || 'Não foi possível gerar a descrição.')
+        alert(
+          withExisting
+            ? MARKETING_AI_NO_TOKENS_MESSAGE
+            : data.error || 'Não foi possível gerar a descrição.'
+        )
         return
       }
       if (typeof data.description === 'string' && data.description.trim()) {

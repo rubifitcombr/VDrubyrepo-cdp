@@ -32,6 +32,18 @@ const FEATURE_LABEL: Record<string, { title: string; minPlan: string }> = {
     title: 'Balança integrada e produtos por peso (PDV / garçom)',
     minPlan: 'Pro',
   },
+  whatsapp_ai: {
+    title: 'WhatsApp oficial e robô de atendimento',
+    minPlan: 'Master',
+  },
+  loyalty: {
+    title: 'Programa de fidelidade e cashback',
+    minPlan: 'Master',
+  },
+  recovery: {
+    title: 'Recuperador de clientes inactivos',
+    minPlan: 'Master',
+  },
 }
 
 export default async function UpgradePage({

@@ -5,15 +5,14 @@ import { parsePlan, planTier } from '@/lib/plan'
 
 function normalizeDevForcePlan(raw: string): Plan | null {
   const u = raw.trim().toUpperCase()
-  if (u === 'MASTER') return 'PRO'
-  if (u === 'START' || u === 'GROWTH' || u === 'PRO') return u
+  if (u === 'START' || u === 'GROWTH' || u === 'PRO' || u === 'MASTER') return u
   return null
 }
 
 /**
  * Plano efetivo no painel (server-only).
  * Em desenvolvimento:
- * - `VYRIA_DEV_FORCE_PLAN` — força o plano (START|GROWTH|PRO).
+ * - `VYRIA_DEV_FORCE_PLAN` — força o plano (START|GROWTH|PRO|MASTER).
  * - `VYRIA_DEV_PRO_EMAILS` — garante pelo menos PRO para emails listados, mas **não
  *   reduz** um plano já superior vindo do Supabase.
  */

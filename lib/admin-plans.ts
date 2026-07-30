@@ -24,7 +24,7 @@ export function adminPlanPriceLabel(
 export function adminPlanOptionsForOperationMode(
   operationMode: MerchantOperationMode | null = null
 ): AdminPlanOption[] {
-  return (['START', 'GROWTH', 'PRO'] as const).map((code) => ({
+  return (['START', 'GROWTH', 'PRO', 'MASTER'] as const).map((code) => ({
     code,
     label: planShortLabel(code),
     priceLabel: adminPlanPriceLabel(code, operationMode),

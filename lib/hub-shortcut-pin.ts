@@ -113,6 +113,8 @@ const PIN_PATH_PREFIXES: Array<{ prefix: string; shortcut: HubPinShortcut }> = [
   { prefix: '/dashboard/visao', shortcut: 'administracao' },
   { prefix: '/dashboard/fiscal', shortcut: 'administracao' },
   { prefix: '/dashboard/garcons', shortcut: 'administracao' },
+  { prefix: '/dashboard/master', shortcut: 'administracao' },
+  { prefix: '/dashboard/balanca', shortcut: 'administracao' },
 ]
 
 const OPERATIONAL_DASHBOARD_PREFIXES = [

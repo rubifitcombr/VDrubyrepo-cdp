@@ -145,12 +145,15 @@ export function gateMerchantScaleIntegration(
   return null
 }
 
-/** Gate temporário para módulos Master (WhatsApp / fidelidade) até o plano ser lançado. */
+/** Módulos Master (WhatsApp / fidelidade / recuperador). */
 export function gateMerchantMasterFeature(
-  _store: Record<string, unknown>,
-  _userEmail: string | null | undefined,
+  store: Record<string, unknown>,
+  userEmail: string | null | undefined,
   feature: 'whatsapp_ai' | 'loyalty' | 'recovery'
 ): NextResponse | null {
+  const plan = effectivePlanFromStore(store, userEmail)
+  if (hasFeature(plan, feature)) return null
+
   const labels: Record<typeof feature, string> = {
     whatsapp_ai: 'WhatsApp oficial e robô de IA',
     loyalty: 'Programa de fidelidade',

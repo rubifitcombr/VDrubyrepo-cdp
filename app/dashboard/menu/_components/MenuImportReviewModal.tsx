@@ -4,6 +4,7 @@ import { dashboardFetch } from '@/lib/dashboard-fetch.client'
 import { useCallback, useEffect, useState } from 'react'
 import type { Plan } from '@/lib/plan'
 import { hasMarketingAiDescription } from '@/lib/plan'
+import { MARKETING_AI_NO_TOKENS_MESSAGE } from '@/lib/marketing-ai-quota'
 
 export type ImportProductDraft = {
   key: string
@@ -162,6 +163,8 @@ export function MenuImportReviewModal({
             continue
           }
 
+          const improving = Boolean(p.description.trim())
+
           const res = await dashboardFetch('/api/ai/product-description', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -182,7 +185,11 @@ export function MenuImportReviewModal({
           }
 
           if (!res.ok) {
-            alert(data.error || 'Erro ao gerar descrição em lote.')
+            alert(
+              improving
+                ? MARKETING_AI_NO_TOKENS_MESSAGE
+                : data.error || 'Erro ao gerar descrição em lote.'
+            )
             return
           }
 

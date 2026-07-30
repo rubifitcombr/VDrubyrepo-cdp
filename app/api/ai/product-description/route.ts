@@ -2,6 +2,7 @@ import { requireMarketingAiDescriptionStore } from '@/lib/ai-plan-guard.server'
 import { currentYearMonthUtc } from '@/lib/menu-import-quota'
 import {
   getMarketingAiMonthlyLimit,
+  MARKETING_AI_NO_TOKENS_MESSAGE,
 } from '@/lib/marketing-ai-quota'
 import { createClient } from '@/lib/supabase/server'
 import {
@@ -51,16 +52,8 @@ Retorne apenas a nova descrição.`
 }
 
 export async function POST(req: NextRequest) {
+  let isImproveRequest = false
   try {
-    const apiKey = process.env.OPENAI_API_KEY?.trim()
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: 'OPENAI_API_KEY não configurada.' },
-        { status: 503 }
-      )
-    }
-    const openai = new OpenAI({ apiKey })
-
     let body: unknown
     try {
       body = await req.json()
@@ -88,6 +81,20 @@ export async function POST(req: NextRequest) {
           : '—'
     const existingDescription =
       typeof b.existingDescription === 'string' ? b.existingDescription : ''
+    isImproveRequest = existingDescription.trim().length > 0
+
+    const apiKey = process.env.OPENAI_API_KEY?.trim()
+    if (!apiKey) {
+      return NextResponse.json(
+        {
+          error: isImproveRequest
+            ? MARKETING_AI_NO_TOKENS_MESSAGE
+            : 'OPENAI_API_KEY não configurada.',
+        },
+        { status: 503 }
+      )
+    }
+    const openai = new OpenAI({ apiKey })
 
     if (!storeId) {
       return NextResponse.json({ error: 'storeId em falta.' }, { status: 400 })
@@ -112,13 +119,7 @@ export async function POST(req: NextRequest) {
       )
       if (usedDesc >= descLimit) {
         return NextResponse.json(
-          {
-            error: `Limite mensal de descrições com IA atingido (${descLimit}). ${
-              guard.plan === 'GROWTH'
-                ? 'No plano Pro a quota é maior; o contador renova todo mês.'
-                : 'O contador renova no início do próximo mês.'
-            }`,
-          },
+          { error: MARKETING_AI_NO_TOKENS_MESSAGE },
           { status: 429 }
         )
       }
@@ -139,7 +140,11 @@ export async function POST(req: NextRequest) {
     const text = completion.choices[0]?.message?.content?.trim()
     if (!text) {
       return NextResponse.json(
-        { error: 'A IA não devolveu texto.' },
+        {
+          error: isImproveRequest
+            ? MARKETING_AI_NO_TOKENS_MESSAGE
+            : 'A IA não devolveu texto.',
+        },
         { status: 502 }
       )
     }
@@ -157,6 +162,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ description: text })
   } catch (err) {
     console.error('[ai/product-description]', err)
-    return NextResponse.json({ error: 'Erro ao gerar descrição.' }, { status: 500 })
+    return NextResponse.json(
+      {
+        error: isImproveRequest
+          ? MARKETING_AI_NO_TOKENS_MESSAGE
+          : 'Erro ao gerar descrição.',
+      },
+      { status: 500 }
+    )
   }
 }

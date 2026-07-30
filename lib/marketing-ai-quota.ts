@@ -1,5 +1,9 @@
 import type { Plan } from '@/lib/plan'
 
+/** Mensagem quando a melhoria/geração de descrição com IA falha (quota, API, etc.). */
+export const MARKETING_AI_NO_TOKENS_MESSAGE =
+  'Você está sem tokens de IA, chame o suporte.'
+
 export type MarketingAiKind = 'description'
 
 /** Limites mensais de descrição com IA por plano. */

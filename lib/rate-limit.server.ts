@@ -3,7 +3,7 @@ import 'server-only'
 import {
   guardIpAccess,
   guardRateLimitExceeded,
-  type IpGuardResult,
+  type IpGuardFailure,
 } from '@/lib/ip-abuse-guard'
 
 type Bucket = { count: number; resetAt: number }
@@ -12,7 +12,7 @@ const buckets = new Map<string, Bucket>()
 
 export type RateLimitResult =
   | { ok: true; remaining: number }
-  | { ok: false; retryAfterSec: number; guard?: IpGuardResult }
+  | { ok: false; retryAfterSec: number; guard?: IpGuardFailure }
 
 /**
  * Rate limit in-memory (por instância serverless). Complementar com WAF/CDN em produção.

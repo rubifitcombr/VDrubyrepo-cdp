@@ -1,6 +1,7 @@
 import {
   guardIpAccess,
   guardRateLimitExceeded,
+  type IpGuardFailure,
   type IpGuardResult,
 } from '@/lib/ip-abuse-guard'
 
@@ -12,7 +13,7 @@ export type { IpGuardResult }
 
 export type EdgeRateLimitResult =
   | { ok: true; remaining: number }
-  | { ok: false; retryAfterSec: number; guard?: IpGuardResult }
+  | { ok: false; retryAfterSec: number; guard?: IpGuardFailure }
 
 /** Bloqueio + rate limit no Edge (complementar com WAF/CDN). */
 export function checkEdgeRateLimit(

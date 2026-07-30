@@ -8,6 +8,7 @@ import {
 import { fetchPublicStoreForSlugPage } from '@/lib/store-public-slug.server'
 import { pixPaymentStatusIsConfirmed } from '@/lib/store-order'
 import { verifyCheckoutAccessToken } from '@/lib/checkout-access-token.server'
+import { tryAutoThermalPrint } from '@/services/thermal-print.server'
 
 function toText(v: unknown): string {
   return typeof v === 'string' ? v.trim() : ''

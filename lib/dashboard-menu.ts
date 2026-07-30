@@ -81,9 +81,13 @@ const MENU_KEY_TO_PATH_PREFIX: Record<DashboardMenuKey, string> = {
   garcons: '/dashboard/garcons',
   automacoes: '/dashboard/automations',
   fiscal: '/dashboard/fiscal',
+  master_whatsapp: '/dashboard/master/whatsapp',
+  master_fidelidade: '/dashboard/master/fidelidade',
+  master_recuperador: '/dashboard/master/recuperador',
 }
 
 function planSlug(plan: Plan): 'start' | 'growth' | 'pro' {
+  if (plan === 'MASTER') return 'pro'
   return plan.toLowerCase() as 'start' | 'growth' | 'pro'
 }
 
@@ -138,6 +142,9 @@ export function menuKeysForMerchant(
   } else {
     set.delete('balanca')
   }
+  if (hasFeature(plan, 'whatsapp_ai')) set.add('master_whatsapp')
+  if (hasFeature(plan, 'loyalty')) set.add('master_fidelidade')
+  if (hasFeature(plan, 'recovery')) set.add('master_recuperador')
   return set
 }
 
@@ -155,6 +162,13 @@ function pathAllowedWithMenuKeys(
   if (n.startsWith('/dashboard/upgrade')) return true
   // Vyria Fiscal é add-on (gated por status no banco), não por plano.
   if (n === '/dashboard/fiscal' || n.startsWith('/dashboard/fiscal/')) return true
+  if (n === '/dashboard/master' || n.startsWith('/dashboard/master/')) {
+    return (
+      hasFeature(plan, 'whatsapp_ai') ||
+      hasFeature(plan, 'loyalty') ||
+      hasFeature(plan, 'recovery')
+    )
+  }
 
   if (n.startsWith('/dashboard/products')) {
     return keys.has('produtos')

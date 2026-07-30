@@ -4,6 +4,7 @@ import path from 'path'
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   productionBrowserSourceMaps: false,
+  serverExternalPackages: ['node-cron'],
   compiler: {
     removeConsole:
       process.env.NODE_ENV === 'production'

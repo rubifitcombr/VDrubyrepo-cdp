@@ -18,3 +18,6 @@ export type DashboardMenuKey =
   | 'garcons'
   | 'automacoes'
   | 'fiscal'
+  | 'master_whatsapp'
+  | 'master_fidelidade'
+  | 'master_recuperador'

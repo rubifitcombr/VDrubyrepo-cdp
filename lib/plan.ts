@@ -1,11 +1,10 @@
 import type { MerchantOperationMode } from '@/lib/merchant-operation-mode'
 
 /**
- * Planos comerciais: Start / Growth / Pro.
- * Valores em `stores.plano` (ou legado `plan`): start|growth|pro ou START|…
- * O valor legado `master` é tratado como Pro em `parsePlan`.
+ * Planos comerciais: Start / Growth / Pro / Master.
+ * Valores em `stores.plano` (ou legado `plan`): start|growth|pro|master ou START|…
  */
-export type Plan = 'START' | 'GROWTH' | 'PRO'
+export type Plan = 'START' | 'GROWTH' | 'PRO' | 'MASTER'
 
 /** Planos comerciais activos (sem Start legado). */
 export type CommercialPlan = 'GROWTH' | 'PRO'
@@ -36,6 +35,12 @@ export type Feature =
   | 'pix_checkout'
   /** Integração de balança (produtos pesáveis, PDV/garçom) — exclusivo Pro, presencial. */
   | 'scale_integration'
+  /** WhatsApp Cloud API + robô IA — exclusivo Master. */
+  | 'whatsapp_ai'
+  /** Programa de fidelidade — exclusivo Master. */
+  | 'loyalty'
+  /** Recuperador de clientes — exclusivo Master. */
+  | 'recovery'
 
 const PLAN_FEATURES: Record<Plan, Record<Feature, boolean>> = {
   START: {
@@ -57,6 +62,9 @@ const PLAN_FEATURES: Record<Plan, Record<Feature, boolean>> = {
     cashier: false,
     pix_checkout: false,
     scale_integration: false,
+    whatsapp_ai: false,
+    loyalty: false,
+    recovery: false,
   },
   GROWTH: {
     dashboard: true,
@@ -77,6 +85,9 @@ const PLAN_FEATURES: Record<Plan, Record<Feature, boolean>> = {
     cashier: false,
     pix_checkout: false,
     scale_integration: false,
+    whatsapp_ai: false,
+    loyalty: false,
+    recovery: false,
   },
   PRO: {
     dashboard: true,
@@ -97,6 +108,32 @@ const PLAN_FEATURES: Record<Plan, Record<Feature, boolean>> = {
     cashier: true,
     pix_checkout: true,
     scale_integration: true,
+    whatsapp_ai: false,
+    loyalty: false,
+    recovery: false,
+  },
+  MASTER: {
+    dashboard: true,
+    products: true,
+    subscription: true,
+    orders: true,
+    pdv: true,
+    promotions: true,
+    reports: true,
+    reports_advanced: true,
+    settings: true,
+    appearance: true,
+    automations: true,
+    printing: true,
+    kds: true,
+    inventory: true,
+    waiter: true,
+    cashier: true,
+    pix_checkout: true,
+    scale_integration: true,
+    whatsapp_ai: true,
+    loyalty: true,
+    recovery: true,
   },
 }
 
@@ -113,8 +150,7 @@ export function hasPixCheckout(plan: Plan): boolean {
 
 export function parsePlan(value: unknown): Plan {
   const v = String(value || '').trim().toUpperCase()
-  if (v === 'MASTER') return 'PRO'
-  if (v === 'GROWTH' || v === 'PRO' || v === 'START') {
+  if (v === 'GROWTH' || v === 'PRO' || v === 'START' || v === 'MASTER') {
     return v
   }
   return 'START'
@@ -129,6 +165,8 @@ export function planShortLabel(plan: Plan): string {
       return 'Growth'
     case 'PRO':
       return 'Pro'
+    case 'MASTER':
+      return 'Master'
     default:
       return 'Start'
   }
@@ -137,7 +175,7 @@ export function planShortLabel(plan: Plan): string {
 /** Planos com tier superior ao atual (para upgrade). */
 export function plansAbove(plan: Plan): Plan[] {
   const t = planTier(plan)
-  return (['START', 'GROWTH', 'PRO'] as const).filter((p) => planTier(p) > t)
+  return (['START', 'GROWTH', 'PRO', 'MASTER'] as const).filter((p) => planTier(p) > t)
 }
 
 /** Plano recomendado no upgrade: um nível acima. */
@@ -155,6 +193,8 @@ export function planContentBadgeClass(plan: Plan): string {
       return 'bg-amber-400/15 text-amber-950 ring-1 ring-amber-300/35'
     case 'PRO':
       return 'bg-[#f3f4f6] text-[#1a1614] ring-1 ring-black/10'
+    case 'MASTER':
+      return 'bg-violet-100 text-violet-950 ring-1 ring-violet-300/40'
     default:
       return 'bg-amber-400/15 text-amber-950 ring-1 ring-amber-300/35'
   }
@@ -169,6 +209,8 @@ export function planTier(plan: Plan): number {
       return 1
     case 'PRO':
       return 2
+    case 'MASTER':
+      return 3
     default:
       return 0
   }
@@ -226,6 +268,8 @@ export function planTitle(plan: Plan): string {
       return 'Plano Growth'
     case 'PRO':
       return 'Plano Pro'
+    case 'MASTER':
+      return 'Plano Master'
     default:
       return 'Plano Start'
   }
@@ -236,6 +280,7 @@ const PLAN_MONTHLY_BRL: Record<Plan, number> = {
   START: 49.9,
   GROWTH: 89.9,
   PRO: 139.9,
+  MASTER: 199.9,
 }
 
 /** Híbrido = união comercial Delivery + Presencial (preço superior). */
@@ -243,6 +288,7 @@ const PLAN_MONTHLY_BRL_HIBRIDO: Record<Plan, number> = {
   START: 69.9,
   GROWTH: 109.9,
   PRO: 149.9,
+  MASTER: 209.9,
 }
 
 function planMonthlyTable(
@@ -288,7 +334,7 @@ export function planMonthlyPricesCatalogLinePt(
 
 /** Importação de cardápio por foto — Growth em diante (matriz comercial). */
 export function hasAiMenuPhotoImport(plan: Plan): boolean {
-  return plan === 'GROWTH' || plan === 'PRO'
+  return plan === 'GROWTH' || plan === 'PRO' || plan === 'MASTER'
 }
 
 /** Geração de descrição com IA (API /api/ai/product-description) — a partir do Growth. */
