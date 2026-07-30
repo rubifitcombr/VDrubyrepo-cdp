@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { gateMerchantMasterFeature } from '@/lib/merchant-api-gate.server'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
-import { createClient } from '@/lib/supabase/server'
+import { createServiceRoleClient } from '@/lib/supabase/service-role.server'
 import { sendWhatsAppTestMessage } from '@/services/whatsapp-webhook.server'
 import { getUser } from '@/services/auth.server'
 
@@ -34,7 +34,7 @@ export async function POST(request: Request) {
     )
   }
 
-  const db = await createClient()
+  const db = createServiceRoleClient()
   const result = await sendWhatsAppTestMessage(db, gate.ctx.storeId, to)
 
   if (!result.ok) {

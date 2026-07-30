@@ -51,5 +51,9 @@ function publicWebhookUrl(): string {
     process.env.NEXT_PUBLIC_VYRIA_PUBLIC_URL?.trim() ||
     ''
   if (!base) return '/api/webhooks/whatsapp'
-  return `${base.replace(/\/$/, '')}/api/webhooks/whatsapp`
+  const normalized = base.replace(/\/$/, '').replace(/^http:\/\//i, 'https://')
+  if (!normalized.includes('://www.') && normalized.includes('acesseseusistemavyria.online')) {
+    return normalized.replace('://', '://www.') + '/api/webhooks/whatsapp'
+  }
+  return `${normalized}/api/webhooks/whatsapp`
 }

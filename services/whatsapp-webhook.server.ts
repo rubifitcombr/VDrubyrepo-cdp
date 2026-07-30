@@ -57,6 +57,7 @@ export async function processWhatsAppWebhook(
           .from('store_whatsapp_config')
           .select('store_id')
           .eq('phone_number_id', phoneNumberId)
+          .eq('status', 'active')
           .maybeSingle()
         storeId = data ? String((data as { store_id: string }).store_id) : null
       }
@@ -265,6 +266,8 @@ export async function sendWhatsAppTestMessage(
     body_text: 'Teste Vyria Master — a ligação WhatsApp está activa.',
     status: 'sent',
   })
+
+  await markWebhookVerified(db, storeId)
 
   return { ok: true }
 }

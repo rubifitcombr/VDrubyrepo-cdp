@@ -54,10 +54,14 @@ async function waitForEmbeddedSession(
 
 export function WhatsAppEmbeddedConnect({
   disabled,
+  embeddedAvailable = true,
+  supportHref = null,
   onConnected,
   onError,
 }: {
   disabled?: boolean
+  embeddedAvailable?: boolean
+  supportHref?: string | null
   onConnected: () => void
   onError: (message: string) => void
 }) {
@@ -202,35 +206,41 @@ export function WhatsAppEmbeddedConnect({
     )
   }
 
-  if (!config?.available) {
+  if (!config?.available || !embeddedAvailable) {
     return (
-      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-        <p className="font-semibold">Conexão rápida indisponível</p>
-        <p className="mt-1 text-xs leading-relaxed">
-          A Vyria ainda não activou o «Conectar com Facebook» na plataforma. Use a ligação
-          manual abaixo ou contacte o suporte.
+      <div className="rounded-2xl border border-violet-200 bg-violet-50/50 p-5 text-center">
+        <p className="font-brand text-base font-bold text-vyria-navy">
+          Conexão automática em activação
         </p>
+        <p className="mt-2 text-sm text-vyria-navy-muted">
+          Em breve você ligará o WhatsApp com um clique. A Vyria está a finalizar a integração
+          com a Meta.
+        </p>
+        {supportHref ? (
+          <a
+            href={supportHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-4 inline-flex rounded-xl bg-[#1877F2] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#166FE5]"
+          >
+            Pedir ajuda ao suporte
+          </a>
+        ) : null}
       </div>
     )
   }
 
   return (
-    <div className="rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 to-white p-6">
-      <h3 className="font-brand text-lg font-bold text-vyria-navy">Conexão rápida</h3>
+    <div className="rounded-2xl border-2 border-[#1877F2]/30 bg-gradient-to-br from-[#1877F2]/5 to-white p-6">
+      <h3 className="font-brand text-lg font-bold text-vyria-navy">Conectar agora</h3>
       <p className="mt-2 text-sm text-vyria-navy-muted">
-        Ligue o WhatsApp Business da loja em poucos cliques — sem copiar tokens ou IDs.
+        Um clique — a Vyria configura tudo. Você só autoriza o número da loja na Meta.
       </p>
-      <ol className="mt-4 list-decimal space-y-1 pl-5 text-xs text-vyria-navy-muted">
-        <li>Clique no botão abaixo</li>
-        <li>Entre com a conta Facebook da loja</li>
-        <li>Escolha ou crie o número WhatsApp Business</li>
-        <li>Confirme — a Vyria configura o resto automaticamente</li>
-      </ol>
       <button
         type="button"
         disabled={disabled || connecting || !fbReady}
         onClick={() => handleConnect()}
-        className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[#1877F2] px-5 py-3 text-sm font-semibold text-white shadow-md transition hover:bg-[#166FE5] disabled:opacity-60"
+        className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#1877F2] px-5 py-3.5 text-sm font-semibold text-white shadow-md transition hover:bg-[#166FE5] disabled:opacity-60 sm:w-auto"
       >
         <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
           <path d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.234 2.686.234v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.251h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073z" />

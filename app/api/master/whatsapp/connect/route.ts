@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { gateMerchantMasterFeature } from '@/lib/merchant-api-gate.server'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
-import { createClient } from '@/lib/supabase/server'
+import { createServiceRoleClient } from '@/lib/supabase/service-role.server'
+import { subscribeMerchantWabaToVyriaApp } from '@/lib/whatsapp/embedded-signup.server'
 import {
   connectWhatsAppForStore,
   updateWhatsAppSettingsForStore,
@@ -32,7 +33,7 @@ export async function POST(request: Request) {
 
   const action = String(body.action || 'connect').trim()
 
-  const db = await createClient()
+  const db = createServiceRoleClient()
 
   if (action === 'settings') {
     try {
@@ -76,6 +77,15 @@ export async function POST(request: Request) {
 
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: 400 })
+  }
+
+  const wabaId = String(body.waba_id || '').trim()
+  const token = String(body.access_token || '').trim()
+  if (wabaId && token) {
+    const subscribed = await subscribeMerchantWabaToVyriaApp(wabaId, token)
+    if (!subscribed.ok) {
+      console.warn('[whatsapp connect] subscribed_apps:', subscribed.error)
+    }
   }
 
   return NextResponse.json({ ok: true, config: result.config })

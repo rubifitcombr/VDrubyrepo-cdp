@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
 import { WhatsAppEmbeddedConnect } from './WhatsAppEmbeddedConnect'
+import { WhatsAppSetupGuide } from './WhatsAppSetupGuide'
 import type {
   StoreWhatsAppConfigPublic,
   WhatsAppAiTone,
@@ -35,7 +36,15 @@ function statusClass(status: string): string {
   }
 }
 
-export function WhatsAppMasterClient() {
+export function WhatsAppMasterClient({
+  embeddedAvailable = false,
+  allowManualConnect = false,
+  supportHref = null,
+}: {
+  embeddedAvailable?: boolean
+  allowManualConnect?: boolean
+  supportHref?: string | null
+}) {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -187,8 +196,7 @@ export function WhatsAppMasterClient() {
           <div>
             <h2 className="font-brand text-lg font-bold text-vyria-navy">Ligação WhatsApp</h2>
             <p className="mt-1 text-sm text-vyria-navy-muted">
-              Conecte o WhatsApp Business da loja — o número precisa receber mensagens de
-              verdade (não serve o número usado só para verificar a conta Meta).
+              Conecte o WhatsApp do seu comércio em poucos cliques — automático e seguro.
             </p>
           </div>
           {config ? (
@@ -200,23 +208,21 @@ export function WhatsAppMasterClient() {
           ) : null}
         </div>
 
-        {config?.status !== 'active' ? (
-          <div className="mt-6 rounded-xl border border-sky-200 bg-sky-50/80 px-4 py-3 text-sm text-sky-950">
-            <p className="font-semibold">Testar como lojista</p>
-            <p className="mt-1 text-xs leading-relaxed">
-              Use o WhatsApp Business do celular da loja (ou um número de teste com app
-              WhatsApp activo). No popup da Meta, escolha esse número — não o número interno
-              da plataforma Vyria.
-            </p>
-          </div>
-        ) : null}
+        <div className="mt-6">
+          <WhatsAppSetupGuide
+            isConnected={config?.status === 'active'}
+            supportHref={supportHref}
+          />
+        </div>
 
         {config?.status !== 'active' ? (
           <div className="mt-6">
             <WhatsAppEmbeddedConnect
               disabled={saving}
+              embeddedAvailable={embeddedAvailable}
+              supportHref={supportHref}
               onConnected={() => {
-                setSuccess('WhatsApp ligado com sucesso.')
+                setSuccess('WhatsApp ligado com sucesso! Envie um teste para confirmar.')
                 setError(null)
                 void load()
               }}
@@ -225,14 +231,14 @@ export function WhatsAppMasterClient() {
           </div>
         ) : null}
 
-        {config?.status !== 'active' ? (
+        {config?.status !== 'active' && allowManualConnect ? (
           <div className="mt-6">
             <button
               type="button"
               onClick={() => setShowManual((v) => !v)}
               className="text-sm font-semibold text-vyria-plum hover:underline"
             >
-              {showManual ? 'Ocultar ligação manual' : 'Ligação manual (avançado)'}
+              {showManual ? 'Ocultar ligação manual' : 'Ligação manual (só Vyria Admin)'}
             </button>
           </div>
         ) : null}
@@ -243,17 +249,19 @@ export function WhatsAppMasterClient() {
             <p className="mt-1 font-mono text-xs">
               {config.display_phone_e164 || config.phone_number_id || '—'}
             </p>
-            <button
-              type="button"
-              onClick={() => setShowManual((v) => !v)}
-              className="mt-2 text-xs font-semibold text-vyria-plum hover:underline"
-            >
-              {showManual ? 'Ocultar ligação manual' : 'Actualizar token (manual)'}
-            </button>
+            {allowManualConnect ? (
+              <button
+                type="button"
+                onClick={() => setShowManual((v) => !v)}
+                className="mt-2 text-xs font-semibold text-vyria-plum hover:underline"
+              >
+                {showManual ? 'Ocultar ligação manual' : 'Actualizar token (Vyria Admin)'}
+              </button>
+            ) : null}
           </div>
         ) : null}
 
-        {showManual ? (
+        {showManual && allowManualConnect ? (
         <form onSubmit={handleConnect} className="mt-6 grid gap-4 sm:grid-cols-2">
           <label className="block text-sm">
             <span className="font-medium text-vyria-navy">WABA ID</span>
@@ -337,24 +345,24 @@ export function WhatsAppMasterClient() {
           </div>
         ) : null}
 
+        {allowManualConnect ? (
         <div className="mt-6 rounded-xl bg-[#f9f9f9] p-4 text-sm text-vyria-navy-muted">
-          <p className="font-semibold text-vyria-navy">Webhook Meta</p>
+          <p className="font-semibold text-vyria-navy">Webhook Meta (Vyria Admin)</p>
           <p className="mt-1 break-all font-mono text-xs">{webhookUrl}</p>
-          <p className="mt-2 text-xs">
-            O webhook é configurado uma vez na app Vyria (plataforma). Depois de conectar, a loja
-            recebe mensagens automaticamente.
-          </p>
-          {config?.webhook_verified_at ? (
-            <p className="mt-2 text-xs text-emerald-700">
-              Último evento recebido:{' '}
-              {new Date(config.webhook_verified_at).toLocaleString('pt-BR')}
-            </p>
-          ) : (
-            <p className="mt-2 text-xs text-amber-800">
-              Ainda não recebemos eventos do webhook.
-            </p>
-          )}
+          {config?.status === 'active' ? (
+            config.webhook_verified_at ? (
+              <p className="mt-2 text-xs text-emerald-700">
+                Última actividade:{' '}
+                {new Date(config.webhook_verified_at).toLocaleString('pt-BR')}
+              </p>
+            ) : (
+              <p className="mt-2 text-xs text-amber-800">
+                Sem eventos ainda — envie mensagem de teste ou «oi» para o número ligado.
+              </p>
+            )
+          ) : null}
         </div>
+        ) : null}
       </section>
 
       {config?.status === 'active' ? (
@@ -422,23 +430,33 @@ export function WhatsAppMasterClient() {
           </section>
 
           <section className="rounded-2xl border border-[var(--card-border)] bg-white p-6 shadow-sm">
-            <h2 className="font-brand text-lg font-bold text-vyria-navy">Teste de envio</h2>
+            <h2 className="font-brand text-lg font-bold text-vyria-navy">Testar ligação</h2>
+            <p className="mt-1 text-sm text-vyria-navy-muted">
+              Envie uma mensagem para o seu celular ou peça a alguém para mandar «oi» para o
+              número da loja. O robô deve responder automaticamente.
+            </p>
             <div className="mt-4 flex flex-wrap gap-2">
               <input
                 className="min-w-[12rem] flex-1 rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm"
                 value={testPhone}
                 onChange={(e) => setTestPhone(e.target.value)}
-                placeholder="5511999999999"
+                placeholder="Seu celular com DDD (ex: 62999887766)"
               />
               <button
                 type="button"
                 disabled={saving}
                 onClick={() => void handleTestSend()}
-                className="rounded-xl border border-[var(--card-border)] bg-white px-5 py-2.5 text-sm font-semibold hover:bg-zinc-50"
+                className="btn-vyria-gradient rounded-xl px-5 py-2.5 text-sm font-semibold disabled:opacity-60"
               >
                 Enviar teste
               </button>
             </div>
+            <p className="mt-2 text-xs text-vyria-navy-muted">
+              Número ligado:{' '}
+              <span className="font-mono font-medium text-vyria-navy">
+                {config.display_phone_e164 || '—'}
+              </span>
+            </p>
           </section>
         </>
       ) : null}
