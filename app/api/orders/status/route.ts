@@ -8,8 +8,9 @@ import {
 } from '@/lib/order-status-transitions'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
 import { tryAutoCancelNfceForOrder, tryAutoEmitNfceForOrder } from '@/services/fiscal'
-import { earnLoyaltyForDeliveredOrder } from '@/services/loyalty.server'
+import { triggerLoyaltyEarnForDeliveredOrder } from '@/services/loyalty.server'
 import { trackRecoveryConversionForOrder } from '@/services/recovery.server'
+import { notifyOrderWhatsAppStatusChange } from '@/services/order-whatsapp-notifications.server'
 
 export const dynamic = 'force-dynamic'
 
@@ -58,7 +59,7 @@ export async function POST(req: NextRequest) {
     const { data: order, error: fetchErr } = await supabase
       .from('orders')
       .select(
-        'id, store_id, status, customer_phone, customer_name, source, delivery_address, notes, total, created_at'
+        'id, store_id, status, customer_phone, customer_name, source, delivery_address, notes, total, created_at, entregador_nome, entrega_prazo_minutos'
       )
       .eq('id', orderId)
       .eq('store_id', storeId)
@@ -127,6 +128,25 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    const notifyOrder = {
+      id: orderId,
+      customer_phone: order.customer_phone as string | null,
+      customer_name: order.customer_name as string | null,
+      delivery_address: order.delivery_address as string | null,
+      source: order.source as string | null,
+      entregador_nome: (order as { entregador_nome?: string | null }).entregador_nome ?? null,
+      entrega_prazo_minutos:
+        (order as { entrega_prazo_minutos?: number | null }).entrega_prazo_minutos ?? null,
+    }
+
+    void notifyOrderWhatsAppStatusChange(
+      supabase,
+      storeId,
+      notifyOrder,
+      current,
+      newStatus
+    ).catch((e) => console.warn('[order whatsapp notify]', e))
+
     // Pedido já cancelado: tenta NFC-e sem bloquear a recusa.
     if (newStatus === 'cancelled') {
       const fiscal = await tryAutoCancelNfceForOrder(orderId)
@@ -136,14 +156,9 @@ export async function POST(req: NextRequest) {
     // Pedido entregue: tenta emitir NFC-e (delivery/manual) sem bloquear.
     if (newStatus === 'delivered') {
       const fiscal = await tryAutoEmitNfceForOrder(orderId)
-      void earnLoyaltyForDeliveredOrder(supabase, {
-        store_id: storeId,
-        order_id: orderId,
-        customer_phone: order.customer_phone as string | null,
-        customer_name: order.customer_name as string | null,
-        order_total: Number(order.total ?? 0),
-        order_created_at: String(order.created_at || ''),
-      }).catch((e) => console.warn('[loyalty earn]', e))
+      void triggerLoyaltyEarnForDeliveredOrder(supabase, storeId, orderId).catch((e) =>
+        console.warn('[loyalty earn]', e)
+      )
       void trackRecoveryConversionForOrder(supabase, {
         store_id: storeId,
         order_id: orderId,

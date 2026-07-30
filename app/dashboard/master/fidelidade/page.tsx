@@ -30,7 +30,7 @@ export default async function MasterFidelidadePage() {
       <MasterModuleHeader
         moduleLabel="Fidelidade"
         title="Programa de fidelidade"
-        description="Configure pontos por pedido, consulta pelo WhatsApp e resgate no checkout."
+        description="Configure pontos por pedido, bónus de boas-vindas, consulta pelo WhatsApp e resgate no checkout do cardápio."
       />
       <div className="mt-8">
         <FidelidadeMasterClient />

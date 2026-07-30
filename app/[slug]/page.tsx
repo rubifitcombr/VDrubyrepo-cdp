@@ -5,7 +5,7 @@ import {
   normalizePublicSlugSegment,
 } from '@/lib/store-public-slug.server'
 import { readStorePlano } from '@/lib/store-columns'
-import { parsePlan, planTier } from '@/lib/plan'
+import { hasFeature, parsePlan, planTier } from '@/lib/plan'
 import { publicDineInCheckoutAllowed } from '@/lib/salao-attendance'
 import { getStoreOpenState, getTodayClosingDisplayHM } from '@/lib/business-hours'
 import {
@@ -23,6 +23,12 @@ import {
 import { filterPublicMenuProducts } from '@/lib/weighable-product'
 import { resolveStoreTheme } from '@/lib/store-theme'
 import { storePixCheckoutEnabled } from '@/lib/pix/key'
+import { tryCreateServiceRoleClient } from '@/lib/supabase/service-role.server'
+import {
+  getOrCreateLoyaltyConfig,
+  toPublicLoyaltyProgram,
+} from '@/services/loyalty.server'
+import type { PublicLoyaltyProgram } from '@/lib/loyalty/types'
 import { notFound, redirect } from 'next/navigation'
 import { StorefrontMenuClient } from './StorefrontMenuClient'
 import type { StorefrontMenuProduct } from './storefront-menu-types'
@@ -228,6 +234,21 @@ export default async function StorefrontPage({ params, searchParams }: Props) {
   const locationLabel =
     typeof s.location_label === 'string' ? s.location_label.trim() || null : null
 
+  let loyaltyProgram: PublicLoyaltyProgram | null = null
+  if (hasFeature(storePlan, 'loyalty')) {
+    const svc = tryCreateServiceRoleClient()
+    if (svc) {
+      try {
+        const config = await getOrCreateLoyaltyConfig(svc, s.id)
+        if (config.enabled) {
+          loyaltyProgram = toPublicLoyaltyProgram(config)
+        }
+      } catch {
+        loyaltyProgram = null
+      }
+    }
+  }
+
   return (
     <StorefrontMenuClient
       storeName={s.name}
@@ -261,6 +282,7 @@ export default async function StorefrontPage({ params, searchParams }: Props) {
       merchantPixConfigured={storePixCheckoutEnabled(
         s as Record<string, unknown>
       )}
+      loyaltyProgram={loyaltyProgram}
     />
   )
 }

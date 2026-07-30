@@ -10,6 +10,7 @@ import {
   setEntregadorStatusOperacional,
 } from '@/services/store-entregadores.server'
 import { createClient } from '@/lib/supabase/server'
+import { notifyOrderWhatsAppStatusChange } from '@/services/order-whatsapp-notifications.server'
 
 const ALLOWED_BEFORE = new Set(['ready'])
 
@@ -71,7 +72,9 @@ export async function POST(req: NextRequest) {
 
   const { data: order, error: fetchErr } = await supabase
     .from('orders')
-    .select('id, status, store_id, source, customer_phone, customer_name')
+    .select(
+      'id, status, store_id, source, customer_phone, customer_name, delivery_address'
+    )
     .eq('id', orderId)
     .eq('store_id', storeId)
     .maybeSingle()
@@ -172,6 +175,22 @@ export async function POST(req: NextRequest) {
     .select(ORDER_SELECT)
     .eq('id', orderId)
     .single()
+
+  void notifyOrderWhatsAppStatusChange(
+    supabase,
+    storeId,
+    {
+      id: orderId,
+      customer_phone: (order as { customer_phone?: string | null }).customer_phone,
+      customer_name: (order as { customer_name?: string | null }).customer_name,
+      delivery_address: (order as { delivery_address?: string | null }).delivery_address,
+      source: (order as { source?: string | null }).source,
+      entregador_nome: semEntregador ? null : nomeSnapshot,
+      entrega_prazo_minutos: prazoMinutos,
+    },
+    current,
+    'confirmed'
+  ).catch((e) => console.warn('[order whatsapp notify]', e))
 
   return NextResponse.json({
     ok: true,

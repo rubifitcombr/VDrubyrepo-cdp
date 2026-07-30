@@ -10,7 +10,7 @@ import {
   evaluateDeliveryForCustomer,
   type StoreDeliveryConfig,
 } from '@/lib/delivery-zone.server'
-import { hasOrderPipelineAutomations, hasPixCheckout, parsePlan } from '@/lib/plan'
+import { hasFeature, hasOrderPipelineAutomations, hasPixCheckout, parsePlan } from '@/lib/plan'
 import { readStorePlano } from '@/lib/store-columns'
 import { publicDineInCheckoutAllowed } from '@/lib/salao-attendance'
 import { parseAutomationsFromStore } from '@/lib/store-automations'
@@ -36,6 +36,15 @@ import {
 import { insertPublicCheckoutOrder } from '@/services/public-checkout-order.server'
 import { issueCheckoutAccessToken } from '@/lib/checkout-access-token.server'
 import { createPublicCheckoutDbClient } from '@/lib/supabase/public-checkout-db.server'
+import {
+  notifyOrderWhatsAppReceived,
+  notifyOrderWhatsAppStatusChange,
+} from '@/services/order-whatsapp-notifications.server'
+import {
+  getOrCreateLoyaltyConfig,
+  redeemLoyaltyPointsForCheckout,
+} from '@/services/loyalty.server'
+import { resolveRedeemPoints } from '@/lib/loyalty/utils'
 import {
   MENU_PRODUCT_SELECT,
   normalizeMenuProductRow,
@@ -411,7 +420,59 @@ export async function POST(req: NextRequest) {
 
     const orderStatus = 'pending'
     const orderSource = plan === 'START' ? 'site_start' : 'site_live'
-    const total = Math.round((subtotal + deliveryCharge) * 100) / 100
+    const grossTotal = Math.round((subtotal + deliveryCharge) * 100) / 100
+
+    let loyaltyRedeemPoints = 0
+    let loyaltyDiscountBrl = 0
+
+    const loyaltyPointsRequested = Math.max(
+      0,
+      Math.floor(Number(raw.loyaltyPointsRedeem) || 0)
+    )
+
+    if (loyaltyPointsRequested > 0 && hasFeature(plan, 'loyalty')) {
+      const loyaltyConfig = await getOrCreateLoyaltyConfig(
+        checkoutDb,
+        String(storeRow.id)
+      )
+      if (!loyaltyConfig.enabled) {
+        return NextResponse.json(
+          { error: 'Programa de fidelidade não está ativo.' },
+          { status: 400 }
+        )
+      }
+
+      const { data: loyaltyAccount } = await checkoutDb
+        .from('loyalty_accounts')
+        .select('points_balance')
+        .eq('store_id', String(storeRow.id))
+        .eq('customer_phone', phoneDigits)
+        .maybeSingle()
+
+      const balance = Number(
+        (loyaltyAccount as { points_balance?: number } | null)?.points_balance ?? 0
+      )
+      const resolved = resolveRedeemPoints(
+        loyaltyConfig,
+        balance,
+        grossTotal,
+        loyaltyPointsRequested
+      )
+
+      if (resolved.points <= 0) {
+        return NextResponse.json(
+          {
+            error: `Não foi possível resgatar pontos. Mínimo: ${loyaltyConfig.min_redeem_points} pts.`,
+          },
+          { status: 400 }
+        )
+      }
+
+      loyaltyRedeemPoints = resolved.points
+      loyaltyDiscountBrl = resolved.discountBrl
+    }
+
+    const total = Math.max(0, Math.round((grossTotal - loyaltyDiscountBrl) * 100) / 100)
     const itemsSummary = buildItemsSummaryWithLineTotals(
       pricedItems.map((l) => ({
         quantity: l.quantity,
@@ -428,7 +489,11 @@ export async function POST(req: NextRequest) {
             [String(notes ?? '').trim(), 'Pedido via QR (autoatendimento).'].filter(Boolean).join('\n'),
             0
           )
-        : notes
+        : loyaltyDiscountBrl > 0
+          ? [notes, `[Fidelidade] −R$ ${loyaltyDiscountBrl.toFixed(2)} (${loyaltyRedeemPoints} pts)`]
+              .filter((x) => String(x ?? '').trim())
+              .join('\n')
+          : notes
 
     const insertSource =
       fulfillment === 'dine_in'
@@ -478,6 +543,8 @@ export async function POST(req: NextRequest) {
         payment_status: isPixPayment ? 'pending' : null,
         notes: orderNotes,
         total,
+        loyalty_redeem_points: loyaltyRedeemPoints,
+        loyalty_discount_brl: loyaltyDiscountBrl,
         items_summary: itemsSummary,
         status: orderStatus,
         source: insertSource,
@@ -508,6 +575,27 @@ export async function POST(req: NextRequest) {
 
     const order = { id: created.orderId }
 
+    if (loyaltyRedeemPoints > 0) {
+      try {
+        await redeemLoyaltyPointsForCheckout(checkoutDb, {
+          store_id: String(storeRow.id),
+          order_id: String(order.id),
+          customer_phone: phoneDigits,
+          customer_name: customerName,
+          order_total_before_discount: grossTotal,
+          requested_points: loyaltyRedeemPoints,
+        })
+      } catch (loyaltyErr) {
+        await checkoutDb.from('order_items').delete().eq('order_id', order.id)
+        await checkoutDb.from('orders').delete().eq('id', order.id)
+        const msg =
+          loyaltyErr instanceof Error
+            ? loyaltyErr.message
+            : 'Falha ao resgatar pontos.'
+        return NextResponse.json({ error: msg }, { status: 400 })
+      }
+    }
+
     const storeMeta = storeRow as Record<string, unknown>
     const checkoutPlan = parsePlan(readStorePlano(storeMeta))
     const checkoutAutomations = parseAutomationsFromStore(storeMeta)
@@ -526,6 +614,35 @@ export async function POST(req: NextRequest) {
           .eq('store_id', String(storeRow.id))
           .eq('status', 'pending')
       }
+    }
+
+    const waNotifyOrder = {
+      id: String(order.id),
+      customer_phone: customerPhone,
+      customer_name: customerName,
+      delivery_address: normalizedDeliveryAddress,
+      source: insertSource,
+    }
+    const autoAccepted =
+      !isPixPayment &&
+      checkoutAutomations.auto_accept_orders &&
+      hasOrderPipelineAutomations(checkoutPlan) &&
+      storeMeta.manual_closed !== true
+
+    if (autoAccepted) {
+      void notifyOrderWhatsAppStatusChange(
+        checkoutDb,
+        String(storeRow.id),
+        waNotifyOrder,
+        'pending',
+        'preparing'
+      ).catch((e) => console.warn('[order whatsapp notify]', e))
+    } else {
+      void notifyOrderWhatsAppReceived(
+        checkoutDb,
+        String(storeRow.id),
+        waNotifyOrder
+      ).catch((e) => console.warn('[order whatsapp notify]', e))
     }
 
     if (
@@ -588,6 +705,8 @@ export async function POST(req: NextRequest) {
       storeName: String(storeRow.name || ''),
       subtotal,
       deliveryCharge,
+      loyaltyDiscount: loyaltyDiscountBrl,
+      loyaltyPointsRedeemed: loyaltyRedeemPoints,
       orderTotal: total,
       ...(pix
         ? {

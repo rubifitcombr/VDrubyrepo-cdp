@@ -8,6 +8,7 @@ import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { ProductDetailModal } from './ProductDetailModal'
 import type { StorefrontMenuProduct } from './storefront-menu-types'
 import { WhatsAppCheckoutButton } from './WhatsAppCheckoutButton'
+import type { PublicLoyaltyProgram } from '@/lib/loyalty/types'
 
 export type { StorefrontMenuProduct } from './storefront-menu-types'
 
@@ -357,6 +358,7 @@ export function StorefrontMenuClient({
   selfServiceFromQr = false,
   salaoAutoUnavailable = false,
   merchantPixConfigured = false,
+  loyaltyProgram = null,
 }: {
   storeName: string
   storeSlug: string
@@ -382,6 +384,7 @@ export function StorefrontMenuClient({
   /** `?auto=1` mas a loja não aceita (ex.: Pro em modo garçom). */
   salaoAutoUnavailable?: boolean
   merchantPixConfigured?: boolean
+  loyaltyProgram?: PublicLoyaltyProgram | null
 }) {
   const { items, itemCount, subtotal, addItem, removeItem, setQuantity } = useCart()
   const searchRef = useRef<HTMLInputElement>(null)
@@ -1331,6 +1334,7 @@ export function StorefrontMenuClient({
             hoursMode={hoursMode}
             dineInSelfService={selfServiceFromQr}
             merchantPixConfigured={merchantPixConfigured}
+            loyaltyProgram={loyaltyProgram}
             primaryColor={theme.primary}
             hideTrigger
           />
@@ -1390,6 +1394,7 @@ export function StorefrontMenuClient({
               hoursMode={hoursMode}
               dineInSelfService={selfServiceFromQr}
               merchantPixConfigured={merchantPixConfigured}
+              loyaltyProgram={loyaltyProgram}
               primaryColor={theme.primary}
             />
           </div>

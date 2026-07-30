@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { gateMerchantMasterFeature } from '@/lib/merchant-api-gate.server'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
 import { createClient } from '@/lib/supabase/server'
@@ -13,7 +13,7 @@ import { getUser } from '@/services/auth.server'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const user = await getUser()
   if (!user) {
     return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 })
@@ -25,11 +25,18 @@ export async function GET() {
   const deny = gateMerchantMasterFeature(gate.ctx.store, user.email, 'loyalty')
   if (deny) return deny
 
+  const search = req.nextUrl.searchParams.get('search')?.trim() || ''
+  const membersLimit = Number(req.nextUrl.searchParams.get('members_limit') || 50)
+  const ledgerLimit = Number(req.nextUrl.searchParams.get('ledger_limit') || 30)
+
   const db = await createClient()
   const config = await getOrCreateLoyaltyConfig(db, gate.ctx.storeId)
-  const summary = await getLoyaltySummary(db, gate.ctx.storeId)
-  const members = await listLoyaltyAccounts(db, gate.ctx.storeId)
-  const ledger = await listLoyaltyLedger(db, gate.ctx.storeId)
+  const summary = await getLoyaltySummary(db, gate.ctx.storeId, config)
+  const members = await listLoyaltyAccounts(db, gate.ctx.storeId, {
+    limit: membersLimit,
+    search,
+  })
+  const ledger = await listLoyaltyLedger(db, gate.ctx.storeId, ledgerLimit)
 
   return NextResponse.json({ config, summary, members, ledger })
 }

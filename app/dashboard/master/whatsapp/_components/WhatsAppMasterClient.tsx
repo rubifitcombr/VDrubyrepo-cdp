@@ -361,9 +361,10 @@ export function WhatsAppMasterClient({
       {config?.status === 'active' ? (
         <>
           <section className="rounded-2xl border border-[var(--card-border)] bg-white p-6 shadow-sm">
-            <h2 className="font-brand text-lg font-bold text-vyria-navy">Robô IA (básico)</h2>
+            <h2 className="font-brand text-lg font-bold text-vyria-navy">Assistente virtual (IA)</h2>
             <p className="mt-1 text-sm text-vyria-navy-muted">
-              Respostas automáticas para «oi», «menu» e «pedido».
+              Atendimento profissional no WhatsApp: status do pedido, horários, fidelidade e link do
+              cardápio. Pedidos são feitos somente pelo cardápio online.
             </p>
             <div className="mt-4 flex flex-wrap items-center gap-4">
               <label className="flex items-center gap-2 text-sm">
@@ -397,15 +398,16 @@ export function WhatsAppMasterClient({
               Notificações de pedido
             </h2>
             <p className="mt-1 text-sm text-vyria-navy-muted">
-              Em breve — já pode activar os avisos.
+              O robô avisa o cliente automaticamente em cada etapa do pedido (recebido, aceite,
+              preparação, saiu para entrega e entregue).
             </p>
             <div className="mt-4 grid gap-2 sm:grid-cols-2">
               {(
                 [
                   ['notify_order_received', 'Pedido recebido'],
-                  ['notify_order_preparing', 'Em preparação'],
-                  ['notify_order_ready', 'Pronto / a caminho'],
-                  ['notify_order_delivered', 'Entregue'],
+                  ['notify_order_preparing', 'Aceito / em preparação'],
+                  ['notify_order_ready', 'Saiu para entrega'],
+                  ['notify_order_delivered', 'Entregue (sem fidelidade)'],
                 ] as const
               ).map(([key, label]) => (
                 <label key={key} className="flex items-center gap-2 text-sm">

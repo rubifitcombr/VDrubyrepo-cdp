@@ -16,6 +16,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getOpenCaixaTurno } from '@/services/caixa-turnos.server'
 import { resolveGarcomForOrder } from '@/services/store-garcons.server'
 import { insertOrderPayments } from '@/services/order-payments.server'
+import { triggerLoyaltyEarnForDeliveredOrder } from '@/services/loyalty.server'
 
 type PaymentMethod = 'cash' | 'pix' | 'card' | 'split'
 
@@ -259,6 +260,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: payResult.error }, { status: 500 })
     }
   }
+
+  void triggerLoyaltyEarnForDeliveredOrder(supabase, storeId, orderId).catch((e) =>
+    console.warn('[loyalty earn]', e)
+  )
 
   return NextResponse.json({
     ok: true,

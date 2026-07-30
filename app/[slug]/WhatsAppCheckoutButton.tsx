@@ -7,6 +7,8 @@ import { computeDeliveryCharge } from '@/lib/delivery-pricing'
 import { publicStoreOrdersBlockedMessage } from '@/lib/business-hours'
 import { buildWhatsAppLink } from '@/lib/whatsapp-number'
 import { PixPaymentPanel } from './PixPaymentPanel'
+import { LoyaltyCheckoutPanel } from './LoyaltyCheckoutPanel'
+import type { PublicLoyaltyProgram } from '@/lib/loyalty/types'
 
 type CheckoutPixPayload = {
   copyPaste: string
@@ -93,6 +95,7 @@ export function WhatsAppCheckoutButton({
   hoursMode = 'always',
   primaryColor = '#25D366',
   hideTrigger = false,
+  loyaltyProgram = null,
 }: {
   storeName: string
   storeSlug: string
@@ -116,6 +119,7 @@ export function WhatsAppCheckoutButton({
   hoursMode?: 'always' | 'scheduled' | 'manual'
   primaryColor?: string
   hideTrigger?: boolean
+  loyaltyProgram?: PublicLoyaltyProgram | null
 }) {
   void _storePlan
   void _deliveryMaxKm
@@ -151,6 +155,8 @@ export function WhatsAppCheckoutButton({
     table: string
     whatsappText: string
   } | null>(null)
+  const [loyaltyRedeemEnabled, setLoyaltyRedeemEnabled] = useState(false)
+  const [loyaltyRedeemPoints, setLoyaltyRedeemPoints] = useState(0)
   const lastOpenSignalRef = useRef<number | null>(null)
 
   const pixAvailableForCheckout = merchantPixConfigured && !dineInSelfService
@@ -210,6 +216,20 @@ export function WhatsAppCheckoutButton({
   const resolvedFulfillment: FulfillmentType | null =
     fulfillment ?? (dineInSelfService ? 'dine_in' : null)
 
+  const checkoutGrossTotal =
+    resolvedFulfillment === 'delivery' ? estimatedTotal : subtotal
+  const loyaltyDiscountPreview =
+    loyaltyRedeemEnabled && loyaltyProgram && loyaltyRedeemPoints > 0
+      ? Math.min(
+          checkoutGrossTotal,
+          Math.round(
+            ((loyaltyRedeemPoints * loyaltyProgram.redeem_cents_per_point) / 100) *
+              100
+          ) / 100
+        )
+      : 0
+  const checkoutNetTotal = Math.max(0, checkoutGrossTotal - loyaltyDiscountPreview)
+
   const waUrl = useMemo(() => {
     const text = buildMessage(storeName, items, subtotal)
     return buildWhatsAppLink(phone, text)
@@ -217,6 +237,13 @@ export function WhatsAppCheckoutButton({
 
   if (!dineInSelfService && !waUrl) {
     // Checkout via API permanece disponível sem WhatsApp configurado.
+  }
+
+  function loyaltyPayload(): { loyaltyPointsRedeem?: number } {
+    if (!loyaltyProgram?.enabled || !loyaltyRedeemEnabled || loyaltyRedeemPoints <= 0) {
+      return {}
+    }
+    return { loyaltyPointsRedeem: loyaltyRedeemPoints }
   }
 
   function mapCheckoutItems() {
@@ -291,6 +318,8 @@ export function WhatsAppCheckoutButton({
     setDineInStep(1)
     setDineInFieldErrors({})
     setDineInSuccess(null)
+    setLoyaltyRedeemEnabled(false)
+    setLoyaltyRedeemPoints(0)
   }
 
   function finishCheckoutAfterApi(
@@ -402,6 +431,7 @@ export function WhatsAppCheckoutButton({
           paymentMethod: pixAvailableForCheckout ? paymentMethod : 'cash',
           notes: buildNotesPayload(),
           items: mapCheckoutItems(),
+          ...loyaltyPayload(),
         }),
       })
       const payload = (await resp.json()) as {
@@ -506,6 +536,7 @@ export function WhatsAppCheckoutButton({
           customerPhone,
           notes: notes.trim() || null,
           items: mapCheckoutItems(),
+          ...loyaltyPayload(),
         }),
       })
       const payload = (await resp.json()) as {
@@ -577,6 +608,7 @@ export function WhatsAppCheckoutButton({
           paymentMethod,
           notes: buildNotesPayload(),
           items: mapCheckoutItems(),
+          ...loyaltyPayload(),
         }),
       })
       const payload = (await resp.json()) as {
@@ -1052,9 +1084,17 @@ export function WhatsAppCheckoutButton({
                           <p className="mt-1 flex justify-between border-t border-[var(--card-border)] pt-1 font-semibold">
                             <span>Total estimado</span>
                             <span className="tabular-nums">
-                              {money.format(estimatedTotal)}
+                              {money.format(checkoutNetTotal)}
                             </span>
                           </p>
+                          {loyaltyDiscountPreview > 0 ? (
+                            <p className="mt-1 flex justify-between gap-2 text-emerald-700">
+                              <span>Desconto fidelidade</span>
+                              <span className="tabular-nums">
+                                −{money.format(loyaltyDiscountPreview)}
+                              </span>
+                            </p>
+                          ) : null}
                           {deliveryFreeAbove != null &&
                           deliveryFreeAbove > 0 &&
                           subtotal < deliveryFreeAbove ? (
@@ -1067,7 +1107,7 @@ export function WhatsAppCheckoutButton({
                       ) : resolvedFulfillment === 'pickup' ? (
                         <p className="mt-1 flex justify-between border-t border-[var(--card-border)] pt-1 font-semibold">
                         <span>Total (retirada)</span>
-                          <span className="tabular-nums">{money.format(subtotal)}</span>
+                          <span className="tabular-nums">{money.format(checkoutNetTotal)}</span>
                         </p>
                       ) : resolvedFulfillment === 'dine_in' ? (
                         <p className="mt-1 flex justify-between border-t border-[var(--card-border)] pt-1 font-semibold">
@@ -1169,6 +1209,20 @@ export function WhatsAppCheckoutButton({
                             className="w-full rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm outline-none focus:border-[#25D366]"
                           />
                         </label>
+
+                        {loyaltyProgram?.enabled &&
+                        resolvedFulfillment !== 'dine_in' ? (
+                          <LoyaltyCheckoutPanel
+                            storeSlug={storeSlug}
+                            program={loyaltyProgram}
+                            customerPhone={customerPhone}
+                            orderTotal={checkoutGrossTotal}
+                            redeemEnabled={loyaltyRedeemEnabled}
+                            redeemPoints={loyaltyRedeemPoints}
+                            onRedeemEnabledChange={setLoyaltyRedeemEnabled}
+                            onRedeemPointsChange={setLoyaltyRedeemPoints}
+                          />
+                        ) : null}
 
                         {resolvedFulfillment === 'delivery' ? (
                           <div className="sm:col-span-2">

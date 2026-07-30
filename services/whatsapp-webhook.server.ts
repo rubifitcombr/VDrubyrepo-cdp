@@ -7,6 +7,7 @@ import {
   getWhatsAppAccessTokenForStore,
   markWebhookVerified,
 } from '@/services/whatsapp-config.server'
+import { handleInboundWhatsAppCustomerMessage } from '@/services/whatsapp-inbound.server'
 
 export function verifyMetaWebhookSignature(
   rawBody: string,
@@ -102,9 +103,9 @@ export async function processWhatsAppWebhook(
           console.warn('[whatsapp-webhook] insert message:', error.message)
         }
 
-        // Fase 2: robô IA — por agora resposta automática simples de confirmação.
+        // Assistente virtual (IA) — atendimento profissional; pedidos só pelo cardápio.
         if (bodyText && from && storeId) {
-          await maybeSendAutoReply(db, storeId, from, bodyText)
+          await handleInboundWhatsAppCustomerMessage(db, storeId, from, bodyText)
         }
       }
 
@@ -123,109 +124,6 @@ export async function processWhatsAppWebhook(
       }
     }
   }
-}
-
-async function maybeSendAutoReply(
-  db: SupabaseClient,
-  storeId: string,
-  fromE164: string,
-  bodyText: string
-): Promise<void> {
-  const { data: cfgRow } = await db
-    .from('store_whatsapp_config')
-    .select('ai_enabled, phone_number_id, status')
-    .eq('store_id', storeId)
-    .maybeSingle()
-
-  if (!cfgRow || (cfgRow as { status?: string }).status !== 'active') return
-  if ((cfgRow as { ai_enabled?: boolean }).ai_enabled === false) return
-
-  const phoneNumberId = String((cfgRow as { phone_number_id: string }).phone_number_id)
-  const token = await getWhatsAppAccessTokenForStore(db, storeId)
-  if (!token) return
-
-  const normalized = bodyText.trim().toLowerCase()
-  let reply: string | null = null
-
-  if (['oi', 'olá', 'ola', 'bom dia', 'boa tarde', 'boa noite'].includes(normalized)) {
-    reply =
-      'Olá! Sou o assistente da loja. Em breve responderei com cardápio e status do pedido. Por agora, digite *menu* para receber o link ou *pedido* para consultar o último pedido.'
-  } else if (normalized === 'menu' || normalized.includes('cardapio') || normalized.includes('cardápio')) {
-    const { data: store } = await db
-      .from('stores')
-      .select('slug')
-      .eq('id', storeId)
-      .maybeSingle()
-    const slug = (store as { slug?: string } | null)?.slug
-    reply = slug
-      ? `Acesse nosso cardápio: ${publicStoreUrl(slug)}`
-      : 'O cardápio online estará disponível em breve.'
-  } else if (normalized === 'pedido' || normalized.includes('status')) {
-    reply =
-      'Para consultar seu pedido, informe o número de telefone usado no pedido ou aguarde — em breve o robô consultará automaticamente.'
-  } else if (
-    normalized === 'pontos' ||
-    normalized.includes('fidelidade') ||
-    normalized.includes('cashback')
-  ) {
-    const { data: loyaltyCfg } = await db
-      .from('store_loyalty_config')
-      .select('enabled, whatsapp_balance_enabled')
-      .eq('store_id', storeId)
-      .maybeSingle()
-    const enabled =
-      (loyaltyCfg as { enabled?: boolean } | null)?.enabled === true &&
-      (loyaltyCfg as { whatsapp_balance_enabled?: boolean } | null)
-        ?.whatsapp_balance_enabled !== false
-    if (!enabled) {
-      reply = 'O programa de fidelidade desta loja ainda não está activo.'
-    } else {
-      const phone = fromE164.replace(/\D/g, '')
-      const { data: account } = await db
-        .from('loyalty_accounts')
-        .select('points_balance')
-        .eq('store_id', storeId)
-        .eq('customer_phone', phone)
-        .maybeSingle()
-      const balance = Number(
-        (account as { points_balance?: number } | null)?.points_balance ?? 0
-      )
-      reply =
-        balance > 0
-          ? `Você tem *${balance} pontos* de fidelidade. Use no próximo pedido pelo nosso cardápio.`
-          : 'Você ainda não tem pontos. Faça um pedido para começar a acumular!'
-    }
-  }
-
-  if (!reply) return
-
-  const sent = await sendWhatsAppTextMessage({
-    phoneNumberId,
-    accessToken: token,
-    toE164: fromE164,
-    body: reply,
-  })
-
-  if (sent.ok) {
-    await db.from('whatsapp_messages').insert({
-      store_id: storeId,
-      direction: 'outbound',
-      wa_message_id: sent.messageId,
-      wa_to: fromE164,
-      message_type: 'text',
-      body_text: reply,
-      status: 'sent',
-    })
-  }
-}
-
-function publicStoreUrl(slug: string): string {
-  const base =
-    process.env.VYRIA_PUBLIC_URL?.trim() ||
-    process.env.NEXT_PUBLIC_VYRIA_PUBLIC_URL?.trim() ||
-    ''
-  if (base) return `${base.replace(/\/$/, '')}/${slug}`
-  return `/${slug}`
 }
 
 export async function sendWhatsAppTestMessage(

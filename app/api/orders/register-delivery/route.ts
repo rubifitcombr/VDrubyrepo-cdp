@@ -10,6 +10,7 @@ import { setEntregadorStatusOperacional } from '@/services/store-entregadores.se
 import { createClient } from '@/lib/supabase/server'
 import { ORDER_SELECT, mapStoreOrderRow } from '@/lib/store-order'
 import { isSlugChannelOrderSource } from '@/lib/slug-channel-orders'
+import { triggerLoyaltyEarnForDeliveredOrder } from '@/services/loyalty.server'
 
 const ALLOWED_BEFORE = new Set(['confirmed'])
 
@@ -241,6 +242,10 @@ export async function POST(req: NextRequest) {
   if (entId) {
     await setEntregadorStatusOperacional(supabase, storeId, entId, 'disponivel')
   }
+
+  void triggerLoyaltyEarnForDeliveredOrder(supabase, storeId, orderId).catch((e) =>
+    console.warn('[loyalty earn]', e)
+  )
 
   const { data: fresh } = await supabase
     .from('orders')
