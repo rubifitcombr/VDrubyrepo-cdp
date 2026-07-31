@@ -36,17 +36,40 @@ export async function POST(req: Request) {
 
   const db = await createClient()
   const defaults = await getOrCreateRecoveryConfig(db, gate.ctx.storeId)
-  const inactive_days = body.inactive_days != null
-    ? Math.min(365, Math.max(7, Math.floor(Number(body.inactive_days))))
-    : defaults.default_inactive_days
+  const inactive_days =
+    body.inactive_days != null
+      ? Math.min(365, Math.max(7, Math.floor(Number(body.inactive_days))))
+      : defaults.default_inactive_days
   const message_template =
     String(body.message_template || '').trim() || defaults.default_message_template
+
+  const promotion_id =
+    body.promotion_id !== undefined
+      ? body.promotion_id == null || body.promotion_id === ''
+        ? null
+        : String(body.promotion_id)
+      : defaults.promotion_id
+  const offer_title =
+    body.offer_title !== undefined
+      ? body.offer_title == null
+        ? null
+        : String(body.offer_title).trim() || null
+      : defaults.offer_title
+  const offer_description =
+    body.offer_description !== undefined
+      ? body.offer_description == null
+        ? null
+        : String(body.offer_description).trim() || null
+      : defaults.offer_description
 
   try {
     const campaign = await createRecoveryCampaign(db, gate.ctx.storeId, {
       name,
       message_template,
       inactive_days,
+      promotion_id,
+      offer_title,
+      offer_description,
     })
     return NextResponse.json({ campaign })
   } catch (e) {

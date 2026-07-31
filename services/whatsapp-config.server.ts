@@ -5,7 +5,16 @@ import {
   encryptWhatsAppToken,
   tryDecryptWhatsAppToken,
 } from '@/lib/whatsapp/token-crypto.server'
-import { fetchWhatsAppPhoneNumber } from '@/lib/whatsapp/graph-api.server'
+import {
+  fetchWhatsAppPhoneNumber,
+  resolvePhoneNumberIdFromWaba,
+} from '@/lib/whatsapp/graph-api.server'
+import {
+  digitsOnly,
+  formatWhatsAppConnectError,
+  looksLikePhoneE164,
+  phonesMatchE164,
+} from '@/lib/whatsapp/meta-id.utils'
 import type {
   StoreWhatsAppConfig,
   StoreWhatsAppConfigPublic,
@@ -132,6 +141,47 @@ export async function listRecentWhatsAppMessages(
   }))
 }
 
+export type VerifiedWhatsAppSender = {
+  phone_number_id: string
+  display_phone_e164: string | null
+  display_phone_formatted: string | null
+  verified_name: string | null
+}
+
+export async function getVerifiedWhatsAppSenderForStore(
+  db: SupabaseClient,
+  storeId: string
+): Promise<VerifiedWhatsAppSender | null> {
+  const config = await getWhatsAppConfigForStore(db, storeId)
+  if (!config?.phone_number_id || config.status !== 'active') return null
+
+  const token = await getWhatsAppAccessTokenForStore(db, storeId)
+  if (!token) return null
+
+  const verified = await fetchWhatsAppPhoneNumber(config.phone_number_id, token)
+  if (!verified.ok) return null
+
+  const displayE164 =
+    verified.data.display_phone_number?.replace(/\D/g, '') || null
+
+  if (displayE164 && displayE164 !== config.display_phone_e164) {
+    await db
+      .from('store_whatsapp_config')
+      .update({
+        display_phone_e164: displayE164,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('store_id', storeId)
+  }
+
+  return {
+    phone_number_id: config.phone_number_id,
+    display_phone_e164: displayE164,
+    display_phone_formatted: verified.data.display_phone_number || null,
+    verified_name: verified.data.verified_name || null,
+  }
+}
+
 export type ConnectWhatsAppInput = {
   waba_id: string
   phone_number_id: string
@@ -155,22 +205,63 @@ export async function connectWhatsAppForStore(
     return { ok: false, error: 'Preencha WABA ID, Phone Number ID e token.' }
   }
 
-  const verified = await fetchWhatsAppPhoneNumber(phoneNumberId, token)
+  let resolvedPhoneNumberId = phoneNumberId
+  let verified = await fetchWhatsAppPhoneNumber(resolvedPhoneNumberId, token)
+
   if (!verified.ok) {
-    return { ok: false, error: verified.error }
+    const phoneToResolve =
+      looksLikePhoneE164(phoneNumberId) ? phoneNumberId : input.display_phone_e164?.trim()
+
+    if (phoneToResolve) {
+      const resolved = await resolvePhoneNumberIdFromWaba(wabaId, token, phoneToResolve)
+      if (resolved.ok) {
+        resolvedPhoneNumberId = resolved.phoneNumberId
+        verified = { ok: true, data: resolved.data }
+      }
+    }
   }
 
-  const display =
-    input.display_phone_e164?.trim() ||
-    verified.data.display_phone_number?.replace(/\D/g, '') ||
-    null
+  if (!verified.ok) {
+    return {
+      ok: false,
+      error: formatWhatsAppConnectError(verified.error, {
+        phoneNumberId,
+        wabaId,
+      }),
+    }
+  }
+
+  const metaDisplayDigits =
+    verified.data.display_phone_number?.replace(/\D/g, '') || null
+  const userDisplayDigits = input.display_phone_e164?.trim()
+    ? digitsOnly(input.display_phone_e164)
+    : null
+
+  if (
+    userDisplayDigits &&
+    metaDisplayDigits &&
+    !phonesMatchE164(userDisplayDigits, metaDisplayDigits)
+  ) {
+    const metaLabel = verified.data.display_phone_number || metaDisplayDigits
+    const name = verified.data.verified_name
+      ? ` (${verified.data.verified_name})`
+      : ''
+    return {
+      ok: false,
+      error:
+        `O Phone Number ID seleccionado pertence ao número ${metaLabel}${name}, não ao telefone da loja que informou. ` +
+        'No WhatsApp Manager → API Setup, copie o Phone Number ID do número correcto da loja.',
+    }
+  }
+
+  const display = metaDisplayDigits
 
   const now = new Date().toISOString()
   const patch = {
     store_id: storeId,
     status: 'active' as const,
     waba_id: wabaId,
-    phone_number_id: phoneNumberId,
+    phone_number_id: resolvedPhoneNumberId,
     display_phone_e164: display,
     access_token_enc: encryptWhatsAppToken(token),
     last_error: null,

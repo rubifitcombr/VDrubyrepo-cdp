@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { gateMerchantMasterFeature } from '@/lib/merchant-api-gate.server'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
-import { createClient } from '@/lib/supabase/server'
+import { formatSupabaseLoyaltyError } from '@/lib/supabase-schema-error'
+import { createServiceRoleClient } from '@/lib/supabase/service-role.server'
 import { adjustLoyaltyPoints } from '@/services/loyalty.server'
 import { getUser } from '@/services/auth.server'
 
@@ -35,8 +36,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Informe pontos diferentes de zero.' }, { status: 400 })
   }
 
-  const db = await createClient()
   try {
+    const db = createServiceRoleClient()
     const account = await adjustLoyaltyPoints(db, gate.ctx.storeId, {
       customer_phone,
       customer_name: body.customer_name != null ? String(body.customer_name) : null,
@@ -45,8 +46,9 @@ export async function POST(req: Request) {
     })
     return NextResponse.json({ account })
   } catch (e) {
+    const err = e instanceof Error ? e : { message: 'Falha no ajuste.' }
     return NextResponse.json(
-      { error: e instanceof Error ? e.message : 'Falha no ajuste.' },
+      { error: formatSupabaseLoyaltyError(err) },
       { status: 400 }
     )
   }

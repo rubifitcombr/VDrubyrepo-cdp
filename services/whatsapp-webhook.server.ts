@@ -8,6 +8,8 @@ import {
   markWebhookVerified,
 } from '@/services/whatsapp-config.server'
 import { handleInboundWhatsAppCustomerMessage } from '@/services/whatsapp-inbound.server'
+import { registerWhatsAppInboundContact } from '@/services/whatsapp-contacts.server'
+import { normalizePhoneE164 } from '@/services/loyalty.server'
 
 export function verifyMetaWebhookSignature(
   rawBody: string,
@@ -88,6 +90,20 @@ export async function processWhatsAppWebhook(
 
         if (!storeId || !waMessageId) continue
 
+        const contacts = Array.isArray(val.contacts) ? val.contacts : []
+        let contactName: string | null = null
+        for (const c of contacts) {
+          if (!c || typeof c !== 'object') continue
+          const profile = (c as { profile?: { name?: string } }).profile
+          const waId = (c as { wa_id?: string }).wa_id
+          if (from && waId && normalizePhoneE164(String(waId)) === normalizePhoneE164(from)) {
+            contactName = profile?.name?.trim() || contactName
+          }
+          if (!contactName && profile?.name) {
+            contactName = profile.name.trim()
+          }
+        }
+
         const { error } = await db.from('whatsapp_messages').insert({
           store_id: storeId,
           direction: 'inbound',
@@ -103,9 +119,17 @@ export async function processWhatsAppWebhook(
           console.warn('[whatsapp-webhook] insert message:', error.message)
         }
 
-        // Assistente virtual (IA) — atendimento profissional; pedidos só pelo cardápio.
-        if (bodyText && from && storeId) {
-          await handleInboundWhatsAppCustomerMessage(db, storeId, from, bodyText)
+        // Regista todo contacto inbound; IA só responde a texto.
+        if (from && storeId) {
+          await registerWhatsAppInboundContact(db, {
+            store_id: storeId,
+            customer_phone: from,
+            customer_name: contactName,
+          }).catch((e) => console.warn('[whatsapp contact]', e))
+
+          if (bodyText) {
+            await handleInboundWhatsAppCustomerMessage(db, storeId, from, bodyText)
+          }
         }
       }
 

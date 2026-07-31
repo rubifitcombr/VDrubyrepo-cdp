@@ -14,6 +14,7 @@ import {
   ledgerKindLabel,
   moneyFromLoyaltyPoints,
 } from '@/lib/loyalty/utils'
+import { FidelidadeSetupGuide } from './FidelidadeSetupGuide'
 
 function StatCard({
   label,
@@ -144,10 +145,28 @@ export function FidelidadeMasterClient() {
     return <p className="text-sm text-vyria-navy-muted">A carregar programa de fidelidade…</p>
   }
 
-  if (!config) return null
+  if (!config) {
+    return (
+      <div className="space-y-4">
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-900">
+          <p className="font-semibold">Não foi possível carregar o programa de fidelidade</p>
+          <p className="mt-2">{error || 'Erro desconhecido ao contactar o servidor.'}</p>
+          <button
+            type="button"
+            onClick={() => void load(memberSearch)}
+            className="mt-4 rounded-xl border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-900 hover:bg-red-50"
+          >
+            Tentar novamente
+          </button>
+        </div>
+        <FidelidadeSetupGuide />
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
+      <FidelidadeSetupGuide compact />
       {error ? (
         <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
           {error}

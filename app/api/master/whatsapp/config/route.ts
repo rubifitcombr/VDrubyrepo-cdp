@@ -4,6 +4,7 @@ import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
 import { createClient } from '@/lib/supabase/server'
 import {
   getWhatsAppConfigForStore,
+  getVerifiedWhatsAppSenderForStore,
   listRecentWhatsAppMessages,
   toPublicWhatsAppConfig,
 } from '@/services/whatsapp-config.server'
@@ -26,6 +27,13 @@ export async function GET() {
   const db = await createClient()
   const row = await getWhatsAppConfigForStore(db, gate.ctx.storeId)
   const messages = await listRecentWhatsAppMessages(db, gate.ctx.storeId)
+  const verifiedSender = row
+    ? await getVerifiedWhatsAppSenderForStore(db, gate.ctx.storeId)
+    : null
+
+  if (row && verifiedSender?.display_phone_e164) {
+    row.display_phone_e164 = verifiedSender.display_phone_e164
+  }
 
   const { data: tokenRow } = await db
     .from('store_whatsapp_config')
@@ -40,6 +48,7 @@ export async function GET() {
           (tokenRow as { access_token_enc?: string } | null)?.access_token_enc
         )
       : null,
+    verifiedSender,
     messages,
     webhookUrl: publicWebhookUrl(),
   })

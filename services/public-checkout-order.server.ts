@@ -1,8 +1,34 @@
 import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import {
+  isMissingLoyaltyOrderColumnsError,
+  supabaseLoyaltyOrderColumnsSchemaHint,
+} from '@/lib/supabase-schema-error'
 import { isSupabaseRlsViolation } from '@/lib/supabase-rls-error'
 import { tryCreateServiceRoleClient } from '@/lib/supabase/service-role.server'
+
+const LOYALTY_ORDER_FIELDS = ['loyalty_redeem_points', 'loyalty_discount_brl'] as const
+
+function stripLoyaltyOrderFields(
+  orderInsert: PublicCheckoutOrderInsert
+): PublicCheckoutOrderInsert {
+  const next = { ...orderInsert }
+  for (const field of LOYALTY_ORDER_FIELDS) {
+    delete next[field]
+  }
+  return next
+}
+
+function loyaltyValuesFromInsert(orderInsert: PublicCheckoutOrderInsert): {
+  points: number
+  discountBrl: number
+} {
+  return {
+    points: Math.max(0, Math.floor(Number(orderInsert.loyalty_redeem_points) || 0)),
+    discountBrl: Math.max(0, Number(orderInsert.loyalty_discount_brl) || 0),
+  }
+}
 
 export type PublicCheckoutOrderInsert = Record<string, unknown>
 
@@ -26,14 +52,28 @@ export async function insertPublicCheckoutOrder(
   | { ok: true; orderId: string }
   | { ok: false; error: string; missingOrderItemsTable?: boolean; orderId?: string }
 > {
-  const attempt = async (client: SupabaseClient) => {
+  const attempt = async (
+    client: SupabaseClient,
+    payload: PublicCheckoutOrderInsert = orderInsert
+  ) => {
     const { data: order, error: orderErr } = await client
       .from('orders')
-      .insert(orderInsert)
+      .insert(payload)
       .select('id')
       .single()
 
     if (orderErr || !order?.id) {
+      if (orderErr && isMissingLoyaltyOrderColumnsError(orderErr)) {
+        const loyalty = loyaltyValuesFromInsert(orderInsert)
+        if (loyalty.points > 0 || loyalty.discountBrl > 0) {
+          return {
+            orderErr: new Error(supabaseLoyaltyOrderColumnsSchemaHint()),
+            orderId: null as string | null,
+            itemsErr: null as Error | null,
+          }
+        }
+        return attempt(client, stripLoyaltyOrderFields(orderInsert))
+      }
       return { orderErr, orderId: null as string | null, itemsErr: null as Error | null }
     }
 

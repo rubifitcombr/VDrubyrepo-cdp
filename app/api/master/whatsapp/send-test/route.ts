@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server'
 import { gateMerchantMasterFeature } from '@/lib/merchant-api-gate.server'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
 import { createServiceRoleClient } from '@/lib/supabase/service-role.server'
+import {
+  getVerifiedWhatsAppSenderForStore,
+} from '@/services/whatsapp-config.server'
 import { sendWhatsAppTestMessage } from '@/services/whatsapp-webhook.server'
 import { getUser } from '@/services/auth.server'
 
@@ -35,11 +38,17 @@ export async function POST(request: Request) {
   }
 
   const db = createServiceRoleClient()
+  const sender = await getVerifiedWhatsAppSenderForStore(db, gate.ctx.storeId)
   const result = await sendWhatsAppTestMessage(db, gate.ctx.storeId, to)
 
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: 400 })
   }
 
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({
+    ok: true,
+    from_phone: sender?.display_phone_formatted || sender?.display_phone_e164 || null,
+    from_name: sender?.verified_name || null,
+    phone_number_id: sender?.phone_number_id || null,
+  })
 }

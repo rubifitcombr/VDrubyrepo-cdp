@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { gateMerchantMasterFeature } from '@/lib/merchant-api-gate.server'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
-import { createClient } from '@/lib/supabase/server'
+import { formatSupabaseLoyaltyError } from '@/lib/supabase-schema-error'
+import { createServiceRoleClient } from '@/lib/supabase/service-role.server'
 import {
   getLoyaltySummary,
   getOrCreateLoyaltyConfig,
@@ -29,16 +30,24 @@ export async function GET(req: NextRequest) {
   const membersLimit = Number(req.nextUrl.searchParams.get('members_limit') || 50)
   const ledgerLimit = Number(req.nextUrl.searchParams.get('ledger_limit') || 30)
 
-  const db = await createClient()
-  const config = await getOrCreateLoyaltyConfig(db, gate.ctx.storeId)
-  const summary = await getLoyaltySummary(db, gate.ctx.storeId, config)
-  const members = await listLoyaltyAccounts(db, gate.ctx.storeId, {
-    limit: membersLimit,
-    search,
-  })
-  const ledger = await listLoyaltyLedger(db, gate.ctx.storeId, ledgerLimit)
+  try {
+    const db = createServiceRoleClient()
+    const config = await getOrCreateLoyaltyConfig(db, gate.ctx.storeId)
+    const summary = await getLoyaltySummary(db, gate.ctx.storeId, config)
+    const members = await listLoyaltyAccounts(db, gate.ctx.storeId, {
+      limit: membersLimit,
+      search,
+    })
+    const ledger = await listLoyaltyLedger(db, gate.ctx.storeId, ledgerLimit)
 
-  return NextResponse.json({ config, summary, members, ledger })
+    return NextResponse.json({ config, summary, members, ledger })
+  } catch (e) {
+    const err = e instanceof Error ? e : { message: 'Erro ao carregar.' }
+    return NextResponse.json(
+      { error: formatSupabaseLoyaltyError(err) },
+      { status: 500 }
+    )
+  }
 }
 
 export async function PATCH(req: Request) {
@@ -76,7 +85,15 @@ export async function PATCH(req: Request) {
     patch.whatsapp_balance_enabled = body.whatsapp_balance_enabled
   }
 
-  const db = await createClient()
-  const config = await updateLoyaltyConfig(db, gate.ctx.storeId, patch)
-  return NextResponse.json({ config })
+  try {
+    const db = createServiceRoleClient()
+    const config = await updateLoyaltyConfig(db, gate.ctx.storeId, patch)
+    return NextResponse.json({ config })
+  } catch (e) {
+    const err = e instanceof Error ? e : { message: 'Erro ao guardar.' }
+    return NextResponse.json(
+      { error: formatSupabaseLoyaltyError(err) },
+      { status: 400 }
+    )
+  }
 }
