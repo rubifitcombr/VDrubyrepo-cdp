@@ -36,6 +36,7 @@ import { after } from 'next/server'
 import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
 import { ServiceWorkerRegister } from '@/app/_components/ServiceWorkerRegister'
+import { DashboardClientVersionGuard } from './_components/DashboardClientVersionGuard'
 import { DashboardShell } from './_components/DashboardShell'
 
 export default async function DashboardLayout({
@@ -210,6 +211,7 @@ export default async function DashboardLayout({
       hubPinConfig={parseHubPinConfig(storeRecord)}
       impersonatingStoreName={impersonation?.storeName ?? null}
       >
+        <DashboardClientVersionGuard />
         <ServiceWorkerRegister />
         {children}
       </DashboardShell>

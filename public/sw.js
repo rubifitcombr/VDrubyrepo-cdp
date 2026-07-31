@@ -1,6 +1,6 @@
 // Bump quando as regras de cache mudarem — força clientes a largar caches antigos.
-const CACHE_NAME = 'vyria-v7';
-const STATIC_ASSETS = ['/', '/dashboard', '/offline.html', '/manifest.json'];
+const CACHE_NAME = 'vyria-v8-marketing-menu';
+const STATIC_ASSETS = ['/offline.html', '/manifest.json'];
 
 /** Segmentos que não são slugs de loja (alinhado a lib/app-reserved-routes + rotas técnicas). */
 const RESERVED_FIRST = new Set([
@@ -80,21 +80,16 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  /**
-   * Assets do Next: rede primeiro para não servir JS/CSS antigo após deploy ou rebuild
-   * (cache-first aqui fazia a tela de Pedidos abrir com UI velha até F5).
-   */
+  /** Bundles Next: só rede — nunca cachear JS/CSS (evita menu/UI antiga após deploy). */
   if (sameOrigin && path.startsWith('/_next/')) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+
+  /** Painel: rede primeiro; offline só como fallback. */
+  if (sameOrigin && path.startsWith('/dashboard')) {
     event.respondWith(
-      fetch(event.request)
-        .then((response) => {
-          if (response.ok) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-          }
-          return response;
-        })
-        .catch(() => caches.match(event.request))
+      fetch(event.request).catch(() => caches.match(event.request))
     );
     return;
   }

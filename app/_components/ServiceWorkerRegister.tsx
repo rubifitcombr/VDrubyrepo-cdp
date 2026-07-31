@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
+import { SERVICE_WORKER_URL } from '@/lib/dashboard-client-version'
 
 function isLocalDevHost() {
   if (process.env.NODE_ENV === 'development') return true
@@ -57,7 +58,7 @@ export function ServiceWorkerRegister() {
         }
 
         if (!hasDashboardScope) {
-          registration = await navigator.serviceWorker.register('/sw.js', {
+          registration = await navigator.serviceWorker.register(SERVICE_WORKER_URL, {
             scope: '/dashboard/',
             updateViaCache: 'none',
           })
