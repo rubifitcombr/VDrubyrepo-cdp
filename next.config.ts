@@ -37,7 +37,10 @@ const nextConfig: NextConfig = {
     ]
   },
   async rewrites() {
-    return [{ source: '/planos', destination: '/dashboard/planos' }]
+    return [
+      { source: '/planos', destination: '/dashboard/planos' },
+      { source: '/sw.js', destination: '/api/service-worker' },
+    ]
   },
   turbopack: {
     root: path.join(__dirname),

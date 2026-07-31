@@ -36,6 +36,8 @@ import { after } from 'next/server'
 import { redirect } from 'next/navigation'
 import { Suspense } from 'react'
 import { ServiceWorkerRegister } from '@/app/_components/ServiceWorkerRegister'
+import { getAppBuildId } from '@/lib/app-build-id'
+import { DASHBOARD_NAV_META } from '@/lib/dashboard-nav-meta'
 import { DashboardClientVersionGuard } from './_components/DashboardClientVersionGuard'
 import { DashboardShell } from './_components/DashboardShell'
 
@@ -177,6 +179,7 @@ export default async function DashboardLayout({
   return (
     <Suspense fallback={null}>
       <DashboardShell
+        navMeta={DASHBOARD_NAV_META}
         storeName={storeName}
         storeSlug={storeSlug}
         storeLogoUrl={storeLogoUrl}
@@ -211,7 +214,7 @@ export default async function DashboardLayout({
       hubPinConfig={parseHubPinConfig(storeRecord)}
       impersonatingStoreName={impersonation?.storeName ?? null}
       >
-        <DashboardClientVersionGuard />
+        <DashboardClientVersionGuard buildId={getAppBuildId()} />
         <ServiceWorkerRegister />
         {children}
       </DashboardShell>

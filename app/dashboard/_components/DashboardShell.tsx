@@ -10,6 +10,7 @@ import type { VyriaPanelMode } from '@/lib/vyria-panel-mode'
 import type { Plan } from '@/lib/plan'
 import type { DashboardMenuKey } from '@/lib/dashboard-menu'
 import { menuKeysForMerchant } from '@/lib/dashboard-menu'
+import { DASHBOARD_NAV_META, type DashboardNavMetaItem } from '@/lib/dashboard-nav-meta'
 import type { MerchantOperationMode } from '@/lib/merchant-operation-mode'
 import {
   hubContextKeepsFullSidebar,
@@ -87,161 +88,40 @@ import {
   IconTruck,
 } from './NavIcons'
 
-const nav: Array<{
-  href: string
-  label: string
-  icon: (p: { className?: string }) => React.ReactNode
-  menuKey: DashboardMenuKey
-  /** Item secundário (menos destaque visual no sidebar). */
-  quiet?: boolean
-  /** Visível só no menu do atalho Administração. */
-  administrationOnly?: boolean
-  section?: string
-}> = [
-  {
-    href: '/dashboard/visao',
-    label: 'Visão geral',
-    icon: IconHome,
-    menuKey: 'dashboard',
-  },
-  {
-    href: '/dashboard/menu',
-    label: 'Produtos',
-    icon: IconMenuBook,
-    menuKey: 'produtos',
-  },
-  {
-    href: '/dashboard/orders',
-    label: 'Pedidos',
-    icon: IconCart,
-    menuKey: 'pedidos',
-  },
-  {
-    href: '/dashboard/entregadores',
-    label: 'Entregadores',
-    icon: IconTruck,
-    menuKey: 'entregadores',
-  },
-  {
-    href: '/dashboard/garcom',
-    label: 'Salão / Mesas',
-    icon: IconClipboard,
-    menuKey: 'garcom',
-  },
-  {
-    href: '/dashboard/garcons',
-    label: 'Meus garçons',
-    icon: IconClipboard,
-    menuKey: 'garcons',
-    administrationOnly: true,
-  },
-  {
-    href: '/dashboard/pdv',
-    label: 'PDV',
-    icon: IconBag,
-    menuKey: 'pdv',
-  },
-  {
-    href: '/dashboard/kds',
-    label: 'KDS',
-    icon: IconKds,
-    menuKey: 'kds',
-  },
-  {
-    href: '/dashboard/caixa',
-    label: 'Caixa',
-    icon: IconCurrency,
-    menuKey: 'caixa',
-  },
-  {
-    href: '/dashboard/promotions',
-    label: 'Promoções',
-    icon: IconTag,
-    menuKey: 'promocoes',
-  },
-  {
-    href: '/dashboard/reports',
-    label: 'Relatórios',
-    icon: IconChartBars,
-    menuKey: 'relatorios',
-  },
-  {
-    href: '/dashboard/settings',
-    label: 'Configurações',
-    icon: IconCog,
-    menuKey: 'configuracoes',
-  },
-  {
-    href: '/dashboard/fiscal',
-    label: 'Vyria Fiscal',
-    icon: IconReceipt,
-    menuKey: 'fiscal',
-  },
-  {
-    href: '/dashboard/appearance',
-    label: 'Aparência',
-    icon: IconPalette,
-    menuKey: 'aparencia',
-  },
-  {
-    href: '/dashboard/automations',
-    label: 'Automações',
-    icon: IconBolt,
-    menuKey: 'automacoes',
-  },
-  {
-    href: '/dashboard/printing',
-    label: 'Impressão',
-    icon: IconPrinter,
-    menuKey: 'impressao',
-  },
-  {
-    href: '/dashboard/balanca',
-    label: 'Balança',
-    icon: IconScale,
-    menuKey: 'balanca',
-    administrationOnly: true,
-  },
-  {
-    href: '/dashboard/master',
-    label: 'Hub Master',
-    icon: IconMegaphone,
-    menuKey: 'master_hub',
-    administrationOnly: true,
-    section: 'Master',
-  },
-  {
-    href: '/dashboard/master/whatsapp',
-    label: 'WhatsApp & robô',
-    icon: IconChat,
-    menuKey: 'master_whatsapp',
-    administrationOnly: true,
-    section: 'Master',
-  },
-  {
-    href: '/dashboard/master/fidelidade',
-    label: 'Fidelidade',
-    icon: IconGift,
-    menuKey: 'master_fidelidade',
-    administrationOnly: true,
-    section: 'Master',
-  },
-  {
-    href: '/dashboard/master/marketing',
-    label: 'Marketing',
-    icon: IconMegaphone,
-    menuKey: 'master_marketing',
-    administrationOnly: true,
-    section: 'Master',
-  },
-  {
-    href: '/dashboard/assinatura',
-    label: 'Assinatura',
-    icon: IconClipboard,
-    menuKey: 'assinatura',
-    quiet: true,
-  },
-]
+const NAV_ICONS: Record<
+  DashboardMenuKey,
+  (p: { className?: string }) => React.ReactNode
+> = {
+  dashboard: IconHome,
+  produtos: IconMenuBook,
+  pedidos: IconCart,
+  entregadores: IconTruck,
+  garcom: IconClipboard,
+  garcons: IconClipboard,
+  pdv: IconBag,
+  kds: IconKds,
+  caixa: IconCurrency,
+  promocoes: IconTag,
+  relatorios: IconChartBars,
+  configuracoes: IconCog,
+  fiscal: IconReceipt,
+  aparencia: IconPalette,
+  automacoes: IconBolt,
+  impressao: IconPrinter,
+  balanca: IconScale,
+  master_hub: IconMegaphone,
+  master_whatsapp: IconChat,
+  master_fidelidade: IconGift,
+  master_marketing: IconMegaphone,
+  assinatura: IconClipboard,
+}
+
+function buildNavItems(navMeta: DashboardNavMetaItem[]) {
+  return navMeta.map((item) => ({
+    ...item,
+    icon: NAV_ICONS[item.menuKey],
+  }))
+}
 
 function PlansNavCta({
   pathname,
@@ -294,18 +174,20 @@ function DashboardNavLinks({
   operationMode,
   layout,
   hubContext = null,
+  navMeta,
 }: {
   pathname: string
   plan: Plan
   operationMode: MerchantOperationMode | null
   layout: 'sidebar' | 'bottom' | 'drawer'
   hubContext?: ReturnType<typeof resolveOperationalHubContext>
+  navMeta: DashboardNavMetaItem[]
 }) {
   const allowed = menuKeysForMerchant(plan, operationMode)
   const focusedKeys = hubContext
     ? new Set(menuKeysForHubContext(hubContext, allowed))
     : null
-  const items = nav.filter((item) => {
+  const items = buildNavItems(navMeta).filter((item) => {
     if (!allowed.has(item.menuKey)) return false
     // Itens de administração (ex.: balança, garçons) só ficam ocultos em hubs operacionais focados.
     if (
@@ -401,6 +283,7 @@ function DashboardNavLinks({
 
 export function DashboardShell({
   children,
+  navMeta = DASHBOARD_NAV_META,
   storeName,
   storeSlug,
   storeLogoUrl,
@@ -437,6 +320,7 @@ export function DashboardShell({
   impersonatingStoreName = null,
 }: {
   children: React.ReactNode
+  navMeta?: DashboardNavMetaItem[]
   storeName: string | null
   storeSlug: string | null
   storeLogoUrl: string | null
@@ -581,6 +465,7 @@ export function DashboardShell({
             operationMode={operationMode ?? null}
             layout="sidebar"
             hubContext={hubContext}
+            navMeta={navMeta}
           />
         </div>
 
@@ -794,6 +679,7 @@ export function DashboardShell({
                 operationMode={operationMode ?? null}
                 layout="drawer"
                 hubContext={hubContext}
+                navMeta={navMeta}
               />
             </div>
 

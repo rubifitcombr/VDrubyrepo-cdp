@@ -298,6 +298,17 @@ export async function proxy(request: NextRequest) {
 
   supabaseResponse.headers.set('x-pathname', p)
 
+  if (
+    p.startsWith('/dashboard') ||
+    p === '/sw.js' ||
+    p.startsWith('/api/health/build')
+  ) {
+    supabaseResponse.headers.set(
+      'Cache-Control',
+      'private, no-store, max-age=0, must-revalidate'
+    )
+  }
+
   return secure(supabaseResponse)
 }
 

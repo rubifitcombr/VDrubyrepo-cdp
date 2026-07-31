@@ -9,13 +9,14 @@ const STORAGE_KEY = 'vyria-dashboard-client-version'
  * Uma vez por versão: limpa caches + service workers antigos e recarrega.
  * Corrige menu desactualizado (ex.: «Recuperador» em vez de «Marketing») após deploy.
  */
-export function DashboardClientVersionGuard() {
+export function DashboardClientVersionGuard({ buildId }: { buildId: string }) {
   useEffect(() => {
     if (typeof window === 'undefined') return
     if (process.env.NODE_ENV === 'development') return
 
+    const versionKey = `${DASHBOARD_CLIENT_VERSION}:${buildId}`
     const stored = window.localStorage.getItem(STORAGE_KEY)
-    if (stored === DASHBOARD_CLIENT_VERSION) return
+    if (stored === versionKey) return
 
     const run = async () => {
       try {
@@ -36,12 +37,12 @@ export function DashboardClientVersionGuard() {
         /* ignore */
       }
 
-      window.localStorage.setItem(STORAGE_KEY, DASHBOARD_CLIENT_VERSION)
+      window.localStorage.setItem(STORAGE_KEY, versionKey)
       window.location.reload()
     }
 
     void run()
-  }, [])
+  }, [buildId])
 
   return null
 }
