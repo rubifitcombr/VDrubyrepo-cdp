@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
-import { hasFeature } from '@/lib/plan'
+import { hasAnyMasterModule, hasFeature } from '@/lib/plan'
 import { readStorePlano } from '@/lib/store-columns'
 import { getUser } from '@/services/auth.server'
 import { getStoreByUser } from '@/services/store.server'
@@ -46,10 +46,7 @@ export default async function MasterHubPage() {
   }
 
   const plan = effectiveDashboardPlan(user.email, readStorePlano(store as Record<string, unknown>))
-  const isMaster =
-    hasFeature(plan, 'whatsapp_ai') ||
-    hasFeature(plan, 'loyalty') ||
-    hasFeature(plan, 'marketing')
+  const isMaster = hasAnyMasterModule(plan)
 
   if (!isMaster) {
     redirect('/dashboard/upgrade?feature=whatsapp_ai')

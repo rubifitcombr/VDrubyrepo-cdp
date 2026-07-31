@@ -24,6 +24,16 @@ const nextConfig: NextConfig = {
       { source: '/recuperar-senha', destination: '/login/recuperar', permanent: true },
       { source: '/redefinir-senha', destination: '/login/redefinir-senha', permanent: true },
       { source: '/cadastro', destination: '/register', permanent: true },
+      {
+        source: '/dashboard/master/recuperador',
+        destination: '/dashboard/master/marketing',
+        permanent: true,
+      },
+      {
+        source: '/dashboard/master/recuperador/:path*',
+        destination: '/dashboard/master/marketing',
+        permanent: true,
+      },
     ]
   },
   async rewrites() {

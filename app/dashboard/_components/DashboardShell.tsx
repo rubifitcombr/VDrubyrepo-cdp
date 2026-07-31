@@ -203,6 +203,14 @@ const nav: Array<{
     administrationOnly: true,
   },
   {
+    href: '/dashboard/master',
+    label: 'Hub Master',
+    icon: IconMegaphone,
+    menuKey: 'master_hub',
+    administrationOnly: true,
+    section: 'Master',
+  },
+  {
     href: '/dashboard/master/whatsapp',
     label: 'WhatsApp & robô',
     icon: IconChat,
@@ -216,6 +224,7 @@ const nav: Array<{
     icon: IconGift,
     menuKey: 'master_fidelidade',
     administrationOnly: true,
+    section: 'Master',
   },
   {
     href: '/dashboard/master/marketing',
@@ -223,6 +232,7 @@ const nav: Array<{
     icon: IconMegaphone,
     menuKey: 'master_marketing',
     administrationOnly: true,
+    section: 'Master',
   },
   {
     href: '/dashboard/assinatura',
@@ -325,7 +335,9 @@ function DashboardNavLinks({
             : menuKey === 'produtos'
               ? pathname.startsWith('/dashboard/menu') ||
                 pathname.startsWith('/dashboard/inventory')
-              : pathname.startsWith(href)
+              : menuKey === 'master_hub'
+                ? pathname === '/dashboard/master'
+                : pathname.startsWith(href)
         const quietInactive = !!quiet && !active
 
         const linkSidebar =

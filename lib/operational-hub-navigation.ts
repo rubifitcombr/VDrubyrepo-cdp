@@ -47,6 +47,7 @@ const ADMINISTRATION_MENU_KEYS: readonly DashboardMenuKey[] = [
   'master_whatsapp',
   'master_fidelidade',
   'master_marketing',
+  'master_hub',
 ]
 
 const HUB_CONTEXT_MENU_KEYS: Record<

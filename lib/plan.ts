@@ -221,8 +221,18 @@ export function merchantEntregadoresEnabled(plan: Plan): boolean {
   return planTier(plan) >= planTier('GROWTH')
 }
 
-export function hasFeature(plan: Plan, feature: Feature) {
-  return !!PLAN_FEATURES[plan]?.[feature]
+export function hasFeature(plan: Plan, feature: Feature | 'recovery') {
+  const key = feature === 'recovery' ? 'marketing' : feature
+  return !!PLAN_FEATURES[plan]?.[key]
+}
+
+/** Qualquer módulo do plano Master (WhatsApp, fidelidade ou marketing). */
+export function hasAnyMasterModule(plan: Plan): boolean {
+  return (
+    hasFeature(plan, 'whatsapp_ai') ||
+    hasFeature(plan, 'loyalty') ||
+    hasFeature(plan, 'marketing')
+  )
 }
 
 /** Plano mínimo para badge / upgrade (itens com `lock` no menu). */

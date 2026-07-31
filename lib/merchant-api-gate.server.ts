@@ -149,19 +149,20 @@ export function gateMerchantScaleIntegration(
 export function gateMerchantMasterFeature(
   store: Record<string, unknown>,
   userEmail: string | null | undefined,
-  feature: 'whatsapp_ai' | 'loyalty' | 'marketing'
+  feature: 'whatsapp_ai' | 'loyalty' | 'marketing' | 'recovery'
 ): NextResponse | null {
+  const normalized = feature === 'recovery' ? 'marketing' : feature
   const plan = effectivePlanFromStore(store, userEmail)
-  if (hasFeature(plan, feature)) return null
+  if (hasFeature(plan, normalized)) return null
 
-  const labels: Record<typeof feature, string> = {
+  const labels: Record<'whatsapp_ai' | 'loyalty' | 'marketing', string> = {
     whatsapp_ai: 'WhatsApp oficial e robô de IA',
     loyalty: 'Programa de fidelidade',
     marketing: 'Marketing WhatsApp',
   }
   return NextResponse.json(
     {
-      error: `${labels[feature]} está disponível no plano Master.`,
+      error: `${labels[normalized]} está disponível no plano Master.`,
     },
     { status: 403 }
   )

@@ -1,6 +1,6 @@
 import type { DashboardMenuKey } from '@/lib/dashboard-menu-types'
 export type { DashboardMenuKey } from '@/lib/dashboard-menu-types'
-import { hasFeature, merchantEntregadoresEnabled, type Plan } from '@/lib/plan'
+import { hasAnyMasterModule, hasFeature, merchantEntregadoresEnabled, type Plan } from '@/lib/plan'
 import type { MerchantOperationMode } from '@/lib/merchant-operation-mode'
 import { menuKeysForOperationAndPlan } from '@/lib/merchant-menu-matrix'
 import { hasScaleIntegration } from '@/lib/scale/gate'
@@ -84,6 +84,7 @@ const MENU_KEY_TO_PATH_PREFIX: Record<DashboardMenuKey, string> = {
   master_whatsapp: '/dashboard/master/whatsapp',
   master_fidelidade: '/dashboard/master/fidelidade',
   master_marketing: '/dashboard/master/marketing',
+  master_hub: '/dashboard/master',
 }
 
 function planSlug(plan: Plan): 'start' | 'growth' | 'pro' {
@@ -145,6 +146,9 @@ export function menuKeysForMerchant(
   if (hasFeature(plan, 'whatsapp_ai')) set.add('master_whatsapp')
   if (hasFeature(plan, 'loyalty')) set.add('master_fidelidade')
   if (hasFeature(plan, 'marketing')) set.add('master_marketing')
+  if (hasFeature(plan, 'whatsapp_ai') || hasFeature(plan, 'loyalty') || hasFeature(plan, 'marketing')) {
+    set.add('master_hub')
+  }
   return set
 }
 
@@ -163,11 +167,7 @@ function pathAllowedWithMenuKeys(
   // Vyria Fiscal é add-on (gated por status no banco), não por plano.
   if (n === '/dashboard/fiscal' || n.startsWith('/dashboard/fiscal/')) return true
   if (n === '/dashboard/master' || n.startsWith('/dashboard/master/')) {
-    return (
-      hasFeature(plan, 'whatsapp_ai') ||
-      hasFeature(plan, 'loyalty') ||
-      hasFeature(plan, 'marketing')
-    )
+    return hasAnyMasterModule(plan)
   }
 
   if (n.startsWith('/dashboard/products')) {
