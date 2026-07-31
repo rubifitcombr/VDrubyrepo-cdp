@@ -218,10 +218,10 @@ const nav: Array<{
     administrationOnly: true,
   },
   {
-    href: '/dashboard/master/recuperador',
-    label: 'Recuperador',
+    href: '/dashboard/master/marketing',
+    label: 'Marketing',
     icon: IconMegaphone,
-    menuKey: 'master_recuperador',
+    menuKey: 'master_marketing',
     administrationOnly: true,
   },
   {

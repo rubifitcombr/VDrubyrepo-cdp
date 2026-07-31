@@ -78,7 +78,7 @@ export async function registerWhatsAppInboundContact(
   )
 }
 
-/** Actualiza último envio outbound (recuperador, robô, notificações). */
+/** Actualiza último envio outbound (marketing, robô, notificações). */
 export async function touchWhatsAppOutboundContact(
   db: SupabaseClient,
   storeId: string,

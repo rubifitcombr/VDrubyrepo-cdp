@@ -83,7 +83,7 @@ const MENU_KEY_TO_PATH_PREFIX: Record<DashboardMenuKey, string> = {
   fiscal: '/dashboard/fiscal',
   master_whatsapp: '/dashboard/master/whatsapp',
   master_fidelidade: '/dashboard/master/fidelidade',
-  master_recuperador: '/dashboard/master/recuperador',
+  master_marketing: '/dashboard/master/marketing',
 }
 
 function planSlug(plan: Plan): 'start' | 'growth' | 'pro' {
@@ -144,7 +144,7 @@ export function menuKeysForMerchant(
   }
   if (hasFeature(plan, 'whatsapp_ai')) set.add('master_whatsapp')
   if (hasFeature(plan, 'loyalty')) set.add('master_fidelidade')
-  if (hasFeature(plan, 'recovery')) set.add('master_recuperador')
+  if (hasFeature(plan, 'marketing')) set.add('master_marketing')
   return set
 }
 
@@ -166,7 +166,7 @@ function pathAllowedWithMenuKeys(
     return (
       hasFeature(plan, 'whatsapp_ai') ||
       hasFeature(plan, 'loyalty') ||
-      hasFeature(plan, 'recovery')
+      hasFeature(plan, 'marketing')
     )
   }
 

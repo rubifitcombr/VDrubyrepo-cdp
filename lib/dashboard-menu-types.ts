@@ -20,4 +20,4 @@ export type DashboardMenuKey =
   | 'fiscal'
   | 'master_whatsapp'
   | 'master_fidelidade'
-  | 'master_recuperador'
+  | 'master_marketing'

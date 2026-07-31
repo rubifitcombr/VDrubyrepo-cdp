@@ -141,3 +141,49 @@ export async function sendWhatsAppTextMessage(input: {
   }
   return { ok: true, messageId }
 }
+
+export async function sendWhatsAppImageMessage(input: {
+  phoneNumberId: string
+  accessToken: string
+  toE164: string
+  imageUrl: string
+  caption?: string
+}): Promise<
+  | { ok: true; messageId: string }
+  | { ok: false; error: string }
+> {
+  const to = input.toE164.replace(/\D/g, '')
+  const url = `${GRAPH_BASE}/${encodeURIComponent(input.phoneNumberId)}/messages`
+  const image: Record<string, string> = { link: input.imageUrl.trim() }
+  const caption = input.caption?.trim()
+  if (caption) image.caption = caption.slice(0, 1024)
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${input.accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to,
+      type: 'image',
+      image,
+    }),
+    cache: 'no-store',
+  })
+  const json = (await res.json().catch(() => ({}))) as Record<string, unknown>
+  if (!res.ok) {
+    const err =
+      (json.error as { message?: string } | undefined)?.message ||
+      `Meta API HTTP ${res.status}`
+    return { ok: false, error: err }
+  }
+  const messages = json.messages as Array<{ id?: string }> | undefined
+  const messageId = messages?.[0]?.id
+  if (!messageId) {
+    return { ok: false, error: 'Resposta da Meta sem message id.' }
+  }
+  return { ok: true, messageId }
+}

@@ -93,6 +93,37 @@ export async function uploadStorefrontBanner(
   return { publicUrl, error: null }
 }
 
+/** Imagem de campanha marketing WhatsApp (bucket público product-images). */
+export async function uploadMarketingCampaignImage(
+  storeId: string,
+  file: File
+): Promise<{ publicUrl: string | null; error: Error | null }> {
+  const supabase = createClient()
+  const toUpload = await prepareImageFile(file)
+  const ext =
+    toUpload.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') ||
+    'jpg'
+  const safeExt = ['jpg', 'jpeg', 'png', 'webp'].includes(ext) ? ext : 'jpg'
+  const path = `${storeId}/marketing-${crypto.randomUUID()}.${safeExt}`
+
+  const { error: upErr } = await supabase.storage
+    .from(BUCKET)
+    .upload(path, toUpload, {
+      contentType: contentTypeForUpload(toUpload, safeExt),
+      cacheControl: '3600',
+      upsert: false,
+    })
+
+  if (upErr) {
+    return { publicUrl: null, error: new Error(upErr.message) }
+  }
+
+  const { data } = supabase.storage.from(BUCKET).getPublicUrl(path)
+  const publicUrl =
+    buildSupabasePublicStorageUrl(path) ?? data.publicUrl ?? null
+  return { publicUrl, error: null }
+}
+
 /** Logotipo da loja (painel + cardápio público). */
 export async function uploadStoreLogo(
   storeId: string,

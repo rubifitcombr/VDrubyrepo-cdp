@@ -45,7 +45,6 @@ import {
   redeemLoyaltyPointsForCheckout,
 } from '@/services/loyalty.server'
 import { syncWhatsAppContactFromOrder } from '@/services/whatsapp-contacts.server'
-import { trackRecoveryConversionForOrder } from '@/services/recovery.server'
 import { resolveRedeemPoints } from '@/lib/loyalty/utils'
 import {
   MENU_PRODUCT_SELECT,
@@ -585,13 +584,6 @@ export async function POST(req: NextRequest) {
         order_at: new Date().toISOString(),
       }).catch((e) => console.warn('[whatsapp contact sync]', e))
     }
-
-    void trackRecoveryConversionForOrder(checkoutDb, {
-      store_id: String(storeRow.id),
-      order_id: String(order.id),
-      customer_phone: customerPhone,
-      order_total: total,
-    }).catch((e) => console.warn('[recovery conversion]', e))
 
     if (loyaltyRedeemPoints > 0) {
       try {

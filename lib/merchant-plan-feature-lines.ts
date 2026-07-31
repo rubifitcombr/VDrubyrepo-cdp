@@ -32,7 +32,7 @@ const KEY_LABEL: Record<DashboardMenuKey, string> = {
   assinatura: 'Assinatura e faturação',
   master_whatsapp: 'WhatsApp oficial e robô IA',
   master_fidelidade: 'Programa de fidelidade',
-  master_recuperador: 'Recuperador de clientes',
+  master_marketing: 'Marketing WhatsApp',
 }
 
 /** Ordem estável (alinhada ao sidebar) para listagens na página de planos. */
@@ -57,7 +57,7 @@ const KEY_ORDER: DashboardMenuKey[] = [
   'assinatura',
   'master_whatsapp',
   'master_fidelidade',
-  'master_recuperador',
+  'master_marketing',
 ]
 
 /**

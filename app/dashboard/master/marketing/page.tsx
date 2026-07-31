@@ -1,13 +1,13 @@
 import { redirect } from 'next/navigation'
 import { MasterModuleHeader } from '@/app/dashboard/master/_components/MasterModuleHeader'
-import { RecuperadorMasterClient } from './_components/RecuperadorMasterClient'
+import { MarketingMasterClient } from './_components/MarketingMasterClient'
 import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
 import { hasFeature } from '@/lib/plan'
 import { readStorePlano } from '@/lib/store-columns'
 import { getUser } from '@/services/auth.server'
 import { getStoreByUser } from '@/services/store.server'
 
-export default async function MasterRecuperadorPage() {
+export default async function MasterMarketingPage() {
   const user = await getUser()
   if (!user) redirect('/login')
 
@@ -21,19 +21,21 @@ export default async function MasterRecuperadorPage() {
   }
 
   const plan = effectiveDashboardPlan(user.email, readStorePlano(store as Record<string, unknown>))
-  if (!hasFeature(plan, 'recovery')) {
-    redirect('/dashboard/upgrade?feature=recovery')
+  if (!hasFeature(plan, 'marketing')) {
+    redirect('/dashboard/upgrade?feature=marketing')
   }
+
+  const storeId = String((store as { id: string }).id)
 
   return (
     <div className="mx-auto w-full max-w-4xl">
       <MasterModuleHeader
-        moduleLabel="Recuperador"
-        title="Recuperador de clientes"
-        description="Campanhas WhatsApp para clientes inactivos com relatório de conversão."
+        moduleLabel="Marketing"
+        title="Marketing WhatsApp"
+        description="Campanhas agendadas com imagem e texto para os contactos salvos (máx. 50 por campanha)."
       />
       <div className="mt-8">
-        <RecuperadorMasterClient />
+        <MarketingMasterClient storeId={storeId} />
       </div>
     </div>
   )

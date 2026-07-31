@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Checklist de release — plano Master (WhatsApp, fidelidade, recuperador).
+ * Checklist de release — plano Master (WhatsApp, fidelidade, marketing).
  * Uso: node scripts/test-master-release.mjs
  */
 import { readFileSync } from 'fs'
@@ -99,9 +99,10 @@ async function checkDb() {
     'store_loyalty_config',
     'loyalty_accounts',
     'loyalty_ledger',
-    'store_recovery_config',
-    'recovery_campaigns',
-    'recovery_sends',
+    'store_whatsapp_contacts',
+    'store_marketing_config',
+    'marketing_campaigns',
+    'marketing_sends',
   ]
 
   for (const t of tables) {
@@ -178,7 +179,7 @@ async function checkApiAuth() {
   const endpoints = [
     '/api/master/whatsapp/config',
     '/api/master/loyalty/config',
-    '/api/master/recovery/config',
+    '/api/master/marketing/config',
     '/api/master/whatsapp/embedded-config',
   ]
   for (const path of endpoints) {
@@ -197,7 +198,7 @@ async function checkPages() {
     '/dashboard/master',
     '/dashboard/master/whatsapp',
     '/dashboard/master/fidelidade',
-    '/dashboard/master/recuperador',
+    '/dashboard/master/marketing',
   ]
   for (const path of pages) {
     try {

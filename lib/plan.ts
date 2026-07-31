@@ -39,8 +39,8 @@ export type Feature =
   | 'whatsapp_ai'
   /** Programa de fidelidade — exclusivo Master. */
   | 'loyalty'
-  /** Recuperador de clientes — exclusivo Master. */
-  | 'recovery'
+  /** Campanhas WhatsApp (texto + imagem) — exclusivo Master. */
+  | 'marketing'
 
 const PLAN_FEATURES: Record<Plan, Record<Feature, boolean>> = {
   START: {
@@ -64,7 +64,7 @@ const PLAN_FEATURES: Record<Plan, Record<Feature, boolean>> = {
     scale_integration: false,
     whatsapp_ai: false,
     loyalty: false,
-    recovery: false,
+    marketing: false,
   },
   GROWTH: {
     dashboard: true,
@@ -87,7 +87,7 @@ const PLAN_FEATURES: Record<Plan, Record<Feature, boolean>> = {
     scale_integration: false,
     whatsapp_ai: false,
     loyalty: false,
-    recovery: false,
+    marketing: false,
   },
   PRO: {
     dashboard: true,
@@ -110,7 +110,7 @@ const PLAN_FEATURES: Record<Plan, Record<Feature, boolean>> = {
     scale_integration: true,
     whatsapp_ai: false,
     loyalty: false,
-    recovery: false,
+    marketing: false,
   },
   MASTER: {
     dashboard: true,
@@ -133,7 +133,7 @@ const PLAN_FEATURES: Record<Plan, Record<Feature, boolean>> = {
     scale_integration: true,
     whatsapp_ai: true,
     loyalty: true,
-    recovery: true,
+    marketing: true,
   },
 }
 

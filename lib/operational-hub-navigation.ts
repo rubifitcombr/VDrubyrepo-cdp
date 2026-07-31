@@ -46,7 +46,7 @@ const ADMINISTRATION_MENU_KEYS: readonly DashboardMenuKey[] = [
   'fiscal',
   'master_whatsapp',
   'master_fidelidade',
-  'master_recuperador',
+  'master_marketing',
 ]
 
 const HUB_CONTEXT_MENU_KEYS: Record<

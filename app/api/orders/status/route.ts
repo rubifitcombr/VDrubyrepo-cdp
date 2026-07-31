@@ -9,7 +9,6 @@ import {
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
 import { tryAutoCancelNfceForOrder, tryAutoEmitNfceForOrder } from '@/services/fiscal'
 import { triggerLoyaltyEarnForDeliveredOrder } from '@/services/loyalty.server'
-import { trackRecoveryConversionForOrder } from '@/services/recovery.server'
 import { notifyOrderWhatsAppStatusChange } from '@/services/order-whatsapp-notifications.server'
 
 export const dynamic = 'force-dynamic'
@@ -159,12 +158,6 @@ export async function POST(req: NextRequest) {
       void triggerLoyaltyEarnForDeliveredOrder(supabase, storeId, orderId).catch((e) =>
         console.warn('[loyalty earn]', e)
       )
-      void trackRecoveryConversionForOrder(supabase, {
-        store_id: storeId,
-        order_id: orderId,
-        customer_phone: order.customer_phone as string | null,
-        order_total: Number(order.total ?? 0),
-      }).catch((e) => console.warn('[recovery conversion]', e))
       return NextResponse.json({ ok: true, fiscal })
     }
 

@@ -9,6 +9,7 @@ import {
 } from '@/services/whatsapp-config.server'
 import { handleInboundWhatsAppCustomerMessage } from '@/services/whatsapp-inbound.server'
 import { registerWhatsAppInboundContact } from '@/services/whatsapp-contacts.server'
+import { handleMarketingOptOutFromInbound } from '@/services/marketing.server'
 import { normalizePhoneE164 } from '@/services/loyalty.server'
 
 export function verifyMetaWebhookSignature(
@@ -128,7 +129,15 @@ export async function processWhatsAppWebhook(
           }).catch((e) => console.warn('[whatsapp contact]', e))
 
           if (bodyText) {
-            await handleInboundWhatsAppCustomerMessage(db, storeId, from, bodyText)
+            const optedOut = await handleMarketingOptOutFromInbound(
+              db,
+              storeId,
+              from,
+              bodyText
+            ).catch(() => false)
+            if (!optedOut) {
+              await handleInboundWhatsAppCustomerMessage(db, storeId, from, bodyText)
+            }
           }
         }
       }

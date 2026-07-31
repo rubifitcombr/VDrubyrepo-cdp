@@ -23,10 +23,11 @@ const MODULES = [
     ready: true,
   },
   {
-    href: '/dashboard/master/recuperador',
-    title: 'Recuperador de clientes',
-    description: 'Campanhas para clientes inativos com relatório de conversão.',
-    feature: 'recovery' as const,
+    href: '/dashboard/master/marketing',
+    title: 'Marketing WhatsApp',
+    description:
+      'Campanhas agendadas com imagem e texto para contactos salvos (máx. 50 por envio).',
+    feature: 'marketing' as const,
     ready: true,
   },
 ]
@@ -48,7 +49,7 @@ export default async function MasterHubPage() {
   const isMaster =
     hasFeature(plan, 'whatsapp_ai') ||
     hasFeature(plan, 'loyalty') ||
-    hasFeature(plan, 'recovery')
+    hasFeature(plan, 'marketing')
 
   if (!isMaster) {
     redirect('/dashboard/upgrade?feature=whatsapp_ai')
@@ -64,8 +65,7 @@ export default async function MasterHubPage() {
           Hub Master
         </h1>
         <p className="mt-2 max-w-2xl text-sm text-vyria-navy-muted">
-          WhatsApp oficial, fidelidade e recuperação de clientes — cada módulo com painel
-          dedicado.
+          WhatsApp oficial, fidelidade e marketing — cada módulo com painel dedicado.
         </p>
       </header>
 

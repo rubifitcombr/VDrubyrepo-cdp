@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
-import { runRecoveryDispatchJob } from '@/jobs/recovery-dispatch.server'
+import { runMarketingDispatchJob } from '@/jobs/marketing-dispatch.server'
 
 export const dynamic = 'force-dynamic'
 
-/** Diário — envia recuperação automática para clientes inactivos (plano Master). */
+/** A cada 5 min — dispara campanhas de marketing agendadas (plano Master). */
 export async function GET(req: Request) {
   const secret = process.env.CRON_SECRET?.trim()
   const auth = req.headers.get('authorization') || ''
@@ -14,11 +14,11 @@ export async function GET(req: Request) {
   }
 
   try {
-    const result = await runRecoveryDispatchJob()
+    const result = await runMarketingDispatchJob()
     return NextResponse.json({ ok: true, ...result })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Erro'
-    console.error('[cron recovery-dispatch]', e)
+    console.error('[cron marketing-dispatch]', e)
     return NextResponse.json({ error: msg }, { status: 500 })
   }
 }

@@ -40,8 +40,8 @@ const FEATURE_LABEL: Record<string, { title: string; minPlan: string }> = {
     title: 'Programa de fidelidade e cashback',
     minPlan: 'Master',
   },
-  recovery: {
-    title: 'Recuperador de clientes inactivos',
+  marketing: {
+    title: 'Marketing WhatsApp (campanhas imagem + texto)',
     minPlan: 'Master',
   },
 }
