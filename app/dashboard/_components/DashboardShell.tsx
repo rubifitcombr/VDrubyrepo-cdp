@@ -210,7 +210,12 @@ function DashboardNavLinks({
 
   return (
     <nav className={navClass} aria-label="Navegação do painel">
-      {items.map(({ href, label, icon: Icon, quiet, menuKey, section }) => {
+      {items.map(({ href, label, icon: Icon, quiet, menuKey, section }, index) => {
+        const prevSection = index > 0 ? items[index - 1]?.section : undefined
+        const showSection =
+          Boolean(section) &&
+          layout !== 'bottom' &&
+          section !== prevSection
         const active =
           href === '/dashboard'
             ? pathname === '/dashboard'
@@ -251,7 +256,7 @@ function DashboardNavLinks({
 
         return (
           <Fragment key={href}>
-            {section && layout !== 'bottom' ? (
+            {showSection ? (
               <p className="px-3 pt-3 text-[10px] font-bold uppercase tracking-[0.18em] text-white/35">
                 {section}
               </p>
@@ -590,6 +595,7 @@ export function DashboardShell({
                     plan={plan}
                     notificationCount={notificationCount}
                     slugChannelSourcesOnly={slugChannelSourcesOnly}
+                    hubContext={hubContext}
                   />
                 </div>
               </div>

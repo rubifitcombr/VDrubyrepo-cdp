@@ -39,8 +39,16 @@ import {
 } from '@/lib/garcom-pin'
 import { GarcomSessionBadge } from '@/app/dashboard/garcom/_components/GarcomSalaoPinGate'
 import { GarcomMesaComandasPanel, comandaListSubtitle } from '@/app/dashboard/garcom/_components/GarcomMesaComandasPanel'
+import { GarcomProductAddonModal } from '@/app/dashboard/garcom/_components/GarcomProductAddonModal'
 import { ComandaSplitPaymentModal } from '@/app/dashboard/caixa/_components/ComandaSplitPaymentModal'
 import { PdvWeighModal } from '@/app/dashboard/pdv/_components/PdvWeighModal'
+import {
+  addonTotalFromPicks,
+  buildProductLineName,
+  type ProductAddonGroup,
+  type ProductAddonPick,
+} from '@/lib/product-addon-line'
+import { fetchProductAddonTree } from '@/services/product-addons'
 import { parseWeighableBarcode } from '@/lib/scale/weighable-barcode.client'
 import { useBarcodeScanner } from '@/lib/use-barcode-scanner'
 import type { OrderItemUnitType } from '@/lib/scale/types'
@@ -81,6 +89,7 @@ type CartLine = {
   quantity: number
   unitPrice: number
   unitType: OrderItemUnitType
+  addons?: ProductAddonPick[]
 }
 
 function newCartLineId(): string {
@@ -114,7 +123,6 @@ const WAITER_OPEN_STATUSES = new Set([
   'preparing',
   'ready',
   'confirmed',
-  'delivered',
 ])
 
 function escapeHtml(raw: string): string {
@@ -172,6 +180,16 @@ function isOpenSalonMapOrder(
   )
 }
 
+function filterOpenSalonMapOrders(
+  serverRows: StoreOrderRow[],
+  configuredTables: StoreTableDTO[],
+  sortOpenOrders: (rows: StoreOrderRow[]) => StoreOrderRow[]
+): StoreOrderRow[] {
+  return sortOpenOrders(
+    serverRows.filter((o) => isOpenSalonMapOrder(o, configuredTables))
+  )
+}
+
 function orderSourceLabel(source: string | null | undefined): string {
   const s = String(source ?? '').trim().toLowerCase()
   if (s === 'autoatendimento') return 'QR'
@@ -186,7 +204,11 @@ function ordersOnTable(
   configuredTables: StoreTableDTO[]
 ): StoreOrderRow[] {
   return openOrders
-    .filter((o) => orderMatchesSalonTable(o, tableName, amb, configuredTables))
+    .filter(
+      (o) =>
+        isOpenSalonMapOrder(o, configuredTables) &&
+        orderMatchesSalonTable(o, tableName, amb, configuredTables)
+    )
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 }
 
@@ -314,6 +336,14 @@ export function WaiterClient({
   const [notes, setNotes] = useState('')
   const [cart, setCart] = useState<CartLine[]>([])
   const [weighProduct, setWeighProduct] = useState<MenuProductRow | null>(null)
+  const [addonModal, setAddonModal] = useState<{
+    product: MenuProductRow
+    groups: ProductAddonGroup[]
+  } | null>(null)
+  const [addonLoadingProductId, setAddonLoadingProductId] = useState<string | null>(
+    null
+  )
+  const addonTreeCacheRef = useRef<Map<string, ProductAddonGroup[]>>(new Map())
   const [scanHint, setScanHint] = useState<string | null>(null)
 
   const resolvedScaleConfig: PdvScaleContext = scaleConfig ?? {
@@ -440,16 +470,12 @@ export function WaiterClient({
       .eq('store_id', storeId)
       .in('source', ['waiter', 'autoatendimento'])
       .in('status', Array.from(WAITER_OPEN_STATUSES))
+      .is('caixa_turno_id', null)
       .order('created_at', { ascending: false })
 
     if (error || !data) return
-    setOpenOrders(
-      sortOpenOrders(
-        (data as Record<string, unknown>[])
-          .map(mapStoreOrderRow)
-          .filter((o) => isOpenSalonMapOrder(o, tables))
-      )
-    )
+    const mapped = (data as Record<string, unknown>[]).map(mapStoreOrderRow)
+    setOpenOrders(filterOpenSalonMapOrders(mapped, tables, sortOpenOrders))
   }, [storeId, sortOpenOrders, tables])
 
   const pullTables = useCallback(async () => {
@@ -480,14 +506,7 @@ export function WaiterClient({
   }, [storeId])
 
   useEffect(() => {
-    setOpenOrders((prev) => {
-      const byId = new Map<string, StoreOrderRow>()
-      for (const o of initialOpenOrders) byId.set(o.id, o)
-      for (const o of prev) {
-        if (isOpenSalonMapOrder(o, tables)) byId.set(o.id, o)
-      }
-      return sortOpenOrders(Array.from(byId.values()))
-    })
+    setOpenOrders(filterOpenSalonMapOrders(initialOpenOrders, tables, sortOpenOrders))
   }, [initialOpenOrders, sortOpenOrders, tables])
 
   useEffect(() => {
@@ -753,24 +772,15 @@ export function WaiterClient({
     if (mobile) setTableActionSheetOpen(true)
   }
 
-  function addProduct(product: MenuProductRow) {
-    if (isOutOfStock(product.id)) return
-    if (isSoldByWeight(product)) {
-      if (!scaleIntegrationEnabled) {
-        setError('Produtos por peso exigem o plano Pro em operação presencial ou híbrida.')
-        return
-      }
-      if (barcodeMode) {
-        setError('Escaneia a etiqueta com o leitor de código de barras.')
-        setScanHint('Modo etiqueta — usa o leitor USB.')
-        return
-      }
-      setWeighProduct(product)
-      return
-    }
+  function addProductDirect(product: MenuProductRow) {
     const price = effectiveProductPrice(product, 'dine_in')
     setCart((prev) => {
-      const i = prev.findIndex((x) => x.productId === product.id && x.unitType === 'unit')
+      const i = prev.findIndex(
+        (x) =>
+          x.productId === product.id &&
+          x.unitType === 'unit' &&
+          !x.addons?.length
+      )
       if (i >= 0) {
         const next = [...prev]
         next[i] = { ...next[i], quantity: next[i].quantity + 1 }
@@ -790,6 +800,68 @@ export function WaiterClient({
     })
     setError(null)
     setSuccess(null)
+  }
+
+  function addProductWithAddons(
+    product: MenuProductRow,
+    picks: ProductAddonPick[],
+    lineNotes: string
+  ) {
+    const basePrice = effectiveProductPrice(product, 'dine_in')
+    const unitPrice = basePrice + addonTotalFromPicks(picks)
+    const name = buildProductLineName(product.name, picks, lineNotes)
+    setCart((prev) => [
+      ...prev,
+      {
+        lineId: newCartLineId(),
+        productId: product.id,
+        name,
+        quantity: 1,
+        unitPrice,
+        unitType: 'unit',
+        addons: picks.length ? picks : undefined,
+      },
+    ])
+    setError(null)
+    setSuccess(null)
+  }
+
+  async function addProduct(product: MenuProductRow) {
+    if (isOutOfStock(product.id)) return
+    if (isSoldByWeight(product)) {
+      if (!scaleIntegrationEnabled) {
+        setError('Produtos por peso exigem o plano Pro em operação presencial ou híbrida.')
+        return
+      }
+      if (barcodeMode) {
+        setError('Escaneia a etiqueta com o leitor de código de barras.')
+        setScanHint('Modo etiqueta — usa o leitor USB.')
+        return
+      }
+      setWeighProduct(product)
+      return
+    }
+
+    let groups = addonTreeCacheRef.current.get(product.id)
+    if (!groups) {
+      setAddonLoadingProductId(product.id)
+      try {
+        groups = await fetchProductAddonTree(product.id)
+        addonTreeCacheRef.current.set(product.id, groups)
+      } catch {
+        groups = []
+        addonTreeCacheRef.current.set(product.id, [])
+      } finally {
+        setAddonLoadingProductId(null)
+      }
+    }
+
+    if (groups.length > 0) {
+      setAddonModal({ product, groups })
+      return
+    }
+
+    addProductDirect(product)
   }
 
   function addWeighableLine(product: MenuProductRow, weightKg: number) {
@@ -844,7 +916,12 @@ export function WaiterClient({
 
   function removeProductUnit(productId: string) {
     setCart((prev) => {
-      const i = prev.findIndex((x) => x.productId === productId && x.unitType === 'unit')
+      const i = prev.findIndex(
+        (x) =>
+          x.productId === productId &&
+          x.unitType === 'unit' &&
+          !x.addons?.length
+      )
       if (i < 0) return prev
       const next = [...prev]
       const q = next[i].quantity - 1
@@ -1235,6 +1312,7 @@ export function WaiterClient({
       }
       setOpenOrders((prev) => prev.filter((x) => x.id !== order.id))
       notifyStoreOrdersChanged(storeId, { eventType: 'UPDATE' })
+      void pullOpenOrders()
       returnToTableMap()
       setSuccess(
         mesaCloseMode === 'immediate'
@@ -1764,13 +1842,14 @@ export function WaiterClient({
               {filteredProducts.map((p) => {
                 const price = effectiveProductPrice(p, 'dine_in')
                 const oos = isOutOfStock(p.id)
+                const loadingAddons = addonLoadingProductId === p.id
                 const qty = cartQtyByProduct[p.id] ?? 0
                 return (
                   <li key={p.id}>
                     <button
                       type="button"
-                      disabled={oos}
-                      onClick={() => addProduct(p)}
+                      disabled={oos || loadingAddons}
+                      onClick={() => void addProduct(p)}
                       className={`relative flex w-full flex-col rounded-lg border p-2 text-left transition duration-150 ${
                         oos
                           ? 'cursor-not-allowed border-[var(--card-border)] bg-white opacity-40'
@@ -1791,7 +1870,7 @@ export function WaiterClient({
                         {(p.category || '').trim() || 'Sem categoria'}
                       </span>
                       <span className="mt-1 text-[13px] font-semibold text-[var(--dash-primary)]">
-                        {money.format(price)}
+                        {loadingAddons ? 'A carregar…' : money.format(price)}
                       </span>
                       {oos ? (
                         <span className="mt-1 inline-flex w-fit rounded bg-zinc-200 px-1.5 py-0.5 text-[9px] font-bold uppercase text-zinc-600">
@@ -2536,6 +2615,7 @@ export function WaiterClient({
                 {filteredProducts.map((p) => {
                   const price = effectiveProductPrice(p, 'dine_in')
                   const oos = isOutOfStock(p.id)
+                  const loadingAddons = addonLoadingProductId === p.id
                   const qty = cartQtyByProduct[p.id] ?? 0
                   return (
                     <li key={p.id}>
@@ -2550,8 +2630,8 @@ export function WaiterClient({
                       >
                         <button
                           type="button"
-                          disabled={oos}
-                          onClick={() => addProduct(p)}
+                          disabled={oos || loadingAddons}
+                          onClick={() => void addProduct(p)}
                           className={`flex w-full flex-col text-left ${oos ? 'cursor-not-allowed' : 'active:scale-[0.98]'}`}
                         >
                           {qty > 0 ? (
@@ -2566,7 +2646,7 @@ export function WaiterClient({
                             {(p.category || '').trim() || 'Sem categoria'}
                           </span>
                           <span className="mt-1 font-semibold text-[var(--dash-primary)]">
-                            {money.format(price)}
+                            {loadingAddons ? 'A carregar…' : money.format(price)}
                           </span>
                           {oos ? (
                             <span className="mt-1 inline-flex w-fit rounded bg-zinc-200 px-1.5 py-0.5 text-[9px] font-bold uppercase text-zinc-600">
@@ -2589,7 +2669,7 @@ export function WaiterClient({
                             </span>
                             <button
                               type="button"
-                              onClick={() => addProduct(p)}
+                              onClick={() => void addProduct(p)}
                               className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--dash-primary)] text-lg font-bold leading-none text-white active:scale-95"
                               aria-label={`Adicionar mais um ${p.name}`}
                             >
@@ -2761,6 +2841,18 @@ export function WaiterClient({
           setWeighProduct(null)
         }}
       />
+
+      {addonModal ? (
+        <GarcomProductAddonModal
+          product={addonModal.product}
+          groups={addonModal.groups}
+          onClose={() => setAddonModal(null)}
+          onConfirm={(picks, lineNotes) => {
+            addProductWithAddons(addonModal.product, picks, lineNotes)
+            setAddonModal(null)
+          }}
+        />
+      ) : null}
     </div>
   )
 }

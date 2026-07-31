@@ -26,10 +26,13 @@ export function isOpenTableComanda(order: {
   source?: string | null
   notes?: string | null
   delivery_address?: string | null
+  caixa_turno_id?: string | null
 }): boolean {
   const status = String(order.status ?? '').trim().toLowerCase()
   if (status === 'cancelled') return false
   if (!isTableSalonOrder(order)) return false
+  if (String(order.caixa_turno_id ?? '').trim()) return false
+  if (notesIndicateWaiterReleasedToCaixa(order.notes)) return false
   return !orderPaymentRegisteredInCaixa(order.notes)
 }
 
@@ -53,35 +56,36 @@ export function isPresencialNaMesaOrder(
     source?: string | null
     notes?: string | null
     delivery_address?: string | null
+    caixa_turno_id?: string | null
   },
   configuredTables?: SalonMapTableRef[]
 ): boolean {
   if (!isOpenTableComanda(order)) return false
-  if (notesIndicateWaiterReleasedToCaixa(order.notes)) return false
   if (!mapsToSalonLayout(order, configuredTables)) return false
   const status = String(order.status ?? '').trim().toLowerCase()
   return MESA_SERVED_STATUSES.has(status)
 }
 
-/** Comanda de mesa visível no mapa do Garçom (cozinha ou servida, sem pagamento). */
+/** Comanda de mesa visível no mapa do Garçom (cozinha ou servida na mesa, sem pagamento). */
 export function isWaiterSalonOpenOrder(
   order: {
     status?: string | null
     source?: string | null
     notes?: string | null
     delivery_address?: string | null
+    caixa_turno_id?: string | null
   },
   configuredTables?: SalonMapTableRef[]
 ): boolean {
   if (!isOpenTableComanda(order)) return false
-  if (notesIndicateWaiterReleasedToCaixa(order.notes)) return false
   if (!mapsToSalonLayout(order, configuredTables)) return false
   const status = String(order.status ?? '').trim().toLowerCase()
+  // «delivered» = comanda encerrada operacionalmente; pagamento fica no Caixa.
   return (
     status === 'pending' ||
     status === 'preparing' ||
     status === 'ready' ||
-    MESA_SERVED_STATUSES.has(status)
+    status === 'confirmed'
   )
 }
 

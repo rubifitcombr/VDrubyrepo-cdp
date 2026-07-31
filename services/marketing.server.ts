@@ -178,6 +178,7 @@ export async function listMarketingAudience(
     .select('customer_phone, customer_name, first_seen_at, last_inbound_at')
     .eq('store_id', storeId)
     .eq('marketing_opt_out', false)
+    .not('last_inbound_at', 'is', null)
     .order('last_inbound_at', { ascending: false, nullsFirst: false })
     .limit(500)
 

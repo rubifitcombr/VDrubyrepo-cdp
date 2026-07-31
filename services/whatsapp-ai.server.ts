@@ -45,6 +45,7 @@ type WhatsAppAiContext = {
   hoursSummary: string
   deliveryFee: string | null
   loyaltyEnabled: boolean
+  loyaltyWhatsappEnabled: boolean
   loyaltyBalance: number | null
   recentOrders: RecentOrder[]
   chatHistory: ChatTurn[]
@@ -204,13 +205,17 @@ async function loadWhatsAppAiContext(
 
   const { data: loyaltyCfg } = await db
     .from('store_loyalty_config')
-    .select('enabled')
+    .select('enabled, whatsapp_balance_enabled')
     .eq('store_id', storeId)
     .maybeSingle()
 
   const loyaltyEnabled = (loyaltyCfg as { enabled?: boolean } | null)?.enabled === true
+  const loyaltyWhatsappEnabled =
+    loyaltyEnabled &&
+    (loyaltyCfg as { whatsapp_balance_enabled?: boolean } | null)?.whatsapp_balance_enabled !==
+      false
   let loyaltyBalance: number | null = null
-  if (loyaltyEnabled) {
+  if (loyaltyWhatsappEnabled) {
     const { data: account } = await db
       .from('loyalty_accounts')
       .select('points_balance')
@@ -247,6 +252,7 @@ async function loadWhatsAppAiContext(
     hoursSummary: summarizeHours(weeklyHours),
     deliveryFee,
     loyaltyEnabled,
+    loyaltyWhatsappEnabled,
     loyaltyBalance,
     recentOrders,
     chatHistory,
@@ -271,11 +277,13 @@ function buildSystemPrompt(ctx: WhatsAppAiContext): string {
           .join('\n')
       : 'Nenhum pedido recente encontrado para este telefone.'
 
-  const loyaltyBlock = ctx.loyaltyEnabled
+  const loyaltyBlock = ctx.loyaltyWhatsappEnabled
     ? ctx.loyaltyBalance != null && ctx.loyaltyBalance > 0
       ? `Programa de fidelidade ativo. Saldo do cliente: ${ctx.loyaltyBalance} pontos.`
       : 'Programa de fidelidade ativo. Cliente ainda sem pontos ou saldo zero.'
-    : 'Programa de fidelidade inativo nesta loja.'
+    : ctx.loyaltyEnabled
+      ? 'Programa de fidelidade ativo, mas consulta de saldo pelo WhatsApp está desactivada.'
+      : 'Programa de fidelidade inativo nesta loja.'
 
   return `Você é o assistente virtual de atendimento da loja "${ctx.storeName}" no WhatsApp.
 ${ctx.storeSubtitle ? `Sobre a loja: ${ctx.storeSubtitle}` : ''}
@@ -417,6 +425,11 @@ function loyaltyReply(ctx: WhatsAppAiContext): string {
     return ctx.tone === 'formal'
       ? 'Esta loja ainda não possui programa de fidelidade ativo.'
       : 'Ainda não temos programa de pontos nesta loja.'
+  }
+  if (!ctx.loyaltyWhatsappEnabled) {
+    return ctx.tone === 'formal'
+      ? 'O programa de fidelidade está ativo, mas a consulta de saldo pelo WhatsApp está desactivada. Utilize o cardápio para resgatar pontos no checkout.'
+      : 'Temos fidelidade, mas o saldo pelo WhatsApp está desligado por agora. Você ainda pode usar os pontos no cardápio no checkout 😊'
   }
   if (ctx.loyaltyBalance != null && ctx.loyaltyBalance > 0) {
     return ctx.tone === 'formal'

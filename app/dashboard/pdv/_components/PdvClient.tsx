@@ -22,7 +22,15 @@ import {
   type PdvCloseMode,
 } from '@/services/pdv'
 import { ComandaSplitPaymentModal } from '@/app/dashboard/caixa/_components/ComandaSplitPaymentModal'
+import { GarcomProductAddonModal } from '@/app/dashboard/garcom/_components/GarcomProductAddonModal'
 import { PdvWeighModal } from '@/app/dashboard/pdv/_components/PdvWeighModal'
+import {
+  addonTotalFromPicks,
+  buildProductLineName,
+  type ProductAddonGroup,
+  type ProductAddonPick,
+} from '@/lib/product-addon-line'
+import { fetchProductAddonTree } from '@/services/product-addons'
 import { parseWeighableBarcode } from '@/lib/scale/weighable-barcode.client'
 import { useBarcodeScanner } from '@/lib/use-barcode-scanner'
 import { CAIXA_BALCAO_HREF } from '@/lib/caixa-hub-links'
@@ -57,6 +65,7 @@ type CartLine = {
   unitPrice: number
   quantity: number
   unitType: OrderItemUnitType
+  addons?: ProductAddonPick[]
 }
 
 function newCartLineId(): string {
@@ -101,6 +110,14 @@ export function PdvClient({
   const [canFullscreen, setCanFullscreen] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [weighProduct, setWeighProduct] = useState<MenuProductRow | null>(null)
+  const [addonModal, setAddonModal] = useState<{
+    product: MenuProductRow
+    groups: ProductAddonGroup[]
+  } | null>(null)
+  const [addonLoadingProductId, setAddonLoadingProductId] = useState<string | null>(
+    null
+  )
+  const addonTreeCacheRef = useRef<Map<string, ProductAddonGroup[]>>(new Map())
   const [scanHint, setScanHint] = useState<string | null>(null)
 
   const resolvedScaleConfig: PdvScaleContext = scaleConfig ?? {
@@ -261,8 +278,62 @@ export function PdvClient({
     return () => window.removeEventListener('keydown', onKey)
   }, [cart, submitting])
 
+  const addProductDirect = useCallback((p: MenuProductRow) => {
+    setError(null)
+    setSuccessKind(null)
+    const price = effectiveProductPrice(p, 'dine_in')
+    const id = p.id
+    setCart((prev) => {
+      const i = prev.findIndex(
+        (l) =>
+          l.productId === id && l.unitType === 'unit' && !l.addons?.length
+      )
+      if (i >= 0) {
+        const next = [...prev]
+        next[i] = { ...next[i], quantity: next[i].quantity + 1 }
+        return next
+      }
+      return [
+        ...prev,
+        {
+          lineId: newCartLineId(),
+          productId: id,
+          name: p.name,
+          imageUrl: p.image_url,
+          unitPrice: price,
+          quantity: 1,
+          unitType: 'unit',
+        },
+      ]
+    })
+  }, [])
+
+  const addProductWithAddons = useCallback(
+    (p: MenuProductRow, picks: ProductAddonPick[], lineNotes: string) => {
+      setError(null)
+      setSuccessKind(null)
+      const basePrice = effectiveProductPrice(p, 'dine_in')
+      const unitPrice = basePrice + addonTotalFromPicks(picks)
+      const name = buildProductLineName(p.name, picks, lineNotes)
+      setCart((prev) => [
+        ...prev,
+        {
+          lineId: newCartLineId(),
+          productId: p.id,
+          name,
+          imageUrl: p.image_url,
+          unitPrice,
+          quantity: 1,
+          unitType: 'unit',
+          addons: picks.length ? picks : undefined,
+        },
+      ])
+    },
+    []
+  )
+
   const addProduct = useCallback(
-    (p: MenuProductRow) => {
+    async (p: MenuProductRow) => {
       setError(null)
       setSuccessKind(null)
 
@@ -282,32 +353,28 @@ export function PdvClient({
         return
       }
 
-      const price = effectiveProductPrice(p, 'dine_in')
-      const id = p.id
-      setCart((prev) => {
-        const i = prev.findIndex(
-          (l) => l.productId === id && l.unitType === 'unit'
-        )
-        if (i >= 0) {
-          const next = [...prev]
-          next[i] = { ...next[i], quantity: next[i].quantity + 1 }
-          return next
+      let groups = addonTreeCacheRef.current.get(p.id)
+      if (!groups) {
+        setAddonLoadingProductId(p.id)
+        try {
+          groups = await fetchProductAddonTree(p.id)
+          addonTreeCacheRef.current.set(p.id, groups)
+        } catch {
+          groups = []
+          addonTreeCacheRef.current.set(p.id, [])
+        } finally {
+          setAddonLoadingProductId(null)
         }
-        return [
-          ...prev,
-          {
-            lineId: newCartLineId(),
-            productId: id,
-            name: p.name,
-            imageUrl: p.image_url,
-            unitPrice: price,
-            quantity: 1,
-            unitType: 'unit',
-          },
-        ]
-      })
+      }
+
+      if (groups.length > 0) {
+        setAddonModal({ product: p, groups })
+        return
+      }
+
+      addProductDirect(p)
     },
-    [barcodeMode, scaleIntegrationEnabled]
+    [addProductDirect, barcodeMode, scaleIntegrationEnabled]
   )
 
   const addWeighableLine = useCallback(
@@ -616,6 +683,7 @@ export function PdvClient({
             <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
               {filteredProducts.map((p) => {
                 const weighable = isSoldByWeight(p)
+                const loadingAddons = addonLoadingProductId === p.id
                 const price = weighable
                   ? effectivePricePerKg(p) ?? 0
                   : effectiveProductPrice(p, 'dine_in')
@@ -631,7 +699,8 @@ export function PdvClient({
                   <li key={p.id}>
                     <button
                       type="button"
-                      onClick={() => addProduct(p)}
+                      disabled={loadingAddons}
+                      onClick={() => void addProduct(p)}
                       className="flex w-full min-h-[100px] flex-col overflow-hidden rounded-2xl border border-[var(--card-border)] bg-white text-left shadow-sm transition hover:border-[var(--dash-primary)] hover:shadow-md active:scale-[0.98]"
                       aria-label={
                         weighable
@@ -671,9 +740,11 @@ export function PdvClient({
                         </span>
                         <div className="flex flex-wrap items-baseline gap-1.5">
                           <span className="text-sm font-bold tabular-nums text-vyria-navy">
-                            {weighable
-                              ? `${formatPricePerKg(price)} / kg`
-                              : money.format(price)}
+                            {loadingAddons
+                              ? 'A carregar…'
+                              : weighable
+                                ? `${formatPricePerKg(price)} / kg`
+                                : money.format(price)}
                           </span>
                           {promo && !Number.isNaN(base) ? (
                             <span className="text-xs tabular-nums text-zinc-400 line-through">
@@ -1101,6 +1172,18 @@ export function PdvClient({
           setWeighProduct(null)
         }}
       />
+
+      {addonModal ? (
+        <GarcomProductAddonModal
+          product={addonModal.product}
+          groups={addonModal.groups}
+          onClose={() => setAddonModal(null)}
+          onConfirm={(picks, lineNotes) => {
+            addProductWithAddons(addonModal.product, picks, lineNotes)
+            setAddonModal(null)
+          }}
+        />
+      ) : null}
     </div>
   )
 }

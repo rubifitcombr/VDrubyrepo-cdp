@@ -8,18 +8,26 @@ import {
   getWhatsAppConfigForStore,
 } from '@/services/whatsapp-config.server'
 
-export async function sendStoreWhatsAppText(
+type SendWhatsAppTextOptions = {
+  /** Quando true (padrão), exige robô IA activo — uso em respostas automáticas. */
+  requireAi?: boolean
+}
+
+async function sendStoreWhatsAppTextCore(
   db: SupabaseClient,
   storeId: string,
   toPhone: string,
-  body: string
+  body: string,
+  options: SendWhatsAppTextOptions = {}
 ): Promise<boolean> {
   const phone = normalizePhoneE164(toPhone)
   if (!phone) return false
 
+  const requireAi = options.requireAi !== false
+
   const waConfig = await getWhatsAppConfigForStore(db, storeId)
   if (!waConfig || waConfig.status !== 'active' || !waConfig.phone_number_id) return false
-  if (waConfig.ai_enabled === false) return false
+  if (requireAi && waConfig.ai_enabled === false) return false
 
   const token = await getWhatsAppAccessTokenForStore(db, storeId)
   if (!token) return false
@@ -48,10 +56,40 @@ export async function sendStoreWhatsAppText(
   return false
 }
 
+/** Mensagens transacionais (pedido, fidelidade) — independentes do robô IA. */
+export async function sendStoreWhatsAppTransactionalText(
+  db: SupabaseClient,
+  storeId: string,
+  toPhone: string,
+  body: string
+): Promise<boolean> {
+  return sendStoreWhatsAppTextCore(db, storeId, toPhone, body, { requireAi: false })
+}
+
+/** Respostas do robô IA — exige WhatsApp activo e `ai_enabled`. */
+export async function sendStoreWhatsAppText(
+  db: SupabaseClient,
+  storeId: string,
+  toPhone: string,
+  body: string
+): Promise<boolean> {
+  return sendStoreWhatsAppTextCore(db, storeId, toPhone, body, { requireAi: true })
+}
+
 export async function canSendStoreWhatsApp(db: SupabaseClient, storeId: string): Promise<boolean> {
   const waConfig = await getWhatsAppConfigForStore(db, storeId)
   if (!waConfig || waConfig.status !== 'active' || !waConfig.phone_number_id) return false
   if (waConfig.ai_enabled === false) return false
+  const token = await getWhatsAppAccessTokenForStore(db, storeId)
+  return !!token
+}
+
+export async function canSendStoreWhatsAppTransactional(
+  db: SupabaseClient,
+  storeId: string
+): Promise<boolean> {
+  const waConfig = await getWhatsAppConfigForStore(db, storeId)
+  if (!waConfig || waConfig.status !== 'active' || !waConfig.phone_number_id) return false
   const token = await getWhatsAppAccessTokenForStore(db, storeId)
   return !!token
 }

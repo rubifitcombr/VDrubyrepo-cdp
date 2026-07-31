@@ -10,6 +10,10 @@ import { orderIsVisibleAfterPixConfirmation } from '@/lib/store-order'
 import { createClient } from '@/lib/supabase/client'
 import { subscribeStoreOrdersSync } from '@/lib/store-operational-realtime.client'
 import { slugChannelSourcesForSupabaseIn } from '@/lib/slug-channel-orders'
+import {
+  withHubContextHref,
+  type OperationalHubContext,
+} from '@/lib/operational-hub-navigation'
 import { IconBell, IconSearch } from './NavIcons'
 import { DashboardNotificationPrompt } from './DashboardNotificationPrompt'
 
@@ -21,6 +25,22 @@ function storeInitials(name: string | null): string {
   return name.trim().slice(0, 2).toUpperCase()
 }
 
+function resolvePendingOrdersHref(
+  hubContext: OperationalHubContext | null | undefined
+): string {
+  if (!hubContext || hubContext === 'administracao') {
+    return '/dashboard/orders'
+  }
+  if (
+    hubContext === 'mesas' ||
+    hubContext === 'visao' ||
+    hubContext === 'fiscal'
+  ) {
+    return '/dashboard/orders?hub=comandas'
+  }
+  return withHubContextHref('/dashboard/orders', hubContext)
+}
+
 export function DashboardTopBar({
   storeName,
   storeLogoUrl,
@@ -28,6 +48,7 @@ export function DashboardTopBar({
   plan,
   notificationCount,
   slugChannelSourcesOnly = false,
+  hubContext = null,
 }: {
   storeName: string | null
   storeLogoUrl: string | null
@@ -35,10 +56,12 @@ export function DashboardTopBar({
   plan: Plan
   notificationCount: number
   slugChannelSourcesOnly?: boolean
+  hubContext?: OperationalHubContext | null
 }) {
   const router = useRouter()
   const [q, setQ] = useState('')
   const [pendingCount, setPendingCount] = useState(notificationCount)
+  const pendingOrdersHref = resolvePendingOrdersHref(hubContext)
 
   useEffect(() => {
     setPendingCount(notificationCount)
@@ -94,7 +117,7 @@ export function DashboardTopBar({
 
   function onSearch(e: React.FormEvent) {
     e.preventDefault()
-    router.push('/dashboard/orders')
+    router.push(pendingOrdersHref)
   }
 
   return (
@@ -118,7 +141,7 @@ export function DashboardTopBar({
       <div className="flex shrink-0 items-center justify-end gap-3 sm:ml-auto">
         <DashboardNotificationPrompt />
         <Link
-          href="/dashboard/orders"
+          href={pendingOrdersHref}
           prefetch={false}
           className="relative inline-flex items-center gap-2 rounded-xl border border-[var(--card-border)] bg-white p-2 text-[#1a1614] shadow-sm transition-colors hover:bg-[#f8f9fa] sm:px-2.5 sm:py-2"
           aria-label={`Ver pedidos pendentes: ${pendingCount}`}

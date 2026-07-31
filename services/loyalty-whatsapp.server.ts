@@ -1,7 +1,7 @@
 import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { sendStoreWhatsAppText } from '@/services/whatsapp-outbound.server'
+import { sendStoreWhatsAppTransactionalText } from '@/services/whatsapp-outbound.server'
 import { getOrCreateLoyaltyConfig } from '@/services/loyalty.server'
 import { getWhatsAppConfigForStore } from '@/services/whatsapp-config.server'
 import type { LoyaltyDeliveredEarnResult } from '@/lib/loyalty/types'
@@ -85,17 +85,17 @@ export function buildLoyaltyDeliveredMessage(input: {
   return lines.join('\n')
 }
 
-/** Envia mensagem de agradecimento + pontuação pelo WhatsApp (robô IA). */
+/** Envia mensagem de agradecimento + pontuação pelo WhatsApp. */
 export async function sendLoyaltyDeliveredWhatsAppNotification(
   db: SupabaseClient,
   storeId: string,
   earn: LoyaltyDeliveredEarnResult
 ): Promise<void> {
   const waConfig = await getWhatsAppConfigForStore(db, storeId)
-  if (!waConfig || waConfig.ai_enabled === false) return
+  if (!waConfig || waConfig.status !== 'active') return
 
   const loyaltyConfig = await getOrCreateLoyaltyConfig(db, storeId)
-  if (!loyaltyConfig.enabled) return
+  if (!loyaltyConfig.enabled || !loyaltyConfig.whatsapp_balance_enabled) return
 
   const { data: store } = await db
     .from('stores')
@@ -118,5 +118,5 @@ export async function sendLoyaltyDeliveredWhatsAppNotification(
     tone: waConfig.ai_tone,
   })
 
-  await sendStoreWhatsAppText(db, storeId, earn.customer_phone, body)
+  await sendStoreWhatsAppTransactionalText(db, storeId, earn.customer_phone, body)
 }

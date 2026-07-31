@@ -4,7 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { isDeliveryFlowOrder } from '@/lib/order-status-transitions'
 import type { WhatsAppAiTone } from '@/lib/whatsapp/types'
 import { getOrCreateLoyaltyConfig } from '@/services/loyalty.server'
-import { sendStoreWhatsAppText } from '@/services/whatsapp-outbound.server'
+import { sendStoreWhatsAppTransactionalText } from '@/services/whatsapp-outbound.server'
 import { getWhatsAppConfigForStore } from '@/services/whatsapp-config.server'
 
 export type OrderWhatsAppNotifyOrder = {
@@ -181,7 +181,7 @@ export async function notifyOrderWhatsAppReceived(
     tone: waConfig.ai_tone,
   })
 
-  await sendStoreWhatsAppText(db, storeId, phone, body)
+  await sendStoreWhatsAppTransactionalText(db, storeId, phone, body)
 }
 
 /** Mudança de estado do pedido (aceite, preparação, saiu para entrega, entregue). */
@@ -209,7 +209,7 @@ export async function notifyOrderWhatsAppStatusChange(
 
   if (previousStatus === 'pending' && newStatus === 'preparing' && waConfig.notify_order_preparing) {
     const body = buildAcceptedPreparingMessage(ctx)
-    await sendStoreWhatsAppText(db, storeId, phone, body)
+    await sendStoreWhatsAppTransactionalText(db, storeId, phone, body)
     return
   }
 
@@ -226,7 +226,7 @@ export async function notifyOrderWhatsAppStatusChange(
           : null,
       tone: waConfig.ai_tone,
     })
-    await sendStoreWhatsAppText(db, storeId, phone, body)
+    await sendStoreWhatsAppTransactionalText(db, storeId, phone, body)
     return
   }
 
@@ -237,7 +237,7 @@ export async function notifyOrderWhatsAppStatusChange(
     waConfig.notify_order_ready
   ) {
     const body = buildReadyForPickupMessage(ctx)
-    await sendStoreWhatsAppText(db, storeId, phone, body)
+    await sendStoreWhatsAppTransactionalText(db, storeId, phone, body)
     return
   }
 
@@ -246,6 +246,6 @@ export async function notifyOrderWhatsAppStatusChange(
     if (loyaltyConfig.enabled) return
 
     const body = buildDeliveredMessage(ctx)
-    await sendStoreWhatsAppText(db, storeId, phone, body)
+    await sendStoreWhatsAppTransactionalText(db, storeId, phone, body)
   }
 }

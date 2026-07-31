@@ -15,7 +15,7 @@ import {
 import { createClient } from '@/lib/supabase/server'
 import { getStoreTablesForStore } from '@/services/waiter-tables.server'
 
-const OPEN_STATUSES = ['pending', 'preparing', 'ready', 'confirmed', 'delivered']
+const OPEN_STATUSES = ['pending', 'preparing', 'ready', 'confirmed']
 
 export async function getWaiterOpenOrdersForStore(
   storeId: string
@@ -31,6 +31,7 @@ export async function getWaiterOpenOrdersForStore(
     .eq('store_id', storeId)
     .in('source', ['waiter', 'autoatendimento'])
     .in('status', OPEN_STATUSES)
+    .is('caixa_turno_id', null)
     .order('created_at', { ascending: false })
 
   if (error) {
