@@ -484,6 +484,7 @@ export function PdvClient({
           quantity: l.quantity,
           unitPrice: l.unitPrice,
           unitType: l.unitType,
+          addons: l.addons,
         })),
         discountBrl: discountApplied,
         internalNotes: internalNotes.trim() || null,

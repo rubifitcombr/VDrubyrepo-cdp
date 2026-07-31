@@ -17,6 +17,12 @@ import {
   isSoldByWeight,
   validateWeighableLineWeight,
 } from '@/lib/weighable-product'
+import {
+  addonTotalFromCatalog,
+  loadAddonCatalogForProducts,
+  parseCheckoutAddons,
+  type CheckoutAddonPick,
+} from '@/lib/public-checkout-pricing.server'
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100
@@ -32,8 +38,88 @@ export type PdvPricedLine = {
   price_per_kg?: number | null
 }
 
+type AddonCatalogItem = {
+  groupName: string
+  itemName: string
+  price: number
+}
+
+/** Limite superior razoável de extras por produto (soma máx. por grupo). */
+function maxAddonExtraFromCatalog(catalog: AddonCatalogItem[]): number {
+  const byGroup = new Map<string, number>()
+  for (const c of catalog) {
+    const prev = byGroup.get(c.groupName) ?? 0
+    byGroup.set(c.groupName, prev + Math.max(0, c.price))
+  }
+  let sum = 0
+  for (const v of byGroup.values()) sum += v
+  return round2(sum)
+}
+
+function resolveUnitPriceWithAddons(input: {
+  row: MenuProductRow
+  channel: ProductPriceChannel
+  clientUnit: number
+  clientName: string
+  addonPicks: CheckoutAddonPick[]
+  catalog: AddonCatalogItem[]
+}): { ok: true; unitPrice: number; name: string } | { ok: false; error: string } {
+  const baseUnit = round2(effectiveProductPrice(input.row, input.channel))
+  const productLabel = input.row.name?.trim() || 'produto'
+
+  if (input.addonPicks.length > 0) {
+    const addonSum = addonTotalFromCatalog(input.catalog, input.addonPicks)
+    if (!Number.isFinite(addonSum)) {
+      return {
+        ok: false,
+        error: `Um adicional de «${productLabel}» não está mais disponível. Actualiza o pedido e tenta de novo.`,
+      }
+    }
+    const serverUnit = round2(baseUnit + addonSum)
+    if (Math.abs(input.clientUnit - serverUnit) > 0.02) {
+      return {
+        ok: false,
+        error: `O preço de «${productLabel}» mudou. Actualiza o pedido e tenta de novo.`,
+      }
+    }
+    return {
+      ok: true,
+      unitPrice: serverUnit,
+      name: input.clientName.trim() || productLabel,
+    }
+  }
+
+  if (Math.abs(input.clientUnit - baseUnit) <= 0.02) {
+    return {
+      ok: true,
+      unitPrice: baseUnit,
+      name: input.row.name?.trim() || input.clientName.trim() || 'Item',
+    }
+  }
+
+  if (input.clientUnit > baseUnit + 0.02) {
+    const maxExtra = maxAddonExtraFromCatalog(input.catalog)
+    if (input.clientUnit > baseUnit + maxExtra + 0.02) {
+      return {
+        ok: false,
+        error: `O preço de «${productLabel}» mudou. Actualiza o pedido e tenta de novo.`,
+      }
+    }
+    return {
+      ok: true,
+      unitPrice: round2(input.clientUnit),
+      name: input.clientName.trim() || productLabel,
+    }
+  }
+
+  return {
+    ok: false,
+    error: `O preço de «${productLabel}» mudou. Actualiza o pedido e tenta de novo.`,
+  }
+}
+
 /**
- * Recalcula preços PDV no servidor (canal base/balcão) — ignora unit_price do cliente.
+ * Recalcula preços PDV/garçom no servidor — valida base + adicionais quando enviados.
  */
 export async function pricePdvLinesFromCatalog(
   supabase: SupabaseClient,
@@ -44,6 +130,7 @@ export async function pricePdvLinesFromCatalog(
     unit_price?: unknown
     name?: unknown
     unit_type?: unknown
+    addons?: unknown
   }>,
   channel: ProductPriceChannel = 'base'
 ): Promise<
@@ -79,6 +166,8 @@ export async function pricePdvLinesFromCatalog(
     if (row.id) byId.set(row.id, row)
   }
 
+  const addonCatalog = await loadAddonCatalogForProducts(supabase, productIds)
+
   const lines: PdvPricedLine[] = []
 
   for (const item of items) {
@@ -107,7 +196,7 @@ export async function pricePdvLinesFromCatalog(
       if (Math.abs(clientUnit - pricePerKg) > 0.02) {
         return {
           ok: false,
-          error: `O preço/kg de «${row.name || 'produto'}» mudou. Actualiza o PDV e tenta de novo.`,
+          error: `O preço/kg de «${row.name || 'produto'}» mudou. Actualiza o pedido e tenta de novo.`,
           status: 409,
         }
       }
@@ -124,21 +213,26 @@ export async function pricePdvLinesFromCatalog(
       continue
     }
 
-    const serverUnit = round2(effectiveProductPrice(row, channel))
     const clientUnit = round2(Math.max(0, Number(item.unit_price) || 0))
-    if (Math.abs(clientUnit - serverUnit) > 0.02) {
-      return {
-        ok: false,
-        error: `O preço de «${row.name || 'produto'}» mudou. Actualiza o PDV e tenta de novo.`,
-        status: 409,
-      }
+    const addonPicks = parseCheckoutAddons(item.addons)
+    const priced = resolveUnitPriceWithAddons({
+      row,
+      channel,
+      clientUnit,
+      clientName: String(item.name ?? ''),
+      addonPicks,
+      catalog: addonCatalog.get(productId) ?? [],
+    })
+
+    if (!priced.ok) {
+      return { ok: false, error: priced.error, status: 409 }
     }
 
     lines.push({
       product_id: productId,
       quantity: Math.max(1, Math.floor(Number(item.quantity) || 1)),
-      unit_price: serverUnit,
-      name: row.name?.trim() || String(item.name ?? '').trim() || 'Item',
+      unit_price: priced.unitPrice,
+      name: priced.name,
       unit_type: 'unit',
     })
   }

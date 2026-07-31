@@ -29,6 +29,7 @@ type BodyItem = {
   unit_price: number
   name: string
   unit_type?: 'unit' | 'weight'
+  addons?: unknown
 }
 
 function round2(n: number): number {
@@ -194,6 +195,7 @@ export async function PATCH(
       unit_price: i.unit_price,
       name: i.name,
       unit_type: i.unit_type,
+      addons: i.addons,
     })),
     'dine_in'
   )

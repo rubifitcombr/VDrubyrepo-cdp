@@ -1093,6 +1093,7 @@ export function WaiterClient({
             unit_price: line.unitPrice,
             name: line.name,
             unit_type: line.unitType,
+            addons: line.addons,
           })),
         }),
       })
@@ -1140,6 +1141,7 @@ export function WaiterClient({
             unit_price: line.unitPrice,
             name: line.name,
             unit_type: line.unitType,
+            addons: line.addons,
           })),
         }),
       })
