@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server'
 import { gateMerchantMasterFeature } from '@/lib/merchant-api-gate.server'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
+import { dispatchDueMarketingCampaignsForStore } from '@/lib/marketing-dispatch-opportunistic.server'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceRoleClient } from '@/lib/supabase/service-role.server'
 import {
   getOrCreateMarketingConfig,
   getMarketingReport,
@@ -28,6 +30,11 @@ export async function GET(req: Request) {
   if (deny) return deny
 
   const db = await createClient()
+  const svc = createServiceRoleClient()
+  void dispatchDueMarketingCampaignsForStore(svc, gate.ctx.storeId).catch((e) =>
+    console.warn('[marketing config GET dispatch]', e)
+  )
+
   const config = await getOrCreateMarketingConfig(db, gate.ctx.storeId)
   const report = await getMarketingReport(db, gate.ctx.storeId)
   const campaigns = await listMarketingCampaigns(db, gate.ctx.storeId)

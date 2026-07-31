@@ -8,8 +8,13 @@ export async function GET() {
   return Response.json(
     {
       ok: true,
-      menu: 'marketing',
+      menu: 'master-integrations',
       masterMenuItems: ['whatsapp', 'fidelidade', 'marketing'],
+      features: {
+        transactionalWhatsApp: true,
+        marketingOpportunisticDispatch: true,
+        marketingDailyCron: true,
+      },
       dashboardClientVersion: DASHBOARD_CLIENT_VERSION,
       swCacheName: SW_CACHE_NAME,
       buildId: getAppBuildId(),
