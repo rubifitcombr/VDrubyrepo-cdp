@@ -381,6 +381,9 @@ export function WaiterClient({
   const fullscreenRootRef = useRef<HTMLDivElement>(null)
   const [configOpen, setConfigOpen] = useState(false)
   const configOpenRef = useRef(false)
+  const tablesRef = useRef(initialTables)
+  const pendingOpenOrderIdsRef = useRef<Set<string>>(new Set())
+  const pullOpenOrdersDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [tablesConfigSnapshot, setTablesConfigSnapshot] = useState<StoreTableDTO[] | null>(
     null
   )
@@ -455,6 +458,10 @@ export function WaiterClient({
   useEffect(() => {
     setTables(initialTables)
   }, [initialTables])
+  useEffect(() => {
+    tablesRef.current = tables
+  }, [tables])
+
   const sortOpenOrders = useCallback((rows: StoreOrderRow[]) => {
     return [...rows].sort(
       (a, b) =>
@@ -475,8 +482,43 @@ export function WaiterClient({
 
     if (error || !data) return
     const mapped = (data as Record<string, unknown>[]).map(mapStoreOrderRow)
-    setOpenOrders(filterOpenSalonMapOrders(mapped, tables, sortOpenOrders))
-  }, [storeId, sortOpenOrders, tables])
+    const configuredTables = tablesRef.current
+    const filtered = filterOpenSalonMapOrders(mapped, configuredTables, sortOpenOrders)
+
+    setOpenOrders((prev) => {
+      const byId = new Map<string, StoreOrderRow>()
+      for (const row of filtered) byId.set(row.id, row)
+
+      const now = Date.now()
+      for (const row of prev) {
+        if (byId.has(row.id)) continue
+        if (!isOpenSalonMapOrder(row, configuredTables)) continue
+        if (pendingOpenOrderIdsRef.current.has(row.id)) {
+          byId.set(row.id, row)
+          continue
+        }
+        const age = now - new Date(row.created_at).getTime()
+        if (age >= 0 && age < 12_000) {
+          byId.set(row.id, row)
+        }
+      }
+
+      return sortOpenOrders([...byId.values()])
+    })
+  }, [storeId, sortOpenOrders])
+
+  const schedulePullOpenOrders = useCallback(
+    (delayMs = 400) => {
+      if (pullOpenOrdersDebounceRef.current) {
+        clearTimeout(pullOpenOrdersDebounceRef.current)
+      }
+      pullOpenOrdersDebounceRef.current = setTimeout(() => {
+        pullOpenOrdersDebounceRef.current = null
+        void pullOpenOrders()
+      }, delayMs)
+    },
+    [pullOpenOrders]
+  )
 
   const pullTables = useCallback(async () => {
     if (configOpenRef.current) return
@@ -506,37 +548,37 @@ export function WaiterClient({
   }, [storeId])
 
   useEffect(() => {
-    setOpenOrders(filterOpenSalonMapOrders(initialOpenOrders, tables, sortOpenOrders))
-  }, [initialOpenOrders, sortOpenOrders, tables])
-
-  useEffect(() => {
     void pullOpenOrders()
     void pullTables()
 
     const unsubscribe = subscribeStoreOrdersSync(storeId, (detail) => {
       if (detail.source === 'store_tables') {
         void pullTables()
+        schedulePullOpenOrders(500)
         return
       }
       if (detail.source === 'orders' || detail.source === 'order_items') {
-        void pullOpenOrders()
+        schedulePullOpenOrders(400)
       }
     })
 
     const ordersPoll = window.setInterval(() => {
       if (document.visibilityState === 'visible') void pullOpenOrders()
-    }, 15000)
+    }, 20000)
 
     const tablesPoll = window.setInterval(() => {
       if (document.visibilityState === 'visible') void pullTables()
-    }, 30000)
+    }, 45000)
 
     return () => {
+      if (pullOpenOrdersDebounceRef.current) {
+        clearTimeout(pullOpenOrdersDebounceRef.current)
+      }
       window.clearInterval(ordersPoll)
       window.clearInterval(tablesPoll)
       unsubscribe()
     }
-  }, [storeId, pullOpenOrders, pullTables])
+  }, [storeId, pullOpenOrders, pullTables, schedulePullOpenOrders])
 
   const displayNumberById = useMemo(() => {
     const sorted = [...visibleOpenOrders].sort(
@@ -1105,13 +1147,17 @@ export function WaiterClient({
       setSuccess('Pedido registado.')
       if (json.order) {
         const row = json.order as StoreOrderRow
-        if (isOpenSalonMapOrder(row, tables)) {
+        pendingOpenOrderIdsRef.current.add(row.id)
+        window.setTimeout(() => {
+          pendingOpenOrderIdsRef.current.delete(row.id)
+        }, 20_000)
+        if (isOpenSalonMapOrder(row, tablesRef.current)) {
           setOpenOrders((prev) =>
             sortOpenOrders([row, ...prev.filter((o) => o.id !== row.id)])
           )
         }
       }
-      void pullOpenOrders()
+      schedulePullOpenOrders(800)
       notifyStoreOrdersChanged(storeId, { eventType: 'INSERT' })
       returnToTableMap()
     } finally {
@@ -1313,15 +1359,15 @@ export function WaiterClient({
         return
       }
       setOpenOrders((prev) => prev.filter((x) => x.id !== order.id))
+      pendingOpenOrderIdsRef.current.delete(order.id)
       notifyStoreOrdersChanged(storeId, { eventType: 'UPDATE' })
-      void pullOpenOrders()
+      schedulePullOpenOrders(600)
       returnToTableMap()
       setSuccess(
         mesaCloseMode === 'immediate'
           ? 'Pagamento registado no turno de caixa. Mesa fechada.'
           : 'Conta enviada ao Caixa. A mesa fica livre no mapa.'
       )
-      router.refresh()
     } finally {
       setBusyOrderId(null)
     }

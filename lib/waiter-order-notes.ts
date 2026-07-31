@@ -83,9 +83,6 @@ export function resolveSalonMapTablesForOrder(
   if (bySector.length > 0) return bySector
 
   if (candidates.length === 1) {
-    const only = candidates[0]!
-    const tableSectorLower = only.ambiente.trim().toLowerCase()
-    if (orderSectorLower !== tableSectorLower) return []
     return candidates
   }
 
