@@ -78,6 +78,7 @@ import { IconPrinter } from '@/app/dashboard/_components/NavIcons'
 import { updateStore } from '@/services/store'
 import { updateOrderStatus } from '@/services/orders'
 import {
+  isOperationalSyncTabVisible,
   notifyStoreOrdersChanged,
   subscribeStoreOrdersSync,
 } from '@/lib/store-operational-realtime.client'
@@ -552,6 +553,7 @@ export function WaiterClient({
     void pullTables()
 
     const unsubscribe = subscribeStoreOrdersSync(storeId, (detail) => {
+      if (!isOperationalSyncTabVisible()) return
       if (detail.source === 'store_tables') {
         void pullTables()
         schedulePullOpenOrders(500)

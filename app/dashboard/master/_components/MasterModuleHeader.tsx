@@ -12,12 +12,8 @@ export function MasterModuleHeader({
   return (
     <>
       <nav className="text-xs text-vyria-navy-muted">
-        <Link href="/dashboard" className="hover:text-vyria-navy">
+        <Link href="/dashboard/visao" className="hover:text-vyria-navy">
           Início
-        </Link>
-        <span className="mx-1.5">/</span>
-        <Link href="/dashboard/master" className="hover:text-vyria-navy">
-          Master
         </Link>
         <span className="mx-1.5">/</span>
         <span className="font-medium text-vyria-navy">{moduleLabel}</span>

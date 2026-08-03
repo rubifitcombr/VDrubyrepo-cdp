@@ -1,7 +1,6 @@
 import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import OpenAI from 'openai'
 import {
   DAY_LABELS,
   getStoreOpenState,
@@ -9,9 +8,28 @@ import {
   parseWeeklyHours,
   type WeeklyHours,
 } from '@/lib/business-hours'
+import {
+  WHATSAPP_HELP_MENU_BUTTON,
+  WHATSAPP_HELP_MENU_ROWS,
+  WHATSAPP_HELP_MENU_TITLE,
+  WHATSAPP_MENU_HINT,
+  isWhatsAppMenuOptionId,
+  type WhatsAppMenuOptionId,
+} from '@/lib/whatsapp/interactive-menu'
+import { WHATSAPP_SESSION_GAP_MS } from '@/lib/whatsapp/session'
 import type { WhatsAppAiTone } from '@/lib/whatsapp/types'
 import { normalizePhoneE164 } from '@/services/loyalty.server'
-import { sendStoreWhatsAppText } from '@/services/whatsapp-outbound.server'
+import { sendWebPushWhatsAppHandoff } from '@/services/web-push.server'
+import {
+  getWhatsAppContactState,
+  pauseWhatsAppConversationForHuman,
+} from '@/services/whatsapp-contacts.server'
+import {
+  sendStoreWhatsAppInteractiveList,
+  sendStoreWhatsAppText,
+} from '@/services/whatsapp-outbound.server'
+// Fallback de template (janela 24h) não aplicável ao robô: só responde a inbound
+// recente, quando a janela Meta está aberta — ver sendWithWindowFallback em outbound.
 import { getWhatsAppConfigForStore } from '@/services/whatsapp-config.server'
 
 const ORDER_STATUS_PT: Record<string, string> = {
@@ -23,6 +41,9 @@ const ORDER_STATUS_PT: Record<string, string> = {
   cancelled: 'Cancelado',
 }
 
+/** Nova sessão se não houve inbound do cliente há mais de 6 horas. */
+export { WHATSAPP_SESSION_GAP_MS } from '@/lib/whatsapp/session'
+
 type RecentOrder = {
   ref: string
   status: string
@@ -31,9 +52,7 @@ type RecentOrder = {
   itemsSummary: string | null
 }
 
-type ChatTurn = { role: 'user' | 'assistant'; content: string }
-
-type WhatsAppAiContext = {
+type WhatsAppAutoReplyContext = {
   storeName: string
   storeSubtitle: string | null
   menuUrl: string
@@ -48,10 +67,9 @@ type WhatsAppAiContext = {
   loyaltyWhatsappEnabled: boolean
   loyaltyBalance: number | null
   recentOrders: RecentOrder[]
-  chatHistory: ChatTurn[]
 }
 
-const aiRateBuckets = new Map<string, { count: number; resetAt: number }>()
+const autoReplyRateBuckets = new Map<string, { count: number; resetAt: number }>()
 
 function publicStoreUrl(slug: string): string {
   const base =
@@ -90,19 +108,23 @@ function summarizeHours(hours: WeeklyHours): string {
     .join('; ')
 }
 
-function checkAiRateLimit(storeId: string, phone: string): boolean {
+function checkAutoReplyRateLimit(storeId: string, phone: string): boolean {
   const key = `${storeId}:${phone}`
   const now = Date.now()
   const windowMs = 60_000
   const limit = 12
-  const hit = aiRateBuckets.get(key)
+  const hit = autoReplyRateBuckets.get(key)
   if (!hit || now >= hit.resetAt) {
-    aiRateBuckets.set(key, { count: 1, resetAt: now + windowMs })
+    autoReplyRateBuckets.set(key, { count: 1, resetAt: now + windowMs })
     return true
   }
   if (hit.count >= limit) return false
   hit.count += 1
   return true
+}
+
+function withMenuHint(text: string): string {
+  return `${text}\n\n${WHATSAPP_MENU_HINT}`
 }
 
 async function loadRecentOrders(
@@ -145,45 +167,12 @@ async function loadRecentOrders(
     })
 }
 
-async function loadChatHistory(
-  db: SupabaseClient,
-  storeId: string,
-  phoneDigits: string
-): Promise<ChatTurn[]> {
-  const { data } = await db
-    .from('whatsapp_messages')
-    .select('direction, body_text, wa_from, wa_to, created_at')
-    .eq('store_id', storeId)
-    .order('created_at', { ascending: false })
-    .limit(20)
-
-  const rows = (data || []).filter((row) => {
-    const from = normalizePhoneE164(String((row as { wa_from?: string }).wa_from ?? ''))
-    const to = normalizePhoneE164(String((row as { wa_to?: string }).wa_to ?? ''))
-    return from === phoneDigits || to === phoneDigits
-  })
-
-  return rows
-    .reverse()
-    .slice(-8)
-    .map((row) => {
-      const direction = String((row as { direction?: string }).direction ?? '')
-      const text = String((row as { body_text?: string }).body_text ?? '').trim()
-      if (!text) return null
-      return {
-        role: direction === 'inbound' ? ('user' as const) : ('assistant' as const),
-        content: text,
-      }
-    })
-    .filter((t): t is ChatTurn => t != null)
-}
-
-async function loadWhatsAppAiContext(
+async function loadWhatsAppAutoReplyContext(
   db: SupabaseClient,
   storeId: string,
   fromE164: string,
   tone: WhatsAppAiTone
-): Promise<WhatsAppAiContext | null> {
+): Promise<WhatsAppAutoReplyContext | null> {
   const phoneDigits = normalizePhoneE164(fromE164)
   if (!phoneDigits) return null
 
@@ -235,10 +224,7 @@ async function loadWhatsAppAiContext(
     }
   }
 
-  const [recentOrders, chatHistory] = await Promise.all([
-    loadRecentOrders(db, storeId, phoneDigits),
-    loadChatHistory(db, storeId, phoneDigits),
-  ])
+  const recentOrders = await loadRecentOrders(db, storeId, phoneDigits)
 
   return {
     storeName: String((store as { name?: string }).name || 'nossa loja'),
@@ -255,131 +241,17 @@ async function loadWhatsAppAiContext(
     loyaltyWhatsappEnabled,
     loyaltyBalance,
     recentOrders,
-    chatHistory,
   }
 }
 
-function buildSystemPrompt(ctx: WhatsAppAiContext): string {
-  const toneGuide =
-    ctx.tone === 'formal'
-      ? 'Use tratamento respeitoso (você/senhor(a)), sem gírias e sem emojis.'
-      : 'Tom acolhedor e natural, como um atendente simpático. Emojis com moderação (no máximo 1 por mensagem).'
-
-  const ordersBlock =
-    ctx.recentOrders.length > 0
-      ? ctx.recentOrders
-          .map(
-            (o, i) =>
-              `${i + 1}. ${o.ref} — ${o.status} — ${o.total} — ${o.createdAt}${
-                o.itemsSummary ? ` — Itens: ${o.itemsSummary.slice(0, 120)}` : ''
-              }`
-          )
-          .join('\n')
-      : 'Nenhum pedido recente encontrado para este telefone.'
-
-  const loyaltyBlock = ctx.loyaltyWhatsappEnabled
-    ? ctx.loyaltyBalance != null && ctx.loyaltyBalance > 0
-      ? `Programa de fidelidade ativo. Saldo do cliente: ${ctx.loyaltyBalance} pontos.`
-      : 'Programa de fidelidade ativo. Cliente ainda sem pontos ou saldo zero.'
-    : ctx.loyaltyEnabled
-      ? 'Programa de fidelidade ativo, mas consulta de saldo pelo WhatsApp está desactivada.'
-      : 'Programa de fidelidade inativo nesta loja.'
-
-  return `Você é o assistente virtual de atendimento da loja "${ctx.storeName}" no WhatsApp.
-${ctx.storeSubtitle ? `Sobre a loja: ${ctx.storeSubtitle}` : ''}
-
-${toneGuide}
-
-REGRAS OBRIGATÓRIAS:
-1. Responda SEMPRE em português do Brasil.
-2. Seja breve: no máximo 4 linhas curtas (mensagem de WhatsApp).
-3. NUNCA monte pedidos, NUNCA peça itens, quantidades ou endereço para registrar pedido no chat.
-4. Para fazer pedido, direcione SEMPRE ao cardápio online: ${ctx.menuUrl || '(link indisponível — peça para acessar o site da loja)'}
-5. Não invente produtos, preços ou promoções que não estejam no contexto.
-6. Você pode informar status de pedidos, horário, fidelidade e orientar sobre o cardápio.
-7. Se não souber algo, seja honesto e sugira o cardápio ou falar com a loja${ctx.storePhone ? ` (${ctx.storePhone})` : ''}.
-8. Não mencione que é uma IA, a menos que perguntem diretamente — apresente-se como assistente da loja.
-
-CONTEXTO DA LOJA:
-- Cardápio (único canal de pedidos): ${ctx.menuUrl}
-- Agora: ${ctx.storeOpen ? 'ABERTA para pedidos' : 'FECHADA ou fora do horário'}
-- Modo de horário: ${ctx.hoursMode}
-${ctx.closingToday ? `- Fecha hoje às: ${ctx.closingToday}` : ''}
-- Horários da semana: ${ctx.hoursSummary}
-${ctx.deliveryFee ? `- Entrega: ${ctx.deliveryFee}` : ''}
-- ${loyaltyBlock}
-
-PEDIDOS RECENTES DESTE CLIENTE (por telefone):
-${ordersBlock}
-
-Responda apenas à última mensagem do cliente, usando o histórico da conversa quando fizer sentido.`
-}
-
-async function generateAiReply(
-  ctx: WhatsAppAiContext,
-  userMessage: string
-): Promise<string | null> {
-  if (isOpenAiDisabled()) return null
-
-  const apiKey = process.env.OPENAI_API_KEY?.trim()
-  if (!apiKey) return null
-
-  const openai = new OpenAI({ apiKey })
-  const history = ctx.chatHistory.filter((t) => t.content !== userMessage.trim())
-  const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
-    { role: 'system', content: buildSystemPrompt(ctx) },
-    ...history.map((t) => ({ role: t.role, content: t.content })),
-    { role: 'user', content: userMessage.trim() },
-  ]
-
-  try {
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages,
-      temperature: 0.6,
-      max_tokens: 320,
-    })
-    const text = completion.choices[0]?.message?.content?.trim()
-    return text || null
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e)
-    if (isOpenAiBillingError(msg)) {
-      console.warn('[whatsapp-ai] OpenAI indisponível (créditos/cota) — modo atendente local.')
-    } else {
-      console.warn('[whatsapp-ai]', msg)
-    }
-    return null
-  }
-}
-
-function normalizeForMatch(text: string): string {
-  return text
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .trim()
-}
-
-function matchesAny(text: string, patterns: RegExp[]): boolean {
-  return patterns.some((p) => p.test(text))
-}
-
-function greetingReply(ctx: WhatsAppAiContext): string {
-  const openLine = ctx.storeOpen
-    ? ctx.tone === 'formal'
-      ? 'No momento estamos abertos para pedidos.'
-      : 'Estamos abertos agora!'
-    : ctx.tone === 'formal'
-      ? 'No momento estamos fora do horário de atendimento.'
-      : 'No momento estamos fechados.'
-
+function welcomeReply(ctx: WhatsAppAutoReplyContext): string {
   if (ctx.tone === 'formal') {
-    return `Olá! Sou o assistente de *${ctx.storeName}*. ${openLine}\n\nPara fazer seu pedido, acesse o cardápio: ${ctx.menuUrl}\n\nPosso informar status do pedido, horários, entrega ou pontos de fidelidade.`
+    return `Olá! Bem-vindo(a) à ${ctx.storeName}!\nConfira nosso cardápio aqui: ${ctx.menuUrl}`
   }
-  return `Olá! 👋 Aqui é da *${ctx.storeName}*. ${openLine}\n\nPedidos só pelo cardápio: ${ctx.menuUrl}\n\nMe chama se quiser saber do seu pedido, horário ou pontos!`
+  return `Olá! 👋 Bem-vindo(a) à ${ctx.storeName}!\nConfira nosso cardápio aqui: ${ctx.menuUrl}`
 }
 
-function orderStatusReply(ctx: WhatsAppAiContext): string {
+function orderStatusReply(ctx: WhatsAppAutoReplyContext): string {
   if (ctx.recentOrders.length === 0) {
     return ctx.tone === 'formal'
       ? `Não localizei pedidos recentes com este número.\n\nPara fazer um pedido: ${ctx.menuUrl}`
@@ -409,7 +281,7 @@ function orderStatusReply(ctx: WhatsAppAiContext): string {
   return lines.join('\n')
 }
 
-function menuRedirectReply(ctx: WhatsAppAiContext, reason?: 'order' | 'menu'): string {
+function menuRedirectReply(ctx: WhatsAppAutoReplyContext, reason?: 'order' | 'menu'): string {
   if (reason === 'order') {
     return ctx.tone === 'formal'
       ? `Para registrar seu pedido com segurança, utilize nosso cardápio online:\n${ctx.menuUrl}\n\nLá você escolhe itens, endereço e pagamento. Posso ajudar com dúvidas sobre pedido em andamento, horário ou fidelidade.`
@@ -420,7 +292,7 @@ function menuRedirectReply(ctx: WhatsAppAiContext, reason?: 'order' | 'menu'): s
     : `Cardápio da loja:\n${ctx.menuUrl}`
 }
 
-function loyaltyReply(ctx: WhatsAppAiContext): string {
+function loyaltyReply(ctx: WhatsAppAutoReplyContext): string {
   if (!ctx.loyaltyEnabled) {
     return ctx.tone === 'formal'
       ? 'Esta loja ainda não possui programa de fidelidade ativo.'
@@ -441,7 +313,7 @@ function loyaltyReply(ctx: WhatsAppAiContext): string {
     : `Você ainda não tem pontos. Peça pelo cardápio e, na entrega, avisamos quantos pontos ganhou:\n${ctx.menuUrl}`
 }
 
-function hoursReply(ctx: WhatsAppAiContext): string {
+function hoursReply(ctx: WhatsAppAutoReplyContext): string {
   if (ctx.storeOpen) {
     const close = ctx.closingToday ? ` Fechamos hoje às ${ctx.closingToday}.` : ''
     return ctx.tone === 'formal'
@@ -453,11 +325,9 @@ function hoursReply(ctx: WhatsAppAiContext): string {
     : `Estamos *fechados* agora.\n\n🕐 ${ctx.hoursSummary}\n\nCardápio: ${ctx.menuUrl}`
 }
 
-function deliveryReply(ctx: WhatsAppAiContext): string {
+function deliveryReply(ctx: WhatsAppAutoReplyContext): string {
   const fee = ctx.deliveryFee
-    ? ctx.tone === 'formal'
-      ? `${ctx.deliveryFee}.`
-      : `${ctx.deliveryFee}.`
+    ? `${ctx.deliveryFee}.`
     : ctx.tone === 'formal'
       ? 'Consulte a taxa no cardápio ao informar seu endereço.'
       : 'A taxa aparece no cardápio quando você coloca o endereço.'
@@ -466,24 +336,47 @@ function deliveryReply(ctx: WhatsAppAiContext): string {
     : `Entregamos sim! ${fee}\n\nPedido pelo cardápio: ${ctx.menuUrl}`
 }
 
-function helpReply(ctx: WhatsAppAiContext): string {
+function helpReply(ctx: WhatsAppAutoReplyContext): string {
   return ctx.tone === 'formal'
     ? `Sou o assistente de *${ctx.storeName}*. Posso ajudar com:\n• Status do seu pedido\n• Horário de funcionamento\n• Pontos de fidelidade\n• Link do cardápio\n\nPedidos são feitos somente pelo cardápio: ${ctx.menuUrl}`
     : `Sou da *${ctx.storeName}* e posso te ajudar com:\n✅ Status do pedido\n✅ Horário\n✅ Pontos de fidelidade\n✅ Link do cardápio\n\nPedidos só por aqui: ${ctx.menuUrl}`
 }
 
-function thanksReply(ctx: WhatsAppAiContext): string {
+function thanksReply(ctx: WhatsAppAutoReplyContext): string {
   return ctx.tone === 'formal'
     ? `Por nada! Estamos à disposição. Cardápio: ${ctx.menuUrl}`
     : `Por nada! 😊 Qualquer coisa, é só chamar.\n${ctx.menuUrl}`
 }
 
-/** Atendimento profissional sem OpenAI — cobre intenções comuns do cliente. */
-function buildProfessionalFallbackReply(
-  ctx: WhatsAppAiContext,
+function humanHandoffReply(ctx: WhatsAppAutoReplyContext): string {
+  return ctx.tone === 'formal'
+    ? `Certo! Vou chamar um atendente da *${ctx.storeName}* para continuar com você. Aguarde um momento, por favor.`
+    : `Beleza! Já avisei a equipe da *${ctx.storeName}* — um atendente vai continuar com você em instantes.`
+}
+
+function normalizeForMatch(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+}
+
+function matchesAny(text: string, patterns: RegExp[]): boolean {
+  return patterns.some((p) => p.test(text))
+}
+
+type FallbackResult = { kind: 'text'; body: string } | { kind: 'menu' }
+
+function buildRegexFallbackReply(
+  ctx: WhatsAppAutoReplyContext,
   bodyText: string
-): string | null {
+): FallbackResult | null {
   const n = normalizeForMatch(bodyText)
+
+  if (matchesAny(n, [/\bmenu\b/, /\bopcoes\b/, /\bopções\b/])) {
+    return { kind: 'menu' }
+  }
 
   if (
     matchesAny(n, [
@@ -491,7 +384,7 @@ function buildProfessionalFallbackReply(
       /^(ola|oi)\s+/,
     ])
   ) {
-    return greetingReply(ctx)
+    return { kind: 'text', body: welcomeReply(ctx) }
   }
 
   if (
@@ -500,7 +393,7 @@ function buildProfessionalFallbackReply(
       /\b(tchau|ate mais|ate logo|flw|falou)\b/,
     ])
   ) {
-    return thanksReply(ctx)
+    return { kind: 'text', body: thanksReply(ctx) }
   }
 
   if (
@@ -509,7 +402,7 @@ function buildProfessionalFallbackReply(
       /\b(ja saiu|saiu|entregador)\b/,
     ])
   ) {
-    return orderStatusReply(ctx)
+    return { kind: 'text', body: orderStatusReply(ctx) }
   }
 
   if (
@@ -520,15 +413,15 @@ function buildProfessionalFallbackReply(
     ]) &&
     !matchesAny(n, [/\b(status|andamento|onde)\b/])
   ) {
-    return menuRedirectReply(ctx, 'order')
+    return { kind: 'text', body: menuRedirectReply(ctx, 'order') }
   }
 
   if (matchesAny(n, [/\b(cardapio|menu|link)\b/, /\bver (o )?cardapio\b/])) {
-    return menuRedirectReply(ctx, 'menu')
+    return { kind: 'text', body: menuRedirectReply(ctx, 'menu') }
   }
 
   if (matchesAny(n, [/\b(pontos|fidelidade|cashback|saldo)\b/])) {
-    return loyaltyReply(ctx)
+    return { kind: 'text', body: loyaltyReply(ctx) }
   }
 
   if (
@@ -537,61 +430,110 @@ function buildProfessionalFallbackReply(
       /\besta aberto\b/,
     ])
   ) {
-    return hoursReply(ctx)
+    return { kind: 'text', body: hoursReply(ctx) }
   }
 
   if (matchesAny(n, [/\b(entrega|entregar|frete|taxa|delivery)\b/])) {
-    return deliveryReply(ctx)
+    return { kind: 'text', body: deliveryReply(ctx) }
   }
 
-  if (
-    matchesAny(n, [
-      /\b(pix|cartao|cartão|dinheiro|pagamento|pagar)\b/,
-    ])
-  ) {
-    return ctx.tone === 'formal'
-      ? `Formas de pagamento disponíveis no checkout do cardápio (PIX, cartão ou dinheiro, conforme a loja).\n\nAcesse: ${ctx.menuUrl}`
-      : `Você escolhe o pagamento no cardápio (PIX, cartão ou dinheiro, conforme a loja) 💳\n\n${ctx.menuUrl}`
+  if (matchesAny(n, [/\b(pix|cartao|cartão|dinheiro|pagamento|pagar)\b/])) {
+    return {
+      kind: 'text',
+      body:
+        ctx.tone === 'formal'
+          ? `Formas de pagamento disponíveis no checkout do cardápio (PIX, cartão ou dinheiro, conforme a loja).\n\nAcesse: ${ctx.menuUrl}`
+          : `Você escolhe o pagamento no cardápio (PIX, cartão ou dinheiro, conforme a loja) 💳\n\n${ctx.menuUrl}`,
+    }
   }
 
   if (matchesAny(n, [/\b(ajuda|help|duvida|dúvida|como funciona|o que voce)\b/])) {
-    return helpReply(ctx)
+    return { kind: 'text', body: helpReply(ctx) }
   }
 
   return null
 }
 
-function isOpenAiDisabled(): boolean {
-  const flag = process.env.WHATSAPP_AI_DISABLE_OPENAI?.trim().toLowerCase()
-  return flag === '1' || flag === 'true' || flag === 'yes'
-}
-
-function isOpenAiBillingError(message: string): boolean {
-  return /insufficient_quota|billing|exceeded|credit|payment|429/i.test(message)
-}
-
-/**
- * Gera e envia resposta de atendimento (IA com fallback por palavras-chave).
- * Retorna true se enviou resposta.
- */
-export async function tryWhatsAppAiReply(
+async function handleMenuOption(
   db: SupabaseClient,
   storeId: string,
   fromE164: string,
-  bodyText: string
+  ctx: WhatsAppAutoReplyContext,
+  optionId: WhatsAppMenuOptionId,
+  customerName: string | null
 ): Promise<boolean> {
-  const text = bodyText.trim()
-  if (!text) return false
+  let body: string
+  switch (optionId) {
+    case 'status_pedido':
+      body = orderStatusReply(ctx)
+      break
+    case 'meus_pontos':
+      body = loyaltyReply(ctx)
+      break
+    case 'horario':
+      body = hoursReply(ctx)
+      break
+    case 'taxa_entrega':
+      body = deliveryReply(ctx)
+      break
+    case 'falar_atendente':
+      await pauseWhatsAppConversationForHuman(db, storeId, fromE164)
+      await sendWebPushWhatsAppHandoff({
+        storeId,
+        storeName: ctx.storeName,
+        customerPhone: fromE164,
+        customerName,
+      }).catch((e) => console.warn('[whatsapp handoff push]', e))
+      body = humanHandoffReply(ctx)
+      return sendStoreWhatsAppText(db, storeId, fromE164, withMenuHint(body))
+    default:
+      return false
+  }
+  return sendStoreWhatsAppText(db, storeId, fromE164, withMenuHint(body))
+}
 
+async function sendHelpMenuList(
+  db: SupabaseClient,
+  storeId: string,
+  fromE164: string
+): Promise<boolean> {
+  return sendStoreWhatsAppInteractiveList(db, storeId, fromE164, {
+    bodyText: WHATSAPP_HELP_MENU_TITLE,
+    buttonLabel: WHATSAPP_HELP_MENU_BUTTON,
+    rows: WHATSAPP_HELP_MENU_ROWS,
+  })
+}
+
+export type WhatsAppInboundPayload = {
+  bodyText?: string | null
+  listReplyId?: string | null
+  isNewSession: boolean
+  customerName?: string | null
+}
+
+/**
+ * Gera e envia resposta de atendimento automático (menu interactivo + regex).
+ * Retorna true se enviou alguma resposta.
+ */
+export async function tryWhatsAppAutoReply(
+  db: SupabaseClient,
+  storeId: string,
+  fromE164: string,
+  input: WhatsAppInboundPayload
+): Promise<boolean> {
   const waConfig = await getWhatsAppConfigForStore(db, storeId)
-  if (!waConfig || waConfig.status !== 'active' || waConfig.ai_enabled === false) {
+  if (!waConfig || waConfig.status !== 'active' || waConfig.auto_reply_enabled === false) {
     return false
   }
 
   const phoneDigits = normalizePhoneE164(fromE164)
   if (!phoneDigits) return false
 
-  if (!checkAiRateLimit(storeId, phoneDigits)) {
+  const contactState = await getWhatsAppContactState(db, storeId, fromE164)
+  if (contactState?.marketing_opt_out) return false
+  if (contactState?.conversation_status === 'humano') return false
+
+  if (!checkAutoReplyRateLimit(storeId, phoneDigits)) {
     await sendStoreWhatsAppText(
       db,
       storeId,
@@ -601,17 +543,49 @@ export async function tryWhatsAppAiReply(
     return true
   }
 
-  const ctx = await loadWhatsAppAiContext(db, storeId, fromE164, waConfig.ai_tone)
+  const ctx = await loadWhatsAppAutoReplyContext(db, storeId, fromE164, waConfig.ai_tone)
   if (!ctx) return false
 
-  let reply = await generateAiReply(ctx, text)
-  if (!reply) {
-    reply = buildProfessionalFallbackReply(ctx, text)
+  if (input.isNewSession) {
+    const welcomeSent = await sendStoreWhatsAppText(db, storeId, fromE164, welcomeReply(ctx))
+    if (!welcomeSent) return false
+    return sendHelpMenuList(db, storeId, fromE164)
   }
 
-  if (!reply) {
-    reply = helpReply(ctx)
+  const listReplyId = input.listReplyId?.trim() || null
+  if (listReplyId && isWhatsAppMenuOptionId(listReplyId)) {
+    return handleMenuOption(
+      db,
+      storeId,
+      fromE164,
+      ctx,
+      listReplyId,
+      input.customerName ?? contactState?.customer_name ?? null
+    )
   }
 
-  return sendStoreWhatsAppText(db, storeId, fromE164, reply)
+  const text = input.bodyText?.trim() || ''
+  if (!text) return false
+
+  const fallback = buildRegexFallbackReply(ctx, text)
+  if (!fallback) {
+    return sendHelpMenuList(db, storeId, fromE164)
+  }
+  if (fallback.kind === 'menu') {
+    return sendHelpMenuList(db, storeId, fromE164)
+  }
+  return sendStoreWhatsAppText(db, storeId, fromE164, withMenuHint(fallback.body))
+}
+
+/** @deprecated Use tryWhatsAppAutoReply */
+export async function tryWhatsAppAiReply(
+  db: SupabaseClient,
+  storeId: string,
+  fromE164: string,
+  bodyText: string
+): Promise<boolean> {
+  return tryWhatsAppAutoReply(db, storeId, fromE164, {
+    bodyText,
+    isNewSession: false,
+  })
 }

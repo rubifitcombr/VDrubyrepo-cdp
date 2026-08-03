@@ -18,6 +18,7 @@ import {
   getWhatsAppAccessTokenForStore,
   getWhatsAppConfigForStore,
 } from '@/services/whatsapp-config.server'
+import { logWhatsAppSendFailure } from '@/services/whatsapp-send-failures.server'
 
 export const MARKETING_MAX_RECIPIENTS_PER_CAMPAIGN = 50
 
@@ -474,6 +475,18 @@ export async function dispatchMarketingCampaign(
       )
     } else {
       failed++
+      // marketing_sends mantém o relatório por campanha; whatsapp_send_failures unifica visibilidade no painel WhatsApp.
+      await logWhatsAppSendFailure(db, {
+        storeId,
+        customerPhone: contact.customer_phone,
+        messageType: 'image',
+        flow: 'marketing',
+        errorMessage: result.error,
+        errorCode: result.errorCode ?? null,
+        isWindowExpired: result.isWindowExpired,
+      }).catch(() => undefined)
+      const codeSuffix = result.errorCode != null ? ` (code ${result.errorCode})` : ''
+      console.warn('[marketing whatsapp]', result.error + codeSuffix)
       await db.from('marketing_sends').insert({
         campaign_id: campaignId,
         store_id: storeId,

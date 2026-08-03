@@ -1,7 +1,7 @@
 import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { sendStoreWhatsAppTransactionalText } from '@/services/whatsapp-outbound.server'
+import { sendWithWindowFallback } from '@/services/whatsapp-outbound.server'
 import { getOrCreateLoyaltyConfig } from '@/services/loyalty.server'
 import { getWhatsAppConfigForStore } from '@/services/whatsapp-config.server'
 import type { LoyaltyDeliveredEarnResult } from '@/lib/loyalty/types'
@@ -85,6 +85,29 @@ export function buildLoyaltyDeliveredMessage(input: {
   return lines.join('\n')
 }
 
+function customerNameForTemplate(name: string | null | undefined): string {
+  const n = name?.trim()
+  if (!n) return 'cliente'
+  return n.split(/\s+/)[0] || 'cliente'
+}
+
+function buildLoyaltyTemplateParams(input: {
+  customerName: string | null
+  pointsEarned: number
+  welcomeBonus: number
+  orderRef: string
+  newBalance: number
+}): string[] {
+  const pointsThisDelivery = input.pointsEarned + input.welcomeBonus
+  const orderId = input.orderRef.replace(/^#/, '')
+  return [
+    customerNameForTemplate(input.customerName),
+    String(pointsThisDelivery),
+    orderId,
+    String(input.newBalance),
+  ]
+}
+
 /** Envia mensagem de agradecimento + pontuação pelo WhatsApp. */
 export async function sendLoyaltyDeliveredWhatsAppNotification(
   db: SupabaseClient,
@@ -118,5 +141,18 @@ export async function sendLoyaltyDeliveredWhatsAppNotification(
     tone: waConfig.ai_tone,
   })
 
-  await sendStoreWhatsAppTransactionalText(db, storeId, earn.customer_phone, body)
+  await sendWithWindowFallback(
+    db,
+    storeId,
+    earn.customer_phone,
+    body,
+    'loyalty',
+    buildLoyaltyTemplateParams({
+      customerName: earn.customer_name,
+      pointsEarned: earn.points_earned,
+      welcomeBonus: earn.welcome_bonus,
+      orderRef: earn.order_ref,
+      newBalance: earn.new_balance,
+    })
+  )
 }

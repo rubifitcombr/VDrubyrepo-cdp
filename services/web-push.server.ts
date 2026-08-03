@@ -87,3 +87,59 @@ export async function sendWebPushNewOrder(params: {
   }
 }
 
+export async function sendWebPushWhatsAppHandoff(params: {
+  storeId: string
+  storeName: string
+  customerPhone: string
+  customerName: string | null
+}) {
+  const ready = await ensureVapidConfigured()
+  if (!ready) return
+
+  const svc = createServiceRoleClient()
+  const { data, error } = await svc
+    .from('store_push_subscriptions')
+    .select('id, endpoint, p256dh, auth')
+    .eq('store_id', params.storeId)
+  if (error || !data?.length) return
+
+  const customer = params.customerName?.trim() || params.customerPhone
+  const payload = JSON.stringify({
+    title: 'Cliente pediu atendente',
+    body: `${customer} quer falar com um atendente no WhatsApp.`,
+    url: '/dashboard/master/whatsapp',
+    storeName: params.storeName,
+  })
+
+  const webpush = await getWebPushModule()
+  const staleIds: string[] = []
+
+  for (const raw of data as PushRow[]) {
+    const endpoint = raw.endpoint?.trim()
+    const p256dh = raw.p256dh?.trim()
+    const auth = raw.auth?.trim()
+    if (!endpoint || !p256dh || !auth) {
+      if (raw.id) staleIds.push(raw.id)
+      continue
+    }
+    try {
+      await webpush.sendNotification(
+        {
+          endpoint,
+          keys: { p256dh, auth },
+        },
+        payload
+      )
+    } catch (e) {
+      const err = e as { statusCode?: number }
+      if (err.statusCode === 404 || err.statusCode === 410) {
+        if (raw.id) staleIds.push(raw.id)
+      }
+    }
+  }
+
+  if (staleIds.length > 0) {
+    await svc.from('store_push_subscriptions').delete().in('id', staleIds)
+  }
+}
+

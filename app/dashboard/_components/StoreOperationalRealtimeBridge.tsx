@@ -4,6 +4,7 @@ import { useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import {
   dispatchStoreOrdersSync,
+  OPERATIONAL_SYNC_DEBOUNCE_MS,
   type StoreOrdersSyncSource,
 } from '@/lib/store-operational-realtime.client'
 
@@ -14,6 +15,9 @@ type Props = {
 /**
  * Uma única subscrição Supabase Realtime por loja no painel.
  * Propaga mudanças de comandas/mesas/caixa a todas as janelas (KDS, garçom, caixa, etc.).
+ *
+ * order_items: filtro por store_id denormalizado (migration 20260731170000) —
+ * Realtime não suporta filter via join com orders.
  */
 export function StoreOperationalRealtimeBridge({ storeId }: Props) {
   useEffect(() => {
@@ -28,7 +32,7 @@ export function StoreOperationalRealtimeBridge({ storeId }: Props) {
       debounceTimer = window.setTimeout(() => {
         debounceTimer = null
         dispatchStoreOrdersSync({ storeId: activeStoreId, source, eventType })
-      }, 120)
+      }, OPERATIONAL_SYNC_DEBOUNCE_MS)
     }
 
     const channel = supabase
@@ -51,6 +55,7 @@ export function StoreOperationalRealtimeBridge({ storeId }: Props) {
           event: '*',
           schema: 'public',
           table: 'order_items',
+          filter: `store_id=eq.${activeStoreId}`,
         },
         (payload) => {
           notify('order_items', payload.eventType)

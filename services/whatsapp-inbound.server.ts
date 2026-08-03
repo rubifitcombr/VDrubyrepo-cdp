@@ -1,16 +1,23 @@
 import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { tryWhatsAppAiReply } from '@/services/whatsapp-ai.server'
+import { tryWhatsAppAutoReply } from '@/services/whatsapp-ai.server'
+
+export type InboundWhatsAppMessageInput = {
+  bodyText?: string | null
+  listReplyId?: string | null
+  isNewSession: boolean
+  customerName?: string | null
+}
 
 /**
- * Processa mensagem inbound do cliente e responde via assistente (IA + fallback).
+ * Processa mensagem inbound do cliente e responde via atendimento automático.
  */
 export async function handleInboundWhatsAppCustomerMessage(
   db: SupabaseClient,
   storeId: string,
   fromE164: string,
-  bodyText: string
+  input: InboundWhatsAppMessageInput
 ): Promise<void> {
-  await tryWhatsAppAiReply(db, storeId, fromE164, bodyText)
+  await tryWhatsAppAutoReply(db, storeId, fromE164, input)
 }

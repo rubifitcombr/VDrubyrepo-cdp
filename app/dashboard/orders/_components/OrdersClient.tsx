@@ -5,7 +5,9 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import {
   ORDER_SELECT,
+  OPERATIONAL_ORDERS_PULL_LIMIT,
   mapStoreOrderRow,
+  operationalOrdersPullSinceIso,
   orderIsVisibleAfterPixConfirmation,
   type StoreOrderRow,
 } from '@/lib/store-order'
@@ -26,6 +28,7 @@ import {
   tryReconnectKnownBluetoothPrinter,
 } from '@/lib/bluetooth-print-client'
 import {
+  isOperationalSyncTabVisible,
   notifyStoreOrdersChanged,
   subscribeStoreOrdersSync,
 } from '@/lib/store-operational-realtime.client'
@@ -684,15 +687,20 @@ function useOrdersRealtime(
   useEffect(() => {
     const supabase = createClient()
 
+    /** Pull operacional: últimos 7 dias, max 250 — alinhado ao SSR. Histórico «Ver histórico» filtra entregues in-memory; sem busca de pedidos antigos no poll. */
     async function pullOrders(options?: { beepOnNew?: boolean }) {
+      const since = operationalOrdersPullSinceIso()
       let q = supabase
         .from('orders')
         .select(ORDER_SELECT)
         .eq('store_id', storeId)
+        .gte('created_at', since)
       if (slugChannelSourcesOnly) {
         q = q.in('source', slugChannelSourcesForSupabaseIn())
       }
-      const { data, error } = await q.order('created_at', { ascending: false })
+      const { data, error } = await q
+        .order('created_at', { ascending: false })
+        .limit(OPERATIONAL_ORDERS_PULL_LIMIT)
       if (error || !data) return
       const rows = (data as Record<string, unknown>[])
         .map(mapStoreOrderRow)
@@ -709,6 +717,7 @@ function useOrdersRealtime(
     void pullOrders().then(() => setLiveOk(true))
 
     const unsubscribe = subscribeStoreOrdersSync(storeId, (detail) => {
+      if (!isOperationalSyncTabVisible()) return
       if (detail.source !== 'orders' && detail.source !== 'order_items') return
       void pullOrders({
         beepOnNew: detail.source === 'orders' && detail.eventType === 'INSERT',
@@ -1257,6 +1266,7 @@ export function OrdersClient({
     void pullSalonTables()
 
     const unsubscribe = subscribeStoreOrdersSync(storeId, (detail) => {
+      if (!isOperationalSyncTabVisible()) return
       if (detail.source === 'store_tables') void pullSalonTables()
     })
 

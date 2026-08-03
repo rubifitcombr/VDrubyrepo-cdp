@@ -109,7 +109,6 @@ const NAV_ICONS: Record<
   automacoes: IconBolt,
   impressao: IconPrinter,
   balanca: IconScale,
-  master_hub: IconMegaphone,
   master_whatsapp: IconChat,
   master_fidelidade: IconGift,
   master_marketing: IconMegaphone,
@@ -222,9 +221,7 @@ function DashboardNavLinks({
             : menuKey === 'produtos'
               ? pathname.startsWith('/dashboard/menu') ||
                 pathname.startsWith('/dashboard/inventory')
-              : menuKey === 'master_hub'
-                ? pathname === '/dashboard/master'
-                : pathname.startsWith(href)
+              : pathname.startsWith(href)
         const quietInactive = !!quiet && !active
 
         const linkSidebar =

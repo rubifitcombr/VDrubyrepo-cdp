@@ -470,12 +470,6 @@ export function MarketingMasterClient({ storeId }: { storeId: string }) {
           </ul>
         )}
       </section>
-
-      <p className="text-center text-sm text-vyria-navy-muted">
-        <Link href="/dashboard/master" className="font-semibold text-vyria-plum hover:underline">
-          ← Voltar ao hub Master
-        </Link>
-      </p>
     </div>
   )
 }

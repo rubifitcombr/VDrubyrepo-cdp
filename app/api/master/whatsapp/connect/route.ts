@@ -42,8 +42,15 @@ export async function POST(request: Request) {
   const db = createServiceRoleClient()
 
   try {
+    const autoReplyEnabled =
+      body.auto_reply_enabled === true || body.auto_reply_enabled === false
+        ? body.auto_reply_enabled
+        : body.ai_enabled === true || body.ai_enabled === false
+          ? body.ai_enabled
+          : undefined
+
     const config = await updateWhatsAppSettingsForStore(db, gate.ctx.storeId, {
-      ai_enabled: body.ai_enabled === true || body.ai_enabled === false ? body.ai_enabled : undefined,
+      auto_reply_enabled: autoReplyEnabled,
       ai_tone:
         body.ai_tone === 'formal' || body.ai_tone === 'casual'
           ? (body.ai_tone as WhatsAppAiTone)

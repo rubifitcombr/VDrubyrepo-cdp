@@ -4,7 +4,11 @@ import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { EntregadoresManagePanel } from '@/app/dashboard/entregadores/_components/EntregadoresManagePanel'
 import { dashboardFetch } from '@/lib/dashboard-fetch.client'
-import { notifyStoreOrdersChanged, subscribeStoreOrdersSync } from '@/lib/store-operational-realtime.client'
+import {
+  isOperationalSyncTabVisible,
+  notifyStoreOrdersChanged,
+  subscribeStoreOrdersSync,
+} from '@/lib/store-operational-realtime.client'
 import type {
   CourierBalanceGroup,
   DeliveryOpsPayload,
@@ -120,13 +124,17 @@ export function EntregadoresOpsClient({ storeId }: { storeId: string }) {
 
   useEffect(() => {
     void loadOps()
-    const id = window.setInterval(() => void loadOps(true), 30_000)
+    const id = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return
+      void loadOps(true)
+    }, 30_000)
     return () => window.clearInterval(id)
   }, [loadOps])
 
   useEffect(() => {
     if (!storeId) return
     const unsubscribe = subscribeStoreOrdersSync(storeId, (detail) => {
+      if (!isOperationalSyncTabVisible()) return
       if (detail.source !== 'orders' && detail.source !== 'order_items') return
       void loadOps(true)
     })

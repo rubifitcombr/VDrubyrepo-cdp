@@ -29,6 +29,7 @@ import {
 import { isPdvWaiterComandaSource } from '@/lib/cashier-pro-delivery-scope'
 import { createClient } from '@/lib/supabase/client'
 import {
+  isOperationalSyncTabVisible,
   notifyStoreOrdersChanged,
   subscribeStoreOrdersSync,
 } from '@/lib/store-operational-realtime.client'
@@ -545,6 +546,7 @@ function OperacaoView({
     }
 
     const unsubscribe = subscribeStoreOrdersSync(storeId, (detail) => {
+      if (!isOperationalSyncTabVisible()) return
       if (detail.source === 'orders' || detail.source === 'order_items') {
         void pullCashierOrders()
         return

@@ -7,9 +7,11 @@ import {
   getWhatsAppAccessTokenForStore,
   markWebhookVerified,
 } from '@/services/whatsapp-config.server'
+import { logWhatsAppSendFailure } from '@/services/whatsapp-send-failures.server'
 import { handleInboundWhatsAppCustomerMessage } from '@/services/whatsapp-inbound.server'
 import { registerWhatsAppInboundContact } from '@/services/whatsapp-contacts.server'
 import { handleMarketingOptOutFromInbound } from '@/services/marketing.server'
+import { handleWhatsAppTemplateStatusWebhook } from '@/services/whatsapp-templates.server'
 import { normalizePhoneE164 } from '@/services/loyalty.server'
 
 export function verifyMetaWebhookSignature(
@@ -39,15 +41,27 @@ export async function processWhatsAppWebhook(
   const entries = Array.isArray(payload.entry) ? payload.entry : []
   for (const entry of entries) {
     if (!entry || typeof entry !== 'object') continue
+    const wabaId = (entry as { id?: unknown }).id != null ? String((entry as { id: unknown }).id) : null
     const changes = Array.isArray((entry as { changes?: unknown }).changes)
       ? (entry as { changes: unknown[] }).changes
       : []
 
     for (const change of changes) {
       if (!change || typeof change !== 'object') continue
+      const field = String((change as { field?: unknown }).field || '')
       const value = (change as { value?: unknown }).value
       if (!value || typeof value !== 'object') continue
       const val = value as Record<string, unknown>
+
+      if (field === 'message_template_status_update') {
+        await db.from('whatsapp_webhook_events').insert({
+          store_id: null,
+          event_type: field,
+          payload: val,
+        })
+        await handleWhatsAppTemplateStatusWebhook(db, wabaId, val)
+        continue
+      }
 
       const metadata = val.metadata as Record<string, unknown> | undefined
       const phoneNumberId =
@@ -84,9 +98,27 @@ export async function processWhatsAppWebhook(
         const from = m.from != null ? String(m.from) : null
         const type = m.type != null ? String(m.type) : 'text'
         let bodyText: string | null = null
+        let listReplyId: string | null = null
         if (type === 'text') {
           const text = m.text as { body?: string } | undefined
           bodyText = text?.body != null ? String(text.body) : null
+        } else if (type === 'interactive') {
+          const interactive = m.interactive as
+            | {
+                type?: string
+                list_reply?: { id?: string; title?: string }
+              }
+            | undefined
+          if (interactive?.type === 'list_reply' && interactive.list_reply) {
+            listReplyId =
+              interactive.list_reply.id != null
+                ? String(interactive.list_reply.id)
+                : null
+            bodyText =
+              interactive.list_reply.title != null
+                ? String(interactive.list_reply.title)
+                : listReplyId
+          }
         }
 
         if (!storeId || !waMessageId) continue
@@ -120,23 +152,31 @@ export async function processWhatsAppWebhook(
           console.warn('[whatsapp-webhook] insert message:', error.message)
         }
 
-        // Regista todo contacto inbound; IA só responde a texto.
+        // Regista todo contacto inbound; atendimento automático responde a texto e listas.
         if (from && storeId) {
-          await registerWhatsAppInboundContact(db, {
+          const registration = await registerWhatsAppInboundContact(db, {
             store_id: storeId,
             customer_phone: from,
             customer_name: contactName,
-          }).catch((e) => console.warn('[whatsapp contact]', e))
+          }).catch((e) => {
+            console.warn('[whatsapp contact]', e)
+            return { isNewSession: false }
+          })
 
-          if (bodyText) {
-            const optedOut = await handleMarketingOptOutFromInbound(
-              db,
-              storeId,
-              from,
-              bodyText
-            ).catch(() => false)
+          const hasPayload = !!(bodyText?.trim() || listReplyId)
+          if (hasPayload) {
+            const optedOut = bodyText
+              ? await handleMarketingOptOutFromInbound(db, storeId, from, bodyText).catch(
+                  () => false
+                )
+              : false
             if (!optedOut) {
-              await handleInboundWhatsAppCustomerMessage(db, storeId, from, bodyText)
+              await handleInboundWhatsAppCustomerMessage(db, storeId, from, {
+                bodyText,
+                listReplyId,
+                isNewSession: registration.isNewSession,
+                customerName: contactName,
+              })
             }
           }
         }
@@ -186,7 +226,20 @@ export async function sendWhatsAppTestMessage(
     body: 'Teste Vyria Master — a ligação WhatsApp está activa.',
   })
 
-  if (!sent.ok) return sent
+  if (!sent.ok) {
+    const codeSuffix = sent.errorCode != null ? ` (code ${sent.errorCode})` : ''
+    console.warn('[whatsapp test]', sent.error + codeSuffix)
+    await logWhatsAppSendFailure(db, {
+      storeId,
+      customerPhone: toE164,
+      messageType: 'text',
+      flow: 'test',
+      errorMessage: sent.error,
+      errorCode: sent.errorCode ?? null,
+      isWindowExpired: sent.isWindowExpired,
+    }).catch(() => undefined)
+    return sent
+  }
 
   await db.from('whatsapp_messages').insert({
     store_id: storeId,

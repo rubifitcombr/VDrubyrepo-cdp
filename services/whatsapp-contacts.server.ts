@@ -1,6 +1,7 @@
 import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { isWhatsAppNewSession } from '@/lib/whatsapp/session'
 import { normalizePhoneE164 } from '@/services/loyalty.server'
 
 export type WhatsAppContactRow = {
@@ -12,10 +13,19 @@ export type WhatsAppContactRow = {
   last_outbound_at: string | null
   last_order_at: string | null
   marketing_opt_out: boolean
+  conversation_status: 'auto' | 'humano'
   source: string
   inbound_count: number
   created_at: string
   updated_at: string
+}
+
+export type WhatsAppInboundRegistration = {
+  isNewSession: boolean
+}
+
+function normalizeConversationStatus(value: unknown): 'auto' | 'humano' {
+  return value === 'humano' ? 'humano' : 'auto'
 }
 
 function normalizeRow(row: Record<string, unknown>): WhatsAppContactRow {
@@ -28,6 +38,7 @@ function normalizeRow(row: Record<string, unknown>): WhatsAppContactRow {
     last_outbound_at: row.last_outbound_at != null ? String(row.last_outbound_at) : null,
     last_order_at: row.last_order_at != null ? String(row.last_order_at) : null,
     marketing_opt_out: row.marketing_opt_out === true,
+    conversation_status: normalizeConversationStatus(row.conversation_status),
     source: String(row.source || 'whatsapp'),
     inbound_count: Number(row.inbound_count ?? 0),
     created_at: String(row.created_at || ''),
@@ -43,16 +54,16 @@ export async function registerWhatsAppInboundContact(
     customer_phone: string
     customer_name?: string | null
   }
-): Promise<void> {
+): Promise<WhatsAppInboundRegistration> {
   const phone = normalizePhoneE164(input.customer_phone)
-  if (!phone) return
+  if (!phone) return { isNewSession: false }
 
   const now = new Date().toISOString()
   const name = input.customer_name?.trim() || null
 
   const { data: existing } = await db
     .from('store_whatsapp_contacts')
-    .select('customer_name, inbound_count, first_seen_at')
+    .select('customer_name, inbound_count, first_seen_at, last_inbound_at')
     .eq('store_id', input.store_id)
     .eq('customer_phone', phone)
     .maybeSingle()
@@ -61,7 +72,10 @@ export async function registerWhatsAppInboundContact(
     customer_name?: string | null
     inbound_count?: number
     first_seen_at?: string
+    last_inbound_at?: string | null
   } | null
+
+  const isNewSession = !prev || isWhatsAppNewSession(prev.last_inbound_at)
 
   await db.from('store_whatsapp_contacts').upsert(
     {
@@ -76,6 +90,8 @@ export async function registerWhatsAppInboundContact(
     },
     { onConflict: 'store_id,customer_phone' }
   )
+
+  return { isNewSession }
 }
 
 /** Actualiza último envio outbound (marketing, robô, notificações). */
@@ -199,4 +215,53 @@ export async function countWhatsAppContacts(
     throw new Error(error.message)
   }
   return count ?? 0
+}
+
+export type WhatsAppContactState = {
+  marketing_opt_out: boolean
+  conversation_status: 'auto' | 'humano'
+  customer_name: string | null
+}
+
+export async function getWhatsAppContactState(
+  db: SupabaseClient,
+  storeId: string,
+  customerPhone: string
+): Promise<WhatsAppContactState | null> {
+  const phone = normalizePhoneE164(customerPhone)
+  if (!phone) return null
+
+  const { data, error } = await db
+    .from('store_whatsapp_contacts')
+    .select('marketing_opt_out, conversation_status, customer_name')
+    .eq('store_id', storeId)
+    .eq('customer_phone', phone)
+    .maybeSingle()
+
+  if (error || !data) return null
+
+  const row = data as Record<string, unknown>
+  return {
+    marketing_opt_out: row.marketing_opt_out === true,
+    conversation_status: normalizeConversationStatus(row.conversation_status),
+    customer_name: row.customer_name != null ? String(row.customer_name) : null,
+  }
+}
+
+export async function pauseWhatsAppConversationForHuman(
+  db: SupabaseClient,
+  storeId: string,
+  customerPhone: string
+): Promise<void> {
+  const phone = normalizePhoneE164(customerPhone)
+  if (!phone) return
+
+  await db
+    .from('store_whatsapp_contacts')
+    .update({
+      conversation_status: 'humano',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('store_id', storeId)
+    .eq('customer_phone', phone)
 }

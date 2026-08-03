@@ -15,7 +15,7 @@ export type StoreWhatsAppConfig = {
   phone_number_id: string | null
   display_phone_e164: string | null
   webhook_verified_at: string | null
-  ai_enabled: boolean
+  auto_reply_enabled: boolean
   ai_tone: WhatsAppAiTone
   notify_order_received: boolean
   notify_order_preparing: boolean

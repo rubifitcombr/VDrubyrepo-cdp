@@ -39,13 +39,6 @@ export const DASHBOARD_NAV_META: DashboardNavMetaItem[] = [
     administrationOnly: true,
   },
   {
-    href: '/dashboard/master',
-    label: 'Hub Master',
-    menuKey: 'master_hub',
-    administrationOnly: true,
-    section: 'Master',
-  },
-  {
     href: '/dashboard/master/whatsapp',
     label: 'WhatsApp & robô',
     menuKey: 'master_whatsapp',

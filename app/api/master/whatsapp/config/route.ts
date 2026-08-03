@@ -8,6 +8,11 @@ import {
   listRecentWhatsAppMessages,
   toPublicWhatsAppConfig,
 } from '@/services/whatsapp-config.server'
+import {
+  getWhatsAppSendFailureStats,
+  listRecentWhatsAppSendFailures,
+} from '@/services/whatsapp-send-failures.server'
+import { listStoreWhatsAppTemplates } from '@/services/whatsapp-templates.server'
 import { getUser } from '@/services/auth.server'
 
 export const dynamic = 'force-dynamic'
@@ -27,6 +32,9 @@ export async function GET() {
   const db = await createClient()
   const row = await getWhatsAppConfigForStore(db, gate.ctx.storeId)
   const messages = await listRecentWhatsAppMessages(db, gate.ctx.storeId)
+  const sendFailureStats = await getWhatsAppSendFailureStats(db, gate.ctx.storeId)
+  const sendFailures = await listRecentWhatsAppSendFailures(db, gate.ctx.storeId, 20)
+  const templates = await listStoreWhatsAppTemplates(db, gate.ctx.storeId)
   const verifiedSender = row
     ? await getVerifiedWhatsAppSenderForStore(db, gate.ctx.storeId)
     : null
@@ -50,6 +58,9 @@ export async function GET() {
       : null,
     verifiedSender,
     messages,
+    sendFailureStats,
+    sendFailures,
+    templates,
     webhookUrl: publicWebhookUrl(),
   })
 }

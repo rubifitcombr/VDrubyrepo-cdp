@@ -34,6 +34,11 @@ const nextConfig: NextConfig = {
         destination: '/dashboard/master/marketing',
         permanent: true,
       },
+      {
+        source: '/dashboard/master',
+        destination: '/dashboard/visao',
+        permanent: false,
+      },
     ]
   },
   async rewrites() {

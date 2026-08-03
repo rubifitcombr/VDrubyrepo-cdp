@@ -6,7 +6,9 @@ import {
   subscribeMerchantWabaToVyriaApp,
 } from '@/lib/whatsapp/embedded-signup.server'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceRoleClient } from '@/lib/supabase/service-role.server'
 import { connectWhatsAppForStore } from '@/services/whatsapp-config.server'
+import { createDefaultWhatsAppTemplates } from '@/services/whatsapp-templates.server'
 import { getUser } from '@/services/auth.server'
 
 export const dynamic = 'force-dynamic'
@@ -68,6 +70,15 @@ export async function POST(request: Request) {
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: 400 })
   }
+
+  void (async () => {
+    try {
+      const svc = createServiceRoleClient()
+      await createDefaultWhatsAppTemplates(svc, gate.ctx.storeId, wabaId, exchanged.access_token)
+    } catch (e) {
+      console.warn('[whatsapp embedded] default templates:', e)
+    }
+  })()
 
   return NextResponse.json({
     ok: true,

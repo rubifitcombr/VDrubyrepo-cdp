@@ -4,8 +4,48 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { isDeliveryFlowOrder } from '@/lib/order-status-transitions'
 import type { WhatsAppAiTone } from '@/lib/whatsapp/types'
 import { getOrCreateLoyaltyConfig } from '@/services/loyalty.server'
-import { sendStoreWhatsAppTransactionalText } from '@/services/whatsapp-outbound.server'
+import { sendWithWindowFallback } from '@/services/whatsapp-outbound.server'
 import { getWhatsAppConfigForStore } from '@/services/whatsapp-config.server'
+
+function publicStoreUrl(slug: string): string {
+  const base =
+    process.env.VYRIA_PUBLIC_URL?.trim() ||
+    process.env.NEXT_PUBLIC_VYRIA_PUBLIC_URL?.trim() ||
+    ''
+  if (base) return `${base.replace(/\/$/, '')}/${slug}`
+  return `/${slug}`
+}
+
+function customerNameForTemplate(name: string | null | undefined): string {
+  const n = name?.trim()
+  if (!n) return 'cliente'
+  return n.split(/\s+/)[0] || 'cliente'
+}
+
+function orderIdForTemplate(orderId: string): string {
+  return orderId.slice(0, 8).toUpperCase()
+}
+
+function buildOrderNotificationTemplateParams(input: {
+  customerName: string | null
+  orderId: string
+  statusLabel: string
+  menuUrl: string
+}): string[] {
+  return [
+    customerNameForTemplate(input.customerName),
+    orderIdForTemplate(input.orderId),
+    input.statusLabel,
+    input.menuUrl,
+  ]
+}
+
+async function loadStoreMenuUrl(db: SupabaseClient, storeId: string): Promise<string> {
+  const { data } = await db.from('stores').select('slug').eq('id', storeId).maybeSingle()
+  const slug = (data as { slug?: string } | null)?.slug
+  if (!slug) return 'https://vyria.app'
+  return publicStoreUrl(slug)
+}
 
 export type OrderWhatsAppNotifyOrder = {
   id: string
@@ -174,6 +214,7 @@ export async function notifyOrderWhatsAppReceived(
   if (!waConfig?.notify_order_received) return
 
   const storeName = await loadStoreName(db, storeId)
+  const menuUrl = await loadStoreMenuUrl(db, storeId)
   const body = buildReceivedMessage({
     customerName: order.customer_name ?? null,
     orderRef: orderRef(order.id),
@@ -181,7 +222,19 @@ export async function notifyOrderWhatsAppReceived(
     tone: waConfig.ai_tone,
   })
 
-  await sendStoreWhatsAppTransactionalText(db, storeId, phone, body)
+  await sendWithWindowFallback(
+    db,
+    storeId,
+    phone,
+    body,
+    'order_notification',
+    buildOrderNotificationTemplateParams({
+      customerName: order.customer_name ?? null,
+      orderId: order.id,
+      statusLabel: 'recebido',
+      menuUrl,
+    })
+  )
 }
 
 /** Mudança de estado do pedido (aceite, preparação, saiu para entrega, entregue). */
@@ -199,6 +252,7 @@ export async function notifyOrderWhatsAppStatusChange(
   if (!waConfig) return
 
   const storeName = await loadStoreName(db, storeId)
+  const menuUrl = await loadStoreMenuUrl(db, storeId)
   const ref = orderRef(order.id)
   const ctx = {
     customerName: order.customer_name ?? null,
@@ -209,7 +263,19 @@ export async function notifyOrderWhatsAppStatusChange(
 
   if (previousStatus === 'pending' && newStatus === 'preparing' && waConfig.notify_order_preparing) {
     const body = buildAcceptedPreparingMessage(ctx)
-    await sendStoreWhatsAppTransactionalText(db, storeId, phone, body)
+    await sendWithWindowFallback(
+      db,
+      storeId,
+      phone,
+      body,
+      'order_notification',
+      buildOrderNotificationTemplateParams({
+        customerName: ctx.customerName,
+        orderId: order.id,
+        statusLabel: 'em preparação',
+        menuUrl,
+      })
+    )
     return
   }
 
@@ -226,7 +292,19 @@ export async function notifyOrderWhatsAppStatusChange(
           : null,
       tone: waConfig.ai_tone,
     })
-    await sendStoreWhatsAppTransactionalText(db, storeId, phone, body)
+    await sendWithWindowFallback(
+      db,
+      storeId,
+      phone,
+      body,
+      'order_notification',
+      buildOrderNotificationTemplateParams({
+        customerName: ctx.customerName,
+        orderId: order.id,
+        statusLabel: 'saiu para entrega',
+        menuUrl,
+      })
+    )
     return
   }
 
@@ -237,7 +315,19 @@ export async function notifyOrderWhatsAppStatusChange(
     waConfig.notify_order_ready
   ) {
     const body = buildReadyForPickupMessage(ctx)
-    await sendStoreWhatsAppTransactionalText(db, storeId, phone, body)
+    await sendWithWindowFallback(
+      db,
+      storeId,
+      phone,
+      body,
+      'order_notification',
+      buildOrderNotificationTemplateParams({
+        customerName: ctx.customerName,
+        orderId: order.id,
+        statusLabel: 'pronto para retirada',
+        menuUrl,
+      })
+    )
     return
   }
 
@@ -246,6 +336,18 @@ export async function notifyOrderWhatsAppStatusChange(
     if (loyaltyConfig.enabled) return
 
     const body = buildDeliveredMessage(ctx)
-    await sendStoreWhatsAppTransactionalText(db, storeId, phone, body)
+    await sendWithWindowFallback(
+      db,
+      storeId,
+      phone,
+      body,
+      'order_notification',
+      buildOrderNotificationTemplateParams({
+        customerName: ctx.customerName,
+        orderId: order.id,
+        statusLabel: 'entregue',
+        menuUrl,
+      })
+    )
   }
 }

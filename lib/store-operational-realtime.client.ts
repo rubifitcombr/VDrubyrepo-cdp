@@ -1,5 +1,18 @@
 'use client'
 
+/**
+ * Coordenação de refetch após Realtime (item 5 do hardening de egress):
+ * - Não há pull centralizado único (evita refactor grande no shell).
+ * - Cada subscriber ignora eventos com aba em segundo plano (mesmo guard do polling).
+ * - O bridge aumenta debounce antes de broadcast para agrupar rajadas.
+ */
+export const OPERATIONAL_SYNC_DEBOUNCE_MS = 400
+
+/** Só dispara fetch PostgREST quando o separador do dashboard está visível. */
+export function isOperationalSyncTabVisible(): boolean {
+  return typeof document === 'undefined' || document.visibilityState === 'visible'
+}
+
 export const STORE_ORDERS_SYNC_EVENT = 'vyria-store-orders-sync'
 
 export type StoreOrdersSyncSource =

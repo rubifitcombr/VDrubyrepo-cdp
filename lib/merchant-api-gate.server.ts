@@ -156,7 +156,7 @@ export function gateMerchantMasterFeature(
   if (hasFeature(plan, normalized)) return null
 
   const labels: Record<'whatsapp_ai' | 'loyalty' | 'marketing', string> = {
-    whatsapp_ai: 'WhatsApp oficial e robô de IA',
+    whatsapp_ai: 'WhatsApp oficial e atendimento automático',
     loyalty: 'Programa de fidelidade',
     marketing: 'Marketing WhatsApp',
   }

@@ -53,7 +53,8 @@ export function normalizeWhatsAppConfigRow(
       row.display_phone_e164 != null ? String(row.display_phone_e164) : null,
     webhook_verified_at:
       row.webhook_verified_at != null ? String(row.webhook_verified_at) : null,
-    ai_enabled: row.ai_enabled !== false,
+    auto_reply_enabled:
+      row.auto_reply_enabled !== false && (row as { ai_enabled?: boolean }).ai_enabled !== false,
     ai_tone: normalizeTone(row.ai_tone),
     notify_order_received: row.notify_order_received === true,
     notify_order_preparing: row.notify_order_preparing === true,
@@ -82,7 +83,7 @@ export async function getWhatsAppConfigForStore(
   const { data, error } = await db
     .from('store_whatsapp_config')
     .select(
-      'store_id, status, waba_id, phone_number_id, display_phone_e164, webhook_verified_at, ai_enabled, ai_tone, notify_order_received, notify_order_preparing, notify_order_ready, notify_order_delivered, last_error, created_at, updated_at, access_token_enc'
+      'store_id, status, waba_id, phone_number_id, display_phone_e164, webhook_verified_at, auto_reply_enabled, ai_tone, notify_order_received, notify_order_preparing, notify_order_ready, notify_order_delivered, last_error, created_at, updated_at, access_token_enc'
     )
     .eq('store_id', storeId)
     .maybeSingle()
@@ -272,7 +273,7 @@ export async function connectWhatsAppForStore(
     .from('store_whatsapp_config')
     .upsert(patch, { onConflict: 'store_id' })
     .select(
-      'store_id, status, waba_id, phone_number_id, display_phone_e164, webhook_verified_at, ai_enabled, ai_tone, notify_order_received, notify_order_preparing, notify_order_ready, notify_order_delivered, last_error, created_at, updated_at, access_token_enc'
+      'store_id, status, waba_id, phone_number_id, display_phone_e164, webhook_verified_at, auto_reply_enabled, ai_tone, notify_order_received, notify_order_preparing, notify_order_ready, notify_order_delivered, last_error, created_at, updated_at, access_token_enc'
     )
     .single()
 
@@ -292,7 +293,7 @@ export async function connectWhatsAppForStore(
 }
 
 export type UpdateWhatsAppSettingsInput = {
-  ai_enabled?: boolean
+  auto_reply_enabled?: boolean
   ai_tone?: WhatsAppAiTone
   notify_order_received?: boolean
   notify_order_preparing?: boolean
@@ -308,7 +309,7 @@ export async function updateWhatsAppSettingsForStore(
   const patch: Record<string, unknown> = {
     updated_at: new Date().toISOString(),
   }
-  if (input.ai_enabled !== undefined) patch.ai_enabled = input.ai_enabled
+  if (input.auto_reply_enabled !== undefined) patch.auto_reply_enabled = input.auto_reply_enabled
   if (input.ai_tone !== undefined) patch.ai_tone = input.ai_tone
   if (input.notify_order_received !== undefined) {
     patch.notify_order_received = input.notify_order_received
@@ -328,7 +329,7 @@ export async function updateWhatsAppSettingsForStore(
     .update(patch)
     .eq('store_id', storeId)
     .select(
-      'store_id, status, waba_id, phone_number_id, display_phone_e164, webhook_verified_at, ai_enabled, ai_tone, notify_order_received, notify_order_preparing, notify_order_ready, notify_order_delivered, last_error, created_at, updated_at, access_token_enc'
+      'store_id, status, waba_id, phone_number_id, display_phone_e164, webhook_verified_at, auto_reply_enabled, ai_tone, notify_order_received, notify_order_preparing, notify_order_ready, notify_order_delivered, last_error, created_at, updated_at, access_token_enc'
     )
     .single()
 
