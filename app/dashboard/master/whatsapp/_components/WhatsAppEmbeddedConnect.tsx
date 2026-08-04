@@ -278,8 +278,8 @@ export function WhatsAppEmbeddedConnect({
           Conexão temporariamente indisponível
         </p>
         <p className="mt-2 text-sm text-vyria-navy-muted">
-          A integração com a Meta está a ser activada. Tente novamente em alguns minutos ou
-          solicite activação manual abaixo.
+          A integração com a Meta está temporariamente indisponível. Verifique com o suporte Vyria
+          se o app Meta está em Live com permissões Advanced Access.
         </p>
         {supportHref ? (
           <a

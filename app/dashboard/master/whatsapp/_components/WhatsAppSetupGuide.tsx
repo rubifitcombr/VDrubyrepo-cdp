@@ -46,20 +46,17 @@ function FaqItem({
 export function WhatsAppSetupGuide({
   isConnected,
   supportHref,
-  coexistenceMode = true,
 }: {
   isConnected: boolean
   supportHref?: string | null
-  coexistenceMode?: boolean
 }) {
   if (isConnected) {
     return (
       <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 px-4 py-3 text-sm text-emerald-950">
-        <p className="font-semibold">WhatsApp ligado</p>
+        <p className="font-semibold">WhatsApp ligado com coexistência</p>
         <p className="mt-1 text-xs leading-relaxed">
-          {coexistenceMode
-            ? 'O número funciona na Vyria (robô, notificações) e continua no WhatsApp Business do celular.'
-            : 'O atendimento automático, notificações de pedido e fidelidade usam o número configurado pela Vyria.'}
+          O número funciona na Vyria (robô, notificações) e continua no WhatsApp Business do
+          celular.
         </p>
       </div>
     )
@@ -72,7 +69,7 @@ export function WhatsAppSetupGuide({
           Como funciona
         </p>
         <h3 className="mt-1 font-brand text-base font-bold text-vyria-navy">
-          {coexistenceMode ? 'Coexistência (app + Vyria)' : 'Activação feita pela Vyria'}
+          Coexistência (app + Vyria)
         </h3>
         <ul className="mt-4 space-y-3">
           <li className="flex gap-3 text-sm text-vyria-navy">
@@ -87,22 +84,18 @@ export function WhatsAppSetupGuide({
           <li className="flex gap-3 text-sm text-vyria-navy">
             <CheckIcon />
             <span>
-              <strong className="font-semibold">
-                {coexistenceMode ? 'Conectar com Facebook' : 'Solicitar activação'}
-              </strong>
+              <strong className="font-semibold">Conectar com Facebook</strong>
               <span className="mt-0.5 block text-xs text-vyria-navy-muted">
-                {coexistenceMode
-                  ? 'Autorize na Meta e confirme no telemóvel quando pedido (QR ou código).'
-                  : 'Informe o telefone — a nossa equipa configura na Meta (API oficial).'}
+                Autorize na Meta e confirme no telemóvel (QR ou código).
               </span>
             </span>
           </li>
           <li className="flex gap-3 text-sm text-vyria-navy">
             <CheckIcon done />
             <span>
-              <strong className="font-semibold">Pronto para usar</strong>
+              <strong className="font-semibold">Activar o robô</strong>
               <span className="mt-0.5 block text-xs text-vyria-navy-muted">
-                Robô, notificações e fidelidade activam assim que a ligação estiver activa.
+                Depois da ligação, active o atendimento automático e teste com «oi».
               </span>
             </span>
           </li>
@@ -113,39 +106,22 @@ export function WhatsAppSetupGuide({
         <p className="text-xs font-semibold uppercase tracking-wider text-vyria-navy-muted">
           Dúvidas frequentes
         </p>
-        {coexistenceMode ? (
-          <>
-            <FaqItem title="Preciso desligar o WhatsApp do celular?" defaultOpen>
-              <p>
-                <strong>Não.</strong> A coexistência permite usar o app Business no telemóvel e a
-                Vyria ao mesmo tempo. Mensagens enviadas pelo celular continuam a funcionar.
-              </p>
-            </FaqItem>
-            <FaqItem title="O que acontece ao clicar em Conectar com Facebook?">
-              <p>
-                Abre o cadastro oficial da Meta. Você faz login, escolhe o número Business e confirma
-                no celular. A Vyria recebe a ligação automaticamente — sem copiar tokens.
-              </p>
-            </FaqItem>
-          </>
-        ) : (
-          <FaqItem title="Por que não conecto com Facebook aqui?">
-            <p>
-              A Vyria gere a integração com a Meta para garantir estabilidade e suporte. Você só
-              informa o número; nós fazemos a configuração técnica (WABA, webhook, templates).
-            </p>
-          </FaqItem>
-        )}
-        <FaqItem title="Não tenho número só da loja">
+        <FaqItem title="Preciso desligar o WhatsApp do celular?" defaultOpen>
           <p>
-            Use um chip pré-pago com <strong>WhatsApp Business</strong>. Muitos comércios começam
-            assim.
+            <strong>Não.</strong> A coexistência mantém o app Business no telemóvel e a Vyria ao
+            mesmo tempo.
           </p>
         </FaqItem>
-        <FaqItem title="Deu erro «número já registado»?">
+        <FaqItem title="Erro ao fazer login com Facebook?">
           <p>
-            Use o botão <strong>Conectar com Facebook</strong> (coexistência), não a activação
-            manual. Números já no app Business só entram pela Meta com confirmação no celular.
+            A conta usada deve ser <strong>admin do negócio</strong> na Meta. Se o app Vyria estiver
+            em modo Live, a Meta exige permissões Advanced Access (`public_profile`, `email` e
+            WhatsApp). Contacte o suporte Vyria se o erro persistir.
+          </p>
+        </FaqItem>
+        <FaqItem title="Não tenho número só da loja">
+          <p>
+            Use um chip com <strong>WhatsApp Business</strong> (versão 2.24.17 ou superior).
           </p>
         </FaqItem>
       </div>

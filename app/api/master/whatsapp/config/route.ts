@@ -89,7 +89,7 @@ export async function GET() {
       sendFailures,
       templates,
       webhookUrl: publicWhatsAppWebhookUrl(),
-      connectionMode: 'manual' as const,
+      connectionMode: 'coexistence' as const,
     })
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Erro ao carregar WhatsApp.'

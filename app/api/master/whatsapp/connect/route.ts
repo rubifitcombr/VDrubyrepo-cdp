@@ -8,7 +8,7 @@ import type { WhatsAppAiTone } from '@/lib/whatsapp/types'
 
 export const dynamic = 'force-dynamic'
 
-/** Apenas definições (robô, notificações). Ligação manual via equipa Vyria. */
+/** Apenas definições (robô, notificações). Ligação via Conectar com Facebook (coexistência). */
 export async function POST(request: Request) {
   const user = await getUser()
   if (!user) {
@@ -33,7 +33,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error:
-          'A ligação do WhatsApp é feita pela equipa Vyria. Solicite a activação no painel.',
+          'A ligação é feita com Conectar com Facebook. Use essa opção no painel WhatsApp.',
       },
       { status: 400 }
     )
