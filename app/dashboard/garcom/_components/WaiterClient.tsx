@@ -470,6 +470,8 @@ export function WaiterClient({
 
   const avulsaToggleRef = useRef<HTMLButtonElement>(null)
   const avulsaPopoverRef = useRef<HTMLDivElement>(null)
+  const menuSearchDesktopRef = useRef<HTMLInputElement>(null)
+  const menuSearchMobileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     setTables(initialTables)
@@ -788,8 +790,26 @@ export function WaiterClient({
   }
 
   function openMenuForOrder() {
-    setMenuSheetOpen(true)
     setError(null)
+    const mobile = isMobileViewport()
+    if (mobile) {
+      // Sheet do cardápio fica acima do drawer (z-92 > z-88).
+      setMenuSheetOpen(true)
+      queueMicrotask(() => menuSearchMobileRef.current?.focus())
+      return
+    }
+    setMenuSheetOpen(false)
+    queueMicrotask(() => {
+      menuSearchDesktopRef.current?.focus({ preventScroll: false })
+      menuSearchDesktopRef.current?.scrollIntoView({
+        block: 'nearest',
+        behavior: 'smooth',
+      })
+    })
+  }
+
+  function isMobileViewport() {
+    return typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches
   }
 
   function startNewOrderForTable(
@@ -820,12 +840,9 @@ export function WaiterClient({
     setComandaPickerTable(null)
     setNewComandaNameDraft('')
     setTableActionSheetOpen(false)
-    if (openMenu) openMenuForOrder()
+    // Drawer (z-88) + cardápio mobile (z-92): o sheet fica por cima e o pedido continua atrás.
     if (openDrawer) setOrderDrawerOpen(true)
-  }
-
-  function isMobileViewport() {
-    return typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches
+    if (openMenu) openMenuForOrder()
   }
 
   async function handleTablePress(tb: StoreTableDTO) {
@@ -1881,6 +1898,7 @@ export function WaiterClient({
                 </svg>
               </span>
               <input
+                ref={menuSearchDesktopRef}
                 type="search"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
@@ -2641,9 +2659,9 @@ export function WaiterClient({
         />
       ) : null}
 
-      {/* Mobile: bottom sheet cardápio */}
+      {/* Mobile: bottom sheet cardápio (acima do drawer do pedido z-88) */}
       {menuSheetOpen ? (
-        <div className="fixed inset-0 z-[85] md:hidden" role="dialog" aria-modal>
+        <div className="fixed inset-0 z-[92] md:hidden" role="dialog" aria-modal>
           <button
             type="button"
             className="absolute inset-0 bg-black/40"
@@ -2675,6 +2693,7 @@ export function WaiterClient({
                   </svg>
                 </span>
                 <input
+                  ref={menuSearchMobileRef}
                   type="search"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
@@ -2883,7 +2902,6 @@ export function WaiterClient({
                 onClick={() => {
                   setTableActionSheetOpen(false)
                   startNewOrderForTable(table, sector, { openDrawer: false, openMenu: true })
-                  setMenuSheetOpen(true)
                 }}
                 className="rounded-xl border border-[var(--card-border)] bg-white py-2.5 text-sm font-semibold text-[#1a1614]"
               >
@@ -3086,15 +3104,15 @@ function OrderPanelContent({
                   <button
                     type="button"
                     onClick={onOpenMenu}
-                    className="mt-3 inline-flex items-center justify-center gap-2 rounded-xl bg-[var(--dash-primary)] px-4 py-2.5 text-xs font-semibold text-white shadow-sm md:hidden"
+                    className="mt-3 inline-flex items-center justify-center gap-2 rounded-xl bg-[var(--dash-primary)] px-4 py-2.5 text-xs font-semibold text-white shadow-sm"
                   >
                     <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h10" />
                     </svg>
                     Abrir cardápio
                   </button>
-                  <p className="mt-3 hidden text-xs text-[#6b7280] md:block">
-                    Selecione produtos no cardápio à esquerda para adicionar à comanda.
+                  <p className="mt-2 hidden text-[11px] text-[#6b7280] md:block">
+                    Ou escolha produtos no cardápio à esquerda.
                   </p>
                 </div>
               ) : (
