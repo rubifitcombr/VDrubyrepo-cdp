@@ -61,6 +61,11 @@ export function normalizeWhatsAppConfigRow(
     notify_order_ready: row.notify_order_ready === true,
     notify_order_delivered: row.notify_order_delivered === true,
     last_error: row.last_error != null ? String(row.last_error) : null,
+    onboarding_contact_phone:
+      row.onboarding_contact_phone != null ? String(row.onboarding_contact_phone) : null,
+    onboarding_notes: row.onboarding_notes != null ? String(row.onboarding_notes) : null,
+    onboarding_requested_at:
+      row.onboarding_requested_at != null ? String(row.onboarding_requested_at) : null,
     created_at: String(row.created_at || ''),
     updated_at: String(row.updated_at || ''),
   }
@@ -76,15 +81,16 @@ export function toPublicWhatsAppConfig(
   }
 }
 
+export const WHATSAPP_CONFIG_COLUMNS =
+  'store_id, status, waba_id, phone_number_id, display_phone_e164, webhook_verified_at, auto_reply_enabled, ai_tone, notify_order_received, notify_order_preparing, notify_order_ready, notify_order_delivered, last_error, onboarding_contact_phone, onboarding_notes, onboarding_requested_at, created_at, updated_at, access_token_enc'
+
 export async function getWhatsAppConfigForStore(
   db: SupabaseClient,
   storeId: string
 ): Promise<StoreWhatsAppConfig | null> {
   const { data, error } = await db
     .from('store_whatsapp_config')
-    .select(
-      'store_id, status, waba_id, phone_number_id, display_phone_e164, webhook_verified_at, auto_reply_enabled, ai_tone, notify_order_received, notify_order_preparing, notify_order_ready, notify_order_delivered, last_error, created_at, updated_at, access_token_enc'
-    )
+    .select(WHATSAPP_CONFIG_COLUMNS)
     .eq('store_id', storeId)
     .maybeSingle()
 
@@ -272,9 +278,7 @@ export async function connectWhatsAppForStore(
   const { data, error } = await db
     .from('store_whatsapp_config')
     .upsert(patch, { onConflict: 'store_id' })
-    .select(
-      'store_id, status, waba_id, phone_number_id, display_phone_e164, webhook_verified_at, auto_reply_enabled, ai_tone, notify_order_received, notify_order_preparing, notify_order_ready, notify_order_delivered, last_error, created_at, updated_at, access_token_enc'
-    )
+    .select(WHATSAPP_CONFIG_COLUMNS)
     .single()
 
   if (error) {
@@ -328,9 +332,7 @@ export async function updateWhatsAppSettingsForStore(
     .from('store_whatsapp_config')
     .update(patch)
     .eq('store_id', storeId)
-    .select(
-      'store_id, status, waba_id, phone_number_id, display_phone_e164, webhook_verified_at, auto_reply_enabled, ai_tone, notify_order_received, notify_order_preparing, notify_order_ready, notify_order_delivered, last_error, created_at, updated_at, access_token_enc'
-    )
+    .select(WHATSAPP_CONFIG_COLUMNS)
     .single()
 
   if (error) {

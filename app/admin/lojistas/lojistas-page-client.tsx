@@ -2,6 +2,7 @@
 
 import { adminPlanOptionsForOperationMode } from '@/lib/admin-plans'
 import { AdminFiscalControl } from '@/app/admin/lojistas/_components/AdminFiscalControl'
+import { AdminWhatsAppControl } from '@/app/admin/lojistas/_components/AdminWhatsAppControl'
 import { AdminLojistaOrdersModal } from '@/app/admin/lojistas/_components/AdminLojistaOrdersModal'
 import {
   ANNUAL_CONTRACT_DISCOUNT_PCT,
@@ -2500,6 +2501,8 @@ export function LojistasPageClient() {
                   </section>
 
                   <AdminFiscalControl lojistaId={drawerLojista.id} />
+
+                  <AdminWhatsAppControl lojistaId={drawerLojista.id} />
 
                   <section className="rounded-2xl border border-red-200/80 bg-red-50/40 p-4">
                     <h3 className="text-xs font-semibold uppercase tracking-wide text-red-800">

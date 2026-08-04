@@ -8,7 +8,7 @@ import type { WhatsAppAiTone } from '@/lib/whatsapp/types'
 
 export const dynamic = 'force-dynamic'
 
-/** Apenas definições (robô, notificações). Ligação via Embedded Signup. */
+/** Apenas definições (robô, notificações). Ligação manual via equipa Vyria. */
 export async function POST(request: Request) {
   const user = await getUser()
   if (!user) {
@@ -33,7 +33,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error:
-          'Use o botão «Conectar com Facebook» para ligar o WhatsApp da loja.',
+          'A ligação do WhatsApp é feita pela equipa Vyria. Solicite a activação no painel.',
       },
       { status: 400 }
     )

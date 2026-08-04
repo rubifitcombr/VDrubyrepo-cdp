@@ -46,17 +46,20 @@ function FaqItem({
 export function WhatsAppSetupGuide({
   isConnected,
   supportHref,
+  coexistenceMode = true,
 }: {
   isConnected: boolean
   supportHref?: string | null
+  coexistenceMode?: boolean
 }) {
   if (isConnected) {
     return (
       <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 px-4 py-3 text-sm text-emerald-950">
         <p className="font-semibold">WhatsApp ligado</p>
         <p className="mt-1 text-xs leading-relaxed">
-          O assistente responde de forma profissional (IA), consulta pedidos e pontos, e
-          direciona pedidos ao cardápio online — não registra pedidos pelo chat.
+          {coexistenceMode
+            ? 'O número funciona na Vyria (robô, notificações) e continua no WhatsApp Business do celular.'
+            : 'O atendimento automático, notificações de pedido e fidelidade usam o número configurado pela Vyria.'}
         </p>
       </div>
     )
@@ -66,121 +69,90 @@ export function WhatsAppSetupGuide({
     <div className="space-y-4">
       <div className="rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50/80 to-white p-5">
         <p className="text-xs font-semibold uppercase tracking-wider text-violet-800">
-          Antes de conectar
+          Como funciona
         </p>
         <h3 className="mt-1 font-brand text-base font-bold text-vyria-navy">
-          O que você precisa ter
+          {coexistenceMode ? 'Coexistência (app + Vyria)' : 'Activação feita pela Vyria'}
         </h3>
         <ul className="mt-4 space-y-3">
           <li className="flex gap-3 text-sm text-vyria-navy">
             <CheckIcon />
             <span>
-              <strong className="font-semibold">Celular com WhatsApp Business</strong> da loja
+              <strong className="font-semibold">WhatsApp Business no celular</strong>
               <span className="mt-0.5 block text-xs text-vyria-navy-muted">
-                Pode ser um chip só do comércio — o número que os clientes já usam para pedir.
+                O número que os clientes já usam — você não precisa desinstalar o app.
               </span>
             </span>
           </li>
           <li className="flex gap-3 text-sm text-vyria-navy">
             <CheckIcon />
             <span>
-              <strong className="font-semibold">Conta Facebook ou Meta Business</strong> da loja
+              <strong className="font-semibold">
+                {coexistenceMode ? 'Conectar com Facebook' : 'Solicitar activação'}
+              </strong>
               <span className="mt-0.5 block text-xs text-vyria-navy-muted">
-                Grátis e leva poucos minutos. Não precisa de página famosa — só para autorizar a
-                conexão.
+                {coexistenceMode
+                  ? 'Autorize na Meta e confirme no telemóvel quando pedido (QR ou código).'
+                  : 'Informe o telefone — a nossa equipa configura na Meta (API oficial).'}
+              </span>
+            </span>
+          </li>
+          <li className="flex gap-3 text-sm text-vyria-navy">
+            <CheckIcon done />
+            <span>
+              <strong className="font-semibold">Pronto para usar</strong>
+              <span className="mt-0.5 block text-xs text-vyria-navy-muted">
+                Robô, notificações e fidelidade activam assim que a ligação estiver activa.
               </span>
             </span>
           </li>
         </ul>
       </div>
 
-      <div className="rounded-2xl border border-[var(--card-border)] bg-white p-5">
-        <p className="text-xs font-semibold uppercase tracking-wider text-vyria-navy-muted">
-          Como funciona
-        </p>
-        <ol className="mt-3 space-y-4">
-          {[
-            {
-              n: '1',
-              title: 'Clique em «Conectar com Facebook»',
-              desc: 'Abre o site seguro da Meta — a Vyria não vê a sua senha.',
-            },
-            {
-              n: '2',
-              title: 'Escolha o WhatsApp da loja',
-              desc: 'Seleccione o número que os clientes usam. A Vyria não cadastra números por você.',
-            },
-            {
-              n: '3',
-              title: 'Pronto — tudo automático',
-              desc: 'Robô, mensagens e fidelidade passam a usar esse número. Sem copiar códigos.',
-            },
-          ].map((step) => (
-            <li key={step.n} className="flex gap-3">
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-vyria-plum text-xs font-bold text-white">
-                {step.n}
-              </span>
-              <div>
-                <p className="text-sm font-semibold text-vyria-navy">{step.title}</p>
-                <p className="mt-0.5 text-xs text-vyria-navy-muted">{step.desc}</p>
-              </div>
-            </li>
-          ))}
-        </ol>
-      </div>
-
       <div className="space-y-2">
         <p className="text-xs font-semibold uppercase tracking-wider text-vyria-navy-muted">
           Dúvidas frequentes
         </p>
+        {coexistenceMode ? (
+          <>
+            <FaqItem title="Preciso desligar o WhatsApp do celular?" defaultOpen>
+              <p>
+                <strong>Não.</strong> A coexistência permite usar o app Business no telemóvel e a
+                Vyria ao mesmo tempo. Mensagens enviadas pelo celular continuam a funcionar.
+              </p>
+            </FaqItem>
+            <FaqItem title="O que acontece ao clicar em Conectar com Facebook?">
+              <p>
+                Abre o cadastro oficial da Meta. Você faz login, escolhe o número Business e confirma
+                no celular. A Vyria recebe a ligação automaticamente — sem copiar tokens.
+              </p>
+            </FaqItem>
+          </>
+        ) : (
+          <FaqItem title="Por que não conecto com Facebook aqui?">
+            <p>
+              A Vyria gere a integração com a Meta para garantir estabilidade e suporte. Você só
+              informa o número; nós fazemos a configuração técnica (WABA, webhook, templates).
+            </p>
+          </FaqItem>
+        )}
         <FaqItem title="Não tenho número só da loja">
           <p>
-            Use um <strong>chip pré-pago</strong> ou um segundo número no celular. Instale o app{' '}
-            <strong>WhatsApp Business</strong> nesse chip e use-o na conexão. Muitos comércios
-            começam assim.
+            Use um chip pré-pago com <strong>WhatsApp Business</strong>. Muitos comércios começam
+            assim.
           </p>
         </FaqItem>
-        <FaqItem title="Não tenho Facebook da loja">
+        <FaqItem title="Deu erro «número já registado»?">
           <p>
-            Crie uma conta gratuita em{' '}
-            <a
-              href="https://www.facebook.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-semibold text-vyria-plum hover:underline"
-            >
-              facebook.com
-            </a>{' '}
-            com o nome do comércio. Depois aceda a{' '}
-            <a
-              href="https://business.facebook.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-semibold text-vyria-plum hover:underline"
-            >
-              business.facebook.com
-            </a>{' '}
-            para associar o WhatsApp. Não precisa de seguidores.
-          </p>
-        </FaqItem>
-        <FaqItem title="Uso meu WhatsApp pessoal hoje">
-          <p>
-            Pode migrar para <strong>WhatsApp Business</strong> no mesmo aparelho (faça backup
-            antes). Na conexão, escolha esse número. Os clientes continuam a falar com o mesmo
-            telefone.
-          </p>
-        </FaqItem>
-        <FaqItem title="Não quero usar WhatsApp agora">
-          <p>
-            Sem problema — o resto do sistema (cardápio, pedidos, PDV) funciona normalmente. O
-            WhatsApp Master é opcional e pode activar quando quiser.
+            Use o botão <strong>Conectar com Facebook</strong> (coexistência), não a activação
+            manual. Números já no app Business só entram pela Meta com confirmação no celular.
           </p>
         </FaqItem>
       </div>
 
       {supportHref ? (
         <p className="text-center text-xs text-vyria-navy-muted">
-          Precisa de ajuda para configurar?{' '}
+          Dúvidas?{' '}
           <a
             href={supportHref}
             target="_blank"

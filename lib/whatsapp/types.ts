@@ -22,6 +22,9 @@ export type StoreWhatsAppConfig = {
   notify_order_ready: boolean
   notify_order_delivered: boolean
   last_error: string | null
+  onboarding_contact_phone: string | null
+  onboarding_notes: string | null
+  onboarding_requested_at: string | null
   created_at: string
   updated_at: string
 }
@@ -44,4 +47,24 @@ export type WhatsAppMessageRow = {
   body_text: string | null
   status: string | null
   created_at: string
+}
+
+/** Resumo para painel admin Vyria (sem token). */
+export type AdminWhatsAppSummary = {
+  status: string
+  configured: boolean
+  waba_id: string | null
+  phone_number_id: string | null
+  display_phone_e164: string | null
+  has_token: boolean
+  webhook_verified_at: string | null
+  last_error: string | null
+  onboarding_contact_phone: string | null
+  onboarding_notes: string | null
+  onboarding_requested_at: string | null
+  verified_name: string | null
+  verified_phone_formatted: string | null
+  templates_total: number
+  templates_approved: number
+  webhook_url: string
 }

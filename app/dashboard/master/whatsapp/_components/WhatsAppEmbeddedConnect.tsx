@@ -11,6 +11,7 @@ type EmbeddedConfig = {
 type SessionInfo = {
   waba_id?: string
   phone_number_id?: string
+  coexistence_finish?: boolean
 }
 
 function parseEmbeddedSignupMessage(data: unknown): SessionInfo | null {
@@ -22,11 +23,21 @@ function parseEmbeddedSignupMessage(data: unknown): SessionInfo | null {
         : (data as Record<string, unknown>)
     if (payload.type !== 'WA_EMBEDDED_SIGNUP') return null
     const inner = payload.data as Record<string, unknown> | undefined
-    if (!inner) return null
+    const event = payload.event != null ? String(payload.event) : null
+    const coexistenceFinish = event === 'FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING'
+
+    if (!inner && !coexistenceFinish) return null
+
     return {
-      waba_id: inner.waba_id != null ? String(inner.waba_id) : undefined,
+      waba_id:
+        inner?.waba_id != null
+          ? String(inner.waba_id)
+          : undefined,
       phone_number_id:
-        inner.phone_number_id != null ? String(inner.phone_number_id) : undefined,
+        inner?.phone_number_id != null
+          ? String(inner.phone_number_id)
+          : undefined,
+      coexistence_finish: coexistenceFinish || undefined,
     }
   } catch {
     return null
@@ -39,13 +50,16 @@ function sleep(ms: number): Promise<void> {
 
 async function waitForEmbeddedSession(
   sessionRef: MutableRefObject<SessionInfo>,
-  maxMs = 4000
+  options: { coexistence?: boolean; maxMs?: number } = {}
 ): Promise<SessionInfo> {
+  const maxMs = options.maxMs ?? (options.coexistence ? 10_000 : 4_000)
   const started = Date.now()
   while (Date.now() - started < maxMs) {
-    const { waba_id, phone_number_id } = sessionRef.current
-    if (waba_id && phone_number_id) {
-      return { waba_id, phone_number_id }
+    const { waba_id, phone_number_id, coexistence_finish } = sessionRef.current
+    const hasWaba = Boolean(waba_id)
+    const hasPhone = Boolean(phone_number_id)
+    if (hasWaba && (hasPhone || options.coexistence || coexistence_finish)) {
+      return { waba_id, phone_number_id, coexistence_finish }
     }
     await sleep(150)
   }
@@ -183,18 +197,23 @@ export function WhatsAppEmbeddedConnect({
 
   const completeConnect = useCallback(
     async (code: string) => {
-      const session = await waitForEmbeddedSession(sessionRef)
+      const session = await waitForEmbeddedSession(sessionRef, { coexistence: true })
       const { waba_id, phone_number_id } = session
-      if (!waba_id || !phone_number_id) {
+      if (!waba_id) {
         throw new Error(
-          'A Meta não enviou o número. Aguarde o fim do cadastro no popup e tente de novo.'
+          'A Meta não enviou os dados da conta. Aguarde o fim do cadastro no popup e tente de novo.'
         )
       }
 
       const res = await fetch('/api/master/whatsapp/embedded-connect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code, waba_id, phone_number_id }),
+        body: JSON.stringify({
+          code,
+          waba_id,
+          phone_number_id: phone_number_id || undefined,
+          coexistence: true,
+        }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error || 'Falha ao ligar WhatsApp.')
@@ -237,7 +256,9 @@ export function WhatsAppEmbeddedConnect({
         response_type: 'code',
         override_default_response_type: true,
         extras: {
+          setup: {},
           feature: 'whatsapp_embedded_signup',
+          featureType: 'whatsapp_business_app_onboarding',
           sessionInfoVersion: 3,
         },
       }
@@ -257,7 +278,8 @@ export function WhatsAppEmbeddedConnect({
           Conexão temporariamente indisponível
         </p>
         <p className="mt-2 text-sm text-vyria-navy-muted">
-          A integração com a Meta está a ser activada. Tente novamente em alguns minutos.
+          A integração com a Meta está a ser activada. Tente novamente em alguns minutos ou
+          solicite activação manual abaixo.
         </p>
         {supportHref ? (
           <a
@@ -275,10 +297,19 @@ export function WhatsAppEmbeddedConnect({
 
   return (
     <div className="rounded-2xl border-2 border-[#1877F2]/30 bg-gradient-to-br from-[#1877F2]/5 to-white p-6">
-      <h3 className="font-brand text-lg font-bold text-vyria-navy">Conectar agora</h3>
+      <h3 className="font-brand text-lg font-bold text-vyria-navy">
+        Conectar com coexistência
+      </h3>
       <p className="mt-2 text-sm text-vyria-navy-muted">
-        Um clique — a Vyria configura tudo. Você só autoriza o número da loja na Meta.
+        Mantenha o <strong className="font-semibold text-vyria-navy">WhatsApp Business no celular</strong>{' '}
+        e ligue a API oficial em poucos minutos. No popup da Meta, confirme no telemóvel quando
+        solicitado.
       </p>
+      <ol className="mt-4 list-inside list-decimal space-y-1 text-xs text-vyria-navy-muted">
+        <li>WhatsApp Business actualizado (v2.24.17+)</li>
+        <li>Login com a conta Meta do negócio</li>
+        <li>Confirmar no celular (QR ou código)</li>
+      </ol>
       <button
         type="button"
         disabled={disabled || connecting || !fbReady}

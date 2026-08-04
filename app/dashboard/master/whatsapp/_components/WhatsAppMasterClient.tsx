@@ -1,8 +1,8 @@
 'use client'
 
-import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
 import { WhatsAppEmbeddedConnect } from './WhatsAppEmbeddedConnect'
+import { WhatsAppPendingActivation, readJsonResponse } from './WhatsAppPendingActivation'
 import { WhatsAppSetupGuide } from './WhatsAppSetupGuide'
 import type {
   StoreWhatsAppConfigPublic,
@@ -17,7 +17,7 @@ type VerifiedWhatsAppSender = {
   verified_name: string | null
 }
 
-function statusLabel(status: string): string {
+function statusLabel(status: string | undefined): string {
   switch (status) {
     case 'active':
       return 'Activo'
@@ -25,12 +25,14 @@ function statusLabel(status: string): string {
       return 'Desligado'
     case 'error':
       return 'Erro'
+    case 'pending':
+      return 'Aguardando Vyria'
     default:
-      return 'Pendente'
+      return 'Não iniciado'
   }
 }
 
-function statusClass(status: string): string {
+function statusClass(status: string | undefined): string {
   switch (status) {
     case 'active':
       return 'bg-emerald-50 text-emerald-800 ring-emerald-200'
@@ -38,9 +40,64 @@ function statusClass(status: string): string {
       return 'bg-red-50 text-red-800 ring-red-200'
     case 'disconnected':
       return 'bg-zinc-100 text-zinc-600 ring-zinc-200'
-    default:
+    case 'pending':
       return 'bg-amber-50 text-amber-900 ring-amber-200'
+    default:
+      return 'bg-violet-50 text-violet-900 ring-violet-200'
   }
+}
+
+function OnboardingSteps({
+  hasRequest,
+  isActive,
+  embeddedAvailable,
+}: {
+  hasRequest: boolean
+  isActive: boolean
+  embeddedAvailable?: boolean
+}) {
+  const steps = embeddedAvailable
+    ? [
+        { label: 'Conectar com Facebook', done: isActive, active: !isActive && !hasRequest },
+        { label: 'Confirmar no celular', done: isActive, active: hasRequest && !isActive },
+        { label: 'Testar e activar robô', done: false, active: isActive },
+      ]
+    : [
+        { label: 'Solicitar activação', done: hasRequest || isActive },
+        { label: 'Vyria configura na Meta', done: isActive, active: hasRequest && !isActive },
+        { label: 'Testar e activar robô', done: false, active: isActive },
+      ]
+  return (
+    <ol className="mt-4 flex flex-col gap-2 sm:flex-row sm:gap-0">
+      {steps.map((step, i) => (
+        <li
+          key={step.label}
+          className={`flex flex-1 items-center gap-2 text-xs sm:flex-col sm:items-start sm:px-2 ${
+            i < steps.length - 1 ? 'sm:border-r sm:border-[var(--card-border)]' : ''
+          }`}
+        >
+          <span
+            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
+              step.done
+                ? 'bg-emerald-600 text-white'
+                : step.active
+                  ? 'bg-vyria-plum text-white'
+                  : 'bg-zinc-200 text-zinc-600'
+            }`}
+          >
+            {step.done ? '✓' : i + 1}
+          </span>
+          <span
+            className={
+              step.done || step.active ? 'font-semibold text-vyria-navy' : 'text-vyria-navy-muted'
+            }
+          >
+            {step.label}
+          </span>
+        </li>
+      ))}
+    </ol>
+  )
 }
 
 function templateStatusClass(status: string): string {
@@ -106,22 +163,26 @@ export function WhatsAppMasterClient({
     }>
   >([])
   const [testPhone, setTestPhone] = useState('')
+  const [embeddedAvailable, setEmbeddedAvailable] = useState<boolean | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
       const res = await fetch('/api/master/whatsapp/config')
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error || 'Falha ao carregar.')
-      setConfig(json.config ?? null)
-      setVerifiedSender(json.verifiedSender ?? null)
-      setMessages(json.messages ?? [])
+      const json = await readJsonResponse(res)
+      if (!res.ok) throw new Error(String(json.error || 'Falha ao carregar.'))
+      setConfig((json.config as StoreWhatsAppConfigPublic | null) ?? null)
+      setVerifiedSender((json.verifiedSender as VerifiedWhatsAppSender | null) ?? null)
+      setMessages((json.messages as WhatsAppMessageRow[]) ?? [])
       setSendFailureStats(
-        json.sendFailureStats ?? { window_expired_24h: 0, other_errors_24h: 0 }
+        (json.sendFailureStats as { window_expired_24h: number; other_errors_24h: number }) ?? {
+          window_expired_24h: 0,
+          other_errors_24h: 0,
+        }
       )
-      setSendFailures(json.sendFailures ?? [])
-      setTemplates(json.templates ?? [])
+      setSendFailures((json.sendFailures as typeof sendFailures) ?? [])
+      setTemplates((json.templates as typeof templates) ?? [])
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erro ao carregar.')
     } finally {
@@ -133,6 +194,36 @@ export function WhatsAppMasterClient({
     void load()
   }, [load])
 
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await fetch('/api/master/whatsapp/embedded-config')
+        const json = await res.json()
+        if (!cancelled) setEmbeddedAvailable(res.ok && json.available === true)
+      } catch {
+        if (!cancelled) setEmbeddedAvailable(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const isActive = config?.status === 'active'
+  const hasActivationRequest = Boolean(config?.onboarding_requested_at)
+  const displayStatus = config?.status ?? (hasActivationRequest ? 'pending' : undefined)
+
+  /** Enquanto aguarda Vyria, actualiza a cada 45s para reflectir activação pelo admin. */
+  useEffect(() => {
+    if (isActive || !hasActivationRequest) return
+    const poll = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return
+      void load()
+    }, 45_000)
+    return () => window.clearInterval(poll)
+  }, [isActive, hasActivationRequest, load])
+
   async function patchSettings(patch: Record<string, unknown>) {
     setSaving(true)
     setError(null)
@@ -143,29 +234,12 @@ export function WhatsAppMasterClient({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'settings', ...patch }),
       })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error || 'Falha ao guardar.')
-      setConfig(json.config)
+      const json = await readJsonResponse(res)
+      if (!res.ok) throw new Error(String(json.error || 'Falha ao guardar.'))
+      setConfig(json.config as StoreWhatsAppConfigPublic)
       setSuccess('Configurações guardadas.')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erro ao guardar.')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  async function handleDisconnect() {
-    if (!confirm('Desligar o WhatsApp desta loja? Poderá voltar a conectar com Facebook.')) return
-    setSaving(true)
-    setError(null)
-    try {
-      const res = await fetch('/api/master/whatsapp/disconnect', { method: 'POST' })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error || 'Falha ao desligar.')
-      setSuccess('WhatsApp desligado.')
-      void load()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Erro ao desligar.')
     } finally {
       setSaving(false)
     }
@@ -181,14 +255,14 @@ export function WhatsAppMasterClient({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ to: testPhone }),
       })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error || 'Falha no envio.')
+      const json = await readJsonResponse(res)
+      if (!res.ok) throw new Error(String(json.error || 'Falha no envio.'))
       const fromLabel =
-        json.from_phone ||
-        json.phone_number_id ||
+        String(json.from_phone || '') ||
+        String(json.phone_number_id || '') ||
         verifiedSender?.display_phone_formatted ||
         'número ligado'
-      const nameSuffix = json.from_name ? ` (${json.from_name})` : ''
+      const nameSuffix = json.from_name ? ` (${String(json.from_name)})` : ''
       setSuccess(`Mensagem enviada pelo número ${fromLabel}${nameSuffix}.`)
       void load()
     } catch (e) {
@@ -220,41 +294,85 @@ export function WhatsAppMasterClient({
           <div>
             <h2 className="font-brand text-lg font-bold text-vyria-navy">Ligação WhatsApp</h2>
             <p className="mt-1 text-sm text-vyria-navy-muted">
-              Um clique com Facebook — a Vyria configura tudo automaticamente.
+              {embeddedAvailable
+                ? 'Ligue o número Business com coexistência — continue a usar o app no celular.'
+                : 'A equipa Vyria configura a ligação com a Meta no seu número Business.'}
             </p>
           </div>
-          {config ? (
+          {displayStatus !== undefined || !config ? (
             <span
-              className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 ${statusClass(config.status)}`}
+              className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 ${statusClass(displayStatus)}`}
             >
-              {statusLabel(config.status)}
+              {statusLabel(displayStatus)}
             </span>
           ) : null}
         </div>
 
+        {!isActive ? (
+          <OnboardingSteps
+            hasRequest={hasActivationRequest}
+            isActive={isActive}
+            embeddedAvailable={embeddedAvailable === true}
+          />
+        ) : null}
+
+        {config?.status === 'error' && config.last_error ? (
+          <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+            {config.last_error}
+          </p>
+        ) : null}
+
         <div className="mt-6">
           <WhatsAppSetupGuide
-            isConnected={config?.status === 'active'}
+            isConnected={isActive}
             supportHref={supportHref}
+            coexistenceMode={embeddedAvailable !== false}
           />
         </div>
 
-        {config?.status !== 'active' ? (
-          <div className="mt-6">
-            <WhatsAppEmbeddedConnect
-              disabled={saving}
-              supportHref={supportHref}
-              onConnected={() => {
-                setSuccess('WhatsApp ligado com sucesso! Envie um teste para confirmar.')
-                setError(null)
-                void load()
-              }}
-              onError={setError}
-            />
+        {!isActive ? (
+          <div className="mt-6 space-y-6">
+            {embeddedAvailable ? (
+              <WhatsAppEmbeddedConnect
+                disabled={saving}
+                supportHref={supportHref}
+                onConnected={() => {
+                  setSuccess(
+                    'WhatsApp ligado com coexistência! Active o robô abaixo e envie «oi» para testar.'
+                  )
+                  setError(null)
+                  void load()
+                }}
+                onError={setError}
+              />
+            ) : null}
+
+            <details className="rounded-2xl border border-[var(--card-border)] bg-zinc-50/80 p-4">
+              <summary className="cursor-pointer text-sm font-semibold text-vyria-navy">
+                {embeddedAvailable
+                  ? 'Prefere que a Vyria configure por si?'
+                  : 'Solicitar activação pela Vyria'}
+              </summary>
+              <div className="mt-4">
+                <WhatsAppPendingActivation
+                  disabled={saving}
+                  supportHref={supportHref}
+                  initialContactPhone={config?.onboarding_contact_phone ?? ''}
+                  initialNotes={config?.onboarding_notes ?? ''}
+                  requestedAt={config?.onboarding_requested_at ?? null}
+                  onSubmitted={() => {
+                    setSuccess('Pedido enviado! A Vyria activará o WhatsApp em breve.')
+                    setError(null)
+                    void load()
+                  }}
+                  onError={setError}
+                />
+              </div>
+            </details>
           </div>
         ) : null}
 
-        {config?.status === 'active' ? (
+        {isActive && config ? (
           <div className="mt-6 space-y-4">
             <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 px-4 py-3 text-sm text-emerald-950">
               <p className="font-semibold">Número de envio (confirmado pela Meta)</p>
@@ -286,25 +404,34 @@ export function WhatsAppMasterClient({
                 </p>
               )}
             </div>
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => void handleDisconnect()}
-              className="rounded-xl border border-red-200 px-5 py-2.5 text-sm font-semibold text-red-800 hover:bg-red-50"
-            >
-              Desligar e conectar outro número
-            </button>
+            <p className="text-xs text-vyria-navy-muted">
+              Para alterar o número ou desligar, contacte o{' '}
+              {supportHref ? (
+                <a
+                  href={supportHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-semibold text-vyria-plum hover:underline"
+                >
+                  suporte Vyria
+                </a>
+              ) : (
+                'suporte Vyria'
+              )}
+              .
+            </p>
           </div>
         ) : null}
       </section>
 
-      {config?.status === 'active' ? (
+      {isActive && config ? (
         <>
           <section className="rounded-2xl border border-[var(--card-border)] bg-white p-6 shadow-sm">
             <h2 className="font-brand text-lg font-bold text-vyria-navy">Atendimento automático</h2>
             <p className="mt-1 text-sm text-vyria-navy-muted">
               Menu interactivo no WhatsApp: status do pedido, horários, fidelidade e link do
-              cardápio. Pedidos são feitos somente pelo cardápio online.
+              cardápio. Pedidos são feitos somente pelo cardápio online. Active o robô e envie
+              «oi» do seu celular para testar.
             </p>
             <div className="mt-4 flex flex-wrap items-center gap-4">
               <label className="flex items-center gap-2 text-sm">
@@ -368,11 +495,13 @@ export function WhatsAppMasterClient({
           <section className="rounded-2xl border border-[var(--card-border)] bg-white p-6 shadow-sm">
             <h2 className="font-brand text-lg font-bold text-vyria-navy">Templates de mensagem</h2>
             <p className="mt-1 text-sm text-vyria-navy-muted">
-              Modelos enviados à Meta na ligação do WhatsApp. A aprovação pode levar algumas horas.
+              Modelos em português (pt_BR) criados pela Vyria na activação. A Meta pode levar algumas
+              horas a aprovar — notificações automáticas usam estes modelos fora da janela de 24h.
             </p>
             {templates.length === 0 ? (
               <p className="mt-4 text-sm text-vyria-navy-muted">
-                Nenhum template registado ainda. Reconecte o WhatsApp se acabou de ligar a conta.
+                Ainda sem templates registados. Se acabou de activar, aguarde alguns minutos ou
+                contacte o suporte Vyria.
               </p>
             ) : (
               <ul className="mt-4 divide-y divide-[var(--card-border)]">
@@ -420,7 +549,8 @@ export function WhatsAppMasterClient({
           <section className="rounded-2xl border border-[var(--card-border)] bg-white p-6 shadow-sm">
             <h2 className="font-brand text-lg font-bold text-vyria-navy">Testar ligação</h2>
             <p className="mt-1 text-sm text-vyria-navy-muted">
-              Envie uma mensagem para o seu celular ou mande «oi» para o número da loja.
+              Envie uma mensagem de teste. Depois mande «oi» do seu celular para o número da loja e
+              confira o atendimento automático (robô).
             </p>
             <div className="mt-4 flex flex-wrap gap-2">
               <input
@@ -442,7 +572,7 @@ export function WhatsAppMasterClient({
         </>
       ) : null}
 
-      {config?.status === 'active' ? (
+      {isActive ? (
         <section className="rounded-2xl border border-[var(--card-border)] bg-white p-6 shadow-sm">
           <h2 className="font-brand text-lg font-bold text-vyria-navy">Falhas de envio</h2>
           <p className="mt-1 text-sm text-vyria-navy-muted">
@@ -503,34 +633,50 @@ export function WhatsAppMasterClient({
         </section>
       ) : null}
 
-      <section className="rounded-2xl border border-[var(--card-border)] bg-white p-6 shadow-sm">
-        <h2 className="font-brand text-lg font-bold text-vyria-navy">Mensagens recentes</h2>
-        {messages.length === 0 ? (
-          <p className="mt-3 text-sm text-vyria-navy-muted">Nenhuma mensagem registada.</p>
-        ) : (
-          <ul className="mt-4 divide-y divide-[var(--card-border)]">
-            {messages.map((m) => (
-              <li key={m.id} className="flex flex-wrap items-start justify-between gap-2 py-3 text-sm">
-                <div>
-                  <span
-                    className={`mr-2 rounded px-1.5 py-0.5 text-xs font-semibold ${
-                      m.direction === 'inbound'
-                        ? 'bg-violet-100 text-violet-800'
-                        : 'bg-sky-100 text-sky-800'
-                    }`}
-                  >
-                    {m.direction === 'inbound' ? 'Recebida' : 'Enviada'}
-                  </span>
-                  <span className="text-vyria-navy">{m.body_text || `(${m.message_type})`}</span>
-                </div>
-                <time className="text-xs text-vyria-navy-muted">
-                  {new Date(m.created_at).toLocaleString('pt-BR')}
-                </time>
-              </li>
-            ))}
+      {!isActive ? (
+        <section className="rounded-2xl border border-dashed border-[var(--card-border)] bg-zinc-50/80 p-6">
+          <h2 className="font-brand text-lg font-bold text-vyria-navy">Robô e mensagens</h2>
+          <p className="mt-2 text-sm text-vyria-navy-muted">
+            Após a Vyria activar o seu número, você poderá:
+          </p>
+          <ul className="mt-3 list-inside list-disc space-y-1 text-sm text-vyria-navy-muted">
+            <li>Activar o atendimento automático (menu de pedidos, cardápio, fidelidade)</li>
+            <li>Ligar notificações de status do pedido</li>
+            <li>Enviar mensagem de teste e ver o histórico aqui</li>
           </ul>
-        )}
-      </section>
+        </section>
+      ) : (
+        <section className="rounded-2xl border border-[var(--card-border)] bg-white p-6 shadow-sm">
+          <h2 className="font-brand text-lg font-bold text-vyria-navy">Mensagens recentes</h2>
+          {messages.length === 0 ? (
+            <p className="mt-3 text-sm text-vyria-navy-muted">
+              Nenhuma mensagem ainda. Envie «oi» para o número da loja ou use o teste acima.
+            </p>
+          ) : (
+            <ul className="mt-4 divide-y divide-[var(--card-border)]">
+              {messages.map((m) => (
+                <li key={m.id} className="flex flex-wrap items-start justify-between gap-2 py-3 text-sm">
+                  <div>
+                    <span
+                      className={`mr-2 rounded px-1.5 py-0.5 text-xs font-semibold ${
+                        m.direction === 'inbound'
+                          ? 'bg-violet-100 text-violet-800'
+                          : 'bg-sky-100 text-sky-800'
+                      }`}
+                    >
+                      {m.direction === 'inbound' ? 'Recebida' : 'Enviada'}
+                    </span>
+                    <span className="text-vyria-navy">{m.body_text || `(${m.message_type})`}</span>
+                  </div>
+                  <time className="text-xs text-vyria-navy-muted">
+                    {new Date(m.created_at).toLocaleString('pt-BR')}
+                  </time>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
     </div>
   )
 }

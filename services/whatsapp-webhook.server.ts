@@ -11,6 +11,7 @@ import { logWhatsAppSendFailure } from '@/services/whatsapp-send-failures.server
 import { handleInboundWhatsAppCustomerMessage } from '@/services/whatsapp-inbound.server'
 import { registerWhatsAppInboundContact } from '@/services/whatsapp-contacts.server'
 import { handleMarketingOptOutFromInbound } from '@/services/marketing.server'
+import { handleCoexistenceWebhookField } from '@/services/whatsapp-coexistence-webhook.server'
 import { handleWhatsAppTemplateStatusWebhook } from '@/services/whatsapp-templates.server'
 import { normalizePhoneE164 } from '@/services/loyalty.server'
 
@@ -68,6 +69,31 @@ export async function processWhatsAppWebhook(
         metadata?.phone_number_id != null
           ? String(metadata.phone_number_id)
           : null
+
+      if (
+        field === 'smb_message_echoes' ||
+        field === 'smb_app_state_sync' ||
+        field === 'history'
+      ) {
+        const coexistenceStoreId = await handleCoexistenceWebhookField(
+          db,
+          field,
+          val,
+          phoneNumberId,
+          null
+        )
+
+        await db.from('whatsapp_webhook_events').insert({
+          store_id: coexistenceStoreId,
+          event_type: field,
+          payload: val,
+        })
+
+        if (coexistenceStoreId) {
+          await markWebhookVerified(db, coexistenceStoreId)
+        }
+        continue
+      }
 
       let storeId: string | null = null
       if (phoneNumberId) {

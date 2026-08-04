@@ -1,18 +1,15 @@
 import { NextResponse } from 'next/server'
 import { gateMerchantMasterFeature } from '@/lib/merchant-api-gate.server'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
-import {
-  exchangeEmbeddedSignupCode,
-  subscribeMerchantWabaToVyriaApp,
-} from '@/lib/whatsapp/embedded-signup.server'
-import { createClient } from '@/lib/supabase/server'
+import { resolveCoexistencePhoneNumberId } from '@/lib/whatsapp/coexistence.server'
+import { exchangeEmbeddedSignupCode } from '@/lib/whatsapp/embedded-signup.server'
 import { createServiceRoleClient } from '@/lib/supabase/service-role.server'
-import { connectWhatsAppForStore } from '@/services/whatsapp-config.server'
-import { createDefaultWhatsAppTemplates } from '@/services/whatsapp-templates.server'
+import { finalizeWhatsAppConnection } from '@/services/whatsapp-onboarding.server'
 import { getUser } from '@/services/auth.server'
 
 export const dynamic = 'force-dynamic'
 
+/** Embedded Signup com coexistência (WhatsApp Business no celular + Cloud API). */
 export async function POST(request: Request) {
   const user = await getUser()
   if (!user) {
@@ -34,17 +31,15 @@ export async function POST(request: Request) {
 
   const code = String(body.code || '').trim()
   const wabaId = String(body.waba_id || '').trim()
-  const phoneNumberId = String(body.phone_number_id || '').trim()
+  let phoneNumberId = String(body.phone_number_id || '').trim()
+  const coexistence = body.coexistence === true
 
   if (!code) {
     return NextResponse.json({ error: 'Código OAuth em falta.' }, { status: 400 })
   }
-  if (!wabaId || !phoneNumberId) {
+  if (!wabaId) {
     return NextResponse.json(
-      {
-        error:
-          'Dados do número não recebidos da Meta. Feche o popup e tente «Conectar com Facebook» novamente.',
-      },
+      { error: 'Dados da conta WhatsApp não recebidos da Meta. Tente novamente.' },
       { status: 400 }
     )
   }
@@ -54,35 +49,35 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: exchanged.error }, { status: 400 })
   }
 
-  const subscribed = await subscribeMerchantWabaToVyriaApp(wabaId, exchanged.access_token)
-  if (!subscribed.ok) {
-    console.warn('[whatsapp embedded] subscribed_apps:', subscribed.error)
+  let displayPhoneE164 =
+    body.display_phone_e164 != null ? String(body.display_phone_e164) : null
+
+  if (!phoneNumberId) {
+    const resolved = await resolveCoexistencePhoneNumberId(wabaId, exchanged.access_token)
+    if (!resolved.ok) {
+      return NextResponse.json({ error: resolved.error }, { status: 400 })
+    }
+    phoneNumberId = resolved.phoneNumberId
+    displayPhoneE164 = displayPhoneE164 || resolved.displayPhoneE164
   }
 
-  const db = await createClient()
-  const result = await connectWhatsAppForStore(db, gate.ctx.storeId, {
+  const db = createServiceRoleClient()
+  const result = await finalizeWhatsAppConnection(db, gate.ctx.storeId, {
     waba_id: wabaId,
     phone_number_id: phoneNumberId,
     access_token: exchanged.access_token,
-    display_phone_e164: body.display_phone_e164 != null ? String(body.display_phone_e164) : null,
+    display_phone_e164: displayPhoneE164,
+    coexistence: coexistence || !body.phone_number_id,
   })
 
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: 400 })
   }
 
-  void (async () => {
-    try {
-      const svc = createServiceRoleClient()
-      await createDefaultWhatsAppTemplates(svc, gate.ctx.storeId, wabaId, exchanged.access_token)
-    } catch (e) {
-      console.warn('[whatsapp embedded] default templates:', e)
-    }
-  })()
-
   return NextResponse.json({
     ok: true,
     config: result.config,
-    webhook_subscribed: subscribed.ok,
+    webhook_subscribed: result.webhook_subscribed,
+    coexistence_sync: result.coexistence_sync ?? null,
   })
 }

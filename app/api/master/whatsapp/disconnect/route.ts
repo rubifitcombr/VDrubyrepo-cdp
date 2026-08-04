@@ -1,8 +1,6 @@
 import { NextResponse } from 'next/server'
 import { gateMerchantMasterFeature } from '@/lib/merchant-api-gate.server'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
-import { createClient } from '@/lib/supabase/server'
-import { disconnectWhatsAppForStore } from '@/services/whatsapp-config.server'
 import { getUser } from '@/services/auth.server'
 
 export const dynamic = 'force-dynamic'
@@ -19,8 +17,11 @@ export async function POST() {
   const deny = gateMerchantMasterFeature(gate.ctx.store, user.email, 'whatsapp_ai')
   if (deny) return deny
 
-  const db = await createClient()
-  await disconnectWhatsAppForStore(db, gate.ctx.storeId)
-
-  return NextResponse.json({ ok: true })
+  return NextResponse.json(
+    {
+      error:
+        'A desconexão é feita pela equipa Vyria. Contacte o suporte se precisar alterar o número.',
+    },
+    { status: 403 }
+  )
 }

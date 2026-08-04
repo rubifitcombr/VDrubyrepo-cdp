@@ -1,7 +1,27 @@
--- WhatsApp: renomear ai_enabled → auto_reply_enabled; estado de handoff humano.
+-- WhatsApp: auto_reply_enabled + handoff humano (idempotente).
 
-ALTER TABLE public.store_whatsapp_config
-  RENAME COLUMN ai_enabled TO auto_reply_enabled;
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'store_whatsapp_config'
+      AND column_name = 'ai_enabled'
+  ) THEN
+    ALTER TABLE public.store_whatsapp_config
+      RENAME COLUMN ai_enabled TO auto_reply_enabled;
+  ELSIF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'store_whatsapp_config'
+      AND column_name = 'auto_reply_enabled'
+  ) THEN
+    ALTER TABLE public.store_whatsapp_config
+      ADD COLUMN auto_reply_enabled boolean NOT NULL DEFAULT true;
+  END IF;
+END $$;
 
 COMMENT ON COLUMN public.store_whatsapp_config.auto_reply_enabled IS
   'Atendimento automático (menu interactivo + respostas por intenção).';

@@ -33,7 +33,7 @@ export default async function MasterWhatsAppPage() {
       <MasterModuleHeader
         moduleLabel="WhatsApp"
         title="WhatsApp oficial"
-        description="Ligue o número do seu comércio — robô IA, notificações e fidelidade."
+        description="Solicite a activação do seu número — robô, notificações e fidelidade pela Vyria."
       />
 
       <div className="mt-8">
