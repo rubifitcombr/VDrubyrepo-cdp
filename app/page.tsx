@@ -68,12 +68,20 @@ export default function Home() {
         </div>
       </main>
       <footer className="shrink-0 border-t border-[var(--card-border)] bg-white/80 py-6 text-center text-sm text-vyria-navy-muted">
-        <Link
-          href="/blog"
-          className="font-semibold text-vyria-plum hover:text-vyria-orange"
-        >
-          Blog Vyria
-        </Link>
+        <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
+          <Link
+            href="/blog"
+            className="font-semibold text-vyria-plum hover:text-vyria-orange"
+          >
+            Blog Vyria
+          </Link>
+          <Link
+            href="/termos"
+            className="font-semibold text-vyria-plum hover:text-vyria-orange"
+          >
+            Termos de Serviço
+          </Link>
+        </div>
       </footer>
     </div>
   )

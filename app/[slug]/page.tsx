@@ -113,6 +113,7 @@ export default async function StorefrontPage({ params, searchParams }: Props) {
       dashboard: '/dashboard',
       'acesso-suspenso': '/acesso-suspenso',
       planos: '/planos',
+      termos: '/termos',
     }
     const reservedDest = firstPartyPath[slugLower]
     if (reservedDest) {
