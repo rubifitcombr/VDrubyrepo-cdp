@@ -335,11 +335,11 @@ export function StorePublicQrPanel({
               <p className="text-xs leading-relaxed text-[#6b7280]">
                 {isDineIn
                   ? compact
-                    ? 'URL com ?auto=1: checkout na mesa/comanda. Um QR para todas as mesas (cliente indica a mesa ao finalizar).'
-                    : 'Este código abre o teu cardápio já no fluxo de pedido na mesa (URL com ?auto=1). Todas as mesas partilham o mesmo QR; o cliente indica a mesa no checkout.'
+                    ? 'URL com ?auto=1: checkout na mesa. Cartaz geral; em Garçom → Configurar mesas podes copiar link por mesa (?mesa= & ?setor=).'
+                    : 'Este código abre o cardápio no pedido na mesa (?auto=1). Cartaz geral partilhado; para QR por mesa, usa «Copiar QR» em Garçom → Configurar mesas.'
                   : compact
-                    ? 'Abre o slug sem modo mesa: checkout de entrega e retirada. O QR de mesa/comanda é outro (Garçom, com ?auto=1).'
-                    : 'Este código abre o cardápio com finalização por entrega e retirada (URL sem modo mesa). Para o salão, usa o QR da página Garçom — é outro link, com pedido na mesa/comanda.'}{' '}
+                    ? 'Abre o slug sem modo mesa: checkout de entrega e retirada. O QR de mesa é outro (Configurações / Garçom, com ?auto=1).'
+                    : 'Este código abre o cardápio com finalização por entrega e retirada (URL sem modo mesa). Para o salão, usa o QR de mesa em Configurações ou o link por mesa no Garçom.'}{' '}
                 <span className="text-[#9ca3af]">
                   O PNG sai pronto para impressão ({POSTER_W}×{POSTER_H}px, proporção A5) com moldura e identidade Vyria.
                 </span>

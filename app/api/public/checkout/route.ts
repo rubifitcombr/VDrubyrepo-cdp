@@ -13,9 +13,21 @@ import {
 import { hasFeature, hasOrderPipelineAutomations, hasPixCheckout, parsePlan } from '@/lib/plan'
 import { readStorePlano } from '@/lib/store-columns'
 import { publicDineInCheckoutAllowed } from '@/lib/salao-attendance'
+import {
+  isDeliveryPipelineEnabled,
+  parseOperationModeFromStore,
+} from '@/lib/merchant-operation-mode'
 import { parseAutomationsFromStore } from '@/lib/store-automations'
 import { sendWebPushNewOrder } from '@/services/web-push.server'
-import { buildWaiterNotes } from '@/lib/waiter-order-notes'
+import {
+  buildWaiterNotes,
+  resolveDineInSectorForTable,
+  tableNamesMatch,
+} from '@/lib/waiter-order-notes'
+import {
+  STORE_TABLES_SELECT,
+  mapActiveStoreTableRows,
+} from '@/lib/store-tables'
 import { buildItemsSummaryWithLineTotals } from '@/lib/print/items-summary-format'
 import { tryAutoThermalPrint } from '@/services/thermal-print.server'
 import { buildPixChargeForOrder } from '@/lib/pix/build-charge.server'
@@ -153,6 +165,7 @@ export async function POST(req: NextRequest) {
           ? 'dine_in'
           : 'delivery'
     const tableMesa = toText(raw.table) || toText(raw.mesa)
+    const tableSetorHint = toText(raw.setor) || toText(raw.sector)
     const normalizedDeliveryAddress =
       fulfillment === 'delivery'
         ? deliveryAddress
@@ -261,6 +274,19 @@ export async function POST(req: NextRequest) {
     if (!storeAcceptsOrders) {
       return NextResponse.json(
         { error: publicStoreOrdersBlockedMessage(storeHoursMode) },
+        { status: 403 }
+      )
+    }
+
+    const operationMode = parseOperationModeFromStore(
+      storeRow as Record<string, unknown>
+    )
+    if (fulfillment === 'delivery' && !isDeliveryPipelineEnabled(operationMode)) {
+      return NextResponse.json(
+        {
+          error:
+            'Esta loja opera só em modo presencial. Usa o QR de mesa ou a retirada no local.',
+        },
         { status: 403 }
       )
     }
@@ -482,11 +508,44 @@ export async function POST(req: NextRequest) {
       }))
     )
 
+    let dineInSector = 'Salão'
+    if (fulfillment === 'dine_in') {
+      const tableLabel = tableMesa.trim().slice(0, 42)
+      const { data: tableRows } = await checkoutDb
+        .from('store_tables')
+        .select(STORE_TABLES_SELECT)
+        .eq('store_id', String(storeRow.id))
+
+      const configured = mapActiveStoreTableRows(
+        (tableRows as Record<string, unknown>[] | null) ?? []
+      ).map((t) => ({ name: t.name, ambiente: t.ambiente }))
+
+      dineInSector = resolveDineInSectorForTable(
+        tableLabel,
+        configured,
+        tableSetorHint
+      )
+
+      // Se a loja tem mesas configuradas, a mesa digitada tem de existir no mapa.
+      if (
+        configured.length > 0 &&
+        !configured.some((t) => tableNamesMatch(tableLabel, t.name))
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              'Mesa não encontrada. Confirma o número/nome exactamente como está no salão (ex.: 12 ou Mesa 12).',
+          },
+          { status: 400 }
+        )
+      }
+    }
+
     const orderNotes =
       fulfillment === 'dine_in'
         ? buildWaiterNotes(
             tableMesa.trim().slice(0, 42),
-            'Salão',
+            dineInSector,
             [String(notes ?? '').trim(), 'Pedido via QR (autoatendimento).'].filter(Boolean).join('\n'),
             0
           )
@@ -561,15 +620,13 @@ export async function POST(req: NextRequest) {
 
     if (!created.ok) {
       if (created.missingOrderItemsTable) {
-        return NextResponse.json({
-          ok: true,
-          orderId: created.orderId ?? 'unknown',
-          mode: plan === 'START' ? 'history' : 'realtime',
-          storeName: String(storeRow.name || ''),
-          subtotal,
-          deliveryCharge,
-          orderTotal: total,
-        })
+        return NextResponse.json(
+          {
+            error:
+              'O pedido não pôde ser registado com os itens. Contacta a loja ou tenta novamente dentro de momentos.',
+          },
+          { status: 503 }
+        )
       }
       return NextResponse.json({ error: created.error }, { status: 500 })
     }

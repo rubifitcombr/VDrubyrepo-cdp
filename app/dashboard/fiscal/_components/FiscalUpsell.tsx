@@ -24,11 +24,10 @@ export function FiscalUpsell({
   const [showCheckout, setShowCheckout] = useState(false)
 
   const checkoutUrl = process.env.NEXT_PUBLIC_FISCAL_CHECKOUT_URL?.trim() || ''
-  const supportHref =
-    buildWhatsAppLink(
-      process.env.NEXT_PUBLIC_ADMIN_WHATSAPP || '',
-      'Olá! Quero ativar o módulo Vyria Fiscal (NFC-e) na minha loja.'
-    ) || 'https://wa.me/'
+  const supportHref = buildWhatsAppLink(
+    process.env.NEXT_PUBLIC_ADMIN_WHATSAPP || '',
+    'Olá! Quero ativar o módulo Vyria Fiscal (NFC-e) na minha loja.'
+  )
 
   const isBlocked = status === 'bloqueado'
 
@@ -37,7 +36,11 @@ export function FiscalUpsell({
       setShowCheckout(true)
       return
     }
-    window.open(supportHref, '_blank', 'noopener,noreferrer')
+    if (supportHref) {
+      window.open(supportHref, '_blank', 'noopener,noreferrer')
+      return
+    }
+    window.location.assign('/dashboard/planos')
   }
 
   return (
@@ -94,14 +97,23 @@ export function FiscalUpsell({
               Já comprei — configurar
             </button>
           ) : null}
-          <a
-            href={supportHref}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex-1 rounded-xl border border-[var(--card-border)] bg-white px-6 py-3 text-center text-sm font-semibold text-[#374151] transition hover:bg-[#f9fafb]"
-          >
-            Falar com suporte
-          </a>
+          {supportHref ? (
+            <a
+              href={supportHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex-1 rounded-xl border border-[var(--card-border)] bg-white px-6 py-3 text-center text-sm font-semibold text-[#374151] transition hover:bg-[#f9fafb]"
+            >
+              Falar com suporte
+            </a>
+          ) : (
+            <a
+              href="/dashboard/planos"
+              className="flex-1 rounded-xl border border-[var(--card-border)] bg-white px-6 py-3 text-center text-sm font-semibold text-[#374151] transition hover:bg-[#f9fafb]"
+            >
+              Ver planos / suporte
+            </a>
+          )}
         </div>
 
         <p className="mt-4 text-xs text-[#9ca3af]">

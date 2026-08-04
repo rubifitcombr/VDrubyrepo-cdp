@@ -4,6 +4,7 @@
  */
 export const APP_RESERVED_FIRST_SEGMENTS = new Set([
   'admin',
+  'api',
   'blog',
   'dashboard',
   'login',
@@ -11,4 +12,17 @@ export const APP_RESERVED_FIRST_SEGMENTS = new Set([
   'acesso-suspenso',
   'planos',
   'termos',
+  'icons',
+  'manifest.json',
+  'sw.js',
+  'favicon.ico',
 ])
+
+/** True se o segmento (já slugificado) não pode ser slug de loja. */
+export function isReservedStoreSlug(slug: string): boolean {
+  const s = String(slug ?? '')
+    .trim()
+    .toLowerCase()
+  if (!s) return true
+  return APP_RESERVED_FIRST_SEGMENTS.has(s)
+}

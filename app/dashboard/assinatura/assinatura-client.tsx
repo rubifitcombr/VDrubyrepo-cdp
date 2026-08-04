@@ -137,7 +137,7 @@ export function AssinaturaClient({ model }: { model: AssinaturaPageModel }) {
   }
 
   const wa = model.whatsappHref
-  const showAcoesUpgrade = model.plan !== 'PRO' && !!wa
+  const showAcoesUpgrade = Boolean(nextP) && !!wa
   const annual = model.annualContract
 
   async function submitCancelRequest() {

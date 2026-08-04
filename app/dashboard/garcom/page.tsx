@@ -80,7 +80,7 @@ export default async function GarcomPage({
   const operationMode = parseOperationModeFromStore(s)
   const scaleIntegrationEnabled = hasScaleIntegration(planEffective, operationMode)
   const scaleConfig = parsePdvScaleContext(s)
-  if (planTier(plan) < planTier('GROWTH')) {
+  if (planTier(planEffective) < planTier('GROWTH')) {
     return (
       <div className="mx-auto max-w-lg rounded-2xl border border-[var(--card-border)] bg-white p-8 text-center shadow-sm">
         <h1 className="font-brand text-xl font-bold text-[#1a1614]">Garçom e autoatendimento</h1>
@@ -111,11 +111,14 @@ export default async function GarcomPage({
     typeof s.name === 'string' && s.name.trim()
       ? s.name.trim()
       : 'Meu estabelecimento'
+  const storeSlug =
+    typeof s.slug === 'string' && s.slug.trim() ? s.slug.trim() : ''
 
   return (
     <WaiterClient
       storeId={storeId}
       storeName={storeName}
+      storeSlug={storeSlug}
       plan={planEffective}
       initialSalaoAttendanceMode={salaoMode}
       initialProducts={products.filter((p) => p.active !== false)}
@@ -131,7 +134,7 @@ export default async function GarcomPage({
       }))}
       stockQuantityByProductId={stockQuantityByProductId}
       printAgentUrl={printing.print_agent_url}
-      showThermalPrint={hasFeature(plan, 'printing')}
+      showThermalPrint={hasFeature(planEffective, 'printing')}
       printing={printing}
       tablesOnlyView={tablesOnlyView}
       forceWaiterView={forceWaiterView}

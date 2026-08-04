@@ -7,6 +7,10 @@ import {
 import { readStorePlano } from '@/lib/store-columns'
 import { hasFeature, parsePlan, planTier } from '@/lib/plan'
 import { publicDineInCheckoutAllowed } from '@/lib/salao-attendance'
+import {
+  isDeliveryPipelineEnabled,
+  parseOperationModeFromStore,
+} from '@/lib/merchant-operation-mode'
 import { getStoreOpenState, getTodayClosingDisplayHM } from '@/lib/business-hours'
 import {
   baseProductPriceForChannel,
@@ -114,6 +118,7 @@ export default async function StorefrontPage({ params, searchParams }: Props) {
       'acesso-suspenso': '/acesso-suspenso',
       planos: '/planos',
       termos: '/termos',
+      api: '/api',
     }
     const reservedDest = firstPartyPath[slugLower]
     if (reservedDest) {
@@ -199,6 +204,18 @@ export default async function StorefrontPage({ params, searchParams }: Props) {
   const logoUrl = resolveMenuImageUrl(s.logo_url, s.id)
   const autoRaw = spResolved.auto
   const autoFlag = Array.isArray(autoRaw) ? autoRaw[0] : autoRaw
+  const mesaRaw = spResolved.mesa
+  const setorRaw = spResolved.setor ?? spResolved.sector
+  const initialTableMesa = String(
+    Array.isArray(mesaRaw) ? mesaRaw[0] : mesaRaw ?? ''
+  )
+    .trim()
+    .slice(0, 42)
+  const initialTableSetor = String(
+    Array.isArray(setorRaw) ? setorRaw[0] : setorRaw ?? ''
+  )
+    .trim()
+    .slice(0, 42)
   const storePlan = parsePlan(readStorePlano(s as Record<string, unknown>))
   const selfServiceFromQr =
     autoFlag === '1' &&
@@ -280,6 +297,11 @@ export default async function StorefrontPage({ params, searchParams }: Props) {
       locationLabel={locationLabel}
       selfServiceFromQr={selfServiceFromQr}
       salaoAutoUnavailable={salaoAutoUnavailable}
+      initialTableMesa={selfServiceFromQr ? initialTableMesa || null : null}
+      initialTableSetor={selfServiceFromQr ? initialTableSetor || null : null}
+      deliveryEnabled={isDeliveryPipelineEnabled(
+        parseOperationModeFromStore(s as Record<string, unknown>)
+      )}
       merchantPixConfigured={storePixCheckoutEnabled(
         s as Record<string, unknown>
       )}

@@ -4,8 +4,15 @@ import { PIX_CHECKOUT_BENEFIT_LINE, type Plan } from '@/lib/plan'
 type PlanoSlug = 'start' | 'growth' | 'pro'
 
 function slug(plan: Plan): PlanoSlug {
+  if (plan === 'MASTER') return 'pro'
   return plan.toLowerCase() as PlanoSlug
 }
+
+const MASTER_EXTRA_BENEFITS = [
+  'WhatsApp oficial (API Meta) e robô de atendimento',
+  'Marketing WhatsApp com campanhas imagem + texto',
+  'Programa de fidelidade e cashback',
+]
 
 /** Benefícios por plano quando o modelo da loja **não** é só delivery (legado, presencial ou híbrido). */
 export const BENEFICIOS_POR_PLANO: Record<PlanoSlug, string[]> = {
@@ -158,22 +165,31 @@ export const BENEFICIOS_DELIVERY: Record<PlanoSlug, string[]> = {
 const PROXIMO_PLANO: Partial<Record<Plan, Plan>> = {
   START: 'GROWTH',
   GROWTH: 'PRO',
+  PRO: 'MASTER',
 }
 
 export function beneficiosDoPlano(
   plan: Plan,
   operationMode: MerchantOperationMode | null = null
 ): string[] {
+  let base: string[]
   if (operationMode === 'delivery') {
-    return BENEFICIOS_DELIVERY[slug(plan)] ?? []
+    base = BENEFICIOS_DELIVERY[slug(plan)] ?? []
+  } else if (operationMode === 'presencial') {
+    base = BENEFICIOS_PRESENCIAL[slug(plan)] ?? []
+  } else if (operationMode === 'hibrido') {
+    base = BENEFICIOS_HIBRIDO[slug(plan)] ?? []
+  } else {
+    base = BENEFICIOS_POR_PLANO[slug(plan)] ?? []
   }
-  if (operationMode === 'presencial') {
-    return BENEFICIOS_PRESENCIAL[slug(plan)] ?? []
+  if (plan === 'MASTER') {
+    return [
+      'Tudo do Pro',
+      ...base.filter((line) => !/^tudo do /i.test(line)),
+      ...MASTER_EXTRA_BENEFITS,
+    ]
   }
-  if (operationMode === 'hibrido') {
-    return BENEFICIOS_HIBRIDO[slug(plan)] ?? []
-  }
-  return BENEFICIOS_POR_PLANO[slug(plan)] ?? []
+  return base
 }
 
 export function proximoPlano(plan: Plan): Plan | null {

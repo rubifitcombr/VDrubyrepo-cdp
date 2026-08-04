@@ -194,7 +194,24 @@ export function MarketingMasterClient({ storeId }: { storeId: string }) {
     return <p className="text-sm text-vyria-navy-muted">A carregar marketing…</p>
   }
 
-  if (!config || !report) return null
+  if (!config || !report) {
+    return (
+      <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-sm text-red-900">
+        <p className="font-semibold">Não foi possível carregar o Marketing Master.</p>
+        <p className="mt-2 text-red-800">
+          {error ||
+            'Verifica a ligação, as permissões do plano Master e se as migrações de marketing estão aplicadas.'}
+        </p>
+        <button
+          type="button"
+          onClick={() => void load()}
+          className="mt-4 rounded-xl bg-red-900 px-4 py-2 text-xs font-semibold text-white"
+        >
+          Tentar novamente
+        </button>
+      </div>
+    )
+  }
 
   const eligibleCount = audiencePreview.length
 

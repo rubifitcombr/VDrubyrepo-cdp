@@ -3,7 +3,8 @@ import 'server-only'
 import { createClient } from '@/lib/supabase/server'
 import {
   STORE_TABLES_SELECT,
-  mapStoreTableRow,
+  mapActiveStoreTableRows,
+  sortStoreTableRows,
   type StoreTableRow,
 } from '@/lib/store-tables'
 
@@ -15,7 +16,6 @@ export async function getStoreTablesForStore(storeId: string): Promise<StoreTabl
     .from('store_tables')
     .select(STORE_TABLES_SELECT)
     .eq('store_id', storeId)
-    .eq('active', true)
     .order('ambiente', { ascending: true })
     .order('sort_order', { ascending: true })
     .order('name', { ascending: true })
@@ -25,5 +25,7 @@ export async function getStoreTablesForStore(storeId: string): Promise<StoreTabl
     console.error('[waiter-tables] list:', error.message)
     return []
   }
-  return (data ?? []).map((r) => mapStoreTableRow(r as Record<string, unknown>))
+  return sortStoreTableRows(
+    mapActiveStoreTableRows((data as Record<string, unknown>[] | null) ?? [])
+  )
 }

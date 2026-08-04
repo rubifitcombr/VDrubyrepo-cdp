@@ -37,7 +37,7 @@ export async function POST(req: Request) {
   }
 
   const raw = String(body.targetPlan || '').toUpperCase()
-  if (raw !== 'GROWTH' && raw !== 'PRO' && raw !== 'START') {
+  if (raw !== 'GROWTH' && raw !== 'PRO' && raw !== 'START' && raw !== 'MASTER') {
     return jsonError('Plano inválido', 400)
   }
   const targetPlan = raw as Plan

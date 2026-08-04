@@ -24,6 +24,7 @@ export function FiscalOnboardingClient({ storeId }: { storeId: string }) {
 
   const refresh = useCallback(async () => {
     setLoading(true)
+    setActionError(null)
     try {
       const [fiscalRes, readinessRes] = await Promise.all([
         fetch(`/api/store/fiscal?storeId=${encodeURIComponent(storeId)}`, { credentials: 'include' }),
@@ -31,10 +32,22 @@ export function FiscalOnboardingClient({ storeId }: { storeId: string }) {
           credentials: 'include',
         }),
       ])
-      const fiscalJson = (await fiscalRes.json()) as { fiscal?: Record<string, unknown> }
-      const readinessJson = (await readinessRes.json()) as {
+      const fiscalJson = (await fiscalRes.json().catch(() => ({}))) as {
+        fiscal?: Record<string, unknown>
+        error?: string
+      }
+      const readinessJson = (await readinessRes.json().catch(() => ({}))) as {
         readiness?: FiscalReadinessResult
         status?: string
+        error?: string
+      }
+      if (!fiscalRes.ok && !readinessRes.ok) {
+        setActionError(
+          fiscalJson.error ||
+            readinessJson.error ||
+            'Não foi possível carregar o estado fiscal. Tenta novamente.'
+        )
+        return
       }
       if (fiscalRes.ok && fiscalJson.fiscal) {
         setStatus(parseFiscalStatus(fiscalJson.fiscal.status))
@@ -51,6 +64,8 @@ export function FiscalOnboardingClient({ storeId }: { storeId: string }) {
         setReadiness(readinessJson.readiness)
         if (readinessJson.status) setStatus(parseFiscalStatus(readinessJson.status))
       }
+    } catch {
+      setActionError('Falha de rede ao carregar o módulo fiscal.')
     } finally {
       setLoading(false)
     }

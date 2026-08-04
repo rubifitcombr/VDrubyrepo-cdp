@@ -90,6 +90,9 @@ export function WhatsAppCheckoutButton({
   locationLabel,
   openSignal,
   dineInSelfService = false,
+  initialTableMesa = null,
+  initialTableSetor = null,
+  deliveryEnabled = true,
   merchantPixConfigured = false,
   storeOpen = true,
   hoursMode = 'always',
@@ -115,6 +118,12 @@ export function WhatsAppCheckoutButton({
   openSignal?: number
   /** Cardápio aberto com `?auto=1`: checkout só mesa + nome + telefone. */
   dineInSelfService?: boolean
+  /** Mesa pré-preenchida via QR (`?mesa=`). */
+  initialTableMesa?: string | null
+  /** Setor pré-preenchido via QR (`?setor=`). */
+  initialTableSetor?: string | null
+  /** Loja aceita entrega online (falso em modo presencial). */
+  deliveryEnabled?: boolean
   storeOpen?: boolean
   hoursMode?: 'always' | 'scheduled' | 'manual'
   primaryColor?: string
@@ -142,7 +151,17 @@ export function WhatsAppCheckoutButton({
   const [trocoPara, setTrocoPara] = useState('')
   const [notes, setNotes] = useState('')
   const [fulfillment, setFulfillment] = useState<FulfillmentType | null>(null)
-  const [tableMesa, setTableMesa] = useState('')
+  const [tableMesa, setTableMesa] = useState(() =>
+    String(initialTableMesa ?? '').trim().slice(0, 42)
+  )
+  const tableLockedFromQr = Boolean(String(initialTableMesa ?? '').trim())
+  const tableSetorFromQr = String(initialTableSetor ?? '').trim().slice(0, 42)
+
+  useEffect(() => {
+    const next = String(initialTableMesa ?? '').trim().slice(0, 42)
+    if (next) setTableMesa(next)
+  }, [initialTableMesa])
+
   const [dineInStep, setDineInStep] = useState<1 | 2>(1)
   const [dineInFieldErrors, setDineInFieldErrors] = useState<{
     customerName?: string
@@ -532,6 +551,7 @@ export function WhatsAppCheckoutButton({
           slug: storeSlug,
           fulfillment: 'dine_in',
           table: tableMesa.trim(),
+          setor: tableSetorFromQr || undefined,
           customerName,
           customerPhone,
           notes: notes.trim() || null,
@@ -864,7 +884,9 @@ export function WhatsAppCheckoutButton({
                                 </span>
                                 <input
                                   value={tableMesa}
+                                  readOnly={tableLockedFromQr}
                                   onChange={(e) => {
+                                    if (tableLockedFromQr) return
                                     setTableMesa(e.target.value)
                                     setDineInFieldErrors((prev) => ({
                                       ...prev,
@@ -873,8 +895,15 @@ export function WhatsAppCheckoutButton({
                                   }}
                                   placeholder="Ex.: 12, Balcão, Varanda 2"
                                   autoComplete="off"
-                                  className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-sm font-semibold text-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] outline-none transition-colors focus:border-[#25D366]"
+                                  className={`w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-sm font-semibold text-neutral-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] outline-none transition-colors focus:border-[#25D366] ${
+                                    tableLockedFromQr ? 'bg-neutral-100' : 'bg-white'
+                                  }`}
                                 />
+                                {tableLockedFromQr && tableSetorFromQr ? (
+                                  <p className="mt-1 text-[10px] font-medium text-neutral-600">
+                                    Setor: {tableSetorFromQr}
+                                  </p>
+                                ) : null}
                                 {dineInFieldErrors.tableMesa ? (
                                   <p className="mt-1 text-[10px] font-medium text-red-700">
                                     {dineInFieldErrors.tableMesa}
@@ -1145,19 +1174,21 @@ export function WhatsAppCheckoutButton({
                           Como você quer receber o pedido?
                         </p>
                         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setError(null)
-                              setFulfillment('delivery')
-                            }}
-                            className="rounded-xl border border-[var(--card-border)] bg-white px-4 py-4 text-left transition-colors hover:bg-[#f8fafc] active:bg-neutral-100"
-                          >
-                            <p className="text-sm font-semibold text-vyria-navy">Entregar</p>
-                            <p className="mt-1 text-xs text-vyria-navy-muted">
-                              Informar endereço e calcular taxa de entrega.
-                            </p>
-                          </button>
+                          {deliveryEnabled ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setError(null)
+                                setFulfillment('delivery')
+                              }}
+                              className="rounded-xl border border-[var(--card-border)] bg-white px-4 py-4 text-left transition-colors hover:bg-[#f8fafc] active:bg-neutral-100"
+                            >
+                              <p className="text-sm font-semibold text-vyria-navy">Entregar</p>
+                              <p className="mt-1 text-xs text-vyria-navy-muted">
+                                Informar endereço e calcular taxa de entrega.
+                              </p>
+                            </button>
+                          ) : null}
                           <button
                             type="button"
                             onClick={() => {
@@ -1335,11 +1366,22 @@ export function WhatsAppCheckoutButton({
                             </span>
                             <input
                               value={tableMesa}
-                              onChange={(e) => setTableMesa(e.target.value)}
+                              readOnly={tableLockedFromQr}
+                              onChange={(e) => {
+                                if (tableLockedFromQr) return
+                                setTableMesa(e.target.value)
+                              }}
                               placeholder="Ex.: 12, Balcão, Varanda 2"
                               autoComplete="off"
-                              className="w-full rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm outline-none focus:border-[#25D366]"
+                              className={`w-full rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm outline-none focus:border-[#25D366] ${
+                                tableLockedFromQr ? 'bg-neutral-100' : 'bg-white'
+                              }`}
                             />
+                            {tableLockedFromQr && tableSetorFromQr ? (
+                              <p className="mt-1 text-xs text-vyria-navy-muted">
+                                Setor: {tableSetorFromQr}
+                              </p>
+                            ) : null}
                           </label>
                         ) : null}
 

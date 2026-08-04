@@ -23,11 +23,10 @@ export function FiscalWelcomeStep({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const supportHref =
-    buildWhatsAppLink(
-      process.env.NEXT_PUBLIC_ADMIN_WHATSAPP || '',
-      'Olá! Preciso de ajuda com o credenciamento NFC-e na SEFAZ para usar o Vyria Fiscal.'
-    ) || 'https://wa.me/'
+  const supportHref = buildWhatsAppLink(
+    process.env.NEXT_PUBLIC_ADMIN_WHATSAPP || '',
+    'Olá! Preciso de ajuda com o credenciamento NFC-e na SEFAZ para usar o Vyria Fiscal.'
+  )
 
   async function handleContinue() {
     if (answer !== 'sim') return
@@ -98,14 +97,16 @@ export function FiscalWelcomeStep({
               <li key={step}>{step}</li>
             ))}
           </ol>
-          <a
-            href={supportHref}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-4 inline-flex rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-900 hover:bg-amber-100/50"
-          >
-            Falar com suporte Vyria
-          </a>
+          {supportHref ? (
+            <a
+              href={supportHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-4 inline-flex rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-900 hover:bg-amber-100/50"
+            >
+              Falar com suporte Vyria
+            </a>
+          ) : null}
         </div>
       ) : null}
 

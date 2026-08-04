@@ -93,7 +93,9 @@ export function resolveSalonMapTablesForOrder(
     if (salonCandidates.length > 0) return salonCandidates
   }
 
-  return []
+  // Ambíguo: alinhar ao fallback do checkout (primeiro candidato) para não
+  // esconder a comanda do mapa quando o setor nas notas está desactualizado.
+  return [candidates[0]]
 }
 
 /** Comanda com mesa reconhecida no layout configurado (coerente com o mapa). */
@@ -168,4 +170,50 @@ export function buildWaiterNotes(
   const extra = userNotes.trim()
   if (extra) lines.push(extra)
   return lines.join('\n')
+}
+
+/**
+ * Resolve o setor da comanda QR/checkout para bater com o mapa.
+ * Preferência: setor pedido → única mesa com o nome → Salão → primeiro candidato.
+ */
+export function resolveDineInSectorForTable(
+  tableLabel: string,
+  configuredTables: SalonMapTableRef[],
+  preferredSector?: string | null
+): string {
+  const preferred = String(preferredSector ?? '').trim()
+  const candidates = configuredTables.filter((t) =>
+    tableNamesMatch(tableLabel, t.name)
+  )
+  if (candidates.length === 0) {
+    return preferred || 'Salão'
+  }
+  if (preferred) {
+    const hit = candidates.find(
+      (t) => t.ambiente.trim().toLowerCase() === preferred.toLowerCase()
+    )
+    if (hit) return hit.ambiente.trim() || 'Salão'
+  }
+  if (candidates.length === 1) {
+    return candidates[0].ambiente.trim() || 'Salão'
+  }
+  const salon = candidates.find((t) => isDefaultSalonSector(t.ambiente))
+  if (salon) return salon.ambiente.trim() || 'Salão'
+  return candidates[0].ambiente.trim() || preferred || 'Salão'
+}
+
+/** URL pública de autoatendimento (QR), opcionalmente com mesa/setor pré-preenchidos. */
+export function buildSalonSelfServiceUrl(
+  origin: string,
+  storeSlug: string,
+  opts?: { mesa?: string | null; setor?: string | null }
+): string {
+  const base = `${origin.replace(/\/+$/, '')}/${encodeURIComponent(storeSlug)}`
+  const qs = new URLSearchParams()
+  qs.set('auto', '1')
+  const mesa = String(opts?.mesa ?? '').trim()
+  const setor = String(opts?.setor ?? '').trim()
+  if (mesa) qs.set('mesa', mesa)
+  if (setor) qs.set('setor', setor)
+  return `${base}?${qs.toString()}`
 }

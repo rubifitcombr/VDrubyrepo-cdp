@@ -303,12 +303,24 @@ function discountPercent(original: number, current: number) {
   return pct > 0 ? pct : 0
 }
 
-/** URL público do cardápio do logista. */
+/** URL público do cardápio do logista (preserva mesa/setor do QR actual). */
 function getStorefrontPublicUrl(slug: string, auto = false) {
   if (typeof window === 'undefined') return ''
   const path = `/${slug.replace(/^\/+|\/+$/g, '')}`
   const base = `${window.location.origin}${path}`
-  return auto ? `${base}?auto=1` : base
+  if (!auto) return base
+  const qs = new URLSearchParams()
+  qs.set('auto', '1')
+  try {
+    const current = new URLSearchParams(window.location.search)
+    const mesa = current.get('mesa')?.trim()
+    const setor = (current.get('setor') || current.get('sector') || '').trim()
+    if (mesa) qs.set('mesa', mesa)
+    if (setor) qs.set('setor', setor)
+  } catch {
+    /* ignore */
+  }
+  return `${base}?${qs.toString()}`
 }
 
 async function shareStoreLink({
@@ -357,6 +369,9 @@ export function StorefrontMenuClient({
   locationLabel,
   selfServiceFromQr = false,
   salaoAutoUnavailable = false,
+  initialTableMesa = null,
+  initialTableSetor = null,
+  deliveryEnabled = true,
   merchantPixConfigured = false,
   loyaltyProgram = null,
 }: {
@@ -383,6 +398,12 @@ export function StorefrontMenuClient({
   selfServiceFromQr?: boolean
   /** `?auto=1` mas a loja não aceita (ex.: Pro em modo garçom). */
   salaoAutoUnavailable?: boolean
+  /** Mesa pré-preenchida via QR (`?mesa=`). */
+  initialTableMesa?: string | null
+  /** Setor pré-preenchido via QR (`?setor=`). */
+  initialTableSetor?: string | null
+  /** Loja aceita entrega online (falso em modo presencial). */
+  deliveryEnabled?: boolean
   merchantPixConfigured?: boolean
   loyaltyProgram?: PublicLoyaltyProgram | null
 }) {
@@ -465,6 +486,7 @@ export function StorefrontMenuClient({
   }, [storeOpen, hoursMode, closingTimeToday])
 
   const offersDelivery =
+    deliveryEnabled &&
     deliveryFee !== undefined &&
     deliveryFee !== null &&
     Number.isFinite(Number(deliveryFee))
@@ -702,7 +724,9 @@ export function StorefrontMenuClient({
             <div className="mt-2 flex items-center gap-1.5 rounded-full border border-[#EBD19A] bg-[#FAEEDA] px-2 py-1.5 text-[10px] font-bold text-[#633806]">
                     <IconArmchair className="h-4 w-4 shrink-0" />
                   <span className="min-w-0 flex-1 truncate">
-                Pedido na mesa · Autoatendimento
+                {initialTableMesa
+                  ? `Mesa ${initialTableMesa}${initialTableSetor ? ` · ${initialTableSetor}` : ''} · Autoatendimento`
+                  : 'Pedido na mesa · Autoatendimento'}
                   </span>
                   <button
                     type="button"
@@ -1333,6 +1357,9 @@ export function StorefrontMenuClient({
             storeOpen={storeOpen}
             hoursMode={hoursMode}
             dineInSelfService={selfServiceFromQr}
+            initialTableMesa={initialTableMesa}
+            initialTableSetor={initialTableSetor}
+            deliveryEnabled={deliveryEnabled}
             merchantPixConfigured={merchantPixConfigured}
             loyaltyProgram={loyaltyProgram}
             primaryColor={theme.primary}
@@ -1393,6 +1420,9 @@ export function StorefrontMenuClient({
               storeOpen={storeOpen}
               hoursMode={hoursMode}
               dineInSelfService={selfServiceFromQr}
+              initialTableMesa={initialTableMesa}
+              initialTableSetor={initialTableSetor}
+              deliveryEnabled={deliveryEnabled}
               merchantPixConfigured={merchantPixConfigured}
               loyaltyProgram={loyaltyProgram}
               primaryColor={theme.primary}

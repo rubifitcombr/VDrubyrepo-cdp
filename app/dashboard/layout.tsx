@@ -164,8 +164,10 @@ export default async function DashboardLayout({
   const isContratoRoute =
     pathname === '/dashboard/contrato' || pathname.startsWith('/dashboard/contrato/')
 
+  // Impersonation: admin não deve ser forçado a assinar o contrato do lojista.
   if (
     storeRecord &&
+    !impersonation &&
     !isContratoRoute &&
     requiresAnnualContractAcceptance(storeRecord)
   ) {

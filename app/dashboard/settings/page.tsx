@@ -7,6 +7,7 @@ import { PublicSlugPathPill } from '@/app/_components/PublicSlugPathPill'
 import { hasPixCheckout, planTier, parsePlan, type Plan } from '@/lib/plan'
 import { readStorePlano } from '@/lib/store-columns'
 import { slugifyStoreSlug } from '@/lib/store-slug'
+import { buildSalonSelfServiceUrl } from '@/lib/waiter-order-notes'
 import {
   isDeliveryPipelineEnabled,
   parseOperationModeFromStore,
@@ -217,7 +218,7 @@ export default function SettingsPage() {
       : null
   const qrMesaAutoUrl =
     typeof window !== 'undefined' && slugParaQr
-      ? `${window.location.origin}/${slugParaQr}?auto=1`
+      ? buildSalonSelfServiceUrl(window.location.origin, slugParaQr)
       : null
   const hasGrowthLocation = planTier(storePlan) >= planTier('GROWTH')
   const pixCheckoutAllowed = hasPixCheckout(storePlan)

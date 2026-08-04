@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/server'
 import {
   STORE_TABLES_SELECT,
   buildStoreTableInsertRow,
+  mapActiveStoreTableRows,
   mapStoreTableRow,
 } from '@/lib/store-tables'
 
@@ -51,9 +52,7 @@ export async function GET() {
   }
 
   return NextResponse.json({
-    tables: (data ?? []).map((row) =>
-      mapStoreTableRow(row as Record<string, unknown>)
-    ),
+    tables: mapActiveStoreTableRows((data as Record<string, unknown>[] | null) ?? []),
   })
 }
 
@@ -81,12 +80,15 @@ export async function PUT(request: Request) {
   const supabase = await createClient()
 
   const cleaned = rows
-    .map((t, idx) => ({
-      name: String(t.name ?? '').trim(),
-      ambiente: String(t.ambiente ?? 'Salão').trim() || 'Salão',
-      sort_order: Math.round(Number(t.sort_order) ?? idx),
-      active: t.active !== false,
-    }))
+    .map((t, idx) => {
+      const sortRaw = Number(t.sort_order)
+      return {
+        name: String(t.name ?? '').trim(),
+        ambiente: String(t.ambiente ?? 'Salão').trim() || 'Salão',
+        sort_order: Number.isFinite(sortRaw) ? Math.round(sortRaw) : idx,
+        active: t.active !== false,
+      }
+    })
     .filter((t) => t.name.length > 0 && t.name.length <= 42)
 
   const { error: delErr } = await supabase.from('store_tables').delete().eq('store_id', storeId)

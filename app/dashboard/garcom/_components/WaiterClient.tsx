@@ -22,6 +22,7 @@ import {
   isWaiterSalonOpenOrder,
 } from '@/lib/presencial-table-orders'
 import {
+  buildSalonSelfServiceUrl,
   extractUserNotes,
   isSalonMapOrderSource,
   orderMatchesSalonTable,
@@ -30,6 +31,7 @@ import {
   parseTableFromNotes,
   tableNamesMatch,
 } from '@/lib/waiter-order-notes'
+import { slugifyStoreSlug } from '@/lib/store-slug'
 import { dashboardFetch } from '@/lib/dashboard-fetch.client'
 import type { StoreGarcomDTO } from '@/lib/garcons-types'
 import {
@@ -59,7 +61,7 @@ import {
   isSoldByWeight,
 } from '@/lib/weighable-product'
 import {
-  mapStoreTableRow,
+  mapActiveStoreTableRows,
   STORE_TABLES_SELECT,
 } from '@/lib/store-tables'
 import { CAIXA_BALCAO_HREF } from '@/lib/caixa-hub-links'
@@ -275,6 +277,7 @@ function mergedSectorList(
 export function WaiterClient({
   storeId,
   storeName,
+  storeSlug,
   plan,
   initialSalaoAttendanceMode,
   initialProducts,
@@ -294,6 +297,7 @@ export function WaiterClient({
 }: {
   storeId: string
   storeName: string
+  storeSlug: string
   plan: Plan
   initialSalaoAttendanceMode: SalaoAttendanceMode
   initialProducts: MenuProductRow[]
@@ -412,7 +416,11 @@ export function WaiterClient({
   const [salaoMode, setSalaoMode] = useState<SalaoAttendanceMode>(initialSalaoAttendanceMode)
   const [garcons, setGarcons] = useState<StoreGarcomDTO[]>([])
 
-  const pinSession = useMemo(() => getGarcomPinSession(storeId), [storeId])
+  const [pinSessionTick, setPinSessionTick] = useState(0)
+  const pinSession = useMemo(() => {
+    void pinSessionTick
+    return getGarcomPinSession(storeId)
+  }, [storeId, pinSessionTick])
   const salaoPinRequired = isSalaoGarcomPinRequired(garcons)
   const garcomSessionLocked = salaoPinRequired && !!pinSession
   const effectiveGarcomId = garcomSessionLocked ? pinSession!.garcomId : null
@@ -423,6 +431,13 @@ export function WaiterClient({
       (o) => !o.garcom_id || o.garcom_id === pinSession.garcomId
     )
   }, [openOrders, garcomSessionLocked, pinSession])
+
+  function trocarGarcomPinSession() {
+    clearGarcomPinSession(storeId)
+    setPinSessionTick((n) => n + 1)
+    // Força o gate a pedir PIN de novo (sessionStorage limpo + remount via key).
+    window.location.assign('/dashboard/garcom')
+  }
 
   useEffect(() => {
     setSalaoMode(initialSalaoAttendanceMode)
@@ -528,25 +543,44 @@ export function WaiterClient({
       .from('store_tables')
       .select(STORE_TABLES_SELECT)
       .eq('store_id', storeId)
-      .eq('active', true)
       .order('ambiente', { ascending: true })
       .order('sort_order', { ascending: true })
       .order('name', { ascending: true })
 
     if (error || !data) return
     setTables(
-      (data as Record<string, unknown>[]).map((row) => {
-        const mapped = mapStoreTableRow(row)
-        return {
-          id: mapped.id,
-          name: mapped.name,
-          ambiente: mapped.ambiente,
-          sort_order: mapped.sort_order,
-          active: mapped.active,
-        }
-      })
+      mapActiveStoreTableRows(data as Record<string, unknown>[]).map((mapped) => ({
+        id: mapped.id,
+        name: mapped.name,
+        ambiente: mapped.ambiente,
+        sort_order: mapped.sort_order,
+        active: mapped.active,
+      }))
     )
   }, [storeId])
+
+  const salonQrSlug = useMemo(() => {
+    const s = String(storeSlug ?? '').trim()
+    return s ? slugifyStoreSlug(s) : ''
+  }, [storeSlug])
+
+  async function copyTableQrLink(tb: StoreTableDTO) {
+    if (typeof window === 'undefined' || !salonQrSlug) {
+      setError('Define o slug da loja em Configurações antes de copiar o QR da mesa.')
+      return
+    }
+    const url = buildSalonSelfServiceUrl(window.location.origin, salonQrSlug, {
+      mesa: tb.name,
+      setor: tb.ambiente,
+    })
+    try {
+      await navigator.clipboard.writeText(url)
+      setSuccess(`Link QR da mesa ${tb.name} copiado.`)
+      setError(null)
+    } catch {
+      setError('Não foi possível copiar o link do QR. Copia manualmente nas Configurações.')
+    }
+  }
 
   useEffect(() => {
     void pullOpenOrders()
@@ -1781,10 +1815,7 @@ export function WaiterClient({
           </p>
           <GarcomSessionBadge
             nome={pinSession.nome}
-            onTrocar={() => {
-              clearGarcomPinSession(storeId)
-              router.refresh()
-            }}
+            onTrocar={trocarGarcomPinSession}
           />
         </div>
       ) : garcons.length > 0 && !salaoPinRequired ? (
@@ -2332,13 +2363,19 @@ export function WaiterClient({
                         {busyOrderId === order.id ? '…' : 'Entregue à mesa'}
                       </button>
                     ) : null}
-                    <button
-                      type="button"
-                      onClick={() => void loadOrderEditor(order)}
-                      className="text-left text-xs font-semibold text-[var(--dash-primary)] hover:underline"
-                    >
-                      Ver / Editar
-                    </button>
+                    {staffSalonUi ? (
+                      <button
+                        type="button"
+                        onClick={() => void loadOrderEditor(order)}
+                        className="text-left text-xs font-semibold text-[var(--dash-primary)] hover:underline"
+                      >
+                        Ver / Editar
+                      </button>
+                    ) : (
+                      <p className="text-[11px] text-[#6b7280]">
+                        No Growth os pedidos chegam pelo QR; edição no mapa é Pro.
+                      </p>
+                    )}
                     {hasFeature(plan, 'orders') &&
                     canPrintComandaStatus(order.status) ? (
                       <button
@@ -2431,19 +2468,37 @@ export function WaiterClient({
               {(tablesByAmbiente.get(configAmbTab) ?? []).map((t) => (
                 <div
                   key={t.id}
-                  className="flex items-center justify-between rounded-lg border border-[var(--card-border)] px-2 py-1.5"
+                  className="flex items-center justify-between gap-2 rounded-lg border border-[var(--card-border)] px-2 py-1.5"
                 >
-                  <span className="text-sm font-medium">{t.name}</span>
-                  <button
-                    type="button"
-                    onClick={() => removeConfiguredTable(t.id)}
-                    className="text-xs font-semibold text-red-600 hover:underline"
-                  >
-                    Remover
-                  </button>
+                  <span className="min-w-0 truncate text-sm font-medium">{t.name}</span>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {planAllowsSalonSelfServiceQr(plan) && salonQrSlug ? (
+                      <button
+                        type="button"
+                        onClick={() => void copyTableQrLink(t)}
+                        className="text-xs font-semibold text-[var(--dash-primary)] hover:underline"
+                        title="Copia link com mesa e setor pré-preenchidos (?auto=1&mesa=…)"
+                      >
+                        Copiar QR
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => removeConfiguredTable(t.id)}
+                      className="text-xs font-semibold text-red-600 hover:underline"
+                    >
+                      Remover
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
+            {planAllowsSalonSelfServiceQr(plan) ? (
+              <p className="mt-2 text-[11px] leading-relaxed text-[#6b7280]">
+                «Copiar QR» gera um link com a mesa já preenchida. O cartaz geral (todas as mesas)
+                continua em Configurações.
+              </p>
+            ) : null}
             <div className="mt-3 flex gap-2">
               <input
                 value={newTableName}

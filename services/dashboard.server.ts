@@ -122,9 +122,9 @@ export async function getDashboardMetrics(
   if (!storeId) return { ...emptyMetrics }
 
   const supabase = await createClient()
-  const { endExclusiveIso } = saoPauloDayBounds()
+  const { startIso, endExclusiveIso } = saoPauloDayBounds()
   const operationalStartIso =
-    (await getOpenCashierTurnStartIso(supabase, storeId)) ?? endExclusiveIso
+    (await getOpenCashierTurnStartIso(supabase, storeId)) ?? startIso
 
   const [
     ordersTodayCountRes,
@@ -386,12 +386,12 @@ export async function getDashboardHomeData(
 }> {
   const supabase = await createClient()
   const now = new Date()
-  const { endExclusiveIso } = saoPauloDayBounds(now)
+  const { startIso, endExclusiveIso } = saoPauloDayBounds(now)
   const yBounds = saoPauloDayBounds(new Date(now.getTime() - 86400000))
   const monthB = saoPauloMonthPair(now)
   const slugF = options?.slugChannelSourcesOnly
   const operationalStartIso =
-    (await getOpenCashierTurnStartIso(supabase, storeId)) ?? endExclusiveIso
+    (await getOpenCashierTurnStartIso(supabase, storeId)) ?? startIso
 
   const [
     ordersRes,

@@ -51,7 +51,7 @@ import {
   type SalonMapTableRef,
 } from '@/lib/presencial-table-orders'
 import {
-  mapStoreTableRow,
+  mapActiveStoreTableRows,
   STORE_TABLES_SELECT,
 } from '@/lib/store-tables'
 import { orderPaymentRegisteredInCaixa } from '@/lib/cashier-comanda-close'
@@ -1249,17 +1249,16 @@ export function OrdersClient({
         .from('store_tables')
         .select(STORE_TABLES_SELECT)
         .eq('store_id', storeId)
-        .eq('active', true)
         .order('ambiente', { ascending: true })
         .order('sort_order', { ascending: true })
         .order('name', { ascending: true })
 
       if (error || !data) return
       setSalonTables(
-        (data as Record<string, unknown>[])
-          .map(mapStoreTableRow)
-          .filter((t) => t.active)
-          .map((t) => ({ name: t.name, ambiente: t.ambiente }))
+        mapActiveStoreTableRows(data as Record<string, unknown>[]).map((t) => ({
+          name: t.name,
+          ambiente: t.ambiente,
+        }))
       )
     }
 
@@ -1695,9 +1694,7 @@ export function OrdersClient({
     setOrders((prev) =>
       prev.map((o) => (o.id === orderId ? { ...o, status } : o))
     )
-    if (status === 'cancelled') {
-      notifyStoreOrdersChanged(storeId, { eventType: 'UPDATE' })
-    }
+    notifyStoreOrdersChanged(storeId, { eventType: 'UPDATE' })
     if (status === 'cancelled' && fiscal?.attempted) {
       const cancelledLabel = presencial ? 'Comanda cancelada' : 'Pedido cancelado'
       if (fiscal.ok) {

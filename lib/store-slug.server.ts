@@ -1,6 +1,7 @@
 import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { isReservedStoreSlug } from '@/lib/app-reserved-routes'
 import { numberedSlug, slugifyStoreSlug } from '@/lib/store-slug'
 
 type StoreSlugRow = {
@@ -38,7 +39,8 @@ export async function resolveUniqueStoreSlug(
   let i = 1
   while (i < 50_000) {
     const candidate = numberedSlug(base, i)
-    if (!taken.has(candidate.toLowerCase())) return candidate
+    const key = candidate.toLowerCase()
+    if (!taken.has(key) && !isReservedStoreSlug(key)) return candidate
     i += 1
   }
   throw new Error('Não foi possível gerar slug único.')
@@ -53,7 +55,7 @@ export function buildUniqueSlugPlanForAllStores(rows: StoreSlugSeedRow[]): Map<s
     const base = slugifyStoreSlug(row.slug?.trim() || row.name?.trim() || 'loja')
     let i = 1
     let next = numberedSlug(base, i)
-    while (used.has(next.toLowerCase())) {
+    while (used.has(next.toLowerCase()) || isReservedStoreSlug(next)) {
       i += 1
       next = numberedSlug(base, i)
     }

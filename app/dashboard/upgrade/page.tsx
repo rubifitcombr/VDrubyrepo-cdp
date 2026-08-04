@@ -1,10 +1,11 @@
 import Link from 'next/link'
+import { getAdminWhatsappHref } from '@/lib/admin-whatsapp-href.server'
 
 const FEATURE_LABEL: Record<string, { title: string; minPlan: string }> = {
   orders: { title: 'Pedidos em tempo real', minPlan: 'Growth' },
   pdv: { title: 'PDV / balcão presencial', minPlan: 'Growth' },
   promotions: { title: 'Promoções (cupons e campanhas)', minPlan: 'Growth' },
-  reports: { title: 'Relatórios de vendas', minPlan: 'Growth' },
+  reports: { title: 'Relatórios de vendas', minPlan: 'Start' },
   reports_advanced: { title: 'Relatórios avançados', minPlan: 'Pro' },
   appearance: { title: 'Aparência (cor, logo, banner)', minPlan: 'Growth' },
   automations: { title: 'Automações (pedidos e loja)', minPlan: 'Growth' },
@@ -55,6 +56,7 @@ export default async function UpgradePage({
   const raw = sp.feature
   const feature = Array.isArray(raw) ? raw[0] : raw
   const meta = feature ? FEATURE_LABEL[feature] : null
+  const supportHref = getAdminWhatsappHref()
 
   return (
     <div className="mx-auto w-full max-w-3xl md:max-w-4xl">
@@ -77,7 +79,7 @@ export default async function UpgradePage({
           )}
         </p>
 
-        <div className="mt-6 grid gap-3 sm:grid-cols-3">
+        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div className="rounded-2xl border border-[var(--card-border)] bg-[#f9f9f9] p-5">
             <p className="text-xs font-semibold uppercase tracking-wider text-vyria-navy-muted">
               Start
@@ -117,6 +119,19 @@ export default async function UpgradePage({
               <li>Relatórios avançados e descrição com IA</li>
             </ul>
           </div>
+
+          <div className="rounded-2xl border border-[var(--card-border)] bg-[#f9f9f9] p-5">
+            <p className="text-xs font-semibold uppercase tracking-wider text-vyria-navy-muted">
+              Master
+            </p>
+            <p className="mt-2 text-sm font-semibold text-vyria-navy">
+              WhatsApp + fidelidade
+            </p>
+            <ul className="mt-3 space-y-1 text-sm text-vyria-navy-muted">
+              <li>WhatsApp oficial e robô</li>
+              <li>Marketing e fidelidade</li>
+            </ul>
+          </div>
         </div>
 
         <div className="mt-8 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -126,14 +141,23 @@ export default async function UpgradePage({
           >
             Voltar ao dashboard
           </Link>
-          <a
-            href="https://wa.me/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn-vyria-gradient rounded-xl px-6 py-3 text-center text-sm font-semibold"
-          >
-            Falar com o suporte para upgrade
-          </a>
+          {supportHref ? (
+            <a
+              href={supportHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-vyria-gradient rounded-xl px-6 py-3 text-center text-sm font-semibold"
+            >
+              Falar com o suporte para upgrade
+            </a>
+          ) : (
+            <Link
+              href="/dashboard/planos"
+              className="btn-vyria-gradient rounded-xl px-6 py-3 text-center text-sm font-semibold"
+            >
+              Ver planos
+            </Link>
+          )}
         </div>
       </div>
     </div>
