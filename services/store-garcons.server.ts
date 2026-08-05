@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { normalizeGarcomPin } from '@/lib/garcom-pin'
+import { normalizeGarcomPin, isGarcomPinActive, isSalaoGarcomPinRequired } from '@/lib/garcom-pin'
 import type { StoreGarcomDTO } from '@/lib/garcons-types'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
@@ -178,5 +178,43 @@ export async function resolveGarcomForOrder(
   return {
     garcom_id: String(data.id),
     garcom_nome: String(data.nome ?? '').trim() || '—',
+  }
+}
+
+export type GarcomWaiterResolve =
+  | { garcom_id: string; garcom_nome: string }
+  | { garcom_id: null; garcom_nome: null }
+
+/** Valida garçom para pedidos do painel (exige PIN activo quando a loja usa PIN). */
+export async function resolveGarcomForWaiterOrder(
+  svc: SupabaseClient,
+  storeId: string,
+  garcomId: string | null | undefined
+): Promise<GarcomWaiterResolve | { error: string; status: number }> {
+  const garcons = await listGarconsForStore(svc, storeId)
+  const pinRequired = isSalaoGarcomPinRequired(garcons)
+  const id = typeof garcomId === 'string' ? garcomId.trim() : ''
+
+  if (pinRequired) {
+    if (!id) {
+      return {
+        error: 'Informa o garçom (PIN obrigatório nesta loja).',
+        status: 400,
+      }
+    }
+    const g = garcons.find((row) => row.id === id)
+    if (!g || !isGarcomPinActive(g)) {
+      return { error: 'Garçom inválido ou sem PIN activo.', status: 403 }
+    }
+    return { garcom_id: g.id, garcom_nome: g.nome.trim() || '—' }
+  }
+
+  const resolved = await resolveGarcomForOrder(svc, storeId, id)
+  if (!resolved.garcom_id) {
+    return { garcom_id: null, garcom_nome: null }
+  }
+  return {
+    garcom_id: resolved.garcom_id,
+    garcom_nome: resolved.garcom_nome ?? '—',
   }
 }

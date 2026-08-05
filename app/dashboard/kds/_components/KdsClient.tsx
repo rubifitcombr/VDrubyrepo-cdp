@@ -167,6 +167,8 @@ export function KdsClient({
   }, [storeId])
 
   useEffect(() => {
+    // Busca inicial da fila — pullOrders actualiza estado após fetch async.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mount + realtime refresh
     void pullOrders()
 
     const unsubscribe = subscribeStoreOrdersSync(storeId, (detail) => {

@@ -37,6 +37,7 @@ import type { StoreGarcomDTO } from '@/lib/garcons-types'
 import {
   clearGarcomPinSession,
   getGarcomPinSession,
+  isGarcomPinSessionValid,
   isSalaoGarcomPinRequired,
 } from '@/lib/garcom-pin'
 import { GarcomSessionBadge } from '@/app/dashboard/garcom/_components/GarcomSalaoPinGate'
@@ -424,8 +425,9 @@ export function WaiterClient({
   const [pinSessionTick, setPinSessionTick] = useState(0)
   const pinSession = useMemo(() => {
     void pinSessionTick
+    if (!isGarcomPinSessionValid(storeId, garcons)) return null
     return getGarcomPinSession(storeId)
-  }, [storeId, pinSessionTick])
+  }, [storeId, pinSessionTick, garcons])
   const salaoPinRequired = isSalaoGarcomPinRequired(garcons)
   const garcomSessionLocked = salaoPinRequired && !!pinSession
   // Usa a sessão PIN assim que existir (layout já validou); não esperar o fetch client.

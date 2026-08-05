@@ -14,7 +14,7 @@ import {
 import { getUser } from '@/services/auth.server'
 import { createClient } from '@/lib/supabase/server'
 import { buildItemsSummaryWithLineTotals } from '@/lib/print/items-summary-format'
-import { resolveGarcomForOrder } from '@/services/store-garcons.server'
+import { resolveGarcomForWaiterOrder } from '@/services/store-garcons.server'
 import {
   merchantHasScaleIntegration,
 } from '@/lib/merchant-api-gate.server'
@@ -218,11 +218,14 @@ export async function PATCH(
     typeof body.notes === 'string' ? body.notes.trim() : extractUserNotes(existing.notes as string)
   const notes = buildWaiterNotes(table, sector, userNotes, discountBrl)
 
-  const garcom = await resolveGarcomForOrder(
+  const garcom = await resolveGarcomForWaiterOrder(
     supabase,
     storeId,
     typeof body.garcom_id === 'string' ? body.garcom_id : null
   )
+  if ('error' in garcom) {
+    return NextResponse.json({ error: garcom.error }, { status: garcom.status })
+  }
 
   const { error: delItems } = await supabase.from('order_items').delete().eq('order_id', id)
   if (delItems) {

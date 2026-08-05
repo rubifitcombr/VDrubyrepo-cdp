@@ -63,7 +63,7 @@ export async function GET(req: NextRequest) {
           ? 'Tabela fiscal_invoices em falta. Aplica supabase/migrations/20260725190011_fiscal_schema.sql no Supabase.'
           : msg,
       },
-      { status: 500 }
+      { status: missingSchema ? 503 : 500 }
     )
   }
 

@@ -9,7 +9,7 @@ import { createClient } from '@/lib/supabase/server'
 import { buildItemsSummaryWithLineTotals } from '@/lib/print/items-summary-format'
 import { isSupabaseRlsViolation } from '@/lib/supabase-rls-error'
 import { tryAutoThermalPrint } from '@/services/thermal-print.server'
-import { resolveGarcomForOrder } from '@/services/store-garcons.server'
+import { resolveGarcomForWaiterOrder } from '@/services/store-garcons.server'
 import {
   merchantHasScaleIntegration,
 } from '@/lib/merchant-api-gate.server'
@@ -140,11 +140,14 @@ export async function POST(request: Request) {
       ? body.payment_method.trim()
       : null
 
-  const garcom = await resolveGarcomForOrder(
+  const garcom = await resolveGarcomForWaiterOrder(
     supabase,
     storeId,
     typeof body.garcom_id === 'string' ? body.garcom_id : null
   )
+  if ('error' in garcom) {
+    return NextResponse.json({ error: garcom.error }, { status: garcom.status })
+  }
 
   const { data: order, error: orderErr } = await supabase
     .from('orders')

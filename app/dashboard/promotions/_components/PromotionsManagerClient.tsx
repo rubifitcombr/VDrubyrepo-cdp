@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { GuidedPromoWizard } from '@/app/dashboard/promotions/_components/GuidedPromoWizard'
 import type { MenuProductRow } from '@/lib/menu-product'
 import {
@@ -103,6 +103,16 @@ export function PromotionsManagerClient({
 }) {
   const [rows, setRows] = useState<StorePromotionRow[]>(initialPromotions)
   const [missingTable, setMissingTable] = useState(initialMissingTable)
+  const promoSyncKey = initialPromotions
+    .map((p) => `${p.id}:${p.active}:${p.valid_until ?? ''}:${p.created_at ?? ''}`)
+    .join('|')
+  const [syncedPromoKey, setSyncedPromoKey] = useState(promoSyncKey)
+  if (syncedPromoKey !== promoSyncKey) {
+    setSyncedPromoKey(promoSyncKey)
+    setRows(initialPromotions)
+    setMissingTable(initialMissingTable)
+  }
+
   const [busyIds, setBusyIds] = useState<Set<string>>(new Set())
   const [wizardOpen, setWizardOpen] = useState(false)
   const [wizardEditing, setWizardEditing] = useState<StorePromotionRow | null>(
@@ -112,11 +122,6 @@ export function PromotionsManagerClient({
     key: number
     suggestion: PromotionSuggestionDTO
   } | null>(null)
-
-  useEffect(() => {
-    setRows(initialPromotions)
-    setMissingTable(initialMissingTable)
-  }, [initialPromotions, initialMissingTable])
 
   const refresh = useCallback(async () => {
     const data = await getStorePromotionsClient(storeId)

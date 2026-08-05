@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useState } from 'react'
 import { buildWhatsAppLink } from '@/lib/whatsapp-number'
 import type { FiscalStatus } from '@/lib/fiscal'
@@ -107,12 +108,12 @@ export function FiscalUpsell({
               Falar com suporte
             </a>
           ) : (
-            <a
+            <Link
               href="/dashboard/planos"
               className="flex-1 rounded-xl border border-[var(--card-border)] bg-white px-6 py-3 text-center text-sm font-semibold text-[#374151] transition hover:bg-[#f9fafb]"
             >
               Ver planos / suporte
-            </a>
+            </Link>
           )}
         </div>
 

@@ -24,7 +24,7 @@ import type { StoreOrderRow } from '@/lib/store-order'
 import { mapStoreOrderRow, ORDER_SELECT } from '@/lib/store-order'
 import {
   isOpenCaixaComanda,
-  orderPaymentRegisteredInCaixa,
+  isPaidInCaixaTurno,
 } from '@/lib/cashier-comanda-close'
 import { isPdvWaiterComandaSource } from '@/lib/cashier-pro-delivery-scope'
 import { createClient } from '@/lib/supabase/client'
@@ -465,7 +465,7 @@ function OperacaoView({
     return aggregateTurnClosedOrders(
       orders.filter(
         (o) =>
-          o.caixa_turno_id === turno.id && orderPaymentRegisteredInCaixa(o.notes)
+          o.caixa_turno_id === turno.id && isPaidInCaixaTurno(o)
       ),
       turnoSplitPayments
     )

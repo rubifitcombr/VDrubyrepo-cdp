@@ -78,6 +78,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, entregador: row })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Erro'
+    if (/relation|does not exist|42P01/i.test(msg)) {
+      return NextResponse.json(
+        {
+          error:
+            'Tabela de entregadores em falta. Aplica a migração de entregadores no Supabase.',
+          missingTable: true,
+        },
+        { status: 503 }
+      )
+    }
     return NextResponse.json({ error: msg }, { status: 500 })
   }
 }
@@ -142,6 +152,16 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ ok: true, entregador: row })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Erro'
+    if (/relation|does not exist|42P01/i.test(msg)) {
+      return NextResponse.json(
+        {
+          error:
+            'Tabela de entregadores em falta. Aplica a migração de entregadores no Supabase.',
+          missingTable: true,
+        },
+        { status: 503 }
+      )
+    }
     return NextResponse.json({ error: msg }, { status: 500 })
   }
 }

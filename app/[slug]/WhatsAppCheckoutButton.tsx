@@ -157,11 +157,6 @@ export function WhatsAppCheckoutButton({
   const tableLockedFromQr = Boolean(String(initialTableMesa ?? '').trim())
   const tableSetorFromQr = String(initialTableSetor ?? '').trim().slice(0, 42)
 
-  useEffect(() => {
-    const next = String(initialTableMesa ?? '').trim().slice(0, 42)
-    if (next) setTableMesa(next)
-  }, [initialTableMesa])
-
   const [dineInStep, setDineInStep] = useState<1 | 2>(1)
   const [dineInFieldErrors, setDineInFieldErrors] = useState<{
     customerName?: string

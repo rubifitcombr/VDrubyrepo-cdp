@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
           ? 'Schema fiscal em falta. Aplica supabase/migrations/20260725190011_fiscal_schema.sql no Supabase.'
           : msg,
       },
-      { status: 500 }
+      { status: missingSchema ? 503 : 500 }
     )
   }
 

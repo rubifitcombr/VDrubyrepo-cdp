@@ -5,7 +5,7 @@ import {
   aggregateTurnClosedOrders,
   type CaixaPaymentBreakdown,
 } from '@/lib/caixa-payments'
-import { orderPaymentRegisteredInCaixa } from '@/lib/cashier-comanda-close'
+import { isPaidInCaixaTurno } from '@/lib/cashier-comanda-close'
 import { mapStoreOrderRow, type StoreOrderRow } from '@/lib/store-order'
 import { getOrderPaymentsForStore } from '@/services/order-payments.server'
 
@@ -187,13 +187,11 @@ export async function getMovimentacoesForTurnos(
   return out
 }
 
-function isPaidInCaixaTurno(order: {
+function isPaidInCaixaTurnoOrder(order: {
   status?: string | null
   notes?: string | null
 }): boolean {
-  const status = String(order.status ?? '').trim().toLowerCase()
-  if (status === 'cancelled') return false
-  return status === 'delivered' || orderPaymentRegisteredInCaixa(order.notes)
+  return isPaidInCaixaTurno(order)
 }
 
 /** Pedidos do turno já pagos/fechados (para totais em tempo real). */
@@ -216,7 +214,7 @@ export async function getClosedOrdersForTurno(
     return []
   }
   return (data ?? [])
-    .filter((row) => isPaidInCaixaTurno(row as { status?: string; notes?: string }))
+    .filter((row) => isPaidInCaixaTurnoOrder(row as { status?: string; notes?: string }))
     .map((row) => mapStoreOrderRow(row as Record<string, unknown>))
 }
 

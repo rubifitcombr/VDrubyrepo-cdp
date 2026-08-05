@@ -14,7 +14,7 @@ import {
 import { getUser } from '@/services/auth.server'
 import { createClient } from '@/lib/supabase/server'
 import { getOpenCaixaTurno } from '@/services/caixa-turnos.server'
-import { resolveGarcomForOrder } from '@/services/store-garcons.server'
+import { resolveGarcomForWaiterOrder } from '@/services/store-garcons.server'
 import { insertOrderPayments } from '@/services/order-payments.server'
 import { triggerLoyaltyEarnForDeliveredOrder } from '@/services/loyalty.server'
 
@@ -198,11 +198,14 @@ export async function POST(request: Request) {
   const notes = noteBase ? `${noteBase}\n${closeLine}` : closeLine
 
   const serviceFee = round2(Math.max(0, Number(body.service_fee_brl) || 0))
-  const garcom = await resolveGarcomForOrder(
+  const garcom = await resolveGarcomForWaiterOrder(
     supabase,
     storeId,
     typeof body.garcom_id === 'string' ? body.garcom_id : null
   )
+  if ('error' in garcom) {
+    return NextResponse.json({ error: garcom.error }, { status: garcom.status })
+  }
 
   const updatePayload: Record<string, unknown> = {
     status: 'delivered',
