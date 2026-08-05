@@ -236,10 +236,12 @@ export function AssinaturaClient({ model }: { model: AssinaturaPageModel }) {
           <p className="mt-4 text-lg font-semibold tabular-nums text-[#1a1614]">
             {model.priceLabel}
           </p>
-          <div className="mt-4 grid gap-1 text-sm">
-            <span className="text-[#6b7280]">Próxima cobrança</span>
-            <span className="font-medium text-[#1a1614]">{model.nextChargeDateLabel}</span>
-          </div>
+          {model.planValidUntilLabel ? (
+            <div className="mt-4 grid gap-1 text-sm">
+              <span className="text-[#6b7280]">Plano válido até</span>
+              <span className="font-medium text-[#1a1614]">{model.planValidUntilLabel}</span>
+            </div>
+          ) : null}
 
           {annual ? (
             <div className="mt-6 rounded-xl border border-emerald-200/80 bg-emerald-50/60 p-4">

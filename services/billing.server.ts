@@ -1,6 +1,6 @@
 import 'server-only'
 
-import type { AssinaturaAnnualContract, AssinaturaPageModel, BillingSubscriptionStatus } from '@/lib/billing'
+import type { AssinaturaAnnualContract, AssinaturaPageModel } from '@/lib/billing'
 import { getAdminWhatsappHref } from '@/lib/admin-whatsapp-href.server'
 import {
   annualSavingsVsListBrl,
@@ -18,22 +18,7 @@ import type { Plan } from '@/lib/plan'
 import { parseOperationModeFromStore } from '@/lib/merchant-operation-mode'
 import { planMonthlyPriceLabel, planShortLabel } from '@/lib/plan'
 
-export type DashboardBillingBanner = {
-  openInvoiceDateLabel: string
-  payUrl: string
-} | null
-
-export type DashboardBillingBlock = {
-  payUrl: string | null
-} | null
-
 export type { AssinaturaPageModel }
-
-function parseStatus(raw: unknown): BillingSubscriptionStatus {
-  if (raw === 'overdue') return 'overdue'
-  if (raw === 'cancelled') return 'cancelled'
-  return 'active'
-}
 
 function formatOpenInvoiceDate(raw: unknown): string {
   if (typeof raw !== 'string' || !raw.trim()) return ''
@@ -48,16 +33,6 @@ function formatOpenInvoiceDate(raw: unknown): string {
 
 function formatYmdLabel(ymd: string): string {
   return formatOpenInvoiceDate(ymd)
-}
-
-function nextChargeFallback(): string {
-  const d = new Date()
-  d.setMonth(d.getMonth() + 1)
-  return new Intl.DateTimeFormat('pt-BR', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  }).format(d)
 }
 
 function buildAnnualContractModel(
@@ -95,35 +70,19 @@ function buildAnnualContractModel(
   }
 }
 
-export function getDashboardBillingBanner(
-  _store: Record<string, unknown> | null | undefined
-): DashboardBillingBanner {
-  return null
-}
-
-export function getDashboardBillingBlock(
-  _store: Record<string, unknown> | null | undefined
-): DashboardBillingBlock {
-  return null
-}
-
 export async function getAssinaturaPageModel(
   store: Record<string, unknown> | null | undefined,
   effectivePlan: Plan,
   invoicesFromDb: import('@/lib/billing').BillingInvoiceRow[]
 ): Promise<AssinaturaPageModel> {
   const plan = effectivePlan
-  const nextRaw = store?.billing_next_charge_at
-  let nextChargeDateLabel = ''
-  if (typeof nextRaw === 'string' && nextRaw.trim()) {
-    nextChargeDateLabel = formatOpenInvoiceDate(nextRaw)
-  }
-  if (!nextChargeDateLabel) nextChargeDateLabel = nextChargeFallback()
 
   const planoVenceEm =
     typeof store?.plano_vence_em === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(store.plano_vence_em.trim())
       ? store.plano_vence_em.trim()
       : null
+
+  const planValidUntilLabel = planoVenceEm ? formatYmdLabel(planoVenceEm) : null
 
   const operationMode = parseOperationModeFromStore(store ?? null)
   const contract = readStoreContract(store ?? null)
@@ -140,9 +99,9 @@ export async function getAssinaturaPageModel(
     plan,
     planBadgeLabel: planShortLabel(plan),
     priceLabel,
-    nextChargeDateLabel,
+    planValidUntilLabel,
     planoVenceEm,
-    subscriptionStatus: parseStatus(store?.billing_subscription_status),
+    subscriptionStatus: 'active',
     invoices: invoicesFromDb,
     whatsappHref: getAdminWhatsappHref(),
     operationMode,

@@ -295,8 +295,6 @@ export function DashboardShell({
   plan,
   notificationCount = 0,
   slugChannelSourcesOnly = false,
-  billingBanner = null,
-  billingBlock = null,
   vyriaDualAccount,
   operationMode = null,
   deliveryPipelineEnabled = true,
@@ -333,11 +331,6 @@ export function DashboardShell({
   notificationCount?: number
   /** Growth + delivery: sino / realtime só canal slug (site_* / menu_link / site_pickup). */
   slugChannelSourcesOnly?: boolean
-  billingBanner?: {
-    openInvoiceDateLabel: string
-    payUrl: string
-  } | null
-  billingBlock?: { payUrl: string | null } | null
   vyriaDualAccount?: { mode: VyriaPanelMode }
   /** `null` = legado: menu e rotas como antes (só plano). */
   operationMode?: MerchantOperationMode | null
@@ -393,25 +386,7 @@ export function DashboardShell({
 
   if (!isAuthenticated) return null
 
-  const mainInner = billingBlock && isAuthenticated ? (
-      <div className="flex min-h-[min(28rem,70vh)] flex-col items-center justify-center gap-4 rounded-2xl border border-[var(--card-border)] bg-white p-8 text-center shadow-sm shadow-black/[0.04]">
-        <p className="text-lg font-bold text-[#1a1614]">Acesso suspenso</p>
-        <p className="max-w-md text-sm text-[#6b7280]">
-          A conta está bloqueada por inadimplência prolongada. Regulariza o pagamento para voltar a
-          usar o painel.
-        </p>
-        {billingBlock.payUrl ? (
-          <a
-            href={billingBlock.payUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center justify-center rounded-xl bg-[var(--dash-primary)] px-6 py-3 text-sm font-semibold text-white shadow-md shadow-[var(--dash-primary)]/25 transition-[filter] hover:brightness-105"
-          >
-            Pagar agora
-          </a>
-        ) : null}
-      </div>
-    ) : (
+  const mainInner = (
       <DashboardPlanGuard plan={plan} operationMode={operationMode ?? null}>
         <HubPinAccessGate
           pinUnlockKey={pinUnlockKey}
@@ -531,25 +506,6 @@ export function DashboardShell({
         ) : null}
         {impersonatingStoreName ? (
           <ImpersonationBanner storeName={impersonatingStoreName} />
-        ) : null}
-        {billingBanner && isAuthenticated ? (
-          <div className="shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-3 sm:px-5 md:px-6 lg:px-8 xl:px-10">
-            <div className="mx-auto flex w-full max-w-none flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm text-amber-950">
-                Sua fatura de{' '}
-                <span className="font-semibold">{billingBanner.openInvoiceDateLabel}</span> está em
-                aberto. Regularize para manter o acesso.
-              </p>
-              <a
-                href={billingBanner.payUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex shrink-0 items-center justify-center rounded-xl bg-[var(--dash-primary)] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-[filter] hover:brightness-105"
-              >
-                Pagar agora
-              </a>
-            </div>
-          </div>
         ) : null}
         {isOperationalHub && vyriaDualAccount ? (
           <div className="pointer-events-none fixed inset-x-0 top-0 z-50 flex justify-end p-3 sm:p-4">

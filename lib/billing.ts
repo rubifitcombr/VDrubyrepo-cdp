@@ -37,7 +37,8 @@ export type AssinaturaPageModel = {
   plan: Plan
   planBadgeLabel: string
   priceLabel: string
-  nextChargeDateLabel: string
+  /** Data de validade do plano (legível), derivada de `plano_vence_em`. */
+  planValidUntilLabel: string | null
   /** Data de vencimento do plano (YYYY-MM-DD), da loja. */
   planoVenceEm: string | null
   subscriptionStatus: BillingSubscriptionStatus
@@ -46,18 +47,6 @@ export type AssinaturaPageModel = {
   operationMode: MerchantOperationMode | null
   annualContract: AssinaturaAnnualContract | null
   cancelamentoSolicitado: boolean
-}
-
-const OVERDUE_BLOCK_DAYS = 3
-const MS_PER_DAY = 86_400_000
-
-export function shouldBlockDashboardAfterOverdue(
-  overdueAtIso: string | null | undefined
-): boolean {
-  if (!overdueAtIso || typeof overdueAtIso !== 'string') return false
-  const t = Date.parse(overdueAtIso)
-  if (Number.isNaN(t)) return false
-  return Date.now() - t >= OVERDUE_BLOCK_DAYS * MS_PER_DAY
 }
 
 export function parseBillingInvoices(raw: unknown): BillingInvoiceRow[] {
