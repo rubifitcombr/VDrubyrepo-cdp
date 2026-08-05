@@ -112,6 +112,7 @@ const NAV_ICONS: Record<
   master_whatsapp: IconChat,
   master_fidelidade: IconGift,
   master_marketing: IconMegaphone,
+  indique: IconTrendUp,
   assinatura: IconClipboard,
 }
 
@@ -381,7 +382,8 @@ export function DashboardShell({
   const sidebarCollapsed =
     focusedHubNavigation &&
     !(hubContext && hubContextKeepsFullSidebar(hubContext))
-  const isFiscalHubWindow = hubContext === 'fiscal'
+  const isCompactHubWindow =
+    hubContext === 'fiscal' || hubContext === 'indique'
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   useEffect(() => {
@@ -559,7 +561,7 @@ export function DashboardShell({
             </div>
           </div>
         ) : null}
-        {!isOperationalHub && !isFiscalHubWindow ? (
+        {!isOperationalHub && !isCompactHubWindow ? (
           <header className="sticky top-0 z-20 shrink-0 border-b border-[var(--card-border)] bg-white/95 shadow-sm shadow-black/[0.03] backdrop-blur-md">
             <div
               className="mx-auto flex w-full max-w-none flex-col gap-3 px-3 py-3 sm:px-4 md:flex-row md:items-center md:gap-4 md:px-4 md:py-3.5 lg:px-4 xl:px-5"
@@ -609,12 +611,12 @@ export function DashboardShell({
             className={
               isOperationalHub
                 ? 'min-h-full w-full lg:h-full'
-                : isFiscalHubWindow
+                : isCompactHubWindow
                   ? 'mx-auto w-full max-w-none px-3 pb-6 pt-4 sm:px-4 md:px-6 md:pb-8'
                   : 'mx-auto w-full max-w-none px-3 pb-6 pt-3 sm:px-4 sm:pt-4 md:px-4 md:pb-8 md:pt-5 lg:px-4 lg:pt-6 xl:px-5 xl:pb-8'
             }
           >
-            {!isOperationalHub && !isFiscalHubWindow ? <InstallAppBanner /> : null}
+            {!isOperationalHub && !isCompactHubWindow ? <InstallAppBanner /> : null}
             {mainInner}
           </main>
         </div>

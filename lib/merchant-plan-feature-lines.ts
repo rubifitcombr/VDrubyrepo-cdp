@@ -33,6 +33,7 @@ const KEY_LABEL: Record<DashboardMenuKey, string> = {
   master_whatsapp: 'WhatsApp oficial e robô IA',
   master_fidelidade: 'Programa de fidelidade',
   master_marketing: 'Marketing WhatsApp',
+  indique: 'Indique e ganhe',
 }
 
 /** Ordem estável (alinhada ao sidebar) para listagens na página de planos. */
@@ -50,6 +51,7 @@ const KEY_ORDER: DashboardMenuKey[] = [
   'relatorios',
   'configuracoes',
   'fiscal',
+  'indique',
   'aparencia',
   'automacoes',
   'impressao',

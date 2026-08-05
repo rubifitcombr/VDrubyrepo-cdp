@@ -1,6 +1,7 @@
 import type { DashboardMenuKey } from '@/lib/dashboard-menu-types'
 export type { DashboardMenuKey } from '@/lib/dashboard-menu-types'
 import { hasAnyMasterModule, hasFeature, merchantEntregadoresEnabled, type Plan } from '@/lib/plan'
+import { planEligibleForReferralProgram } from '@/lib/referral/eligibility'
 import type { MerchantOperationMode } from '@/lib/merchant-operation-mode'
 import { menuKeysForOperationAndPlan } from '@/lib/merchant-menu-matrix'
 import { hasScaleIntegration } from '@/lib/scale/gate'
@@ -84,6 +85,7 @@ const MENU_KEY_TO_PATH_PREFIX: Record<DashboardMenuKey, string> = {
   master_whatsapp: '/dashboard/master/whatsapp',
   master_fidelidade: '/dashboard/master/fidelidade',
   master_marketing: '/dashboard/master/marketing',
+  indique: '/dashboard/indique',
 }
 
 function planSlug(plan: Plan): 'start' | 'growth' | 'pro' {
@@ -145,6 +147,7 @@ export function menuKeysForMerchant(
   if (hasFeature(plan, 'whatsapp_ai')) set.add('master_whatsapp')
   if (hasFeature(plan, 'loyalty')) set.add('master_fidelidade')
   if (hasFeature(plan, 'marketing')) set.add('master_marketing')
+  if (planEligibleForReferralProgram(plan)) set.add('indique')
   return set
 }
 

@@ -12,6 +12,7 @@ export type OperationalHubContext =
   | 'visao'
   | 'administracao'
   | 'fiscal'
+  | 'indique'
 
 const HUB_CONTEXTS = new Set<OperationalHubContext>([
   'balcao',
@@ -23,6 +24,7 @@ const HUB_CONTEXTS = new Set<OperationalHubContext>([
   'visao',
   'administracao',
   'fiscal',
+  'indique',
 ])
 
 const ADMINISTRATION_MENU_KEYS: readonly DashboardMenuKey[] = [
@@ -44,6 +46,7 @@ const ADMINISTRATION_MENU_KEYS: readonly DashboardMenuKey[] = [
   'garcons',
   'automacoes',
   'fiscal',
+  'indique',
   'master_whatsapp',
   'master_fidelidade',
   'master_marketing',
@@ -63,6 +66,7 @@ const HUB_CONTEXT_MENU_KEYS: Record<
   visao: ['dashboard'],
   administracao: ADMINISTRATION_MENU_KEYS,
   fiscal: ['fiscal'],
+  indique: ['indique'],
 }
 
 const HUB_CONTEXT_LABELS: Record<OperationalHubContext, string> = {
@@ -75,6 +79,7 @@ const HUB_CONTEXT_LABELS: Record<OperationalHubContext, string> = {
   visao: 'Visão geral',
   administracao: 'Administração',
   fiscal: 'Vyria Fiscal',
+  indique: 'Indique e ganhe',
 }
 
 function normalizePathname(pathname: string): string {

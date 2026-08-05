@@ -29,6 +29,12 @@ export const DASHBOARD_NAV_META: DashboardNavMetaItem[] = [
   { href: '/dashboard/reports', label: 'Relatórios', menuKey: 'relatorios' },
   { href: '/dashboard/settings', label: 'Configurações', menuKey: 'configuracoes' },
   { href: '/dashboard/fiscal', label: 'Vyria Fiscal', menuKey: 'fiscal' },
+  {
+    href: '/dashboard/indique',
+    label: 'Indique e ganhe',
+    menuKey: 'indique',
+    quiet: true,
+  },
   { href: '/dashboard/appearance', label: 'Aparência', menuKey: 'aparencia' },
   { href: '/dashboard/automations', label: 'Automações', menuKey: 'automacoes' },
   { href: '/dashboard/printing', label: 'Impressão', menuKey: 'impressao' },

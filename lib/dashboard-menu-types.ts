@@ -21,3 +21,4 @@ export type DashboardMenuKey =
   | 'master_whatsapp'
   | 'master_fidelidade'
   | 'master_marketing'
+  | 'indique'

@@ -3,6 +3,7 @@ import { OperationalHubClient } from './_components/OperationalHubClient'
 import { menuKeysForMerchant } from '@/lib/dashboard-menu'
 import type { DashboardMenuKey } from '@/lib/dashboard-menu-types'
 import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
+import { planEligibleForReferralProgram } from '@/lib/referral/eligibility'
 import { parseHubPinConfig } from '@/lib/hub-shortcut-pin'
 import {
   isDeliveryPipelineEnabled,
@@ -100,6 +101,8 @@ export default async function DashboardHub() {
   const showMesas = garcomInMenu && hasSalonQr && !hasStaffGarcom
   const showComandas = isHubMenuKeyVisible('pedidos', allowed)
   const showDigitalMenu = shouldShowDigitalMenuShortcut(operationMode)
+  const showIndique =
+    planEligibleForReferralProgram(plan) && isHubMenuKeyVisible('indique', allowed)
   const centerTileCount =
     Number(showSalao) + Number(showAutoatendimento) + Number(showCozinha)
   const sideShortcutCount =
@@ -107,6 +110,7 @@ export default async function DashboardHub() {
     Number(showMesas) +
     Number(showComandas) +
     Number(showDigitalMenu) +
+    Number(showIndique) +
     2
 
   const gridClass =
@@ -132,6 +136,7 @@ export default async function DashboardHub() {
       showMesas={showMesas}
       showComandas={showComandas}
       showDigitalMenu={showDigitalMenu}
+      showIndique={showIndique}
       digitalMenuHref={digitalMenuHref}
       digitalMenuExternal={!!storeSlug}
       pendingOrders={pendingOrders}

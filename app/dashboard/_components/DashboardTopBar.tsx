@@ -34,7 +34,8 @@ function resolvePendingOrdersHref(
   if (
     hubContext === 'mesas' ||
     hubContext === 'visao' ||
-    hubContext === 'fiscal'
+    hubContext === 'fiscal' ||
+    hubContext === 'indique'
   ) {
     return '/dashboard/orders?hub=comandas'
   }

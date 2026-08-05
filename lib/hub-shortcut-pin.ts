@@ -151,6 +151,7 @@ export function hubPinShortcutForAccess(
   if (hubParam === 'cozinha') return 'cozinha'
   if (hubParam === 'administracao') return 'administracao'
   if (hubParam === 'fiscal') return 'administracao'
+  if (hubParam === 'indique') return null
 
   const fromPath = inferPinShortcutFromPath(pathname)
   if (fromPath) return fromPath

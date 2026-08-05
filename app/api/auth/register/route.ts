@@ -4,6 +4,10 @@ import { parseOperationModeInput } from '@/lib/merchant-operation-mode'
 import { createServiceRoleClient } from '@/lib/supabase/service-role.server'
 import { createOrRelinkPendingStoreForAuthUser } from '@/lib/admin-create-pending-store.server'
 import {
+  attachReferralToNewStore,
+  resolveReferrerStoreIdByCode,
+} from '@/services/store-referral.server'
+import {
   checkRateLimit,
   clientIpFromRequest,
   rateLimitResponse,
@@ -291,6 +295,20 @@ export async function POST(req: NextRequest) {
       }
     }
     return NextResponse.json({ error: storeResult.error }, { status: 500 })
+  }
+
+  const referralRaw = optionalText(body.referral_code)
+  if (referralRaw && storeResult.storeId && storeResult.created) {
+    const resolved = await resolveReferrerStoreIdByCode(svc, referralRaw)
+    if (resolved && 'referrer_store_id' in resolved) {
+      if (resolved.referrer_store_id !== storeResult.storeId) {
+        await attachReferralToNewStore(svc, {
+          referredStoreId: storeResult.storeId,
+          referrerStoreId: resolved.referrer_store_id,
+          referralCode: referralRaw.toUpperCase().replace(/[^A-Z0-9]/g, ''),
+        })
+      }
+    }
   }
 
   return NextResponse.json({ ok: true, userId, storeCreated: storeResult.created })

@@ -1,16 +1,35 @@
 'use client'
 
 import { useBeginNavigation } from '@/app/_components/NavigationProgressProvider'
+import { RouteLoadingFallback } from '@/app/_components/RouteLoadingFallback'
 import Link from 'next/link'
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import { signIn } from '@/services/auth'
 import type { MerchantOperationMode } from '@/lib/merchant-operation-mode'
 import { operationModeLabel } from '@/lib/merchant-operation-mode'
+import { useSearchParams } from 'next/navigation'
 
 const inputClass =
   'mt-2 w-full rounded-xl border border-[var(--card-border)] bg-white px-4 py-3 text-sm text-vyria-navy outline-none transition-colors placeholder:text-vyria-navy-muted/70 focus:border-vyria-plum focus:ring-2 focus:ring-vyria-orange/20'
 
 export default function Register() {
+  return (
+    <Suspense
+      fallback={
+        <RouteLoadingFallback
+          height="compact"
+          className="rounded-2xl border border-[var(--card-border)] bg-white shadow-xl shadow-vyria-navy-deep/10"
+        />
+      }
+    >
+      <RegisterForm />
+    </Suspense>
+  )
+}
+
+function RegisterForm() {
+  const searchParams = useSearchParams()
+  const referralCode = String(searchParams.get('ref') || '').trim()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [storeName, setStoreName] = useState('')
@@ -43,6 +62,7 @@ export default function Register() {
           name,
           phone: phone.trim() || null,
           operation_mode: operationMode,
+          ...(referralCode ? { referral_code: referralCode } : {}),
         }),
       })
       const json = (await res.json().catch(() => ({}))) as { error?: string; ok?: boolean }
@@ -99,6 +119,11 @@ export default function Register() {
         <p className="mt-1 text-sm text-vyria-navy-muted">
           Loja e painel num só passo
         </p>
+        {referralCode ? (
+          <p className="mt-2 text-xs font-medium text-vyria-plum">
+            Indicação registada — após a activação da tua loja, quem te indicou ganha pontos.
+          </p>
+        ) : null}
       </div>
 
       <div className="space-y-4">

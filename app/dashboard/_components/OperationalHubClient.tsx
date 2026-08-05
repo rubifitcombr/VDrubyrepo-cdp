@@ -16,6 +16,7 @@ import {
   IconMenuBook,
   IconReceipt,
   IconTruck,
+  IconTrendUp,
 } from './NavIcons'
 import { GarcomPinModal } from './GarcomPinModal'
 import { HubShortcutPinModal } from './HubShortcutPinModal'
@@ -116,12 +117,14 @@ function SideShortcut({
   description,
   icon: Icon,
   badge,
+  vibrantLabel = false,
   onOpen,
 }: {
   label: string
   description: string
   icon: (p: { className?: string }) => React.ReactNode
   badge?: string
+  vibrantLabel?: boolean
   onOpen: () => void
 }) {
   return (
@@ -135,7 +138,13 @@ function SideShortcut({
           <Icon className="h-5 w-5" />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate font-brand text-lg font-bold">
+          <span
+            className={`block truncate font-brand text-lg font-bold ${
+              vibrantLabel
+                ? 'bg-gradient-to-r from-rose-400 via-orange-400 to-amber-300 bg-clip-text text-transparent'
+                : ''
+            }`}
+          >
             {label}
           </span>
           <span className="mt-0.5 block line-clamp-2 text-xs leading-relaxed text-white/62">
@@ -165,6 +174,7 @@ export function OperationalHubClient({
   showMesas,
   showComandas,
   showDigitalMenu,
+  showIndique,
   digitalMenuHref,
   digitalMenuExternal,
   pendingOrders,
@@ -185,6 +195,7 @@ export function OperationalHubClient({
   showMesas: boolean
   showComandas: boolean
   showDigitalMenu: boolean
+  showIndique: boolean
   digitalMenuHref: string
   digitalMenuExternal: boolean
   pendingOrders: number
@@ -220,6 +231,7 @@ export function OperationalHubClient({
       '/dashboard/fiscal?hub=fiscal',
       '/dashboard/visao?hub=visao',
       '/dashboard/visao?hub=administracao',
+      showIndique ? '/dashboard/indique?hub=indique' : null,
     ]
     for (const href of targets) {
       if (href) router.prefetch(href)
@@ -233,6 +245,7 @@ export function OperationalHubClient({
     showDelivery,
     showMesas,
     showSalao,
+    showIndique,
   ])
 
   useEffect(() => {
@@ -441,6 +454,15 @@ export function OperationalHubClient({
                     onOpen={() => openShortcut(digitalMenuHref)}
                   />
                 )
+              ) : null}
+              {showIndique ? (
+                <SideShortcut
+                  label="Indique e ganhe"
+                  description="Indique outras lojas e ganhe dias no seu plano."
+                  icon={IconTrendUp}
+                  vibrantLabel
+                  onOpen={() => openShortcut('/dashboard/indique?hub=indique')}
+                />
               ) : null}
               <SideShortcut
                 label="Vyria Fiscal"

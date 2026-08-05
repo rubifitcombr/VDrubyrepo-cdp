@@ -11,6 +11,7 @@ import {
 import { clearAnnualContractAcceptancePatch } from '@/lib/annual-contract-acceptance'
 import { parseOperationModeFromStore } from '@/lib/merchant-operation-mode'
 import { insertAdminLogFromRequest } from '@/services/admin-logs.server'
+import { awardReferralOnStoreActivation } from '@/services/store-referral.server'
 import { parsePlan, planShortLabel } from '@/lib/plan'
 import { planToPlanoColumn } from '@/lib/plano-db'
 import { readStoreStatus } from '@/lib/store-columns'
@@ -119,6 +120,8 @@ export async function POST(
       { status: 500 }
     )
   }
+
+  await awardReferralOnStoreActivation(ctx.svc, id)
 
   const cycleLabel = billingCycle === 'annual' ? 'Anual' : 'Mensal'
   await insertAdminLogFromRequest(ctx.svc, req, {
