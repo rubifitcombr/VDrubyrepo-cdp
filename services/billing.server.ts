@@ -1,7 +1,6 @@
 import 'server-only'
 
 import type { AssinaturaAnnualContract, AssinaturaPageModel, BillingSubscriptionStatus } from '@/lib/billing'
-import { shouldBlockDashboardAfterOverdue } from '@/lib/billing'
 import { getAdminWhatsappHref } from '@/lib/admin-whatsapp-href.server'
 import {
   annualSavingsVsListBrl,
@@ -97,40 +96,15 @@ function buildAnnualContractModel(
 }
 
 export function getDashboardBillingBanner(
-  store: Record<string, unknown> | null | undefined
+  _store: Record<string, unknown> | null | undefined
 ): DashboardBillingBanner {
-  if (!store) return null
-  const status = parseStatus(store.billing_subscription_status)
-  if (status !== 'overdue') return null
-  const payUrl =
-    typeof store.billing_invoice_pay_url === 'string'
-      ? store.billing_invoice_pay_url.trim()
-      : ''
-  if (!payUrl) return null
-  const raw = store.billing_open_invoice_at
-  const openInvoiceDateLabel =
-    formatOpenInvoiceDate(raw) ||
-    formatOpenInvoiceDate(new Date().toISOString().slice(0, 10))
-  if (!openInvoiceDateLabel) return null
-  return { openInvoiceDateLabel, payUrl }
+  return null
 }
 
 export function getDashboardBillingBlock(
-  store: Record<string, unknown> | null | undefined
+  _store: Record<string, unknown> | null | undefined
 ): DashboardBillingBlock {
-  if (!store) return null
-  const status = parseStatus(store.billing_subscription_status)
-  if (status !== 'overdue') return null
-  const overdueAt =
-    typeof store.billing_overdue_at === 'string'
-      ? store.billing_overdue_at
-      : null
-  if (!shouldBlockDashboardAfterOverdue(overdueAt)) return null
-  const payUrl =
-    typeof store.billing_invoice_pay_url === 'string'
-      ? store.billing_invoice_pay_url.trim()
-      : ''
-  return { payUrl: payUrl || null }
+  return null
 }
 
 export async function getAssinaturaPageModel(

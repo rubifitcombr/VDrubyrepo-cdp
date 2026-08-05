@@ -9,10 +9,6 @@ import {
 import { getDashboardAccessRedirectPath } from '@/lib/merchant-access-redirect.server'
 import { readStorePlano } from '@/lib/store-columns'
 import { dashboardUsesSlugChannelOrdersOnly } from '@/lib/slug-channel-orders'
-import {
-  getDashboardBillingBanner,
-  getDashboardBillingBlock,
-} from '@/services/billing.server'
 import { getUser } from '@/services/auth.server'
 import { getStoreByUser } from '@/services/store.server'
 import { hasOrderPipelineAutomations } from '@/lib/plan'
@@ -23,7 +19,7 @@ import {
 import { parseAutomationsFromStore } from '@/lib/store-automations'
 import { parsePrintingFromStore } from '@/lib/store-printing'
 import { parseHubPinConfig } from '@/lib/hub-shortcut-pin'
-import { requiresAnnualContractAcceptance } from '@/lib/annual-contract-acceptance'
+import { requiresAnnualContractAcceptance, isAnnualContractGateExemptPath } from '@/lib/annual-contract-acceptance'
 import {
   IMPERSONATION_ACTIVE_COOKIE,
 } from '@/lib/impersonation'
@@ -46,6 +42,10 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode
 }) {
+  const headerList = await headers()
+  const pathname = headerList.get('x-pathname') ?? ''
+  const isContratoRoute = isAnnualContractGateExemptPath(pathname)
+
   const user = await getUser()
   if (!user) redirect('/login?next=/dashboard')
 
@@ -61,7 +61,8 @@ export default async function DashboardLayout({
 
   if (
     user &&
-    shouldApplyLojistaRulesForVyriaUser(user.id, vyriaPanelMode)
+    shouldApplyLojistaRulesForVyriaUser(user.id, vyriaPanelMode) &&
+    !isContratoRoute
   ) {
     const path = getDashboardAccessRedirectPath(
       store && typeof store === 'object'
@@ -127,14 +128,6 @@ export default async function DashboardLayout({
   // Contagem no topbar já actualiza em tempo real no client — não bloquear navegação.
   const notificationCount = 0
 
-  const billingBlock = storeRecord
-    ? getDashboardBillingBlock(storeRecord)
-    : null
-  const billingBanner =
-    !storeRecord || billingBlock
-      ? null
-      : getDashboardBillingBanner(storeRecord)
-
   const vyriaDualAccount =
     user && isVyriaAdminPanelUser(user.id)
       ? { mode: vyriaPanelMode }
@@ -158,11 +151,6 @@ export default async function DashboardLayout({
   const autoAcceptPrinting = storeRecord
     ? parsePrintingFromStore(storeRecord)
     : parsePrintingFromStore({})
-
-  const headerList = await headers()
-  const pathname = headerList.get('x-pathname') ?? ''
-  const isContratoRoute =
-    pathname === '/dashboard/contrato' || pathname.startsWith('/dashboard/contrato/')
 
   // Impersonation: admin não deve ser forçado a assinar o contrato do lojista.
   if (
@@ -190,12 +178,10 @@ export default async function DashboardLayout({
         plan={plan}
         notificationCount={notificationCount}
         slugChannelSourcesOnly={slugChannelSourcesOnly}
-        billingBanner={billingBanner}
-        billingBlock={billingBlock}
         vyriaDualAccount={vyriaDualAccount}
         operationMode={operationMode}
         deliveryPipelineEnabled={deliveryPipelineEnabled}
-        disableAutoAccept={!!billingBlock}
+        disableAutoAccept={false}
         notifyOnNewOrder={
           !!(
             storeRecord &&

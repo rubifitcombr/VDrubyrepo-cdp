@@ -74,6 +74,8 @@ export async function proxy(request: NextRequest) {
   }
 
   const p = pathnameWithoutTrailingSlash(rawPath)
+  const requestHeaders = new Headers(request.headers)
+  requestHeaders.set('x-pathname', p)
 
   const ip = clientIpFromEdgeRequest(request)
   const blocked = guardIpAccess(ip)
@@ -124,7 +126,9 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  let supabaseResponse = NextResponse.next({ request })
+  let supabaseResponse = NextResponse.next({
+    request: { headers: requestHeaders },
+  })
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim()
 
@@ -143,7 +147,9 @@ export async function proxy(request: NextRequest) {
       },
       setAll(cookiesToSet) {
         cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-        supabaseResponse = NextResponse.next({ request })
+        supabaseResponse = NextResponse.next({
+          request: { headers: requestHeaders },
+        })
         cookiesToSet.forEach(({ name, value, options }) =>
           supabaseResponse.cookies.set(name, value, options)
         )
@@ -181,13 +187,9 @@ export async function proxy(request: NextRequest) {
   const skipMerchantGates =
     !!user && (vyriaInAdminMode || Boolean(impersonating))
 
-  let lojistaGate: LojistaGateResult | null = null
   async function gateFor(pathname: string): Promise<LojistaGateResult> {
     if (!user || skipMerchantGates) return { ok: true }
-    if (!lojistaGate) {
-      lojistaGate = await verificarLojistaGatesEdge(user.id, pathname, supabase)
-    }
-    return lojistaGate
+    return verificarLojistaGatesEdge(user.id, pathname, supabase)
   }
 
   if (isAuthPage && user && !isPasswordRedefinePage) {
@@ -295,8 +297,6 @@ export async function proxy(request: NextRequest) {
         : 'public, s-maxage=30, stale-while-revalidate=120'
     )
   }
-
-  supabaseResponse.headers.set('x-pathname', p)
 
   if (
     p.startsWith('/dashboard') ||
