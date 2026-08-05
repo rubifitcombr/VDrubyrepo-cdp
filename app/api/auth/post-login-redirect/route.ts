@@ -55,7 +55,8 @@ export async function GET(req: NextRequest) {
     store = (storeResult.data as Record<string, unknown> | null) ?? null
   } catch (e) {
     console.error('[post-login-redirect] store timeout', e)
-    return NextResponse.json({ ok: true, redirectTo: next })
+    // Não saltar o gate do contrato: o layout do dashboard revalida com a loja completa.
+    return NextResponse.json({ ok: true, redirectTo: '/dashboard' })
   }
 
   if (store && requiresAnnualContractAcceptance(store)) {
@@ -73,6 +74,7 @@ export async function GET(req: NextRequest) {
     }
   } catch (e) {
     console.error('[post-login-redirect] gates timeout', e)
+    return NextResponse.json({ ok: true, redirectTo: '/dashboard' })
   }
 
   return NextResponse.json({ ok: true, redirectTo: next })

@@ -4,6 +4,11 @@ const SITE_NAME = 'Vyria Delivery'
 const SITE_DESCRIPTION =
   'Engenharia de vendas local — gestão de entregas, cardápio digital e painel para restaurantes.'
 
+const CANONICAL_PUBLIC_ORIGIN = 'https://acesseseusistemavyria.online'
+
+/** Domínios legados que não devem mais gerar links públicos (indicação, OG, auth). */
+const DEPRECATED_PUBLIC_HOST_SUFFIXES = ['vyriadelivery.com.br'] as const
+
 function normalizeSiteOrigin(raw: string | undefined): URL | undefined {
   const trimmed = String(raw ?? '').trim().replace(/\/+$/, '')
   if (!trimmed) return undefined
@@ -18,12 +23,31 @@ function normalizeSiteOrigin(raw: string | undefined): URL | undefined {
   }
 }
 
-/** Origem pública para metadados (OG, favicon absoluto, JSON-LD). */
+function authPortalOriginFromEnv(): URL | undefined {
+  const host = process.env.AUTH_PORTAL_HOSTS?.split(',')[0]?.trim()
+  return host ? normalizeSiteOrigin(host) : undefined
+}
+
+function isDeprecatedPublicOrigin(url: URL): boolean {
+  const host = url.hostname.toLowerCase()
+  return DEPRECATED_PUBLIC_HOST_SUFFIXES.some(
+    (suffix) => host === suffix || host.endsWith(`.${suffix}`)
+  )
+}
+
+function firstValidPublicOrigin(...candidates: (URL | undefined)[]): URL {
+  for (const candidate of candidates) {
+    if (candidate && !isDeprecatedPublicOrigin(candidate)) return candidate
+  }
+  return new URL(CANONICAL_PUBLIC_ORIGIN)
+}
+
+/** Origem pública para metadados, links de indicação, OG, favicon absoluto e JSON-LD. */
 export function getSiteMetadataBase(): URL {
-  return (
-    normalizeSiteOrigin(process.env.NEXT_PUBLIC_VYRIA_PUBLIC_URL) ??
-    normalizeSiteOrigin(process.env.VYRIA_PUBLIC_URL) ??
-    new URL('http://acesseseusistemavyria.online')
+  return firstValidPublicOrigin(
+    authPortalOriginFromEnv(),
+    normalizeSiteOrigin(process.env.NEXT_PUBLIC_VYRIA_PUBLIC_URL),
+    normalizeSiteOrigin(process.env.VYRIA_PUBLIC_URL)
   )
 }
 

@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { requiresAnnualContractAcceptance } from '@/lib/annual-contract-acceptance'
 import { parseMerchantStatus } from '@/lib/merchant-status'
 import { isPlanoVencido } from '@/lib/merchant-access-dates'
 import { readStoreStatus } from '@/lib/store-columns'
@@ -26,6 +27,10 @@ export function getDashboardAccessRedirectPath(
       : null
   if (!raw || isPlanoVencido(raw)) {
     return '/acesso-suspenso?error=plano_vencido'
+  }
+
+  if (requiresAnnualContractAcceptance(store)) {
+    return '/dashboard/contrato'
   }
 
   return null

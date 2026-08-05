@@ -1,5 +1,7 @@
 /** Origem pública do site Vyria (login, recuperação de senha, redirects Supabase). */
 
+import { getSiteMetadataBase } from '@/lib/site-metadata'
+
 function normalizeOrigin(raw: string): string {
   const trimmed = raw.trim().replace(/\/+$/, '')
   if (!trimmed) return ''
@@ -10,16 +12,32 @@ function normalizeOrigin(raw: string): string {
   return `https://${trimmed}`
 }
 
-/** Server-side: VYRIA_PUBLIC_URL. */
+/** Server-side: portal canónico (AUTH_PORTAL_HOSTS / env válido / fallback). */
 export function getVyriaPublicOriginServer(): string {
-  return normalizeOrigin(process.env.VYRIA_PUBLIC_URL ?? '')
+  return getSiteMetadataBase().origin
+}
+
+const DEPRECATED_PUBLIC_HOST_SUFFIXES = ['vyriadelivery.com.br'] as const
+
+function isDeprecatedPublicHost(host: string): boolean {
+  const h = host.trim().toLowerCase()
+  return DEPRECATED_PUBLIC_HOST_SUFFIXES.some(
+    (suffix) => h === suffix || h.endsWith(`.${suffix}`)
+  )
 }
 
 /** Client-side: NEXT_PUBLIC_VYRIA_PUBLIC_URL ou window.location.origin. */
 export function getVyriaPublicOriginClient(): string {
   if (typeof window === 'undefined') return ''
   const fromEnv = normalizeOrigin(process.env.NEXT_PUBLIC_VYRIA_PUBLIC_URL ?? '')
-  return fromEnv || window.location.origin
+  if (fromEnv) {
+    try {
+      if (!isDeprecatedPublicHost(new URL(fromEnv).hostname)) return fromEnv
+    } catch {
+      // ignore invalid env URL
+    }
+  }
+  return window.location.origin
 }
 
 export function getPasswordResetRedirectPath(): string {

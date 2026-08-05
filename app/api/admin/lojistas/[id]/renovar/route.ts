@@ -135,7 +135,6 @@ export async function POST(
       currentContract.contratoFimEm >= today
         ? currentContract.contratoInicioEm
         : today
-    const prevFim = currentContract.contratoFimEm
     Object.assign(
       patch,
       buildAnnualContractDbPatch({
@@ -143,11 +142,9 @@ export async function POST(
         operationMode,
         contratoInicioEm: contratoInicio,
         contratoFimEm: contratoFim,
-      })
+      }),
+      clearAnnualContractAcceptancePatch()
     )
-    if (contratoFim !== prevFim || billingCycleInput === 'annual') {
-      Object.assign(patch, clearAnnualContractAcceptancePatch())
-    }
   } else if (billingCycleInput === 'monthly') {
     Object.assign(patch, buildMonthlyContractDbPatch(), clearAnnualContractAcceptancePatch())
   }
