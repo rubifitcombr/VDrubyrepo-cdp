@@ -35,6 +35,7 @@ export async function POST(
     .from('stores')
     .update({
       status: 'bloqueado',
+      merchant_status: 'bloqueado',
       plano_atualizado_em: now,
     })
     .eq('id', id)

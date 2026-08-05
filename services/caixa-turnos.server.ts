@@ -1,8 +1,13 @@
 import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { aggregateTurnClosedOrders, normalizeCaixaPayment } from '@/lib/caixa-payments'
+import {
+  aggregateTurnClosedOrders,
+  type CaixaPaymentBreakdown,
+} from '@/lib/caixa-payments'
+import { orderPaymentRegisteredInCaixa } from '@/lib/cashier-comanda-close'
 import { mapStoreOrderRow, type StoreOrderRow } from '@/lib/store-order'
+import { getOrderPaymentsForStore } from '@/services/order-payments.server'
 
 export type CaixaTurnoRow = {
   id: string
@@ -182,7 +187,16 @@ export async function getMovimentacoesForTurnos(
   return out
 }
 
-/** Pedidos do turno já marcados como entregues (para totais em tempo real). */
+function isPaidInCaixaTurno(order: {
+  status?: string | null
+  notes?: string | null
+}): boolean {
+  const status = String(order.status ?? '').trim().toLowerCase()
+  if (status === 'cancelled') return false
+  return status === 'delivered' || orderPaymentRegisteredInCaixa(order.notes)
+}
+
+/** Pedidos do turno já pagos/fechados (para totais em tempo real). */
 export async function getClosedOrdersForTurno(
   supabase: SupabaseClient,
   storeId: string,
@@ -195,19 +209,51 @@ export async function getClosedOrdersForTurno(
     )
     .eq('store_id', storeId)
     .eq('caixa_turno_id', turnoId)
-    .eq('status', 'delivered')
+    .neq('status', 'cancelled')
 
   if (error) {
     console.error('[caixa] getClosedOrdersForTurno:', error.message)
     return []
   }
-  return (data ?? []).map((row) => mapStoreOrderRow(row as Record<string, unknown>))
+  return (data ?? [])
+    .filter((row) => isPaidInCaixaTurno(row as { status?: string; notes?: string }))
+    .map((row) => mapStoreOrderRow(row as Record<string, unknown>))
 }
 
 export function breakdownFromOrderRows(
-  rows: Array<{ total: unknown; payment_method?: string | null }>
+  rows: Array<{ id?: string; total: unknown; payment_method?: string | null }>,
+  splitPayments: Array<{
+    order_id: string
+    payment_method: string
+    amount_brl: number
+  }> = []
 ) {
-  return aggregateTurnClosedOrders(rows)
+  return aggregateTurnClosedOrders(rows, splitPayments)
+}
+
+/** Totais do turno: pedidos entregues ou com pagamento registado + splits. */
+export async function breakdownForTurno(
+  supabase: SupabaseClient,
+  storeId: string,
+  turnoId: string
+): Promise<CaixaPaymentBreakdown> {
+  const { data, error } = await supabase
+    .from('orders')
+    .select('id, total, payment_method, notes, status')
+    .eq('store_id', storeId)
+    .eq('caixa_turno_id', turnoId)
+    .neq('status', 'cancelled')
+
+  if (error) {
+    console.error('[caixa] breakdownForTurno:', error.message)
+    return aggregateTurnClosedOrders([])
+  }
+
+  const rows = (data ?? []).filter((row) =>
+    isPaidInCaixaTurno(row as { status?: string; notes?: string })
+  )
+  const splits = await getOrderPaymentsForStore(supabase, storeId, { turnoId })
+  return aggregateTurnClosedOrders(rows, splits)
 }
 
 function round2(n: number): number {
@@ -220,23 +266,8 @@ export async function computeSaldoDinheiroDisponivel(
   storeId: string,
   turno: CaixaTurnoRow
 ): Promise<number> {
-  const { data: orders, error: oErr } = await supabase
-    .from('orders')
-    .select('total, payment_method')
-    .eq('store_id', storeId)
-    .eq('caixa_turno_id', turno.id)
-    .eq('status', 'delivered')
-
-  if (oErr) {
-    console.error('[caixa] saldo dinheiro orders:', oErr.message)
-  }
-
-  let cashSales = 0
-  for (const o of orders ?? []) {
-    if (normalizeCaixaPayment(o.payment_method as string) === 'cash') {
-      cashSales += Number(o.total) || 0
-    }
-  }
+  const breakdown = await breakdownForTurno(supabase, storeId, turno.id)
+  const cashSales = breakdown.dinheiro.total
 
   const movs = await getMovimentacoesForTurno(supabase, turno.id)
   let sup = 0

@@ -114,7 +114,9 @@ export async function POST(
     plano_atualizado_em: now,
   }
   if (plano !== undefined) {
-    patch.plano = planToPlanoColumn(plano)
+    const pCol = planToPlanoColumn(plano)
+    patch.plano = pCol
+    patch.plan = pCol
   }
 
   if (billingCycle === 'annual') {

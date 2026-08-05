@@ -7,6 +7,7 @@ import { getMenuProductsForStore } from '@/services/menu.server'
 import { getStoreByUser } from '@/services/store.server'
 import { getStoreTablesForStore } from '@/services/waiter-tables.server'
 import { getWaiterOpenOrdersForStore } from '@/services/waiter.server'
+import { loadGarconsPageData } from '@/services/garcons-page.server'
 import { readStorePlano } from '@/lib/store-columns'
 import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
 import { parsePlan, planTier, hasFeature } from '@/lib/plan'
@@ -54,7 +55,7 @@ export default async function GarcomPage({
   const rawPlan = readStorePlano(s)
   const planEffective = effectiveDashboardPlan(user.email ?? null, rawPlan)
 
-  const [products, openOrders, configuredTables, stockMap, turnoAberto] =
+  const [products, openOrders, configuredTables, stockMap, turnoAberto, garconsPage] =
     await Promise.all([
     getMenuProductsForStore(storeId),
     getWaiterOpenOrdersForStore(storeId),
@@ -70,6 +71,7 @@ export default async function GarcomPage({
     hasFeature(planEffective, 'cashier')
       ? getOpenCaixaTurno(await createClient(), storeId)
       : Promise.resolve(null),
+    loadGarconsPageData(storeId),
   ])
   const stockQuantityByProductId: Record<string, number> = {}
   for (const [pid, row] of stockMap) {
@@ -139,6 +141,7 @@ export default async function GarcomPage({
       tablesOnlyView={tablesOnlyView}
       forceWaiterView={forceWaiterView}
       initialCaixaTurnoOpen={Boolean(turnoAberto)}
+      initialGarcons={garconsPage.garcons.filter((g) => g.ativo)}
       scaleIntegrationEnabled={scaleIntegrationEnabled}
       scaleConfig={scaleConfig}
     />

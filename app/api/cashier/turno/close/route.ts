@@ -3,7 +3,7 @@ import { gateMerchantMenuKey } from '@/lib/merchant-api-gate.server'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
 import { getUser } from '@/services/auth.server'
 import {
-  breakdownFromOrderRows,
+  breakdownForTurno,
   getMovimentacoesForTurno,
 } from '@/services/caixa-turnos.server'
 import { createClient } from '@/lib/supabase/server'
@@ -69,21 +69,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Turno não encontrado ou já fechado.' }, { status: 404 })
   }
 
-  const { data: orderRows, error: oErr } = await supabase
-    .from('orders')
-    .select('total, payment_method')
-    .eq('store_id', storeId)
-    .eq('caixa_turno_id', turnoId)
-    .eq('status', 'delivered')
-
-  if (oErr) {
-    return NextResponse.json(
-      { error: oErr.message ?? 'Erro ao ler pedidos do turno.' },
-      { status: 500 }
-    )
-  }
-
-  const breakdown = breakdownFromOrderRows(orderRows ?? [])
+  const breakdown = await breakdownForTurno(supabase, storeId, turnoId)
 
   const infD = parseMoney(body.informadoDinheiro)
   const infP = parseMoney(body.informadoPix)

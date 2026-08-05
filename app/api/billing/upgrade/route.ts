@@ -53,7 +53,10 @@ export async function POST(req: Request) {
   const supabase = await createClient()
   const { error } = await supabase
     .from('stores')
-    .update({ plano: planToPlanoColumn(targetPlan) })
+    .update({
+      plano: planToPlanoColumn(targetPlan),
+      plan: planToPlanoColumn(targetPlan),
+    })
     .eq('id', gate.ctx.storeId)
 
   if (error) {

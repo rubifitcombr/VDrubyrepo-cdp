@@ -46,6 +46,7 @@ export async function POST(
     .from('stores')
     .update({
       status: 'cancelado',
+      merchant_status: 'cancelado',
       plano_atualizado_em: now,
       cancelamento_solicitado: false,
     })

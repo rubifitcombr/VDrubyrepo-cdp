@@ -292,6 +292,7 @@ export function WaiterClient({
   tablesOnlyView = false,
   forceWaiterView = false,
   initialCaixaTurnoOpen = false,
+  initialGarcons = [],
   scaleIntegrationEnabled = false,
   scaleConfig,
 }: {
@@ -312,6 +313,8 @@ export function WaiterClient({
   tablesOnlyView?: boolean
   forceWaiterView?: boolean
   initialCaixaTurnoOpen?: boolean
+  /** Garçons activos (SSR) — evita race do PIN sem atribuir garcom_id. */
+  initialGarcons?: StoreGarcomDTO[]
   scaleIntegrationEnabled?: boolean
   scaleConfig?: PdvScaleContext
 }) {
@@ -414,7 +417,9 @@ export function WaiterClient({
   const [newComandaNameDraft, setNewComandaNameDraft] = useState('')
   const router = useRouter()
   const [salaoMode, setSalaoMode] = useState<SalaoAttendanceMode>(initialSalaoAttendanceMode)
-  const [garcons, setGarcons] = useState<StoreGarcomDTO[]>([])
+  const [garcons, setGarcons] = useState<StoreGarcomDTO[]>(() =>
+    initialGarcons.filter((g) => g.ativo)
+  )
 
   const [pinSessionTick, setPinSessionTick] = useState(0)
   const pinSession = useMemo(() => {
@@ -423,7 +428,11 @@ export function WaiterClient({
   }, [storeId, pinSessionTick])
   const salaoPinRequired = isSalaoGarcomPinRequired(garcons)
   const garcomSessionLocked = salaoPinRequired && !!pinSession
-  const effectiveGarcomId = garcomSessionLocked ? pinSession!.garcomId : null
+  // Usa a sessão PIN assim que existir (layout já validou); não esperar o fetch client.
+  const effectiveGarcomId =
+    pinSession && (garcomSessionLocked || salaoPinRequired)
+      ? pinSession.garcomId
+      : null
 
   const visibleOpenOrders = useMemo(() => {
     if (!garcomSessionLocked || !pinSession) return openOrders
@@ -451,6 +460,10 @@ export function WaiterClient({
     (!planAllowsSalonStaffGarcom(plan) || salaoMode === 'self_service')
 
   useEffect(() => {
+    setGarcons(initialGarcons.filter((g) => g.ativo))
+  }, [initialGarcons])
+
+  useEffect(() => {
     if (!staffSalonUi) return
     let cancelled = false
     void (async () => {
@@ -460,7 +473,7 @@ export function WaiterClient({
         if (cancelled) return
         setGarcons((json.garcons ?? []).filter((g) => g.ativo))
       } catch {
-        if (!cancelled) setGarcons([])
+        /* mantém initialGarcons se o fetch falhar */
       }
     })()
     return () => {

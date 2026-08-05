@@ -29,6 +29,7 @@ export async function runVerificarVencimentosJob(): Promise<void> {
     .from('stores')
     .update({
       status: 'bloqueado',
+      merchant_status: 'bloqueado',
       plano_atualizado_em: now,
     })
     .eq('status', 'ativo')

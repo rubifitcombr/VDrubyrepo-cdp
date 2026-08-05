@@ -127,5 +127,6 @@ export function isPresencialComandaActive(order: {
     if (!isOpenTableComanda(order)) return false
     return !notesIndicateWaiterReleasedToCaixa(order.notes)
   }
+  if (orderPaymentRegisteredInCaixa(order.notes)) return false
   return status !== 'delivered'
 }

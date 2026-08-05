@@ -88,7 +88,9 @@ export async function POST(
   const operationMode = parseOperationModeFromStore(row)
   const patch: Record<string, unknown> = {
     plano: planToPlanoColumn(plano),
+    plan: planToPlanoColumn(plano),
     status: 'ativo',
+    merchant_status: 'ativo',
     plano_vence_em: vence,
     plano_ativado_em: now,
     plano_atualizado_em: now,

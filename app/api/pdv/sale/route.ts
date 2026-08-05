@@ -243,7 +243,8 @@ export async function POST(request: Request) {
     store_id: storeId,
     customer_name: customerName,
     total,
-    status: 'pending',
+    // Recebimento imediato fecha a comanda (alinha com garçom/caixa e totais do turno).
+    status: closeMode === 'immediate' ? 'delivered' : 'pending',
     source: 'pdv',
     payment_method: closeMode === 'immediate' ? paymentMethod : null,
     items_summary: itemsSummary,
