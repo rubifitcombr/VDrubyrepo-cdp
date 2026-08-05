@@ -1,33 +1,11 @@
 import Link from 'next/link'
 import { AssinaturaClient } from '@/app/dashboard/assinatura/assinatura-client'
 import { effectiveDashboardPlan } from '@/lib/effective-plan.server'
-import type { BillingInvoiceRow } from '@/lib/billing'
 import { readStorePlano } from '@/lib/store-columns'
-import { tryCreateServiceRoleClient } from '@/lib/supabase/service-role.server'
 import { getAssinaturaPageModel } from '@/services/billing.server'
 import { fetchFaturasForStore } from '@/services/faturas.server'
-import {
-  fetchSubscriptionInvoicesForStore,
-  getSubscriptionBillingUiForStore,
-} from '@/services/subscription-billing.server'
 import { getUser } from '@/services/auth.server'
 import { getStoreByUser } from '@/services/store.server'
-
-function mapSubscriptionInvoices(
-  rows: Awaited<ReturnType<typeof fetchSubscriptionInvoicesForStore>>
-): BillingInvoiceRow[] {
-  return rows.map((inv) => ({
-    date: inv.due_date,
-    description: `Mensalidade Vyria (${inv.reference_month})`,
-    amount: inv.amount_brl,
-    status:
-      inv.status === 'paid'
-        ? 'paid'
-        : inv.status === 'failed'
-          ? 'failed'
-          : 'pending',
-  }))
-}
 
 export default async function AssinaturaPage() {
   const user = await getUser()
@@ -51,18 +29,8 @@ export default async function AssinaturaPage() {
   const rawPlan = readStorePlano(row)
   const plan = effectiveDashboardPlan(user.email ?? null, rawPlan)
   const storeId = String(row.id)
-  const billingDb = tryCreateServiceRoleClient()
   const invoices = await fetchFaturasForStore(storeId)
-  const subscriptionRows = billingDb
-    ? await fetchSubscriptionInvoicesForStore(billingDb, storeId)
-    : []
-  const mergedInvoices = [...mapSubscriptionInvoices(subscriptionRows), ...invoices].sort(
-    (a, b) => b.date.localeCompare(a.date)
-  )
-  const model = await getAssinaturaPageModel(row, plan, mergedInvoices)
-  const subscriptionBilling = billingDb
-    ? await getSubscriptionBillingUiForStore(billingDb, storeId, user.email ?? undefined)
-    : null
+  const model = await getAssinaturaPageModel(row, plan, invoices)
 
-  return <AssinaturaClient model={model} subscriptionBilling={subscriptionBilling} />
+  return <AssinaturaClient model={model} />
 }

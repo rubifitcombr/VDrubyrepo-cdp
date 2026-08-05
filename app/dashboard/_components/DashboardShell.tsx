@@ -31,8 +31,6 @@ import { DashboardLogoutButton } from './DashboardLogoutButton'
 import { ImpersonationBanner } from './ImpersonationBanner'
 import { DashboardPlanGuard } from './DashboardPlanGuard'
 import { DashboardTopBar } from './DashboardTopBar'
-import { SubscriptionLockOverlay } from './SubscriptionLockOverlay'
-import type { SubscriptionBillingUiState } from '@/lib/subscription-billing-types'
 import type { StorePrintingState } from '@/lib/store-printing'
 
 const DashboardOrderRealtimeNotifier = dynamic(
@@ -299,7 +297,6 @@ export function DashboardShell({
   slugChannelSourcesOnly = false,
   billingBanner = null,
   billingBlock = null,
-  subscriptionBilling = null,
   vyriaDualAccount,
   operationMode = null,
   deliveryPipelineEnabled = true,
@@ -341,7 +338,6 @@ export function DashboardShell({
     payUrl: string
   } | null
   billingBlock?: { payUrl: string | null } | null
-  subscriptionBilling?: SubscriptionBillingUiState | null
   vyriaDualAccount?: { mode: VyriaPanelMode }
   /** `null` = legado: menu e rotas como antes (só plano). */
   operationMode?: MerchantOperationMode | null
@@ -397,19 +393,16 @@ export function DashboardShell({
 
   if (!isAuthenticated) return null
 
-  const subscriptionLocked = subscriptionBilling?.locked === true
-  const legacyBillingBlock = !subscriptionLocked ? billingBlock : null
-
-  const mainInner = legacyBillingBlock && isAuthenticated ? (
+  const mainInner = billingBlock && isAuthenticated ? (
       <div className="flex min-h-[min(28rem,70vh)] flex-col items-center justify-center gap-4 rounded-2xl border border-[var(--card-border)] bg-white p-8 text-center shadow-sm shadow-black/[0.04]">
         <p className="text-lg font-bold text-[#1a1614]">Acesso suspenso</p>
         <p className="max-w-md text-sm text-[#6b7280]">
           A conta está bloqueada por inadimplência prolongada. Regulariza o pagamento para voltar a
           usar o painel.
         </p>
-        {legacyBillingBlock.payUrl ? (
+        {billingBlock.payUrl ? (
           <a
-            href={legacyBillingBlock.payUrl}
+            href={billingBlock.payUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center justify-center rounded-xl bg-[var(--dash-primary)] px-6 py-3 text-sm font-semibold text-white shadow-md shadow-[var(--dash-primary)]/25 transition-[filter] hover:brightness-105"
@@ -720,9 +713,6 @@ export function DashboardShell({
             </div>
           </aside>
         </div>
-      ) : null}
-      {subscriptionLocked && subscriptionBilling ? (
-        <SubscriptionLockOverlay billing={subscriptionBilling} />
       ) : null}
     </div>
   )
