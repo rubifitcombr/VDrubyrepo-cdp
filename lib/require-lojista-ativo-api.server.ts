@@ -6,6 +6,12 @@ import { parseMerchantStatus } from '@/lib/merchant-status'
 import { isPlanoVencido } from '@/lib/merchant-access-dates'
 import { requiresAnnualContractAcceptance } from '@/lib/annual-contract-acceptance'
 import { readStorePlano, readStoreStatus } from '@/lib/store-columns'
+import {
+  requiresSubscriptionLock,
+} from '@/lib/subscription-billing-gates'
+import { tryCreateServiceRoleClient } from '@/lib/supabase/service-role.server'
+import { fetchOpenSubscriptionInvoice } from '@/services/subscription-billing.server'
+import { isPlatformBillingEnabled, getPlatformBillingConfig } from '@/services/platform-billing-config.server'
 
 function readEnv(...keys: string[]) {
   for (const k of keys) {
@@ -39,12 +45,17 @@ export type LojistaAtivoContext = {
   store: Record<string, unknown>
 }
 
+export type LojistaApiGateOptions = {
+  skipSubscriptionGate?: boolean
+}
+
 /**
  * Para rotas API do painel do lojista: 403 com `error` alinhado ao middleware.
  * Usa sempre a sessão autenticada (RLS) — nunca service role.
  */
 export async function requireLojistaAtivoApi(
-  userId: string
+  userId: string,
+  options: LojistaApiGateOptions = {}
 ): Promise<{ ok: true; ctx: LojistaAtivoContext } | { ok: false; response: NextResponse }> {
   const resolved = await resolveLojistaDbClient()
   if (!resolved.ok) {
@@ -96,6 +107,23 @@ export async function requireLojistaAtivoApi(
         { error: 'contrato_pendente', redirect: '/dashboard/contrato' },
         { status: 403 }
       ),
+    }
+  }
+
+  if (!options.skipSubscriptionGate) {
+    const svc = tryCreateServiceRoleClient() ?? db
+    const config = await getPlatformBillingConfig(svc)
+    if (isPlatformBillingEnabled(config)) {
+      const invoice = await fetchOpenSubscriptionInvoice(svc, String(row.id))
+      if (requiresSubscriptionLock(invoice)) {
+        return {
+          ok: false,
+          response: NextResponse.json(
+            { error: 'mensalidade_pendente', redirect: '/dashboard/assinatura' },
+            { status: 403 }
+          ),
+        }
+      }
     }
   }
 

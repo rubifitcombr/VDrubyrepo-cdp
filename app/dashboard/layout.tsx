@@ -15,6 +15,9 @@ import {
 } from '@/services/billing.server'
 import { getUser } from '@/services/auth.server'
 import { getStoreByUser } from '@/services/store.server'
+import { tryCreateServiceRoleClient } from '@/lib/supabase/service-role.server'
+import { getSubscriptionBillingUiForStore } from '@/services/subscription-billing.server'
+import type { SubscriptionBillingUiState } from '@/lib/subscription-billing-types'
 import { hasOrderPipelineAutomations } from '@/lib/plan'
 import {
   isDeliveryPipelineEnabled,
@@ -135,6 +138,18 @@ export default async function DashboardLayout({
       ? null
       : getDashboardBillingBanner(storeRecord)
 
+  let subscriptionBilling: SubscriptionBillingUiState | null = null
+  if (storeId && storeRecord && user && !impersonation) {
+    const billingDb = tryCreateServiceRoleClient() ?? (await createClient())
+    subscriptionBilling = await getSubscriptionBillingUiForStore(
+      billingDb,
+      storeId,
+      user.email ?? undefined
+    )
+  }
+
+  const subscriptionLocked = subscriptionBilling?.locked === true
+
   const vyriaDualAccount =
     user && isVyriaAdminPanelUser(user.id)
       ? { mode: vyriaPanelMode }
@@ -192,10 +207,11 @@ export default async function DashboardLayout({
         slugChannelSourcesOnly={slugChannelSourcesOnly}
         billingBanner={billingBanner}
         billingBlock={billingBlock}
+        subscriptionBilling={subscriptionBilling}
         vyriaDualAccount={vyriaDualAccount}
         operationMode={operationMode}
         deliveryPipelineEnabled={deliveryPipelineEnabled}
-        disableAutoAccept={!!billingBlock}
+        disableAutoAccept={!!billingBlock || subscriptionLocked}
         notifyOnNewOrder={
           !!(
             storeRecord &&

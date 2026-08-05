@@ -16,7 +16,8 @@ import {
 } from '@/lib/plan'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type { SubscriptionBillingUiState } from '@/lib/subscription-billing-types'
 
 const CANCEL_MOTIVOS = [
   { id: 'preco_alto', label: 'Preço alto' },
@@ -104,7 +105,13 @@ function IconAlert({ className }: { className?: string }) {
   )
 }
 
-export function AssinaturaClient({ model }: { model: AssinaturaPageModel }) {
+export function AssinaturaClient({
+  model,
+  subscriptionBilling = null,
+}: {
+  model: AssinaturaPageModel
+  subscriptionBilling?: SubscriptionBillingUiState | null
+}) {
   const router = useRouter()
   const [showAllBenefits, setShowAllBenefits] = useState(false)
   const [cancelMotivo, setCancelMotivo] = useState<string>(CANCEL_MOTIVOS[0]!.id)
@@ -114,6 +121,29 @@ export function AssinaturaClient({ model }: { model: AssinaturaPageModel }) {
     mesesRestantes: number
   } | null>(null)
   const [cancelError, setCancelError] = useState<string | null>(null)
+  const [pixCopied, setPixCopied] = useState(false)
+  const confirmedRef = useRef(false)
+
+  const pollPixStatus = useCallback(async () => {
+    if (confirmedRef.current || !subscriptionBilling?.invoiceId) return
+    try {
+      const resp = await fetch('/api/billing/subscription/status', { cache: 'no-store' })
+      const data = (await resp.json().catch(() => ({}))) as { confirmed?: boolean }
+      if (data.confirmed) {
+        confirmedRef.current = true
+        router.refresh()
+      }
+    } catch {
+      // ignore
+    }
+  }, [router, subscriptionBilling?.invoiceId])
+
+  useEffect(() => {
+    if (!subscriptionBilling || subscriptionBilling.status !== 'pending') return
+    void pollPixStatus()
+    const t = window.setInterval(() => void pollPixStatus(), 5000)
+    return () => window.clearInterval(t)
+  }, [pollPixStatus, subscriptionBilling])
 
   const subUi = subscriptionStatusPresentation(model.subscriptionStatus)
   const lista = beneficiosDoPlano(model.plan, model.operationMode)
@@ -427,6 +457,52 @@ export function AssinaturaClient({ model }: { model: AssinaturaPageModel }) {
               >
                 Falar com especialista
               </a>
+            ) : null}
+          </section>
+        ) : null}
+
+        {subscriptionBilling?.status === 'pending' ? (
+          <section className="rounded-2xl border border-amber-200 bg-amber-50/60 p-6 shadow-sm md:p-8">
+            <h2 className="text-base font-bold text-amber-950">Mensalidade em aberto</h2>
+            <p className="mt-2 text-sm text-amber-900/90">
+              {subscriptionBilling.copy?.body ??
+                'Pague via PIX para manter o painel activo. A confirmação é automática.'}
+            </p>
+            {subscriptionBilling.amountLabel ? (
+              <p className="mt-4 text-2xl font-bold text-[#1a1614]">
+                {subscriptionBilling.amountLabel}
+              </p>
+            ) : null}
+            {subscriptionBilling.pixQrBase64 ? (
+              <img
+                src={`data:image/png;base64,${subscriptionBilling.pixQrBase64}`}
+                alt="QR Code PIX"
+                className="mt-4 h-48 w-48 rounded-xl border border-[var(--card-border)] bg-white"
+              />
+            ) : null}
+            {subscriptionBilling.pixCopyPaste ? (
+              <div className="mt-4 flex flex-wrap gap-2">
+                <input
+                  readOnly
+                  value={subscriptionBilling.pixCopyPaste}
+                  className="min-w-0 flex-1 rounded-xl border border-[var(--card-border)] bg-white px-3 py-2 text-xs"
+                />
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(subscriptionBilling.pixCopyPaste!)
+                      setPixCopied(true)
+                      window.setTimeout(() => setPixCopied(false), 2500)
+                    } catch {
+                      window.prompt('Copia o código PIX:', subscriptionBilling.pixCopyPaste!)
+                    }
+                  }}
+                  className="rounded-xl bg-[var(--dash-primary)] px-4 py-2 text-sm font-semibold text-white"
+                >
+                  {pixCopied ? 'Copiado' : 'Copiar PIX'}
+                </button>
+              </div>
             ) : null}
           </section>
         ) : null}

@@ -7,6 +7,7 @@ import {
   VYRIA_PANEL_MODE_COOKIE,
 } from '@/lib/vyria-panel-mode'
 import { isMerchantApiContractGatePath } from '@/lib/annual-contract-gates'
+import { isMerchantApiSubscriptionGatePath } from '@/lib/subscription-billing-gates'
 import { IMPERSONATION_ACTIVE_COOKIE } from '@/lib/impersonation'
 import { openImpersonationContextEdge } from '@/lib/impersonation-open.edge'
 import {
@@ -198,6 +199,9 @@ export async function proxy(request: NextRequest) {
     if (!gate.ok && gate.kind === 'contract') {
       return secure(NextResponse.redirect(new URL(gate.path, request.url)))
     }
+    if (!gate.ok && gate.kind === 'subscription') {
+      return secure(NextResponse.redirect(new URL(gate.path, request.url)))
+    }
     if (!gate.ok && gate.kind === 'redirect') {
       return secure(NextResponse.redirect(new URL(gate.path, request.url)))
     }
@@ -265,10 +269,30 @@ export async function proxy(request: NextRequest) {
         )
       )
     }
+    if (!gate.ok && gate.kind === 'subscription') {
+      return secure(
+        NextResponse.json(
+          { error: 'mensalidade_pendente', redirect: gate.path },
+          { status: 403 }
+        )
+      )
+    }
     if (!gate.ok) {
       return secure(
         NextResponse.json(
           { error: 'acesso_bloqueado', redirect: gate.path },
+          { status: 403 }
+        )
+      )
+    }
+  }
+
+  if (user && !skipMerchantGates && isMerchantApiSubscriptionGatePath(p)) {
+    const gate = await gateFor(p)
+    if (!gate.ok && gate.kind === 'subscription') {
+      return secure(
+        NextResponse.json(
+          { error: 'mensalidade_pendente', redirect: gate.path },
           { status: 403 }
         )
       )

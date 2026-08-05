@@ -3,6 +3,8 @@
 import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import type { SubscriptionBillingUiState } from '@/lib/subscription-billing-types'
+import { SubscriptionHubBanner } from './SubscriptionBillingUi'
 import { orderIsVisibleAfterPixConfirmation } from '@/lib/store-order'
 import { isOperationalSyncTabVisible, subscribeStoreOrdersSync } from '@/lib/store-operational-realtime.client'
 import { slugChannelSourcesForSupabaseIn } from '@/lib/slug-channel-orders'
@@ -210,6 +212,29 @@ export function OperationalHubClient({
     null
   )
   const [livePendingOrders, setLivePendingOrders] = useState(pendingOrders)
+  const [subscriptionBilling, setSubscriptionBilling] =
+    useState<SubscriptionBillingUiState | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const resp = await fetch('/api/billing/subscription/current', { cache: 'no-store' })
+        const data = (await resp.json().catch(() => ({}))) as {
+          enabled?: boolean
+          billing?: SubscriptionBillingUiState | null
+        }
+        if (!cancelled && data.enabled && data.billing) {
+          setSubscriptionBilling(data.billing)
+        }
+      } catch {
+        // ignore
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [storeId])
 
   useEffect(() => {
     setLivePendingOrders(pendingOrders)
@@ -351,6 +376,9 @@ export function OperationalHubClient({
 
   return (
     <>
+      {subscriptionBilling?.showBanner ? (
+        <SubscriptionHubBanner storeId={storeId} billing={subscriptionBilling} />
+      ) : null}
       <div className="min-h-dvh w-full overflow-y-auto lg:h-dvh lg:overflow-hidden">
         <section
           className={`grid min-h-dvh gap-px bg-black/15 lg:h-full lg:min-h-0 lg:overflow-hidden ${gridClass}`}

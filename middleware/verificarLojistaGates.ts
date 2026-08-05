@@ -7,13 +7,19 @@ import {
 } from '@/lib/annual-contract-acceptance'
 import { isPlanoVencido } from '@/lib/merchant-access-dates'
 import { parseMerchantStatus } from '@/lib/merchant-status'
+import {
+  requiresSubscriptionLock,
+  subscriptionGateExemptPath,
+} from '@/lib/subscription-billing-gates'
 import { tryCreateServiceRoleClient } from '@/lib/supabase/service-role.server'
 import { readStoreStatus } from '@/lib/store-columns'
+import { fetchOpenSubscriptionInvoice } from '@/services/subscription-billing.server'
 
 export type LojistaGateResult =
   | { ok: true }
   | { ok: false; kind: 'redirect'; path: string }
   | { ok: false; kind: 'contract'; path: '/dashboard/contrato' }
+  | { ok: false; kind: 'subscription'; path: '/dashboard/assinatura' }
 
 const STORE_GATE_SELECT =
   'id, status, merchant_status, plano_vence_em, billing_cycle, contrato_aceite_em, contrato_termos_versao, contrato_documento_hash'
@@ -124,6 +130,21 @@ export async function verificarLojistaGates(
     requiresAnnualContractAcceptance(store)
   ) {
     return { ok: false, kind: 'contract', path: '/dashboard/contrato' }
+  }
+
+  const storeId = String(store.id ?? '')
+  if (storeId && !subscriptionGateExemptPath(pathname)) {
+    const svc = sessionClient ?? tryCreateServiceRoleClient()
+    if (svc) {
+      try {
+        const invoice = await fetchOpenSubscriptionInvoice(svc, storeId)
+        if (requiresSubscriptionLock(invoice)) {
+          return { ok: false, kind: 'subscription', path: '/dashboard/assinatura' }
+        }
+      } catch {
+        // schema ausente ou erro transitório — não bloquear o painel
+      }
+    }
   }
 
   return { ok: true }

@@ -6,11 +6,16 @@ import {
 import { isPlanoVencido } from '@/lib/merchant-access-dates'
 import { parseMerchantStatus } from '@/lib/merchant-status'
 import { readStoreStatus } from '@/lib/store-columns'
+import {
+  requiresSubscriptionLock,
+  subscriptionGateExemptPath,
+} from '@/lib/subscription-billing-gates'
 
 export type LojistaGateResult =
   | { ok: true }
   | { ok: false; kind: 'redirect'; path: string }
   | { ok: false; kind: 'contract'; path: '/dashboard/contrato' }
+  | { ok: false; kind: 'subscription'; path: '/dashboard/assinatura' }
 
 const STORE_GATE_SELECT =
   'id, status, merchant_status, plano_vence_em, billing_cycle, contrato_aceite_em, contrato_termos_versao, contrato_documento_hash'
@@ -88,6 +93,26 @@ export async function verificarLojistaGatesEdge(
     requiresAnnualContractAcceptance(store)
   ) {
     return { ok: false, kind: 'contract', path: '/dashboard/contrato' }
+  }
+
+  const storeId = String(store.id ?? '')
+  if (storeId && !subscriptionGateExemptPath(pathname)) {
+    try {
+      const { data } = await sessionClient
+        .from('subscription_invoices')
+        .select('status, due_date')
+        .eq('store_id', storeId)
+        .eq('status', 'pending')
+        .order('reference_month', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (data && requiresSubscriptionLock(data as { status: string; due_date: string })) {
+        return { ok: false, kind: 'subscription', path: '/dashboard/assinatura' }
+      }
+    } catch {
+      // tabela ausente — ignorar
+    }
   }
 
   return { ok: true }
