@@ -8,7 +8,7 @@ import {
 } from '@/lib/order-status-transitions'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
 import { tryAutoCancelNfceForOrder, tryAutoEmitNfceForOrder } from '@/services/fiscal'
-import { triggerLoyaltyEarnForDeliveredOrder } from '@/services/loyalty.server'
+import { triggerLoyaltyEarnForDeliveredOrder, reverseLoyaltyRedeemForCancelledOrder } from '@/services/loyalty.server'
 import { notifyOrderWhatsAppStatusChange } from '@/services/order-whatsapp-notifications.server'
 
 export const dynamic = 'force-dynamic'
@@ -104,11 +104,13 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const { error: upErr } = await supabase
+    const { error: upErr, count } = await supabase
       .from('orders')
       .update({ status: newStatus })
       .eq('id', orderId)
       .eq('store_id', storeId)
+      .eq('status', current)
+      .select('id')
 
     if (upErr) {
       const msg = upErr.message ?? ''
@@ -124,6 +126,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: msg || 'Não foi possível atualizar o pedido.' },
         { status: 500 }
+      )
+    }
+
+    if (!count) {
+      return NextResponse.json(
+        { error: 'O estado do pedido mudou noutro painel. Actualiza e tenta de novo.' },
+        { status: 409 }
       )
     }
 
@@ -148,6 +157,9 @@ export async function POST(req: NextRequest) {
 
     // Pedido já cancelado: tenta NFC-e sem bloquear a recusa.
     if (newStatus === 'cancelled') {
+      void reverseLoyaltyRedeemForCancelledOrder(supabase, storeId, orderId).catch((e) =>
+        console.warn('[loyalty redeem reverse]', e)
+      )
       const fiscal = await tryAutoCancelNfceForOrder(orderId)
       return NextResponse.json({ ok: true, fiscal })
     }

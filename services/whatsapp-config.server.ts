@@ -155,6 +155,62 @@ export type VerifiedWhatsAppSender = {
   verified_name: string | null
 }
 
+function isWhatsAppAuthError(message: string, errorCode?: number): boolean {
+  if (errorCode === 190 || errorCode === 102) return true
+  const lower = message.toLowerCase()
+  return (
+    lower.includes('oauth') ||
+    lower.includes('access token') ||
+    lower.includes('session has expired') ||
+    lower.includes('error validating access token') ||
+    lower.includes('invalid token')
+  )
+}
+
+export async function markWhatsAppConfigAuthError(
+  db: SupabaseClient,
+  storeId: string,
+  error: string
+): Promise<void> {
+  const msg = error.trim().slice(0, 500)
+  await db
+    .from('store_whatsapp_config')
+    .update({
+      status: 'error',
+      last_error: msg || 'Token WhatsApp inválido ou expirado.',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('store_id', storeId)
+    .in('status', ['active', 'pending'])
+}
+
+export async function maybeMarkWhatsAppConfigAuthError(
+  db: SupabaseClient,
+  storeId: string,
+  error: string,
+  errorCode?: number
+): Promise<void> {
+  if (!isWhatsAppAuthError(error, errorCode)) return
+  await markWhatsAppConfigAuthError(db, storeId, error)
+}
+
+export async function markWhatsAppConfigDisconnected(
+  db: SupabaseClient,
+  storeId: string,
+  reason: string
+): Promise<void> {
+  const msg = reason.trim().slice(0, 500)
+  await db
+    .from('store_whatsapp_config')
+    .update({
+      status: 'disconnected',
+      last_error: msg || 'WhatsApp desligado.',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('store_id', storeId)
+    .in('status', ['active', 'pending', 'error'])
+}
+
 export async function getVerifiedWhatsAppSenderForStore(
   db: SupabaseClient,
   storeId: string
@@ -166,7 +222,10 @@ export async function getVerifiedWhatsAppSenderForStore(
   if (!token) return null
 
   const verified = await fetchWhatsAppPhoneNumber(config.phone_number_id, token)
-  if (!verified.ok) return null
+  if (!verified.ok) {
+    await maybeMarkWhatsAppConfigAuthError(db, storeId, verified.error)
+    return null
+  }
 
   const displayE164 =
     verified.data.display_phone_number?.replace(/\D/g, '') || null
@@ -262,6 +321,22 @@ export async function connectWhatsAppForStore(
   }
 
   const display = metaDisplayDigits
+
+  const { data: phoneConflict } = await db
+    .from('store_whatsapp_config')
+    .select('store_id')
+    .eq('phone_number_id', resolvedPhoneNumberId)
+    .eq('status', 'active')
+    .neq('store_id', storeId)
+    .maybeSingle()
+
+  if (phoneConflict) {
+    return {
+      ok: false,
+      error:
+        'Este Phone Number ID já está activo noutra loja Vyria. Desliga-o lá antes de ligar aqui.',
+    }
+  }
 
   const now = new Date().toISOString()
   const patch = {

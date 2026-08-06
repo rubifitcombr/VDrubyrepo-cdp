@@ -15,6 +15,12 @@ type AddonCatalogItem = {
 
 type AddonCatalog = Map<string, AddonCatalogItem[]>
 
+export type AddonGroupRule = {
+  groupName: string
+  required: boolean
+  minSelect: number
+}
+
 function parseAddonPicks(raw: unknown): CheckoutAddonPick[] {
   if (!Array.isArray(raw)) return []
   const out: CheckoutAddonPick[] = []
@@ -80,6 +86,55 @@ export async function loadAddonCatalogForProducts(
   }
 
   return catalog
+}
+
+export async function loadAddonGroupRulesForProducts(
+  supabase: SupabaseClient,
+  productIds: string[]
+): Promise<Map<string, AddonGroupRule[]>> {
+  const rules: Map<string, AddonGroupRule[]> = new Map()
+  const ids = [...new Set(productIds.filter(Boolean))]
+  if (!ids.length) return rules
+
+  const { data: groups } = await supabase
+    .from('addon_groups')
+    .select('product_id, name, required, min_select')
+    .in('product_id', ids)
+
+  for (const row of groups ?? []) {
+    const r = row as {
+      product_id: string
+      name: string
+      required?: boolean
+      min_select?: number
+    }
+    const pid = String(r.product_id)
+    const groupName = String(r.name ?? '').trim()
+    if (!groupName) continue
+    if (!rules.has(pid)) rules.set(pid, [])
+    rules.get(pid)!.push({
+      groupName,
+      required: r.required === true,
+      minSelect: Math.max(0, Math.floor(Number(r.min_select) || 0)),
+    })
+  }
+
+  return rules
+}
+
+export function validateRequiredAddonPicks(
+  rules: AddonGroupRule[],
+  picks: CheckoutAddonPick[]
+): boolean {
+  for (const rule of rules) {
+    const min = rule.required ? Math.max(1, rule.minSelect) : rule.minSelect
+    if (min <= 0) continue
+    const count = picks
+      .filter((p) => p.groupName === rule.groupName)
+      .reduce((sum, p) => sum + p.quantity, 0)
+    if (count < min) return false
+  }
+  return true
 }
 
 function findCatalogPrice(

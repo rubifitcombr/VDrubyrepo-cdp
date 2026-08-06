@@ -13,14 +13,19 @@ export function GarcomPinModal({
   onCancel,
   onConfirm,
   garconsWithPin = [],
+  externalError = null,
+  verifying = false,
 }: {
   onCancel: () => void
   onConfirm: (pin: string) => boolean
   /** Garçons com PIN activo — usado para distinguir nomes duplicados. */
   garconsWithPin?: StoreGarcomDTO[]
+  externalError?: string | null
+  verifying?: boolean
 }) {
   const [pin, setPin] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const displayError = externalError || error
   const showDisambig =
     garconsWithPin.length > 0 && garconsNeedNameDisambiguation(garconsWithPin)
   const pinGarcons = garconsWithPin.filter((g) => isGarcomPinActive(g))
@@ -79,9 +84,9 @@ export function GarcomPinModal({
           autoFocus
           className="mt-5 w-full rounded-2xl border border-[var(--card-border)] px-4 py-3 text-center text-2xl font-bold tracking-[0.35em] text-[#1a1614] outline-none transition focus:border-[var(--dash-primary)]/40 focus:ring-2 focus:ring-[var(--dash-primary)]/12"
         />
-        {error ? (
+        {displayError ? (
           <p className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
-            {error}
+            {displayError}
           </p>
         ) : null}
         <div className="mt-5 flex gap-2">
@@ -93,10 +98,10 @@ export function GarcomPinModal({
           </Link>
           <button
             type="submit"
-            disabled={pin.length !== 4}
+            disabled={pin.length !== 4 || verifying}
             className="flex-1 rounded-xl bg-[var(--dash-primary)] py-2.5 text-sm font-semibold text-white disabled:opacity-50"
           >
-            Entrar
+            {verifying ? 'A verificar…' : 'Entrar'}
           </button>
         </div>
       </form>

@@ -46,6 +46,29 @@ const money = new Intl.NumberFormat('pt-BR', {
   currency: 'BRL',
 })
 
+function orderStatusRank(status: string | null | undefined): number {
+  const s = status ?? ''
+  if (s === 'delivered' || s === 'cancelled') return 2
+  if (s === 'ready') return 1
+  return 0
+}
+
+/** Evita que router.refresh() reverta fechos locais ainda não refletidos no SSR. */
+function mergeStoreOrdersFromServer(
+  prev: StoreOrderRow[],
+  incoming: StoreOrderRow[]
+): StoreOrderRow[] {
+  const prevById = new Map(prev.map((o) => [o.id, o]))
+  return incoming.map((o) => {
+    const local = prevById.get(o.id)
+    if (!local) return o
+    if (orderStatusRank(local.status) > orderStatusRank(o.status)) {
+      return { ...o, ...local }
+    }
+    return o
+  })
+}
+
 const FinanceiroView = dynamic(
   () => import('./FinanceiroView').then((m) => ({ default: m.FinanceiroView })),
   {
@@ -310,7 +333,7 @@ function OperacaoView({
   }, [initialTurnoSplitPayments])
 
   useEffect(() => {
-    setOrders(initialOrders)
+    setOrders((prev) => mergeStoreOrdersFromServer(prev, initialOrders))
   }, [initialOrders])
   useEffect(() => {
     setTurno(initialTurno)
@@ -576,21 +599,14 @@ function OperacaoView({
       if (!isOperationalSyncTabVisible()) return
       if (detail.source === 'orders' || detail.source === 'order_items') {
         void pullCashierOrders()
-        router.refresh()
+        scheduleRefresh()
         return
       }
       scheduleRefresh()
     })
 
-    const poll = window.setInterval(() => {
-      if (document.visibilityState !== 'visible') return
-      router.refresh()
-      void reloadEntregas()
-    }, 20000)
-
     return () => {
       if (refreshTimer) window.clearTimeout(refreshTimer)
-      window.clearInterval(poll)
       unsubscribe()
     }
   }, [storeId, router, reloadEntregas, pullCashierOrders])

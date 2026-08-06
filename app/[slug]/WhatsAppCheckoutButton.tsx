@@ -171,6 +171,13 @@ export function WhatsAppCheckoutButton({
   } | null>(null)
   const [loyaltyRedeemEnabled, setLoyaltyRedeemEnabled] = useState(false)
   const [loyaltyRedeemPoints, setLoyaltyRedeemPoints] = useState(0)
+  const [couponInput, setCouponInput] = useState('')
+  const [appliedCouponCode, setAppliedCouponCode] = useState<string | null>(null)
+  const [couponDiscount, setCouponDiscount] = useState(0)
+  const [couponFreeShipping, setCouponFreeShipping] = useState(false)
+  const [couponLabel, setCouponLabel] = useState<string | null>(null)
+  const [couponError, setCouponError] = useState<string | null>(null)
+  const [couponApplying, setCouponApplying] = useState(false)
   const lastOpenSignalRef = useRef<number | null>(null)
 
   const pixAvailableForCheckout = merchantPixConfigured && !dineInSelfService
@@ -230,19 +237,23 @@ export function WhatsAppCheckoutButton({
   const resolvedFulfillment: FulfillmentType | null =
     fulfillment ?? (dineInSelfService ? 'dine_in' : null)
 
+  const effectiveDelivery =
+    couponFreeShipping && resolvedFulfillment === 'delivery' ? 0 : estimatedDelivery
+
   const checkoutGrossTotal =
-    resolvedFulfillment === 'delivery' ? estimatedTotal : subtotal
+    resolvedFulfillment === 'delivery' ? subtotal + effectiveDelivery : subtotal
+  const checkoutAfterCoupon = Math.max(0, checkoutGrossTotal - couponDiscount)
   const loyaltyDiscountPreview =
     loyaltyRedeemEnabled && loyaltyProgram && loyaltyRedeemPoints > 0
       ? Math.min(
-          checkoutGrossTotal,
+          checkoutAfterCoupon,
           Math.round(
             ((loyaltyRedeemPoints * loyaltyProgram.redeem_cents_per_point) / 100) *
               100
           ) / 100
         )
       : 0
-  const checkoutNetTotal = Math.max(0, checkoutGrossTotal - loyaltyDiscountPreview)
+  const checkoutNetTotal = Math.max(0, checkoutAfterCoupon - loyaltyDiscountPreview)
 
   const waUrl = useMemo(() => {
     const text = buildMessage(storeName, items, subtotal)
@@ -258,6 +269,63 @@ export function WhatsAppCheckoutButton({
       return {}
     }
     return { loyaltyPointsRedeem: loyaltyRedeemPoints }
+  }
+
+  function couponPayload(): { couponCode?: string } {
+    return appliedCouponCode ? { couponCode: appliedCouponCode } : {}
+  }
+
+  async function applyCoupon() {
+    const code = couponInput.trim()
+    if (!code || couponApplying) return
+    setCouponApplying(true)
+    setCouponError(null)
+    try {
+      const resp = await fetch('/api/public/coupon/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          slug: storeSlug,
+          couponCode: code,
+          fulfillment: resolvedFulfillment ?? 'delivery',
+          orderSubtotal: subtotal,
+          customerPhone: customerPhone,
+        }),
+      })
+      const payload = (await resp.json()) as {
+        ok?: boolean
+        error?: string
+        discountBrl?: number
+        freeShipping?: boolean
+        label?: string
+        code?: string
+      }
+      if (!resp.ok || !payload.ok) {
+        setAppliedCouponCode(null)
+        setCouponDiscount(0)
+        setCouponFreeShipping(false)
+        setCouponLabel(null)
+        setCouponError(payload.error || 'Cupom inválido.')
+        return
+      }
+      setAppliedCouponCode(payload.code ?? code.toUpperCase())
+      setCouponDiscount(payload.freeShipping ? 0 : Number(payload.discountBrl) || 0)
+      setCouponFreeShipping(!!payload.freeShipping)
+      setCouponLabel(payload.label ?? code)
+      setCouponError(null)
+    } catch (e) {
+      setCouponError(e instanceof Error ? e.message : 'Erro ao validar cupom.')
+    } finally {
+      setCouponApplying(false)
+    }
+  }
+
+  function clearCoupon() {
+    setAppliedCouponCode(null)
+    setCouponDiscount(0)
+    setCouponFreeShipping(false)
+    setCouponLabel(null)
+    setCouponError(null)
   }
 
   function mapCheckoutItems() {
@@ -334,6 +402,8 @@ export function WhatsAppCheckoutButton({
     setDineInSuccess(null)
     setLoyaltyRedeemEnabled(false)
     setLoyaltyRedeemPoints(0)
+    setCouponInput('')
+    clearCoupon()
   }
 
   function finishCheckoutAfterApi(
@@ -446,6 +516,7 @@ export function WhatsAppCheckoutButton({
           notes: buildNotesPayload(),
           items: mapCheckoutItems(),
           ...loyaltyPayload(),
+          ...couponPayload(),
         }),
       })
       const payload = (await resp.json()) as {
@@ -552,6 +623,7 @@ export function WhatsAppCheckoutButton({
           notes: notes.trim() || null,
           items: mapCheckoutItems(),
           ...loyaltyPayload(),
+          ...couponPayload(),
         }),
       })
       const payload = (await resp.json()) as {
@@ -624,6 +696,7 @@ export function WhatsAppCheckoutButton({
           notes: buildNotesPayload(),
           items: mapCheckoutItems(),
           ...loyaltyPayload(),
+          ...couponPayload(),
         }),
       })
       const payload = (await resp.json()) as {
@@ -1100,11 +1173,23 @@ export function WhatsAppCheckoutButton({
                           <p className="mt-1 flex justify-between gap-2">
                             <span>Entrega (estim.)</span>
                             <span className="font-semibold tabular-nums">
-                              {estimatedDelivery <= 0
+                              {effectiveDelivery <= 0
                                 ? 'Grátis'
-                                : money.format(estimatedDelivery)}
+                                : money.format(effectiveDelivery)}
                             </span>
                           </p>
+                          {couponFreeShipping && resolvedFulfillment === 'delivery' ? (
+                            <p className="mt-1 flex justify-between gap-2 text-emerald-700">
+                              <span>Cupom (frete grátis)</span>
+                              <span className="tabular-nums">−{money.format(estimatedDelivery)}</span>
+                            </p>
+                          ) : null}
+                          {couponDiscount > 0 ? (
+                            <p className="mt-1 flex justify-between gap-2 text-emerald-700">
+                              <span>Cupom{couponLabel ? ` (${couponLabel})` : ''}</span>
+                              <span className="tabular-nums">−{money.format(couponDiscount)}</span>
+                            </p>
+                          ) : null}
                           <p className="mt-1 flex justify-between border-t border-[var(--card-border)] pt-1 font-semibold">
                             <span>Total estimado</span>
                             <span className="tabular-nums">
@@ -1129,10 +1214,18 @@ export function WhatsAppCheckoutButton({
                           ) : null}
                         </>
                       ) : resolvedFulfillment === 'pickup' ? (
-                        <p className="mt-1 flex justify-between border-t border-[var(--card-border)] pt-1 font-semibold">
-                        <span>Total (retirada)</span>
-                          <span className="tabular-nums">{money.format(checkoutNetTotal)}</span>
-                        </p>
+                        <>
+                          {couponDiscount > 0 ? (
+                            <p className="mt-1 flex justify-between gap-2 text-emerald-700">
+                              <span>Cupom{couponLabel ? ` (${couponLabel})` : ''}</span>
+                              <span className="tabular-nums">−{money.format(couponDiscount)}</span>
+                            </p>
+                          ) : null}
+                          <p className="mt-1 flex justify-between border-t border-[var(--card-border)] pt-1 font-semibold">
+                            <span>Total (retirada)</span>
+                            <span className="tabular-nums">{money.format(checkoutNetTotal)}</span>
+                          </p>
+                        </>
                       ) : resolvedFulfillment === 'dine_in' ? (
                         <p className="mt-1 flex justify-between border-t border-[var(--card-border)] pt-1 font-semibold">
                           <span>Total (mesa)</span>
@@ -1242,12 +1335,62 @@ export function WhatsAppCheckoutButton({
                             storeSlug={storeSlug}
                             program={loyaltyProgram}
                             customerPhone={customerPhone}
-                            orderTotal={checkoutGrossTotal}
+                            orderTotal={checkoutAfterCoupon}
                             redeemEnabled={loyaltyRedeemEnabled}
                             redeemPoints={loyaltyRedeemPoints}
                             onRedeemEnabledChange={setLoyaltyRedeemEnabled}
                             onRedeemPointsChange={setLoyaltyRedeemPoints}
                           />
+                        ) : null}
+
+                        {resolvedFulfillment !== 'dine_in' ? (
+                          <div className="sm:col-span-2">
+                            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-vyria-navy-muted">
+                              Cupom de desconto
+                            </p>
+                            <div className="flex gap-2">
+                              <input
+                                value={couponInput}
+                                onChange={(e) => {
+                                  setCouponInput(e.target.value.toUpperCase())
+                                  if (couponError) setCouponError(null)
+                                }}
+                                placeholder="Código do cupom"
+                                className="min-w-0 flex-1 rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm uppercase outline-none focus:border-[#25D366]"
+                              />
+                              {appliedCouponCode ? (
+                                <button
+                                  type="button"
+                                  onClick={clearCoupon}
+                                  className="shrink-0 rounded-xl border border-[var(--card-border)] px-3 py-2.5 text-sm font-semibold text-vyria-navy-muted"
+                                >
+                                  Remover
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => void applyCoupon()}
+                                  disabled={!couponInput.trim() || couponApplying}
+                                  className="shrink-0 rounded-xl bg-[#f3f4f6] px-3 py-2.5 text-sm font-semibold text-vyria-navy disabled:opacity-50"
+                                >
+                                  {couponApplying ? '…' : 'Aplicar'}
+                                </button>
+                              )}
+                            </div>
+                            {appliedCouponCode ? (
+                              <p className="mt-2 text-xs font-medium text-emerald-700">
+                                Cupom {appliedCouponCode} aplicado
+                                {couponFreeShipping
+                                  ? ' — frete grátis'
+                                  : couponDiscount > 0
+                                    ? ` — −${money.format(couponDiscount)}`
+                                    : ''}
+                              </p>
+                            ) : null}
+                            {couponError ? (
+                              <p className="mt-2 text-xs font-medium text-red-600">{couponError}</p>
+                            ) : null}
+                          </div>
                         ) : null}
 
                         {resolvedFulfillment === 'delivery' ? (
@@ -1471,9 +1614,7 @@ export function WhatsAppCheckoutButton({
                     <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <p className="text-sm font-semibold text-vyria-navy">
                         Total:{' '}
-                        {money.format(
-                          resolvedFulfillment === 'delivery' ? estimatedTotal : subtotal
-                        )}
+                        {money.format(checkoutNetTotal)}
                       </p>
                       {resolvedFulfillment == null ? null : (
                         <div className="flex w-full gap-2 sm:w-auto">

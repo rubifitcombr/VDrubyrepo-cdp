@@ -387,8 +387,40 @@ export async function redeemReferralBonus(
     }
   }
 
+  const now = new Date().toISOString()
+  const { data: lockedStore, error: lockErr } = await svc
+    .from('stores')
+    .update({ plano_atualizado_em: now })
+    .eq('id', storeId)
+    .select('plano_vence_em, plano, plan')
+    .single()
+
+  if (lockErr || !lockedStore) {
+    return { error: lockErr?.message ?? 'Erro ao reservar resgate.', status: 500 }
+  }
+
+  const { data: ledgerAfterLock, error: ledErr2 } = await svc
+    .from('store_referral_ledger')
+    .select('id, delta, reason, expires_at, created_at')
+    .eq('store_id', storeId)
+
+  if (ledErr2) {
+    return {
+      error: ledErr2.message ?? 'Erro ao ler pontos.',
+      status: 503,
+    }
+  }
+
+  const availableLocked = computeAvailablePoints((ledgerAfterLock ?? []) as ReferralLedgerRow[])
+  if (availableLocked < REFERRAL_POINTS_TO_REDEEM) {
+    return {
+      error: `Precisas de ${REFERRAL_POINTS_TO_REDEEM} pontos para resgatar (tens ${availableLocked}).`,
+      status: 400,
+    }
+  }
+
   const today = todayIsoLocal()
-  const rawCur = storeRow.plano_vence_em
+  const rawCur = lockedStore.plano_vence_em
   const cur =
     typeof rawCur === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(rawCur.trim())
       ? rawCur.trim()
@@ -423,7 +455,6 @@ export async function redeemReferralBonus(
     return { error: ledInsErr.message ?? 'Erro ao debitar pontos.', status: 500 }
   }
 
-  const now = new Date().toISOString()
   const { error: upStore } = await svc
     .from('stores')
     .update({

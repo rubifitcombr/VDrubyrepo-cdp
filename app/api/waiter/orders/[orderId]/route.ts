@@ -22,6 +22,12 @@ import {
   mapPricedLinesToOrderItemRows,
   pricePdvLinesFromCatalog,
 } from '@/lib/pdv-price.server'
+import { adjustProductStockForOrderEdit } from '@/services/inventory.server'
+import {
+  backupRowsToStockLines,
+  replaceWaiterOrderItemsAtomic,
+  type OrderItemBackupRow,
+} from '@/services/waiter-order-items.server'
 
 type BodyItem = {
   product_id: string
@@ -238,31 +244,114 @@ export async function PATCH(
     return NextResponse.json({ error: backupErr.message }, { status: 500 })
   }
 
-  const { error: delItems } = await supabase.from('order_items').delete().eq('order_id', id)
-  if (delItems) {
-    return NextResponse.json({ error: delItems.message }, { status: 500 })
+  const backupRows = (backupItems ?? []) as OrderItemBackupRow[]
+  const stockAdjust = await adjustProductStockForOrderEdit(
+    supabase,
+    storeId,
+    backupRowsToStockLines(backupRows),
+    backupRowsToStockLines(
+      cleanItems.map((line) => ({
+        product_id: line.product_id,
+        quantity: line.quantity,
+        name: line.name,
+      }))
+    )
+  )
+  if (!stockAdjust.ok) {
+    return NextResponse.json({ error: stockAdjust.error }, { status: 409 })
   }
 
-  const rows = mapPricedLinesToOrderItemRows(id, cleanItems)
-  const { error: insItems } = await supabase.from('order_items').insert(rows)
-  if (insItems) {
-    if (backupItems?.length) {
-      await supabase.from('order_items').insert(
-        backupItems.map((item) => ({
-          order_id: id,
-          product_id: item.product_id,
-          quantity: item.quantity,
-          unit_price: item.unit_price,
-          price: item.price,
-          name: item.name,
-          unit_type: item.unit_type,
-          weight_kg: item.weight_kg,
-          price_per_kg_snapshot: item.price_per_kg_snapshot,
-          addons: item.addons,
+  const atomic = await replaceWaiterOrderItemsAtomic(supabase, id, storeId, cleanItems)
+  if (!atomic.ok && !atomic.useFallback) {
+    await adjustProductStockForOrderEdit(
+      supabase,
+      storeId,
+      backupRowsToStockLines(
+        cleanItems.map((line) => ({
+          product_id: line.product_id,
+          quantity: line.quantity,
+          name: line.name,
         }))
-      )
+      ),
+      backupRowsToStockLines(backupRows)
+    ).catch(() => undefined)
+    return NextResponse.json({ error: atomic.error }, { status: 500 })
+  }
+
+  if (!atomic.ok && atomic.useFallback) {
+    const { error: delItems } = await supabase.from('order_items').delete().eq('order_id', id)
+    if (delItems) {
+      await adjustProductStockForOrderEdit(
+        supabase,
+        storeId,
+        backupRowsToStockLines(
+          cleanItems.map((line) => ({
+            product_id: line.product_id,
+            quantity: line.quantity,
+            name: line.name,
+          }))
+        ),
+        backupRowsToStockLines(backupRows)
+      ).catch(() => undefined)
+      return NextResponse.json({ error: delItems.message }, { status: 500 })
     }
-    return NextResponse.json({ error: insItems.message ?? 'Erro ao gravar itens.' }, { status: 500 })
+
+    const rows = mapPricedLinesToOrderItemRows(id, cleanItems)
+    const { error: insItems } = await supabase.from('order_items').insert(rows)
+    if (insItems) {
+      if (backupRows.length) {
+        const { error: restoreErr } = await supabase.from('order_items').insert(
+          backupRows.map((item) => ({
+            order_id: id,
+            product_id: item.product_id,
+            quantity: item.quantity,
+            unit_price: item.unit_price,
+            price: item.price,
+            name: item.name,
+            unit_type: item.unit_type,
+            weight_kg: item.weight_kg,
+            price_per_kg_snapshot: item.price_per_kg_snapshot,
+            addons: item.addons,
+          }))
+        )
+        if (restoreErr) {
+          console.error('[waiter PATCH] restore items failed:', restoreErr.message)
+          return NextResponse.json(
+            {
+              error:
+                'Erro ao gravar itens e não foi possível restaurar a comanda. Contacta o suporte.',
+            },
+            { status: 500 }
+          )
+        }
+        const { count: restoredCount } = await supabase
+          .from('order_items')
+          .select('id', { count: 'exact', head: true })
+          .eq('order_id', id)
+        if ((restoredCount ?? 0) === 0) {
+          return NextResponse.json(
+            {
+              error:
+                'A comanda ficou sem itens após falha ao gravar. Actualiza a página e tenta de novo.',
+            },
+            { status: 500 }
+          )
+        }
+      }
+      await adjustProductStockForOrderEdit(
+        supabase,
+        storeId,
+        backupRowsToStockLines(
+          cleanItems.map((line) => ({
+            product_id: line.product_id,
+            quantity: line.quantity,
+            name: line.name,
+          }))
+        ),
+        backupRowsToStockLines(backupRows)
+      ).catch(() => undefined)
+      return NextResponse.json({ error: insItems.message ?? 'Erro ao gravar itens.' }, { status: 500 })
+    }
   }
 
   const { error: upErr } = await supabase

@@ -2,10 +2,10 @@
 
 import { GarcomPinModal } from '@/app/dashboard/_components/GarcomPinModal'
 import type { StoreGarcomDTO } from '@/lib/garcons-types'
+import { dashboardFetch } from '@/lib/dashboard-fetch.client'
 import {
   isGarcomPinSessionValid,
   isSalaoGarcomPinRequired,
-  matchGarcomByPin,
   setGarcomPinSession,
   isGarcomPinActive,
 } from '@/lib/garcom-pin'
@@ -31,6 +31,8 @@ export function GarcomSalaoPinGate({
   const isClient = useIsClient()
   const pinRequired = isSalaoGarcomPinRequired(garcons)
   const [unlocked, setUnlocked] = useState(false)
+  const [pinError, setPinError] = useState<string | null>(null)
+  const [verifying, setVerifying] = useState(false)
 
   const sessionValid =
     isClient && pinRequired && isGarcomPinSessionValid(storeId, garcons)
@@ -56,12 +58,38 @@ export function GarcomSalaoPinGate({
         window.location.assign('/dashboard')
       }}
       onConfirm={(pin) => {
-        const garcom = matchGarcomByPin(garcons, pin)
-        if (!garcom) return false
-        setGarcomPinSession(storeId, garcom)
-        setUnlocked(true)
-        return true
+        if (verifying) return false
+        setVerifying(true)
+        setPinError(null)
+        void dashboardFetch('/api/waiter/pin/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pin }),
+        })
+          .then(async (res) => {
+            const json = (await res.json().catch(() => ({}))) as {
+              error?: string
+              garcom?: { id: string; nome: string }
+            }
+            if (!res.ok || !json.garcom) {
+              setPinError(json.error || 'PIN inválido.')
+              return
+            }
+            const garcom = garcons.find((g) => g.id === json.garcom!.id)
+            if (!garcom) {
+              setPinError('Garçom não encontrado.')
+              return
+            }
+            setGarcomPinSession(storeId, garcom)
+            setUnlocked(true)
+          })
+          .finally(() => {
+            setVerifying(false)
+          })
+        return false
       }}
+      externalError={pinError}
+      verifying={verifying}
     />
   )
 }

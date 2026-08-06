@@ -3,7 +3,10 @@ import {
   caixaProDeliveryOnlyScope,
   isPdvWaiterComandaSource,
 } from '@/lib/cashier-pro-delivery-scope'
-import { orderPaymentRegisteredInCaixa } from '@/lib/cashier-comanda-close'
+import {
+  CAIXA_PAYMENT_CLOSE_MARKER,
+  orderPaymentRegisteredInCaixa,
+} from '@/lib/cashier-comanda-close'
 import { gateMerchantMenuKey } from '@/lib/merchant-api-gate.server'
 import { parseOperationModeFromStore } from '@/lib/merchant-operation-mode'
 import {
@@ -160,7 +163,7 @@ export async function POST(request: Request) {
   const paymentNote = isSplit
     ? lines.map((l) => `${l.method}:${l.amount.toFixed(2)}`).join(', ')
     : storedMethod
-  const closeLine = `[Caixa] Fechado em ${new Date().toISOString()} (${paymentNote})`
+  const closeLine = `${CAIXA_PAYMENT_CLOSE_MARKER}${new Date().toISOString()} (${paymentNote})`
   const notes = noteBase ? `${noteBase}\n${closeLine}` : closeLine
 
   const updatePayload: Record<string, unknown> = {
@@ -170,13 +173,24 @@ export async function POST(request: Request) {
     caixa_turno_id: turnoAberto.id,
   }
 
+  // Claim atómico: só fecha se ainda não tiver marcador de pagamento (evita duplo clique / race).
   const { data: updated, error: upErr } = await supabase
     .from('orders')
     .update(updatePayload)
     .eq('store_id', storeId)
     .eq('id', orderId)
+    .neq('status', 'cancelled')
+    .neq('status', 'delivered')
+    .not('notes', 'ilike', `%${CAIXA_PAYMENT_CLOSE_MARKER}%`)
     .select('id, status, payment_method, notes, caixa_turno_id')
-    .single()
+    .maybeSingle()
+
+  if (!upErr && !updated) {
+    return NextResponse.json(
+      { error: 'Pagamento já registado para esta comanda.' },
+      { status: 409 }
+    )
+  }
 
   if (upErr || !updated) {
     const msg = upErr?.message ?? ''
@@ -196,6 +210,29 @@ export async function POST(request: Request) {
   }
 
   if (lines.length > 0) {
+    const { count: existingPayCount } = await supabase
+      .from('order_payments')
+      .select('id', { count: 'exact', head: true })
+      .eq('store_id', storeId)
+      .eq('order_id', orderId)
+
+    if ((existingPayCount ?? 0) > 0) {
+      return NextResponse.json({
+        ok: true,
+        order: {
+          id: String(updated.id),
+          status: String(updated.status ?? 'delivered'),
+          payment_method: String(updated.payment_method ?? storedMethod),
+          notes: String(updated.notes ?? ''),
+          caixa_turno_id: String(
+            (updated as { caixa_turno_id?: string }).caixa_turno_id ?? turnoAberto.id
+          ),
+        },
+        payments: lines.map((l) => ({ method: l.method, amount: l.amount })),
+        alreadyPaid: true,
+      })
+    }
+
     const payResult = await insertOrderPayments(supabase, {
       storeId,
       orderId,
@@ -218,6 +255,52 @@ export async function POST(request: Request) {
   }
 
   const fiscal = await tryAutoEmitNfceForOrder(orderId)
+
+  const { data: fiscalConfig } = await supabase
+    .from('store_fiscal_config')
+    .select('nfce_block_close_on_failure')
+    .eq('store_id', storeId)
+    .maybeSingle()
+
+  const blockCloseOnFiscalFailure = Boolean(
+    (fiscalConfig as { nfce_block_close_on_failure?: boolean } | null)
+      ?.nfce_block_close_on_failure
+  )
+
+  if (
+    blockCloseOnFiscalFailure &&
+    fiscal.attempted &&
+    !fiscal.skipped &&
+    !fiscal.ok
+  ) {
+    if (lines.length > 0) {
+      await supabase
+        .from('order_payments')
+        .delete()
+        .eq('store_id', storeId)
+        .eq('order_id', orderId)
+    }
+    await supabase
+      .from('orders')
+      .update({
+        status: order.status,
+        payment_method: order.payment_method,
+        notes: order.notes,
+        caixa_turno_id: null,
+      })
+      .eq('store_id', storeId)
+      .eq('id', orderId)
+
+    return NextResponse.json(
+      {
+        error:
+          fiscal.motivo ||
+          'Falha na emissão da NFC-e. A comanda não foi fechada — tenta novamente ou contacta o suporte fiscal.',
+        fiscal,
+      },
+      { status: 502 }
+    )
+  }
 
   void triggerLoyaltyEarnForDeliveredOrder(supabase, storeId, orderId).catch((e) =>
     console.warn('[loyalty earn]', e)

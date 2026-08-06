@@ -12,7 +12,7 @@ import { buildItemsSummaryWithLineTotals } from '@/lib/print/items-summary-forma
 import { isSupabaseRlsViolation } from '@/lib/supabase-rls-error'
 import { tryAutoThermalPrint } from '@/services/thermal-print.server'
 import { tryAutoEmitNfceForOrder } from '@/services/fiscal'
-import { pricePdvLinesFromCatalog } from '@/lib/pdv-price.server'
+import { pricePdvLinesFromCatalog, mapPricedLinesToOrderItemRows } from '@/lib/pdv-price.server'
 import { hasFeature } from '@/lib/plan'
 import {
   parseOrderPaymentLines,
@@ -20,6 +20,7 @@ import {
   type OrderPaymentLine,
 } from '@/lib/order-payments'
 import { insertOrderPayments } from '@/services/order-payments.server'
+import { decrementProductStockForLines } from '@/services/inventory.server'
 
 type PaymentMethod = 'cash' | 'pix' | 'card' | 'card_credit' | 'card_debit' | 'split'
 
@@ -28,6 +29,8 @@ type BodyItem = {
   quantity?: unknown
   unit_price?: unknown
   name?: unknown
+  unit_type?: unknown
+  addons?: unknown
 }
 
 function round2(n: number): number {
@@ -289,21 +292,13 @@ export async function POST(request: Request) {
 
   const orderId = String(order.id)
 
-  const rows = cleanItems.map((l) => {
-    const isWeight = l.unit_type === 'weight'
-    const lineTotal = round2(l.unit_price * l.quantity)
-    return {
-      order_id: orderId,
-      product_id: l.product_id,
-      quantity: l.quantity,
-      price: lineTotal,
-      unit_price: l.unit_price,
-      name: l.name,
-      unit_type: l.unit_type,
-      weight_kg: isWeight ? l.quantity : null,
-      price_per_kg_snapshot: isWeight ? l.unit_price : null,
-    }
-  })
+  const stockResult = await decrementProductStockForLines(supabase, storeId, cleanItems)
+  if (!stockResult.ok) {
+    await supabase.from('orders').delete().eq('id', orderId)
+    return NextResponse.json({ error: friendlyStockError(stockResult.error) }, { status: 409 })
+  }
+
+  const rows = mapPricedLinesToOrderItemRows(orderId, cleanItems)
 
   const { error: itemsErr } = await supabase.from('order_items').insert(rows)
 
@@ -315,7 +310,7 @@ export async function POST(request: Request) {
     )
   }
 
-  if (closeMode === 'immediate' && isSplit && turnoAberto) {
+  if (closeMode === 'immediate' && paymentLines.length > 0 && turnoAberto) {
     const payResult = await insertOrderPayments(supabase, {
       storeId,
       orderId,

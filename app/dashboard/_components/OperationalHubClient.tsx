@@ -20,6 +20,7 @@ import {
 } from './NavIcons'
 import { GarcomPinModal } from './GarcomPinModal'
 import { HubShortcutPinModal } from './HubShortcutPinModal'
+import { dashboardFetch } from '@/lib/dashboard-fetch.client'
 import {
   isGarcomPinSessionValid,
   isSalaoGarcomAccessPath,
@@ -209,6 +210,8 @@ export function OperationalHubClient({
   const [pendingShortcut, setPendingShortcut] = useState<PendingShortcut | null>(
     null
   )
+  const [hubPinError, setHubPinError] = useState<string | null>(null)
+  const [hubPinVerifying, setHubPinVerifying] = useState(false)
   const [livePendingOrders, setLivePendingOrders] = useState(pendingOrders)
 
   useEffect(() => {
@@ -339,14 +342,31 @@ export function OperationalHubClient({
       setPendingShortcut(null)
       return true
     }
-    const entry = hubPinConfig[pendingShortcut.shortcut]
-    if (!isHubPinActive(entry) || pin !== entry.pin) return false
-    rememberHubPinUnlock(
-      hubPinUnlockStorageKey(storeId, pendingShortcut.shortcut, entry.pin)
-    )
-    navigateToShortcut(pendingShortcut.href)
-    setPendingShortcut(null)
-    return true
+    if (hubPinVerifying) return false
+    setHubPinVerifying(true)
+    setHubPinError(null)
+    void dashboardFetch('/api/hub/pin/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ shortcut: pendingShortcut.shortcut, pin }),
+    })
+      .then(async (res) => {
+        const json = (await res.json().catch(() => ({}))) as { error?: string }
+        if (!res.ok) {
+          setHubPinError(json.error || 'PIN inválido.')
+          return
+        }
+        rememberHubPinUnlock(
+          hubPinUnlockStorageKey(storeId, pendingShortcut.shortcut)
+        )
+        navigateToShortcut(pendingShortcut.href)
+        setPendingShortcut(null)
+        setHubPinError(null)
+      })
+      .finally(() => {
+        setHubPinVerifying(false)
+      })
+    return false
   }
 
   return (
@@ -490,8 +510,13 @@ export function OperationalHubClient({
       {pendingShortcut?.kind === 'hub' ? (
         <HubShortcutPinModal
           shortcut={pendingShortcut.shortcut}
-          onCancel={() => setPendingShortcut(null)}
+          onCancel={() => {
+            setPendingShortcut(null)
+            setHubPinError(null)
+          }}
           onConfirm={confirmPin}
+          externalError={hubPinError}
+          verifying={hubPinVerifying}
         />
       ) : null}
       {pendingShortcut?.kind === 'garcom' ? (

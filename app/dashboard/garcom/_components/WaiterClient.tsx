@@ -403,6 +403,8 @@ export function WaiterClient({
   const skipNextAutoSaveRef = useRef(false)
   const cartRef = useRef<CartLine[]>([])
   const optimisticOrderIdRef = useRef<string | null>(null)
+  const persistContextKeyRef = useRef('')
+  const createRequestIdRef = useRef<string | null>(null)
   const editorSnapshotRef = useRef<EditorSnapshot>({
     table: '',
     sector: 'Salão',
@@ -880,6 +882,7 @@ export function WaiterClient({
         }
       })
       setActiveOrderId(o.id)
+      activeOrderIdRef.current = o.id
       setTable(parseTableFromNotes(o.notes) || '')
       setSector(parseSectorFromNotes(o.notes))
       setCustomerName(o.customer_name?.trim() || '')
@@ -893,6 +896,7 @@ export function WaiterClient({
       setCenterTab('map')
       if (openDrawer) setOrderDrawerOpen(true)
       setSelectedTableKey(`${parseSectorFromNotes(o.notes)}::${parseTableFromNotes(o.notes) || ''}`)
+      syncPersistContextKey()
     } finally {
       if (reqId === loadOrderRequestRef.current) {
         setLoadingOrder(false)
@@ -938,6 +942,8 @@ export function WaiterClient({
     autoSaveSkipRef.current += 1
     cartRef.current = []
     optimisticOrderIdRef.current = null
+    createRequestIdRef.current = null
+    syncPersistContextKey()
     setCenterTab('map')
     if (openDrawer) setOrderDrawerOpen(true)
   }
@@ -988,6 +994,8 @@ export function WaiterClient({
     autoSaveSkipRef.current += 1
     cartRef.current = []
     optimisticOrderIdRef.current = null
+    createRequestIdRef.current = null
+    syncPersistContextKey()
     setError(null)
     setSuccess(
       comandaName.trim()
@@ -1094,6 +1102,32 @@ export function WaiterClient({
     }
   }
 
+  function editorContextKey(snapshot: EditorSnapshot, orderId: string | null): string {
+    return `${snapshot.sector}::${snapshot.table.trim()}::${orderId ?? ''}`
+  }
+
+  function ensureCreateRequestId(): string {
+    if (!createRequestIdRef.current) {
+      createRequestIdRef.current = crypto.randomUUID()
+    }
+    return createRequestIdRef.current
+  }
+
+  function syncPersistContextKey() {
+    persistContextKeyRef.current = editorContextKey(
+      editorSnapshotRef.current,
+      activeOrderIdRef.current
+    )
+  }
+
+  function removeOptimisticOpenOrders() {
+    const staleId = optimisticOrderIdRef.current
+    optimisticOrderIdRef.current = null
+    setOpenOrders((prev) =>
+      prev.filter((o) => !o.id.startsWith('optimistic-') && o.id !== staleId)
+    )
+  }
+
   function upsertOptimisticOpenOrder(snapshot: EditorSnapshot) {
     const tableLabel = snapshot.table.trim()
     if (!tableLabel || snapshot.cart.length === 0) return
@@ -1118,18 +1152,24 @@ export function WaiterClient({
     })
   }
 
-  async function flushPersistOrder() {
+  async function flushPersistOrder(): Promise<boolean> {
     if (persistInFlightRef.current) {
       pendingPersistRef.current = true
-      return
+      return false
     }
     if (skipNextAutoSaveRef.current) {
       skipNextAutoSaveRef.current = false
-      return
+      return true
     }
 
-    const snapshot = editorSnapshotRef.current
-    if (!snapshot.table.trim() || snapshot.cart.length === 0) return
+    const snapshot: EditorSnapshot = {
+      ...editorSnapshotRef.current,
+      cart: [...editorSnapshotRef.current.cart],
+    }
+    if (!snapshot.table.trim() || snapshot.cart.length === 0) return true
+
+    const contextAtStart = editorContextKey(snapshot, activeOrderIdRef.current)
+    persistContextKeyRef.current = contextAtStart
 
     persistInFlightRef.current = true
     setAutoSaving(true)
@@ -1149,7 +1189,15 @@ export function WaiterClient({
         }
         if (!res.ok) {
           setError(json.error || 'Erro ao guardar.')
-          return
+          removeOptimisticOpenOrders()
+          return false
+        }
+        if (
+          editorContextKey(editorSnapshotRef.current, activeOrderIdRef.current) !==
+          contextAtStart
+        ) {
+          schedulePullOpenOrders(400)
+          return true
         }
         if (json.order) {
           const row = json.order as StoreOrderRow
@@ -1163,13 +1211,16 @@ export function WaiterClient({
             source: 'order_items',
           })
         }
-        return
+        return true
       }
 
       const res = await dashboardFetch('/api/waiter/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          ...payload,
+          client_request_id: ensureCreateRequestId(),
+        }),
       })
       const json = (await res.json().catch(() => ({}))) as {
         error?: string
@@ -1177,18 +1228,28 @@ export function WaiterClient({
       }
       if (!res.ok) {
         setError(json.error || 'Erro ao registar.')
-        return
+        removeOptimisticOpenOrders()
+        return false
+      }
+      if (
+        editorContextKey(editorSnapshotRef.current, activeOrderIdRef.current) !==
+        contextAtStart
+      ) {
+        schedulePullOpenOrders(400)
+        return true
       }
       if (json.order) {
         const row = json.order as StoreOrderRow
         const staleId = optimisticOrderIdRef.current
         optimisticOrderIdRef.current = null
+        createRequestIdRef.current = null
         pendingOpenOrderIdsRef.current.add(row.id)
         window.setTimeout(() => {
           pendingOpenOrderIdsRef.current.delete(row.id)
         }, 20_000)
         setActiveOrderId(row.id)
         activeOrderIdRef.current = row.id
+        syncPersistContextKey()
         skipNextAutoSaveRef.current = true
         autoSaveSkipRef.current += 1
         setOpenOrders((prev) =>
@@ -1204,6 +1265,7 @@ export function WaiterClient({
           source: 'order_items',
         })
       }
+      return true
     } finally {
       persistInFlightRef.current = false
       setAutoSaving(false)
@@ -1237,6 +1299,7 @@ export function WaiterClient({
       garcomId: effectiveGarcomId,
     }
     editorSnapshotRef.current = snapshot
+    syncPersistContextKey()
     upsertOptimisticOpenOrder(snapshot)
     void flushPersistOrder()
   }
@@ -1562,10 +1625,13 @@ export function WaiterClient({
       setError(null)
       setSuccess(null)
     }
-    await flushPersistOrder()
+    const ok = await flushPersistOrder()
     if (!silent) {
       setSaving(false)
+      if (!ok) return false
       if (activeOrderIdRef.current) setSuccess('Pedido registado.')
+    } else if (!ok) {
+      return false
     }
     if (!keepOpen && activeOrderIdRef.current) returnToTableMap()
     return Boolean(activeOrderIdRef.current)
@@ -1586,12 +1652,14 @@ export function WaiterClient({
       setError(null)
       setSuccess(null)
     }
-    await flushPersistOrder()
+    const ok = await flushPersistOrder()
     if (!silent) {
       setSaving(false)
-      setSuccess('Alterações guardadas.')
+      if (ok) {
+        setSuccess('Alterações guardadas.')
+      }
     }
-    return true
+    return ok
   }
 
   useEffect(() => {
@@ -1718,6 +1786,8 @@ export function WaiterClient({
     setNewComandaNameDraft('')
     setSelectedTableKey(null)
     setActiveOrderId(null)
+    activeOrderIdRef.current = null
+    createRequestIdRef.current = null
     setTable('')
     setCart([])
     setCustomerName('')
@@ -1725,12 +1795,30 @@ export function WaiterClient({
     setDiscountBrl(0)
     setDiscountOpen(false)
     setMenuSheetOpen(false)
+    syncPersistContextKey()
+  }
+
+  async function prepareCloseMesa(): Promise<boolean> {
+    if (cartRef.current.length === 0) return true
+    const ok = await flushPersistOrder()
+    if (!ok) {
+      setError('Guarda as alterações antes de fechar a mesa.')
+    }
+    return ok
+  }
+
+  async function openConfirmCloseMesa() {
+    if (!(await prepareCloseMesa())) return
+    setMesaCloseMode('cashier')
+    setConfirmCloseOpen(true)
   }
 
   async function submitWaiterCheckout(order: StoreOrderRow, payments?: OrderPaymentLine[]) {
     setBusyOrderId(order.id)
     setError(null)
     try {
+      if (!(await prepareCloseMesa())) return
+
       const body: Record<string, unknown> = {
         orderId: order.id,
         mode: mesaCloseMode,
@@ -2548,10 +2636,7 @@ export function WaiterClient({
             onStartNewForTable={() => startNewOrderForTable(table, sector, { openMenu: true })}
             onOpenMenu={openMenuForOrder}
             onPrint={printComanda}
-            onConfirmClose={() => {
-              setMesaCloseMode('cashier')
-              setConfirmCloseOpen(true)
-            }}
+            onConfirmClose={() => void openConfirmCloseMesa()}
             sticky
           />
         </aside>
@@ -3231,10 +3316,7 @@ export function WaiterClient({
                 onStartNewForTable={() => startNewOrderForTable(table, sector, { openMenu: true })}
                 onOpenMenu={openMenuForOrder}
                 onPrint={printComanda}
-                onConfirmClose={() => {
-              setMesaCloseMode('cashier')
-              setConfirmCloseOpen(true)
-            }}
+                onConfirmClose={() => void openConfirmCloseMesa()}
                 sticky={false}
               />
             </div>

@@ -13,6 +13,7 @@ import { touchWhatsAppOutboundContact } from '@/services/whatsapp-contacts.serve
 import {
   getWhatsAppAccessTokenForStore,
   getWhatsAppConfigForStore,
+  maybeMarkWhatsAppConfigAuthError,
 } from '@/services/whatsapp-config.server'
 import {
   logWhatsAppSendFailure,
@@ -39,6 +40,12 @@ async function recordOutboundSendFailure(
 ): Promise<void> {
   const codeSuffix = failure.errorCode != null ? ` (code ${failure.errorCode})` : ''
   console.warn(`[whatsapp outbound] flow=${flow}`, failure.error + codeSuffix)
+  await maybeMarkWhatsAppConfigAuthError(
+    db,
+    storeId,
+    failure.error,
+    failure.errorCode
+  ).catch(() => undefined)
   await logWhatsAppSendFailure(db, {
     storeId,
     customerPhone: toPhone,

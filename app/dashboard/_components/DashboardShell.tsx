@@ -27,6 +27,7 @@ import {
   type HubPinConfig,
 } from '@/lib/hub-shortcut-pin'
 import { HubPinAccessGate } from './HubPinAccessGate'
+import { OperationalRealtimeStatusBanner } from './OperationalRealtimeStatusBanner'
 import { DashboardLogoutButton } from './DashboardLogoutButton'
 import { ImpersonationBanner } from './ImpersonationBanner'
 import { DashboardPlanGuard } from './DashboardPlanGuard'
@@ -365,8 +366,8 @@ export function DashboardShell({
       ? false
       : isHubPinActive(pinEntry ?? undefined)
   const pinUnlockKey =
-    pinRequired && pinShortcut && storeId && pinEntry
-      ? hubPinUnlockStorageKey(storeId, pinShortcut, pinEntry.pin)
+    pinRequired && pinShortcut && storeId
+      ? hubPinUnlockStorageKey(storeId, pinShortcut)
       : null
   const isOperationalHub = pathname === '/dashboard'
   // "Administração" é o painel completo (descrição: "com sidebar"): mantém a
@@ -392,7 +393,6 @@ export function DashboardShell({
           pinUnlockKey={pinUnlockKey}
           pinRequired={pinRequired}
           shortcut={pinShortcut}
-          expectedPin={pinEntry?.pin ?? ''}
         >
           {children}
         </HubPinAccessGate>
@@ -483,6 +483,9 @@ export function DashboardShell({
       >
         {isAuthenticated && storeId ? (
           <StoreOperationalRealtimeBridge storeId={storeId} />
+        ) : null}
+        {isAuthenticated && storeId ? (
+          <OperationalRealtimeStatusBanner storeId={storeId} />
         ) : null}
         {isAuthenticated && notifyOnNewOrder && storeId ? (
           <DashboardOrderRealtimeNotifier

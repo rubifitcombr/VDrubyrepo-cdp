@@ -64,6 +64,45 @@ export async function processWhatsAppWebhook(
         continue
       }
 
+      if (field === 'account_update') {
+        const phoneNumberId =
+          val.phone_number_id != null
+            ? String(val.phone_number_id)
+            : val.metadata && typeof val.metadata === 'object'
+              ? String((val.metadata as { phone_number_id?: unknown }).phone_number_id ?? '')
+              : null
+        const eventName = String(val.event ?? val.event_type ?? '').trim()
+        let storeId: string | null = null
+        if (phoneNumberId) {
+          const { data } = await db
+            .from('store_whatsapp_config')
+            .select('store_id')
+            .eq('phone_number_id', phoneNumberId)
+            .eq('status', 'active')
+            .maybeSingle()
+          storeId = data ? String((data as { store_id: string }).store_id) : null
+        }
+        if (
+          storeId &&
+          /REMOVED|DISABLED|DELETED|DISCONNECT|UNREGISTER/i.test(eventName)
+        ) {
+          const { markWhatsAppConfigDisconnected } = await import(
+            '@/services/whatsapp-config.server'
+          )
+          await markWhatsAppConfigDisconnected(
+            db,
+            storeId,
+            `WhatsApp desligado (${eventName || 'account_update'}).`
+          )
+        }
+        await db.from('whatsapp_webhook_events').insert({
+          store_id: storeId,
+          event_type: field,
+          payload: val,
+        })
+        continue
+      }
+
       const metadata = val.metadata as Record<string, unknown> | undefined
       const phoneNumberId =
         metadata?.phone_number_id != null

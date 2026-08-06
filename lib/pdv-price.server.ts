@@ -20,7 +20,9 @@ import {
 import {
   addonTotalFromCatalog,
   loadAddonCatalogForProducts,
+  loadAddonGroupRulesForProducts,
   parseCheckoutAddons,
+  validateRequiredAddonPicks,
   type CheckoutAddonPick,
 } from '@/lib/public-checkout-pricing.server'
 
@@ -168,6 +170,7 @@ export async function pricePdvLinesFromCatalog(
   }
 
   const addonCatalog = await loadAddonCatalogForProducts(supabase, productIds)
+  const addonGroupRules = await loadAddonGroupRulesForProducts(supabase, productIds)
 
   const lines: PdvPricedLine[] = []
 
@@ -216,6 +219,15 @@ export async function pricePdvLinesFromCatalog(
 
     const clientUnit = round2(Math.max(0, Number(item.unit_price) || 0))
     const addonPicks = parseCheckoutAddons(item.addons)
+    const productLabel = row.name?.trim() || 'produto'
+    const rules = addonGroupRules.get(productId) ?? []
+    if (!validateRequiredAddonPicks(rules, addonPicks)) {
+      return {
+        ok: false,
+        error: `Seleciona os adicionais obrigatórios de «${productLabel}».`,
+        status: 400,
+      }
+    }
     const priced = resolveUnitPriceWithAddons({
       row,
       channel,

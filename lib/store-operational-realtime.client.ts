@@ -14,6 +14,12 @@ export function isOperationalSyncTabVisible(): boolean {
 }
 
 export const STORE_ORDERS_SYNC_EVENT = 'vyria-store-orders-sync'
+export const STORE_REALTIME_STATUS_EVENT = 'vyria-store-realtime-status'
+
+export type StoreRealtimeStatusDetail = {
+  storeId: string
+  status: 'connected' | 'degraded' | 'error'
+}
 
 export type StoreOrdersSyncSource =
   | 'orders'

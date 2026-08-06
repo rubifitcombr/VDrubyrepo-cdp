@@ -10,6 +10,12 @@ import { buildItemsSummaryWithLineTotals } from '@/lib/print/items-summary-forma
 import { isSupabaseRlsViolation } from '@/lib/supabase-rls-error'
 import { tryAutoThermalPrint } from '@/services/thermal-print.server'
 import { resolveGarcomForWaiterOrder } from '@/services/store-garcons.server'
+import { decrementProductStockForLines } from '@/services/inventory.server'
+import {
+  findWaiterOrderByIdempotencyKey,
+  loadWaiterOrderForStore,
+  recordWaiterOrderIdempotency,
+} from '@/services/waiter-order-idempotency.server'
 import {
   merchantHasScaleIntegration,
 } from '@/lib/merchant-api-gate.server'
@@ -17,6 +23,7 @@ import {
   mapPricedLinesToOrderItemRows,
   pricePdvLinesFromCatalog,
 } from '@/lib/pdv-price.server'
+import { resolveSalonTableForStore } from '@/lib/salon-table-resolve.server'
 
 type BodyItem = {
   product_id: string
@@ -69,6 +76,7 @@ export async function POST(request: Request) {
     items?: BodyItem[]
     discount_brl?: unknown
     garcom_id?: unknown
+    client_request_id?: unknown
   }
   try {
     body = await request.json()
@@ -149,6 +157,34 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: garcom.error }, { status: garcom.status })
   }
 
+  const existingIdempotent = await findWaiterOrderByIdempotencyKey(
+    supabase,
+    storeId,
+    body.client_request_id
+  )
+  if (existingIdempotent) {
+    const existingOrder = await loadWaiterOrderForStore(
+      supabase,
+      storeId,
+      existingIdempotent.orderId
+    )
+    if (existingOrder) {
+      return NextResponse.json({
+        ok: true,
+        orderId: existingOrder.id,
+        order: existingOrder,
+        idempotent: true,
+      })
+    }
+  }
+
+  const resolvedTable = await resolveSalonTableForStore(
+    supabase,
+    storeId,
+    table,
+    sector
+  )
+
   const { data: order, error: orderErr } = await supabase
     .from('orders')
     .insert({
@@ -162,6 +198,8 @@ export async function POST(request: Request) {
       notes,
       garcom_id: garcom.garcom_id,
       garcom_nome: garcom.garcom_nome,
+      salon_table_id: resolvedTable.tableId,
+      salon_table_sector: resolvedTable.sector,
     })
     .select('id')
     .single()
@@ -184,6 +222,12 @@ export async function POST(request: Request) {
 
   const orderId = String(order.id)
 
+  const stockResult = await decrementProductStockForLines(supabase, storeId, cleanItems)
+  if (!stockResult.ok) {
+    await supabase.from('orders').delete().eq('id', orderId)
+    return NextResponse.json({ error: stockResult.error }, { status: 409 })
+  }
+
   const rows = mapPricedLinesToOrderItemRows(orderId, cleanItems)
   const { error: itemsErr } = await supabase.from('order_items').insert(rows)
 
@@ -194,6 +238,13 @@ export async function POST(request: Request) {
       { status: 500 }
     )
   }
+
+  await recordWaiterOrderIdempotency(
+    supabase,
+    storeId,
+    body.client_request_id,
+    orderId
+  )
 
   const { data: full, error: fullErr } = await supabase
     .from('orders')

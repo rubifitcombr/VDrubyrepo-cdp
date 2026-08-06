@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { gateMerchantMasterFeature } from '@/lib/merchant-api-gate.server'
+import { enforceApiRateLimit } from '@/lib/api-security.server'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
 import { createServiceRoleClient } from '@/lib/supabase/service-role.server'
 import {
@@ -11,6 +12,9 @@ import { getUser } from '@/services/auth.server'
 export const dynamic = 'force-dynamic'
 
 export async function POST(request: Request) {
+  const limited = enforceApiRateLimit(request, 'whatsapp-send-test', 5, 60_000)
+  if (limited) return limited
+
   const user = await getUser()
   if (!user) {
     return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 })

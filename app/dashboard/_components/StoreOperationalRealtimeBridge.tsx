@@ -5,7 +5,9 @@ import { createClient } from '@/lib/supabase/client'
 import {
   dispatchStoreOrdersSync,
   OPERATIONAL_SYNC_DEBOUNCE_MS,
+  STORE_REALTIME_STATUS_EVENT,
   type StoreOrdersSyncSource,
+  type StoreRealtimeStatusDetail,
 } from '@/lib/store-operational-realtime.client'
 
 type Props = {
@@ -97,7 +99,23 @@ export function StoreOperationalRealtimeBridge({ storeId }: Props) {
           notify('caixa_movimentacoes', payload.eventType)
         }
       )
-      .subscribe()
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          window.dispatchEvent(
+            new CustomEvent<StoreRealtimeStatusDetail>(STORE_REALTIME_STATUS_EVENT, {
+              detail: { storeId: activeStoreId, status: 'connected' },
+            })
+          )
+          return
+        }
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          window.dispatchEvent(
+            new CustomEvent<StoreRealtimeStatusDetail>(STORE_REALTIME_STATUS_EVENT, {
+              detail: { storeId: activeStoreId, status: 'error' },
+            })
+          )
+        }
+      })
 
     return () => {
       if (debounceTimer) window.clearTimeout(debounceTimer)

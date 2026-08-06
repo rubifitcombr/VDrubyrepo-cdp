@@ -58,6 +58,11 @@ import {
 } from '@/services/loyalty.server'
 import { syncWhatsAppContactFromOrder } from '@/services/whatsapp-contacts.server'
 import { resolveRedeemPoints } from '@/lib/loyalty/utils'
+import { resolveSalonTableForStore } from '@/lib/salon-table-resolve.server'
+import {
+  recordCouponRedemption,
+  validateCheckoutCoupon,
+} from '@/services/promo-coupon.server'
 import {
   MENU_PRODUCT_SELECT,
   normalizeMenuProductRow,
@@ -447,10 +452,46 @@ export async function POST(req: NextRequest) {
 
     const orderStatus = 'pending'
     const orderSource = plan === 'START' ? 'site_start' : 'site_live'
+
+    let promoCouponCode: string | null = null
+    let promoDiscountBrl = 0
+    let couponPromotionId: string | null = null
+    const couponCodeRaw = toText(raw.couponCode)
+
+    if (couponCodeRaw) {
+      const couponResult = await validateCheckoutCoupon(checkoutDb, {
+        storeId: String(storeRow.id),
+        code: couponCodeRaw,
+        orderSubtotal: subtotal,
+        fulfillment,
+        customerPhone: phoneDigits,
+      })
+      if (!couponResult.ok) {
+        return NextResponse.json(
+          { error: couponResult.error },
+          { status: couponResult.status }
+        )
+      }
+      if (couponResult.freeShipping) {
+        if (fulfillment === 'delivery') {
+          deliveryCharge = 0
+        }
+      } else {
+        promoCouponCode = couponResult.code
+        promoDiscountBrl = couponResult.discountBrl
+        couponPromotionId = couponResult.promotionId
+      }
+    }
+
     const grossTotal = Math.round((subtotal + deliveryCharge) * 100) / 100
+    const grossAfterCoupon = Math.max(
+      0,
+      Math.round((grossTotal - promoDiscountBrl) * 100) / 100
+    )
 
     let loyaltyRedeemPoints = 0
     let loyaltyDiscountBrl = 0
+    let loyaltyPointsPerRealSnapshot: number | null = null
 
     const loyaltyPointsRequested = Math.max(
       0,
@@ -482,7 +523,7 @@ export async function POST(req: NextRequest) {
       const resolved = resolveRedeemPoints(
         loyaltyConfig,
         balance,
-        grossTotal,
+        grossAfterCoupon,
         loyaltyPointsRequested
       )
 
@@ -499,7 +540,20 @@ export async function POST(req: NextRequest) {
       loyaltyDiscountBrl = resolved.discountBrl
     }
 
-    const total = Math.max(0, Math.round((grossTotal - loyaltyDiscountBrl) * 100) / 100)
+    if (hasFeature(plan, 'loyalty') && phoneDigits.length >= 10) {
+      const earnConfig = await getOrCreateLoyaltyConfig(
+        checkoutDb,
+        String(storeRow.id)
+      )
+      if (earnConfig.enabled) {
+        loyaltyPointsPerRealSnapshot = earnConfig.points_per_real
+      }
+    }
+
+    const total = Math.max(
+      0,
+      Math.round((grossAfterCoupon - loyaltyDiscountBrl) * 100) / 100
+    )
     const itemsSummary = buildItemsSummaryWithLineTotals(
       pricedItems.map((l) => ({
         quantity: l.quantity,
@@ -509,6 +563,7 @@ export async function POST(req: NextRequest) {
     )
 
     let dineInSector = 'Salão'
+    let salonTableId: string | null = null
     if (fulfillment === 'dine_in') {
       const tableLabel = tableMesa.trim().slice(0, 42)
       const { data: tableRows } = await checkoutDb
@@ -526,6 +581,16 @@ export async function POST(req: NextRequest) {
         tableSetorHint
       )
 
+      if (configured.length === 0) {
+        return NextResponse.json(
+          {
+            error:
+              'Pedido no salão indisponível. Esta loja ainda não configurou mesas no painel.',
+          },
+          { status: 400 }
+        )
+      }
+
       // Se a loja tem mesas configuradas, a mesa digitada tem de existir no mapa.
       if (
         configured.length > 0 &&
@@ -539,6 +604,15 @@ export async function POST(req: NextRequest) {
           { status: 400 }
         )
       }
+
+      const resolvedTable = await resolveSalonTableForStore(
+        checkoutDb,
+        String(storeRow.id),
+        tableLabel,
+        tableSetorHint || dineInSector
+      )
+      salonTableId = resolvedTable.tableId
+      dineInSector = resolvedTable.sector
     }
 
     const orderNotes =
@@ -605,6 +679,11 @@ export async function POST(req: NextRequest) {
         total,
         loyalty_redeem_points: loyaltyRedeemPoints,
         loyalty_discount_brl: loyaltyDiscountBrl,
+        loyalty_points_per_real_snapshot: loyaltyPointsPerRealSnapshot,
+        promo_coupon_code: promoCouponCode,
+        promo_discount_brl: promoDiscountBrl,
+        salon_table_id: fulfillment === 'dine_in' ? salonTableId : null,
+        salon_table_sector: fulfillment === 'dine_in' ? dineInSector : null,
         items_summary: itemsSummary,
         status: orderStatus,
         source: insertSource,
@@ -633,6 +712,16 @@ export async function POST(req: NextRequest) {
 
     const order = { id: created.orderId }
 
+    if (couponPromotionId && promoCouponCode) {
+      void recordCouponRedemption(checkoutDb, {
+        storeId: String(storeRow.id),
+        promotionId: couponPromotionId,
+        couponCode: promoCouponCode,
+        orderId: String(order.id),
+        customerPhone: phoneDigits,
+      }).catch((e) => console.warn('[promo coupon] redemption', e))
+    }
+
     if (customerPhone) {
       void syncWhatsAppContactFromOrder(checkoutDb, {
         store_id: String(storeRow.id),
@@ -649,7 +738,7 @@ export async function POST(req: NextRequest) {
           order_id: String(order.id),
           customer_phone: phoneDigits,
           customer_name: customerName,
-          order_total_before_discount: grossTotal,
+          order_total_before_discount: grossAfterCoupon,
           requested_points: loyaltyRedeemPoints,
         })
       } catch (loyaltyErr) {
@@ -772,6 +861,7 @@ export async function POST(req: NextRequest) {
       storeName: String(storeRow.name || ''),
       subtotal,
       deliveryCharge,
+      promoDiscount: promoDiscountBrl,
       loyaltyDiscount: loyaltyDiscountBrl,
       loyaltyPointsRedeemed: loyaltyRedeemPoints,
       orderTotal: total,

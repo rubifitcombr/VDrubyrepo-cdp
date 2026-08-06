@@ -8,6 +8,8 @@ import type {
   MarketingSendRow,
   StoreMarketingConfig,
 } from '@/lib/marketing/types'
+import { hasFeature, parsePlan } from '@/lib/plan'
+import { readStorePlano } from '@/lib/store-columns'
 import { sendWhatsAppImageMessage } from '@/lib/whatsapp/graph-api.server'
 import { normalizePhoneE164 } from '@/services/loyalty.server'
 import {
@@ -21,6 +23,56 @@ import {
 import { logWhatsAppSendFailure } from '@/services/whatsapp-send-failures.server'
 
 export const MARKETING_MAX_RECIPIENTS_PER_CAMPAIGN = 50
+
+async function assertStoreHasMarketingFeature(
+  db: SupabaseClient,
+  storeId: string
+): Promise<void> {
+  const { data: store, error } = await db
+    .from('stores')
+    .select('plano, plan')
+    .eq('id', storeId)
+    .maybeSingle()
+
+  if (error || !store) {
+    throw new Error('Loja não encontrada.')
+  }
+
+  const plan = parsePlan(readStorePlano(store as Record<string, unknown>))
+  if (!hasFeature(plan, 'marketing')) {
+    throw new Error('Marketing indisponível para o plano actual desta loja.')
+  }
+}
+
+async function isCampaignCancelled(
+  db: SupabaseClient,
+  storeId: string,
+  campaignId: string
+): Promise<boolean> {
+  const { data } = await db
+    .from('marketing_campaigns')
+    .select('status')
+    .eq('id', campaignId)
+    .eq('store_id', storeId)
+    .maybeSingle()
+
+  return String((data as { status?: string } | null)?.status ?? '') === 'cancelled'
+}
+
+async function isContactOptedOut(
+  db: SupabaseClient,
+  storeId: string,
+  phone: string
+): Promise<boolean> {
+  const { data } = await db
+    .from('store_whatsapp_contacts')
+    .select('marketing_opt_out')
+    .eq('store_id', storeId)
+    .eq('customer_phone', phone)
+    .maybeSingle()
+
+  return (data as { marketing_opt_out?: boolean } | null)?.marketing_opt_out === true
+}
 
 function currentYearMonthUtc(): string {
   const d = new Date()
@@ -368,8 +420,8 @@ export async function cancelMarketingCampaign(
 ): Promise<MarketingCampaignRow> {
   const campaign = await getMarketingCampaign(db, storeId, campaignId)
   if (!campaign) throw new Error('Campanha não encontrada.')
-  if (campaign.status !== 'scheduled') {
-    throw new Error('Só é possível cancelar campanhas agendadas.')
+  if (campaign.status !== 'scheduled' && campaign.status !== 'sending') {
+    throw new Error('Só é possível cancelar campanhas agendadas ou em envio.')
   }
 
   const { data, error } = await db
@@ -399,6 +451,8 @@ export async function dispatchMarketingCampaign(
   storeId: string,
   campaignId: string
 ): Promise<{ sent: number; failed: number; eligible: number }> {
+  await assertStoreHasMarketingFeature(db, storeId)
+
   const config = await getOrCreateMarketingConfig(db, storeId)
   if (!config.enabled) {
     throw new Error('Marketing desactivado para esta loja.')
@@ -406,9 +460,11 @@ export async function dispatchMarketingCampaign(
 
   const campaign = await getMarketingCampaign(db, storeId, campaignId)
   if (!campaign) throw new Error('Campanha não encontrada.')
-  if (campaign.status === 'sending') throw new Error('Campanha já em envio.')
-  if (campaign.status === 'completed' || campaign.status === 'cancelled') {
+  if (campaign.status === 'completed' || campaign.status === 'failed') {
     throw new Error('Campanha já finalizada.')
+  }
+  if (campaign.status === 'cancelled') {
+    throw new Error('Campanha cancelada.')
   }
 
   const waConfig = await getWhatsAppConfigForStore(db, storeId)
@@ -426,7 +482,8 @@ export async function dispatchMarketingCampaign(
   )
 
   const now = new Date().toISOString()
-  await db
+
+  const { data: claimed, error: claimErr } = await db
     .from('marketing_campaigns')
     .update({
       status: 'sending',
@@ -435,11 +492,37 @@ export async function dispatchMarketingCampaign(
       updated_at: now,
     })
     .eq('id', campaignId)
+    .eq('store_id', storeId)
+    .eq('status', 'scheduled')
+    .select('id')
+    .maybeSingle()
+
+  if (claimErr) {
+    throw new Error(claimErr.message || 'Não foi possível iniciar o envio.')
+  }
+
+  if (!claimed) {
+    const fresh = await getMarketingCampaign(db, storeId, campaignId)
+    if (fresh?.status === 'sending') {
+      throw new Error('Campanha já em envio.')
+    }
+    if (fresh?.status === 'cancelled') {
+      throw new Error('Campanha cancelada.')
+    }
+    throw new Error('Campanha já finalizada ou em processamento.')
+  }
 
   let sent = 0
   let failed = 0
 
   for (const contact of audience) {
+    if (await isCampaignCancelled(db, storeId, campaignId)) {
+      break
+    }
+    if (await isContactOptedOut(db, storeId, contact.customer_phone)) {
+      continue
+    }
+
     const caption = personalizeMessage(campaign.body_text, contact.customer_name)
     const result = await sendWhatsAppImageMessage({
       phoneNumberId: waConfig.phone_number_id,
@@ -498,13 +581,20 @@ export async function dispatchMarketingCampaign(
   }
 
   const completedAt = new Date().toISOString()
+  const finalStatus =
+    (await isCampaignCancelled(db, storeId, campaignId))
+      ? 'cancelled'
+      : failed > 0 && sent === 0
+        ? 'failed'
+        : 'completed'
+
   await db
     .from('marketing_campaigns')
     .update({
-      status: failed > 0 && sent === 0 ? 'failed' : 'completed',
+      status: finalStatus,
       sent_count: sent,
       failed_count: failed,
-      completed_at: completedAt,
+      completed_at: finalStatus === 'completed' || finalStatus === 'failed' ? completedAt : null,
       updated_at: completedAt,
     })
     .eq('id', campaignId)

@@ -28,10 +28,17 @@ export async function POST(req: Request) {
   const rawBody = await req.text()
   const signature = req.headers.get('x-hub-signature-256')
 
+  if (process.env.NODE_ENV === 'production' && !process.env.META_APP_SECRET?.trim()) {
+    console.error('[webhooks/whatsapp] META_APP_SECRET em falta em produção.')
+    return NextResponse.json({ error: 'Webhook não configurado.' }, { status: 503 })
+  }
+
   if (process.env.META_APP_SECRET?.trim()) {
     if (!verifyMetaWebhookSignature(rawBody, signature)) {
       return NextResponse.json({ error: 'Assinatura inválida.' }, { status: 401 })
     }
+  } else if (process.env.NODE_ENV !== 'production') {
+    console.warn('[webhooks/whatsapp] META_APP_SECRET ausente — assinatura não validada (dev).')
   }
 
   let json: unknown

@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useState, useSyncExternalStore } from 'react'
+import { dashboardFetch } from '@/lib/dashboard-fetch.client'
 import {
   HUB_PIN_SHORTCUTS,
   isHubPinUnlockRemembered,
@@ -11,26 +12,38 @@ import {
 
 function HubShortcutPinPrompt({
   shortcut,
-  expectedPin,
   onUnlock,
 }: {
   shortcut: HubPinShortcut
-  expectedPin: string
   onUnlock: () => void
 }) {
   const [pin, setPin] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [verifying, setVerifying] = useState(false)
   const meta = HUB_PIN_SHORTCUTS.find((item) => item.key === shortcut)
   const label = meta?.label ?? 'Atalho'
 
   function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
-    if (pin !== expectedPin) {
-      setError('PIN inválido.')
-      return
-    }
+    if (verifying) return
+    setVerifying(true)
     setError(null)
-    onUnlock()
+    void dashboardFetch('/api/hub/pin/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ shortcut, pin }),
+    })
+      .then(async (res) => {
+        const json = (await res.json().catch(() => ({}))) as { error?: string }
+        if (!res.ok) {
+          setError(json.error || 'PIN inválido.')
+          return
+        }
+        onUnlock()
+      })
+      .finally(() => {
+        setVerifying(false)
+      })
   }
 
   return (
@@ -59,7 +72,8 @@ function HubShortcutPinPrompt({
           inputMode="numeric"
           maxLength={4}
           autoFocus
-          className="mt-5 w-full rounded-2xl border border-[var(--card-border)] px-4 py-3 text-center text-2xl font-bold tracking-[0.35em] text-[#1a1614] outline-none transition focus:border-[var(--dash-primary)]/40 focus:ring-2 focus:ring-[var(--dash-primary)]/12"
+          disabled={verifying}
+          className="mt-5 w-full rounded-2xl border border-[var(--card-border)] px-4 py-3 text-center text-2xl font-bold tracking-[0.35em] text-[#1a1614] outline-none transition focus:border-[var(--dash-primary)]/40 focus:ring-2 focus:ring-[var(--dash-primary)]/12 disabled:opacity-60"
         />
         {error ? (
           <p className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
@@ -75,10 +89,10 @@ function HubShortcutPinPrompt({
           </Link>
           <button
             type="submit"
-            disabled={pin.length !== 4}
+            disabled={pin.length !== 4 || verifying}
             className="flex-1 rounded-xl bg-[var(--dash-primary)] py-2.5 text-sm font-semibold text-white disabled:opacity-50"
           >
-            Confirmar PIN
+            {verifying ? 'A verificar…' : 'Confirmar PIN'}
           </button>
         </div>
       </form>
@@ -98,13 +112,11 @@ export function HubPinAccessGate({
   pinUnlockKey,
   pinRequired,
   shortcut,
-  expectedPin,
   children,
 }: {
   pinUnlockKey: string | null
   pinRequired: boolean
   shortcut: HubPinShortcut | null
-  expectedPin: string
   children: React.ReactNode
 }) {
   const isClient = useIsClient()
@@ -138,7 +150,6 @@ export function HubPinAccessGate({
   return (
     <HubShortcutPinPrompt
       shortcut={shortcut}
-      expectedPin={expectedPin}
       onUnlock={() => {
         rememberHubPinUnlock(pinUnlockKey)
         setManualUnlockKey(pinUnlockKey)

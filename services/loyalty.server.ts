@@ -15,6 +15,7 @@ import {
   calculateMaxRedeemablePoints,
   resolveRedeemPoints,
 } from '@/lib/loyalty/utils'
+import { sendLoyaltyDeliveredWhatsAppNotification } from '@/services/loyalty-whatsapp.server'
 
 export function normalizePhoneE164(raw: string): string {
   return raw.replace(/\D/g, '')
@@ -345,11 +346,37 @@ export async function adjustLoyaltyPoints(
     updated_at: now,
   }
 
-  const { data: account, error: upsertErr } = await db
-    .from('loyalty_accounts')
-    .upsert(accountPatch, { onConflict: 'store_id,customer_phone' })
-    .select('*')
-    .single()
+  let account: Record<string, unknown> | null = null
+  let upsertErr: { message?: string } | null = null
+
+  if (input.points_delta < 0) {
+    const debit = Math.abs(input.points_delta)
+    if (existing) {
+      const { data, error } = await db
+        .from('loyalty_accounts')
+        .update(accountPatch)
+        .eq('store_id', storeId)
+        .eq('customer_phone', phone)
+        .gte('points_balance', debit)
+        .select('*')
+        .maybeSingle()
+      account = data as Record<string, unknown> | null
+      upsertErr = error
+      if (!account && !error) {
+        throw new Error('Saldo insuficiente para este ajuste.')
+      }
+    } else {
+      throw new Error('Saldo insuficiente para este ajuste.')
+    }
+  } else {
+    const { data, error } = await db
+      .from('loyalty_accounts')
+      .upsert(accountPatch, { onConflict: 'store_id,customer_phone' })
+      .select('*')
+      .single()
+    account = data as Record<string, unknown> | null
+    upsertErr = error
+  }
 
   if (upsertErr || !account) {
     throw new Error(upsertErr?.message || 'Falha ao atualizar saldo.')
@@ -421,25 +448,41 @@ export async function redeemLoyaltyPointsForCheckout(
   const nextBalance = balance - points
   const now = new Date().toISOString()
 
-  const { error: upsertErr } = await db.from('loyalty_accounts').upsert(
-    {
-      store_id: input.store_id,
-      customer_phone: phone,
-      customer_name:
-        input.customer_name?.trim() ||
-        (accountRow as { customer_name?: string } | null)?.customer_name ||
-        null,
-      points_balance: nextBalance,
-      lifetime_earned: Number(
-        (accountRow as { lifetime_earned?: number } | null)?.lifetime_earned ?? 0
-      ),
-      lifetime_redeemed:
-        Number((accountRow as { lifetime_redeemed?: number } | null)?.lifetime_redeemed ?? 0) +
-        points,
-      updated_at: now,
-    },
-    { onConflict: 'store_id,customer_phone' }
-  )
+  const accountPatch = {
+    store_id: input.store_id,
+    customer_phone: phone,
+    customer_name:
+      input.customer_name?.trim() ||
+      (accountRow as { customer_name?: string } | null)?.customer_name ||
+      null,
+    points_balance: nextBalance,
+    lifetime_earned: Number(
+      (accountRow as { lifetime_earned?: number } | null)?.lifetime_earned ?? 0
+    ),
+    lifetime_redeemed:
+      Number((accountRow as { lifetime_redeemed?: number } | null)?.lifetime_redeemed ?? 0) +
+      points,
+    updated_at: now,
+  }
+
+  let upsertErr: { message?: string } | null = null
+
+  if (accountRow) {
+    const { data: debited, error } = await db
+      .from('loyalty_accounts')
+      .update(accountPatch)
+      .eq('store_id', input.store_id)
+      .eq('customer_phone', phone)
+      .gte('points_balance', points)
+      .select('customer_phone')
+      .maybeSingle()
+    upsertErr = error
+    if (!debited && !error) {
+      throw new Error('Saldo insuficiente para resgatar os pontos pedidos.')
+    }
+  } else {
+    throw new Error('Saldo insuficiente para resgatar os pontos pedidos.')
+  }
 
   if (upsertErr) throw new Error(upsertErr.message)
 
@@ -467,6 +510,7 @@ export async function earnLoyaltyForDeliveredOrder(
     customer_name: string | null | undefined
     order_total: number
     order_created_at?: string
+    points_per_real?: number | null
   }
 ): Promise<LoyaltyDeliveredEarnResult | null> {
   const phone = normalizePhoneE164(String(input.customer_phone || ''))
@@ -485,10 +529,13 @@ export async function earnLoyaltyForDeliveredOrder(
 
   if (existingEarn) return null
 
+  const rate =
+    input.points_per_real != null && Number.isFinite(Number(input.points_per_real))
+      ? Number(input.points_per_real)
+      : config.points_per_real
+
   const points =
-    input.order_total > 0
-      ? calculateEarnPoints(input.order_total, config.points_per_real)
-      : 0
+    input.order_total > 0 ? calculateEarnPoints(input.order_total, rate) : 0
 
   if (points <= 0 && config.welcome_bonus_points <= 0) return null
 
@@ -576,7 +623,83 @@ export async function earnLoyaltyForDeliveredOrder(
   }
 }
 
-import { sendLoyaltyDeliveredWhatsAppNotification } from '@/services/loyalty-whatsapp.server'
+/** Estorna pontos resgatados quando um pedido é cancelado. */
+export async function reverseLoyaltyRedeemForCancelledOrder(
+  db: SupabaseClient,
+  storeId: string,
+  orderId: string
+): Promise<void> {
+  const { data: order } = await db
+    .from('orders')
+    .select('loyalty_redeem_points, customer_phone, customer_name')
+    .eq('id', orderId)
+    .eq('store_id', storeId)
+    .maybeSingle()
+
+  if (!order) return
+
+  const points = Math.max(
+    0,
+    Math.floor(Number((order as { loyalty_redeem_points?: number }).loyalty_redeem_points ?? 0))
+  )
+  if (points <= 0) return
+
+  const phone = normalizePhoneE164(
+    String((order as { customer_phone?: string | null }).customer_phone ?? '')
+  )
+  if (!phone) return
+
+  const { data: existingReverse } = await db
+    .from('loyalty_ledger')
+    .select('id')
+    .eq('store_id', storeId)
+    .eq('order_id', orderId)
+    .eq('kind', 'adjust')
+    .ilike('note', '%Estorno resgate%')
+    .maybeSingle()
+
+  if (existingReverse) return
+
+  const { data: accountRow } = await db
+    .from('loyalty_accounts')
+    .select('points_balance, lifetime_redeemed, customer_name')
+    .eq('store_id', storeId)
+    .eq('customer_phone', phone)
+    .maybeSingle()
+
+  const currentBalance = Number(
+    (accountRow as { points_balance?: number } | null)?.points_balance ?? 0
+  )
+  const now = new Date().toISOString()
+
+  await db.from('loyalty_accounts').upsert(
+    {
+      store_id: storeId,
+      customer_phone: phone,
+      customer_name:
+        (order as { customer_name?: string | null }).customer_name?.trim() ||
+        (accountRow as { customer_name?: string } | null)?.customer_name ||
+        null,
+      points_balance: currentBalance + points,
+      lifetime_redeemed: Math.max(
+        0,
+        Number((accountRow as { lifetime_redeemed?: number } | null)?.lifetime_redeemed ?? 0) -
+          points
+      ),
+      updated_at: now,
+    },
+    { onConflict: 'store_id,customer_phone' }
+  )
+
+  await db.from('loyalty_ledger').insert({
+    store_id: storeId,
+    customer_phone: phone,
+    kind: 'adjust',
+    points_delta: points,
+    order_id: orderId,
+    note: `Estorno resgate — pedido cancelado (+${points} pts)`,
+  })
+}
 
 /** Dispara crédito de pontos a partir do pedido na base de dados. */
 export async function triggerLoyaltyEarnForDeliveredOrder(
@@ -586,7 +709,7 @@ export async function triggerLoyaltyEarnForDeliveredOrder(
 ): Promise<void> {
   const { data: order } = await db
     .from('orders')
-    .select('customer_phone, customer_name, total, created_at')
+    .select('customer_phone, customer_name, total, created_at, loyalty_points_per_real_snapshot')
     .eq('id', orderId)
     .eq('store_id', storeId)
     .maybeSingle()
@@ -600,6 +723,8 @@ export async function triggerLoyaltyEarnForDeliveredOrder(
     customer_name: (order as { customer_name?: string | null }).customer_name,
     order_total: Number((order as { total?: number }).total ?? 0),
     order_created_at: String((order as { created_at?: string }).created_at || ''),
+    points_per_real: (order as { loyalty_points_per_real_snapshot?: number | null })
+      .loyalty_points_per_real_snapshot,
   })
 
   if (!earn) return

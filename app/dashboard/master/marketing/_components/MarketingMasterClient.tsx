@@ -445,7 +445,7 @@ export function MarketingMasterClient({ storeId }: { storeId: string }) {
                     </p>
                   ) : null}
                 </div>
-                {c.status === 'scheduled' ? (
+                {c.status === 'scheduled' || c.status === 'sending' ? (
                   <button
                     type="button"
                     disabled={saving}

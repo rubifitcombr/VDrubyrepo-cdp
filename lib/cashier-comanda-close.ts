@@ -1,11 +1,15 @@
 import { isPdvWaiterComandaSource } from '@/lib/cashier-pro-delivery-scope'
 
+/** Marcador gravado em `orders.notes` ao fechar comanda no caixa (idempotência). */
+export const CAIXA_PAYMENT_CLOSE_MARKER = '[Caixa] Fechado em '
+
 /** Pagamento registado no caixa / PDV / garçom (comanda financeiramente fechada). */
 export function orderPaymentRegisteredInCaixa(
   notes: string | null | undefined
 ): boolean {
   const text = String(notes ?? '')
   return (
+    text.includes(CAIXA_PAYMENT_CLOSE_MARKER) ||
     /\[Caixa\] Fechado em /i.test(text) ||
     /\[PDV\] Recebido em /i.test(text) ||
     /\[Garçom\] Recebido em /i.test(text)

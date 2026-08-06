@@ -52,6 +52,8 @@ export function PixPaymentPanel({
     return () => window.clearInterval(t)
   }, [secondsLeft])
 
+  const pollingEnabled = secondsLeft > 0
+
   const copyPix = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(copyPaste)
@@ -93,6 +95,7 @@ export function PixPaymentPanel({
   }, [accessToken, onReportedPaid, orderId, storeSlug])
 
   useEffect(() => {
+    if (!pollingEnabled) return
     const first = window.setTimeout(() => {
       void checkPaymentStatus()
     }, 0)
@@ -103,7 +106,7 @@ export function PixPaymentPanel({
       window.clearTimeout(first)
       window.clearInterval(t)
     }
-  }, [checkPaymentStatus])
+  }, [checkPaymentStatus, pollingEnabled])
 
   async function handlePaid() {
     setStatusError(null)

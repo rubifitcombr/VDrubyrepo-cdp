@@ -167,10 +167,9 @@ export function isHubPinActive(entry: HubPinEntry | undefined): entry is HubPinE
 
 export function hubPinUnlockStorageKey(
   storeId: string,
-  shortcut: HubPinShortcut,
-  pin: string
+  shortcut: HubPinShortcut
 ): string {
-  return `vyria-hub-pin:${storeId}:${shortcut}:${pin}`
+  return `vyria-hub-pin:${storeId}:${shortcut}`
 }
 
 export function isHubPinUnlockRemembered(key: string | null | undefined): boolean {
