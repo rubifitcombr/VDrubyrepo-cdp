@@ -28,12 +28,12 @@ export function HubShortcutPinModal({
   function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     if (verifying) return
-    const ok = onConfirm(pin)
-    if (!ok) {
-      if (!externalError) setError('PIN inválido.')
-      return
-    }
     setError(null)
+    const ok = onConfirm(pin)
+    // `true` = verificação assíncrona iniciada ou sucesso síncrono; não mostrar erro local.
+    if (!ok && !externalError) {
+      setError('PIN inválido.')
+    }
   }
 
   return (

@@ -32,12 +32,12 @@ export function GarcomPinModal({
 
   function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
-    const ok = onConfirm(pin)
-    if (!ok) {
-      setError('PIN inválido. Use o PIN do seu cadastro de garçom.')
-      return
-    }
+    if (verifying) return
     setError(null)
+    const ok = onConfirm(pin)
+    if (!ok && !externalError) {
+      setError('PIN inválido. Use o PIN do seu cadastro de garçom.')
+    }
   }
 
   return (

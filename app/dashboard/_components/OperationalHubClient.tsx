@@ -371,7 +371,7 @@ export function OperationalHubClient({
         .finally(() => {
           setGarcomPinVerifying(false)
         })
-      return false
+      return true
     }
     if (hubPinVerifying) return false
     setHubPinVerifying(true)
@@ -397,7 +397,7 @@ export function OperationalHubClient({
       .finally(() => {
         setHubPinVerifying(false)
       })
-    return false
+    return true
   }
 
   return (

@@ -86,7 +86,7 @@ export function GarcomSalaoPinGate({
           .finally(() => {
             setVerifying(false)
           })
-        return false
+        return true
       }}
       externalError={pinError}
       verifying={verifying}

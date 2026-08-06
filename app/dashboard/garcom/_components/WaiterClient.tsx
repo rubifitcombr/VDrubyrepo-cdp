@@ -239,6 +239,19 @@ function ordersOnTable(
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 }
 
+/** Comandas que o garçom autenticado pode abrir (próprias + QR/autoatendimento sem garçom). */
+function accessibleOrdersOnTable(
+  openOrders: StoreOrderRow[],
+  tableName: string,
+  amb: string,
+  configuredTables: StoreTableDTO[],
+  garcomId: string | null
+): StoreOrderRow[] {
+  const onTable = ordersOnTable(openOrders, tableName, amb, configuredTables)
+  if (!garcomId) return onTable
+  return onTable.filter((o) => !o.garcom_id || o.garcom_id === garcomId)
+}
+
 function tableState(
   openOrders: StoreOrderRow[],
   tableName: string,
@@ -483,7 +496,9 @@ export function WaiterClient({
 
   const visibleOpenOrders = useMemo(() => {
     if (!garcomSessionLocked || !pinSession) return openOrders
-    return openOrders.filter((o) => o.garcom_id === pinSession.garcomId)
+    return openOrders.filter(
+      (o) => !o.garcom_id || o.garcom_id === pinSession.garcomId
+    )
   }, [openOrders, garcomSessionLocked, pinSession])
 
   function trocarGarcomPinSession() {
@@ -1048,10 +1063,18 @@ export function WaiterClient({
 
   async function handleTablePress(tb: StoreTableDTO) {
     const allOnTable = ordersOnTable(openOrders, tb.name, tb.ambiente, tables)
-    const myOnTable =
-      garcomSessionLocked && pinSession
-        ? allOnTable.filter((o) => o.garcom_id === pinSession.garcomId)
-        : allOnTable
+    const garcomId = garcomSessionLocked && pinSession ? pinSession.garcomId : null
+    const accessibleOnTable = accessibleOrdersOnTable(
+      openOrders,
+      tb.name,
+      tb.ambiente,
+      tables,
+      garcomId
+    )
+    const onlyForeignGarcom =
+      garcomId != null &&
+      allOnTable.length > 0 &&
+      allOnTable.every((o) => o.garcom_id && o.garcom_id !== garcomId)
     const mobile = isMobileViewport()
 
     setTable(tb.name)
@@ -1060,24 +1083,21 @@ export function WaiterClient({
 
     if (allOnTable.length === 0) {
       selectFreeTable(tb.name, tb.ambiente, !mobile)
-    } else if (garcomSessionLocked && pinSession && myOnTable.length === 0) {
+    } else if (onlyForeignGarcom) {
       setError(`Mesa ${tb.name} tem comanda de outro garçom.`)
       setTableActionSheetOpen(false)
       return
-    } else if (myOnTable.length > 1) {
+    } else if (accessibleOnTable.length > 1) {
       setComandaPickerTable(tb)
       setComandaPickerOpen(true)
       setNewComandaNameDraft('')
       setTableActionSheetOpen(false)
-    } else if (myOnTable.length === 1) {
+    } else if (accessibleOnTable.length === 1) {
       invalidateOrderEditorLoad()
-      await loadOrderEditor(myOnTable[0], !mobile)
-    } else if (allOnTable.length === 1 && allOnTable[0]) {
-      invalidateOrderEditorLoad()
-      await loadOrderEditor(allOnTable[0], !mobile)
+      await loadOrderEditor(accessibleOnTable[0], !mobile)
     }
 
-    if (mobile && myOnTable.length <= 1) {
+    if (mobile && accessibleOnTable.length <= 1) {
       setTableActionSheetOpen(true)
     }
   }
@@ -3430,11 +3450,12 @@ export function WaiterClient({
         <GarcomMesaComandasPanel
           tableName={comandaPickerTable.name}
           sector={comandaPickerTable.ambiente}
-          comandas={ordersOnTable(
-            visibleOpenOrders,
+          comandas={accessibleOrdersOnTable(
+            openOrders,
             comandaPickerTable.name,
             comandaPickerTable.ambiente,
-            tables
+            tables,
+            garcomSessionLocked && pinSession ? pinSession.garcomId : null
           )}
           activeOrderId={activeOrderId}
           newComandaName={newComandaNameDraft}
