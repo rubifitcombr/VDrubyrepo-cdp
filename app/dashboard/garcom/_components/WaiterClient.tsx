@@ -493,6 +493,7 @@ export function WaiterClient({
   const avulsaPopoverRef = useRef<HTMLDivElement>(null)
   const menuSearchDesktopRef = useRef<HTMLInputElement>(null)
   const menuSearchMobileRef = useRef<HTMLInputElement>(null)
+  const loadOrderRequestRef = useRef(0)
 
   useEffect(() => {
     setTables(initialTables)
@@ -500,6 +501,15 @@ export function WaiterClient({
   useEffect(() => {
     tablesRef.current = tables
   }, [tables])
+
+  useEffect(() => {
+    if (!menuSheetOpen) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [menuSheetOpen])
 
   const sortOpenOrders = useCallback((rows: StoreOrderRow[]) => {
     return [...rows].sort(
@@ -753,7 +763,13 @@ export function WaiterClient({
   const showDesktopOrderAside =
     Boolean(table.trim()) || cart.length > 0 || hasSavedOrder || loadingOrder
 
+  function invalidateOrderEditorLoad() {
+    loadOrderRequestRef.current += 1
+    setLoadingOrder(false)
+  }
+
   async function loadOrderEditor(order: StoreOrderRow, openDrawer = true) {
+    const reqId = ++loadOrderRequestRef.current
     setLoadingOrder(true)
     setError(null)
     try {
@@ -763,6 +779,7 @@ export function WaiterClient({
         order?: StoreOrderRow
         items?: OrderItemDTO[]
       }
+      if (reqId !== loadOrderRequestRef.current) return
       if (!res.ok) {
         setError(json.error || 'Não foi possível carregar o pedido.')
         return
@@ -798,11 +815,14 @@ export function WaiterClient({
       if (openDrawer) setOrderDrawerOpen(true)
       setSelectedTableKey(`${parseSectorFromNotes(o.notes)}::${parseTableFromNotes(o.notes) || ''}`)
     } finally {
-      setLoadingOrder(false)
+      if (reqId === loadOrderRequestRef.current) {
+        setLoadingOrder(false)
+      }
     }
   }
 
   function selectFreeTable(name: string, amb: string, openDrawer = true) {
+    invalidateOrderEditorLoad()
     setSelectedTableKey(`${amb}::${name}`)
     setActiveOrderId(null)
     setTable(name)
@@ -818,11 +838,12 @@ export function WaiterClient({
 
   function openMenuForOrder() {
     setError(null)
+    setTableActionSheetOpen(false)
+    setComandaPickerOpen(false)
+    setComandaPickerTable(null)
     const mobile = isMobileViewport()
     if (mobile) {
-      // Sheet do cardápio fica acima do drawer (z-92 > z-88).
       setMenuSheetOpen(true)
-      queueMicrotask(() => menuSearchMobileRef.current?.focus())
       return
     }
     setMenuSheetOpen(false)
@@ -847,6 +868,8 @@ export function WaiterClient({
     const { openDrawer = true, openMenu = false, comandaName = '' } = opts
     const cleanName = name.trim()
     if (!cleanName) return
+    invalidateOrderEditorLoad()
+    const mobile = isMobileViewport()
     setSelectedTableKey(`${amb}::${cleanName}`)
     setActiveOrderId(null)
     setTable(cleanName)
@@ -867,8 +890,12 @@ export function WaiterClient({
     setComandaPickerTable(null)
     setNewComandaNameDraft('')
     setTableActionSheetOpen(false)
-    // Drawer (z-88) + cardápio mobile (z-92): o sheet fica por cima e o pedido continua atrás.
-    if (openDrawer) setOrderDrawerOpen(true)
+    // No mobile, cardápio em sheet — evitar drawer + sheet ao mesmo tempo (trava UI).
+    if (openDrawer && !(openMenu && mobile)) {
+      setOrderDrawerOpen(true)
+    } else if (openMenu && mobile) {
+      setOrderDrawerOpen(false)
+    }
     if (openMenu) openMenuForOrder()
   }
 
@@ -2693,14 +2720,14 @@ export function WaiterClient({
 
       {/* Mobile: bottom sheet cardápio (acima do drawer do pedido z-88) */}
       {menuSheetOpen ? (
-        <div className="fixed inset-0 z-[92] md:hidden" role="dialog" aria-modal>
+        <div className="fixed inset-0 z-[92] flex flex-col justify-end md:hidden" role="dialog" aria-modal>
           <button
             type="button"
             className="absolute inset-0 bg-black/40"
             onClick={() => setMenuSheetOpen(false)}
             aria-label="Fechar cardápio"
           />
-          <div className="absolute bottom-0 left-0 right-0 flex max-h-[78vh] flex-col overflow-hidden rounded-t-2xl bg-[#f4f5f7] shadow-2xl">
+          <div className="relative z-10 flex max-h-[78vh] w-full flex-col overflow-hidden rounded-t-2xl bg-[#f4f5f7] shadow-2xl">
             <div className="flex shrink-0 items-center justify-between border-b border-[var(--card-border)] bg-white px-3 py-2">
               <span className="text-sm font-bold">Cardápio</span>
               <button
@@ -2969,6 +2996,7 @@ export function WaiterClient({
           newComandaName={newComandaNameDraft}
           onNewComandaNameChange={setNewComandaNameDraft}
           onSelect={(order) => {
+            setTableActionSheetOpen(false)
             void loadOrderEditor(order, true)
             setComandaPickerOpen(false)
             setComandaPickerTable(null)
@@ -2976,6 +3004,7 @@ export function WaiterClient({
           onStartNew={() => {
             startNewOrderForTable(comandaPickerTable.name, comandaPickerTable.ambiente, {
               openMenu: true,
+              openDrawer: false,
               comandaName: newComandaNameDraft,
             })
           }}
