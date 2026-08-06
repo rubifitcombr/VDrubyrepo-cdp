@@ -114,7 +114,7 @@ export async function POST(request: Request) {
   }
 
   const orderTotal = Number(order.total) || 0
-  if (isSplit) {
+  if (lines.length > 0) {
     const validationError = validatePaymentLines(orderTotal, lines)
     if (validationError) {
       return NextResponse.json({ error: validationError }, { status: 400 })
@@ -195,7 +195,7 @@ export async function POST(request: Request) {
     )
   }
 
-  if (isSplit) {
+  if (lines.length > 0) {
     const payResult = await insertOrderPayments(supabase, {
       storeId,
       orderId,
@@ -234,9 +234,10 @@ export async function POST(request: Request) {
         (updated as { caixa_turno_id?: string }).caixa_turno_id ?? turnoAberto.id
       ),
     },
-    payments: isSplit
-      ? lines.map((l) => ({ method: l.method, amount: l.amount }))
-      : undefined,
+    payments:
+      lines.length > 0
+        ? lines.map((l) => ({ method: l.method, amount: l.amount }))
+        : undefined,
     fiscal,
   })
 }

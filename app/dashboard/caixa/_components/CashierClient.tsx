@@ -282,7 +282,28 @@ function OperacaoView({
       rows = rows.filter((o) => !isPdvWaiterComandaSource(o.source))
     }
     setOrders(rows)
-  }, [storeId, caixaProDeliveryOnly])
+
+    const activeTurnoId = turno?.status === 'aberto' ? turno.id : null
+    if (!activeTurnoId) {
+      setTurnoSplitPayments([])
+      return
+    }
+    const { data: payRows } = await supabase
+      .from('order_payments')
+      .select('id, order_id, payment_method, amount_brl, caixa_turno_id')
+      .eq('store_id', storeId)
+      .eq('caixa_turno_id', activeTurnoId)
+    setTurnoSplitPayments(
+      (payRows ?? []).map((row) => ({
+        id: String(row.id),
+        order_id: String(row.order_id),
+        payment_method: String(row.payment_method),
+        amount_brl: Number(row.amount_brl) || 0,
+        caixa_turno_id:
+          typeof row.caixa_turno_id === 'string' ? row.caixa_turno_id : null,
+      }))
+    )
+  }, [storeId, caixaProDeliveryOnly, turno?.id, turno?.status])
 
   useEffect(() => {
     setTurnoSplitPayments(initialTurnoSplitPayments)
@@ -441,22 +462,28 @@ function OperacaoView({
     })
   }, [orders, period, sourceFilter, turno])
 
+  /** Pedidos já recebidos — métricas de faturamento não incluem comandas em aberto. */
+  const paidOrdersForMetrics = useMemo(
+    () => filteredOrders.filter((o) => !isOpenCaixaComanda(o)),
+    [filteredOrders]
+  )
+
   const summary = useMemo(() => {
     const base: Record<SourceKey, { count: number; total: number }> = {
       waiter: { count: 0, total: 0 },
       pdv: { count: 0, total: 0 },
       menu_link: { count: 0, total: 0 },
     }
-    for (const o of filteredOrders) {
+    for (const o of paidOrdersForMetrics) {
       const k = mapSource(o.source)
       const total = Number(o.total) || 0
       base[k].count += 1
       base[k].total += total
     }
     return base
-  }, [filteredOrders])
+  }, [paidOrdersForMetrics])
 
-  const totalCount = filteredOrders.length
+  const totalCount = paidOrdersForMetrics.length
   const totalRevenue = summary.waiter.total + summary.pdv.total + summary.menu_link.total
   const avgTicket = totalCount > 0 ? totalRevenue / totalCount : 0
 
@@ -549,6 +576,7 @@ function OperacaoView({
       if (!isOperationalSyncTabVisible()) return
       if (detail.source === 'orders' || detail.source === 'order_items') {
         void pullCashierOrders()
+        router.refresh()
         return
       }
       scheduleRefresh()
@@ -766,6 +794,17 @@ function OperacaoView({
             caixa_turno_id: turno?.id ?? null,
           })),
         ])
+      } else if (payments.length > 0) {
+        setTurnoSplitPayments((prev) => [
+          ...prev,
+          ...payments.map((p) => ({
+            id: crypto.randomUUID(),
+            order_id: order.id,
+            payment_method: p.method,
+            amount_brl: p.amount,
+            caixa_turno_id: turno?.id ?? null,
+          })),
+        ])
       }
       setSplitModalOrder(null)
       if (json.fiscal?.attempted && json.fiscal.ok) {
@@ -825,6 +864,10 @@ function OperacaoView({
       }
       setMovValor('')
       setMovMotivo('')
+      setMovModalOpen(false)
+      showToast(
+        movTipo === 'sangria' ? 'Sangria registada.' : 'Suprimento registado.'
+      )
       router.refresh()
     } finally {
       setBusyMov(false)
@@ -950,6 +993,7 @@ function OperacaoView({
         return
       }
       setCloseFlow(null)
+      showToast('Turno fechado com sucesso.')
       router.refresh()
     } finally {
       setBusyClose(false)

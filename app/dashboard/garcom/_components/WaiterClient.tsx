@@ -385,10 +385,15 @@ export function WaiterClient({
   useEffect(() => {
     activeOrderIdRef.current = activeOrderId
   }, [activeOrderId])
+  const autoSaveSkipRef = useRef(0)
+  const persistOrderTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const persistInFlightRef = useRef(false)
+  const skipNextAutoSaveRef = useRef(false)
   const [discountBrl, setDiscountBrl] = useState(0)
   const [discountOpen, setDiscountOpen] = useState(false)
   const [discountInput, setDiscountInput] = useState('')
   const [saving, setSaving] = useState(false)
+  const [autoSaving, setAutoSaving] = useState(false)
   const [busyOrderId, setBusyOrderId] = useState<string | null>(null)
   const [thermalBusyOrderId, setThermalBusyOrderId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -846,6 +851,8 @@ export function WaiterClient({
       setCart(lines)
       setDiscountBrl(parseDiscountFromNotes(o.notes))
       setDiscountOpen(false)
+      skipNextAutoSaveRef.current = true
+      autoSaveSkipRef.current += 1
       setCenterTab('map')
       if (openDrawer) setOrderDrawerOpen(true)
       setSelectedTableKey(`${parseSectorFromNotes(o.notes)}::${parseTableFromNotes(o.notes) || ''}`)
@@ -891,6 +898,7 @@ export function WaiterClient({
     setNotes('')
     setDiscountBrl(0)
     setDiscountOpen(false)
+    autoSaveSkipRef.current += 1
     setCenterTab('map')
     if (openDrawer) setOrderDrawerOpen(true)
   }
@@ -938,6 +946,7 @@ export function WaiterClient({
     setNotes('')
     setDiscountBrl(0)
     setDiscountOpen(false)
+    autoSaveSkipRef.current += 1
     setError(null)
     setSuccess(
       comandaName.trim()
@@ -1294,109 +1303,185 @@ export function WaiterClient({
     }
   }
 
-  async function submitNewOrder() {
+  const showTransientSaveError = useCallback((msg: string) => {
+    setError(msg)
+    window.setTimeout(() => {
+      setError((prev) => (prev === msg ? null : prev))
+    }, 6000)
+  }, [])
+
+  const buildOrderSavePayload = useCallback(() => {
+    const tableLabel = table.trim()
+    return {
+      table: tableLabel,
+      sector,
+      customer_name:
+        customerName.trim() ||
+        (tableLabel ? `Comanda · Mesa ${tableLabel}` : null),
+      notes: notes.trim() || null,
+      discount_brl: discountBrl,
+      garcom_id: effectiveGarcomId || null,
+      items: cart.map((line) => ({
+        product_id: line.productId,
+        quantity: line.quantity,
+        unit_price: line.unitPrice,
+        name: line.name,
+        unit_type: line.unitType,
+        addons: line.addons,
+      })),
+    }
+  }, [table, sector, customerName, notes, discountBrl, effectiveGarcomId, cart])
+
+  function applySavedOrderToState(row: StoreOrderRow) {
+    pendingOpenOrderIdsRef.current.add(row.id)
+    window.setTimeout(() => {
+      pendingOpenOrderIdsRef.current.delete(row.id)
+    }, 20_000)
+    setActiveOrderId(row.id)
+    skipNextAutoSaveRef.current = true
+    autoSaveSkipRef.current += 1
+    if (isOpenSalonMapOrder(row, tablesRef.current)) {
+      setOpenOrders((prev) =>
+        sortOpenOrders([row, ...prev.filter((o) => o.id !== row.id)])
+      )
+    } else {
+      setOpenOrders((prev) => prev.map((x) => (x.id === row.id ? row : x)))
+    }
+    schedulePullOpenOrders(800)
+    notifyStoreOrdersChanged(storeId, { eventType: 'INSERT', source: 'order_items' })
+  }
+
+  async function submitNewOrder(opts?: { silent?: boolean; keepOpen?: boolean }) {
+    const silent = opts?.silent === true
+    const keepOpen = opts?.keepOpen !== false
     if (!table.trim()) {
-      setError('Informe a mesa.')
-      return
+      if (!silent) setError('Informe a mesa.')
+      return false
     }
     if (cart.length === 0) {
-      setError('Adiciona ao menos um item.')
-      return
+      if (!silent) setError('Adiciona ao menos um item.')
+      return false
     }
-    setSaving(true)
-    setError(null)
-    setSuccess(null)
+    if (persistInFlightRef.current) return false
+    persistInFlightRef.current = true
+    if (silent) setAutoSaving(true)
+    else {
+      setSaving(true)
+      setError(null)
+      setSuccess(null)
+    }
     try {
       const res = await dashboardFetch('/api/waiter/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          table: table.trim(),
-          sector,
-          customer_name:
-            customerName.trim() ||
-            (table.trim() ? `Comanda · Mesa ${table.trim()}` : null),
-          notes: notes.trim() || null,
-          discount_brl: discountBrl,
-          garcom_id: effectiveGarcomId || null,
-          items: cart.map((line) => ({
-            product_id: line.productId,
-            quantity: line.quantity,
-            unit_price: line.unitPrice,
-            name: line.name,
-            unit_type: line.unitType,
-            addons: line.addons,
-          })),
-        }),
+        body: JSON.stringify(buildOrderSavePayload()),
       })
       const json = (await res.json().catch(() => ({}))) as { error?: string; order?: StoreOrderRow }
       if (!res.ok) {
-        setError(json.error || 'Erro ao registar.')
-        return
+        const err = json.error || 'Erro ao registar.'
+        if (!silent) setError(err)
+        else showTransientSaveError(err)
+        return false
       }
-      setSuccess('Pedido registado.')
+      if (!silent) {
+        setSuccess('Pedido registado.')
+      }
       if (json.order) {
-        const row = json.order as StoreOrderRow
-        pendingOpenOrderIdsRef.current.add(row.id)
-        window.setTimeout(() => {
-          pendingOpenOrderIdsRef.current.delete(row.id)
-        }, 20_000)
-        if (isOpenSalonMapOrder(row, tablesRef.current)) {
-          setOpenOrders((prev) =>
-            sortOpenOrders([row, ...prev.filter((o) => o.id !== row.id)])
-          )
-        }
+        applySavedOrderToState(json.order as StoreOrderRow)
+        if (!keepOpen) returnToTableMap()
       }
-      schedulePullOpenOrders(800)
-      notifyStoreOrdersChanged(storeId, { eventType: 'INSERT' })
-      returnToTableMap()
+      return true
     } finally {
-      setSaving(false)
+      persistInFlightRef.current = false
+      if (silent) setAutoSaving(false)
+      else setSaving(false)
     }
   }
 
-  async function saveExistingOrder() {
-    if (!activeOrderId || !table.trim() || cart.length === 0) return
-    setSaving(true)
-    setError(null)
-    setSuccess(null)
+  async function saveExistingOrder(opts?: { silent?: boolean }) {
+    const silent = opts?.silent === true
+    if (!activeOrderId || !table.trim()) {
+      if (!silent) setError('Mesa ou comanda inválida.')
+      return false
+    }
+    if (cart.length === 0) {
+      if (!silent) setError('Adiciona ao menos um item para guardar.')
+      return false
+    }
+    if (persistInFlightRef.current) return false
+    persistInFlightRef.current = true
+    if (silent) setAutoSaving(true)
+    else {
+      setSaving(true)
+      setError(null)
+      setSuccess(null)
+    }
     try {
       const res = await dashboardFetch(`/api/waiter/orders/${activeOrderId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          table: table.trim(),
-          sector,
-          customer_name:
-            customerName.trim() ||
-            (table.trim() ? `Comanda · Mesa ${table.trim()}` : null),
-          notes: notes.trim() || null,
-          discount_brl: discountBrl,
-          garcom_id: effectiveGarcomId || null,
-          items: cart.map((line) => ({
-            product_id: line.productId,
-            quantity: line.quantity,
-            unit_price: line.unitPrice,
-            name: line.name,
-            unit_type: line.unitType,
-            addons: line.addons,
-          })),
-        }),
+        body: JSON.stringify(buildOrderSavePayload()),
       })
       const json = (await res.json().catch(() => ({}))) as { error?: string; order?: StoreOrderRow }
       if (!res.ok) {
-        setError(json.error || 'Erro ao guardar.')
-        return
+        const err = json.error || 'Erro ao guardar.'
+        if (!silent) setError(err)
+        else showTransientSaveError(err)
+        return false
       }
-      setSuccess('Alterações guardadas.')
+      if (!silent) setSuccess('Alterações guardadas.')
       if (json.order) {
-        setOpenOrders((prev) => prev.map((x) => (x.id === json.order!.id ? (json.order as StoreOrderRow) : x)))
+        const row = json.order as StoreOrderRow
+        setOpenOrders((prev) => prev.map((x) => (x.id === row.id ? row : x)))
+        autoSaveSkipRef.current += 1
+        notifyStoreOrdersChanged(storeId, { eventType: 'UPDATE', source: 'order_items' })
       }
-      notifyStoreOrdersChanged(storeId, { eventType: 'UPDATE', source: 'order_items' })
+      return true
     } finally {
-      setSaving(false)
+      persistInFlightRef.current = false
+      if (silent) setAutoSaving(false)
+      else setSaving(false)
     }
   }
+
+  useEffect(() => {
+    if (loadingOrder || saving || persistInFlightRef.current) return
+    if (!table.trim() || cart.length === 0) return
+    if (skipNextAutoSaveRef.current) {
+      skipNextAutoSaveRef.current = false
+      return
+    }
+
+    const skip = autoSaveSkipRef.current
+    if (persistOrderTimerRef.current) clearTimeout(persistOrderTimerRef.current)
+    const delayMs = activeOrderId ? 700 : 1100
+    persistOrderTimerRef.current = setTimeout(() => {
+      persistOrderTimerRef.current = null
+      if (autoSaveSkipRef.current !== skip) return
+      if (activeOrderIdRef.current) {
+        void saveExistingOrder({ silent: true })
+      } else {
+        void submitNewOrder({ silent: true, keepOpen: true })
+      }
+    }, delayMs)
+
+    return () => {
+      if (persistOrderTimerRef.current) {
+        clearTimeout(persistOrderTimerRef.current)
+        persistOrderTimerRef.current = null
+      }
+    }
+  }, [
+    cart,
+    activeOrderId,
+    table,
+    sector,
+    customerName,
+    notes,
+    discountBrl,
+    loadingOrder,
+    saving,
+  ])
 
   async function advanceOrder(order: StoreOrderRow) {
     const current = order.status || 'pending'
@@ -2337,6 +2422,7 @@ export function WaiterClient({
             success={success}
             scanHint={scanHint}
             saving={saving}
+            autoSaving={autoSaving}
             loadingOrder={loadingOrder}
             hasSavedOrder={hasSavedOrder}
             onSubmitNew={submitNewOrder}
@@ -3019,6 +3105,7 @@ export function WaiterClient({
                 success={success}
                 scanHint={scanHint}
                 saving={saving}
+                autoSaving={autoSaving}
                 loadingOrder={loadingOrder}
                 hasSavedOrder={hasSavedOrder}
                 onSubmitNew={submitNewOrder}
@@ -3152,6 +3239,7 @@ function OrderPanelContent({
   success,
   scanHint,
   saving,
+  autoSaving = false,
   loadingOrder,
   hasSavedOrder,
   onSubmitNew,
@@ -3183,6 +3271,7 @@ function OrderPanelContent({
   success: string | null
   scanHint: string | null
   saving: boolean
+  autoSaving?: boolean
   loadingOrder: boolean
   hasSavedOrder: boolean
   onSubmitNew: () => void
@@ -3401,6 +3490,11 @@ function OrderPanelContent({
           <p className="mt-2 rounded-lg bg-red-50 px-2 py-1.5 text-xs text-red-800">{error}</p>
         ) : null}
         {success ? <p className="mt-2 rounded-lg bg-emerald-50 px-2 py-1.5 text-xs text-emerald-800">{success}</p> : null}
+        {autoSaving && !saving ? (
+          <p className="mt-2 rounded-lg bg-sky-50 px-2 py-1.5 text-xs text-sky-800">
+            A guardar automaticamente…
+          </p>
+        ) : null}
         {scanHint ? (
           <p className="mt-2 rounded-lg bg-sky-50 px-2 py-1.5 text-xs text-sky-800">{scanHint}</p>
         ) : null}
@@ -3417,11 +3511,11 @@ function OrderPanelContent({
               <>
                 <button
                   type="button"
-                  disabled={saving || cart.length === 0}
+                  disabled={saving || autoSaving || cart.length === 0}
                   onClick={onSaveExisting}
                   className="w-full rounded-xl bg-[var(--dash-primary)] py-2.5 text-sm font-bold text-white shadow-md shadow-[var(--dash-primary)]/25 transition active:scale-[0.99] disabled:opacity-50 disabled:shadow-none"
                 >
-                  {saving ? 'A guardar…' : 'Salvar alterações'}
+                  {saving ? 'A guardar…' : autoSaving ? 'A sincronizar…' : 'Salvar alterações'}
                 </button>
                 <button
                   type="button"
@@ -3456,11 +3550,17 @@ function OrderPanelContent({
               <>
                 <button
                   type="button"
-                  disabled={saving || !table.trim() || cart.length === 0}
+                  disabled={saving || autoSaving || !table.trim() || cart.length === 0}
                   onClick={onSubmitNew}
                   className="w-full rounded-xl bg-[var(--dash-primary)] py-2.5 text-sm font-bold text-white shadow-md shadow-[var(--dash-primary)]/25 transition active:scale-[0.99] disabled:opacity-50 disabled:shadow-none"
                 >
-                  {saving ? 'A registar…' : 'Registrar pedido da mesa'}
+                  {saving
+                    ? 'A registar…'
+                    : autoSaving
+                      ? 'A registar automaticamente…'
+                      : hasSavedOrder
+                        ? 'Guardado'
+                        : 'Registrar pedido da mesa'}
                 </button>
                 <button
                   type="button"

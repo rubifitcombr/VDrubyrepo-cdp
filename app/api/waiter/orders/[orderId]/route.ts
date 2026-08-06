@@ -227,6 +227,17 @@ export async function PATCH(
     return NextResponse.json({ error: garcom.error }, { status: garcom.status })
   }
 
+  const { data: backupItems, error: backupErr } = await supabase
+    .from('order_items')
+    .select(
+      'product_id, quantity, unit_price, price, name, unit_type, weight_kg, price_per_kg_snapshot, addons'
+    )
+    .eq('order_id', id)
+
+  if (backupErr) {
+    return NextResponse.json({ error: backupErr.message }, { status: 500 })
+  }
+
   const { error: delItems } = await supabase.from('order_items').delete().eq('order_id', id)
   if (delItems) {
     return NextResponse.json({ error: delItems.message }, { status: 500 })
@@ -235,6 +246,22 @@ export async function PATCH(
   const rows = mapPricedLinesToOrderItemRows(id, cleanItems)
   const { error: insItems } = await supabase.from('order_items').insert(rows)
   if (insItems) {
+    if (backupItems?.length) {
+      await supabase.from('order_items').insert(
+        backupItems.map((item) => ({
+          order_id: id,
+          product_id: item.product_id,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          price: item.price,
+          name: item.name,
+          unit_type: item.unit_type,
+          weight_kg: item.weight_kg,
+          price_per_kg_snapshot: item.price_per_kg_snapshot,
+          addons: item.addons,
+        }))
+      )
+    }
     return NextResponse.json({ error: insItems.message ?? 'Erro ao gravar itens.' }, { status: 500 })
   }
 

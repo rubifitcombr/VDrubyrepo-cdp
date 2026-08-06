@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   orderPaymentMethodLabel,
   type OrderPaymentLine,
@@ -108,6 +108,14 @@ function ComandaSplitPaymentModalBody({
     parseAmount(draftAmount) <= remaining + MONEY_TOLERANCE_BRL
   const canConfirm =
     launched.length > 0 && Math.abs(remaining) <= MONEY_TOLERANCE_BRL
+
+  useEffect(() => {
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [])
 
   return (
     <div className="fixed inset-0 z-[90] flex items-end justify-center sm:items-center" role="dialog">

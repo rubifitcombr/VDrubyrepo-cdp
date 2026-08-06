@@ -72,7 +72,10 @@ export function resolveSalonMapTablesForOrder(
   if (!tn || configuredTables.length === 0) return []
 
   const candidates = configuredTables.filter((t) => tableNamesMatch(tn, t.name))
-  if (candidates.length === 0) return []
+  if (candidates.length === 0) {
+    // Mesa avulsa (não está no layout): ainda assim associável à comanda.
+    return [{ name: tn, ambiente: orderSector || 'Salão' }]
+  }
 
   const orderSector = parseSectorFromNotes(o.notes).trim()
   const orderSectorLower = orderSector.toLowerCase()

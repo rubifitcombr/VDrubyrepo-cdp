@@ -87,6 +87,16 @@ export function aggregateTurnClosedOrders(
       continue
     }
 
+    if (method === 'split') {
+      // Split sem linhas em order_payments (sync atrasado ou legado): usa total da comanda.
+      const total = Number(o.total) || 0
+      if (total > 0) {
+        out.pedidosFechados += 1
+        addToBreakdown(out, total, 'cash')
+      }
+      continue
+    }
+
     const total = Number(o.total) || 0
     const p = normalizeCaixaPayment(o.payment_method ?? null)
     if (!p) continue
