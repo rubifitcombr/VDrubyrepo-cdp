@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import {
   dispatchStoreOrdersSync,
   OPERATIONAL_SYNC_DEBOUNCE_MS,
+  setStoreRealtimeStatus,
   STORE_REALTIME_STATUS_EVENT,
   type StoreOrdersSyncSource,
   type StoreRealtimeStatusDetail,
@@ -101,6 +102,7 @@ export function StoreOperationalRealtimeBridge({ storeId }: Props) {
       )
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
+          setStoreRealtimeStatus(activeStoreId, 'connected')
           window.dispatchEvent(
             new CustomEvent<StoreRealtimeStatusDetail>(STORE_REALTIME_STATUS_EVENT, {
               detail: { storeId: activeStoreId, status: 'connected' },
@@ -109,6 +111,7 @@ export function StoreOperationalRealtimeBridge({ storeId }: Props) {
           return
         }
         if (status === 'CLOSED') {
+          setStoreRealtimeStatus(activeStoreId, 'degraded')
           window.dispatchEvent(
             new CustomEvent<StoreRealtimeStatusDetail>(STORE_REALTIME_STATUS_EVENT, {
               detail: { storeId: activeStoreId, status: 'degraded' },
@@ -117,6 +120,7 @@ export function StoreOperationalRealtimeBridge({ storeId }: Props) {
           return
         }
         if (status === 'TIMED_OUT') {
+          setStoreRealtimeStatus(activeStoreId, 'degraded')
           window.dispatchEvent(
             new CustomEvent<StoreRealtimeStatusDetail>(STORE_REALTIME_STATUS_EVENT, {
               detail: { storeId: activeStoreId, status: 'degraded' },
@@ -125,6 +129,7 @@ export function StoreOperationalRealtimeBridge({ storeId }: Props) {
           return
         }
         if (status === 'CHANNEL_ERROR') {
+          setStoreRealtimeStatus(activeStoreId, 'error')
           window.dispatchEvent(
             new CustomEvent<StoreRealtimeStatusDetail>(STORE_REALTIME_STATUS_EVENT, {
               detail: { storeId: activeStoreId, status: 'error' },

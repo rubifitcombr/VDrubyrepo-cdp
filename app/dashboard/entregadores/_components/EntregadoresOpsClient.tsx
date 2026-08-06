@@ -7,6 +7,7 @@ import { dashboardFetch } from '@/lib/dashboard-fetch.client'
 import {
   isOperationalSyncTabVisible,
   notifyStoreOrdersChanged,
+  subscribeOperationalPolling,
   subscribeStoreOrdersSync,
 } from '@/lib/store-operational-realtime.client'
 import type {
@@ -124,12 +125,11 @@ export function EntregadoresOpsClient({ storeId }: { storeId: string }) {
 
   useEffect(() => {
     void loadOps()
-    const id = window.setInterval(() => {
-      if (document.visibilityState !== 'visible') return
+    const unsubscribePoll = subscribeOperationalPolling(storeId, () => {
       void loadOps(true)
-    }, 30_000)
-    return () => window.clearInterval(id)
-  }, [loadOps])
+    })
+    return unsubscribePoll
+  }, [loadOps, storeId])
 
   useEffect(() => {
     if (!storeId) return

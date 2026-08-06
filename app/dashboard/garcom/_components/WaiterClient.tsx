@@ -90,6 +90,7 @@ import { updateOrderStatus } from '@/services/orders'
 import {
   isOperationalSyncTabVisible,
   notifyStoreOrdersChanged,
+  subscribeOperationalPolling,
   subscribeOperationalVisibilityRefresh,
   subscribeStoreOrdersSync,
 } from '@/lib/store-operational-realtime.client'
@@ -677,20 +678,24 @@ export function WaiterClient({
       void pullTables()
     })
 
-    const ordersPoll = window.setInterval(() => {
-      if (document.visibilityState === 'visible') void pullOpenOrders()
-    }, 20000)
+    const unsubscribeOrdersPoll = subscribeOperationalPolling(storeId, () => {
+      void pullOpenOrders()
+    })
 
-    const tablesPoll = window.setInterval(() => {
-      if (document.visibilityState === 'visible') void pullTables()
-    }, 45000)
+    const unsubscribeTablesPoll = subscribeOperationalPolling(
+      storeId,
+      () => {
+        void pullTables()
+      },
+      { forceIntervalMs: 120_000 }
+    )
 
     return () => {
       if (pullOpenOrdersDebounceRef.current) {
         clearTimeout(pullOpenOrdersDebounceRef.current)
       }
-      window.clearInterval(ordersPoll)
-      window.clearInterval(tablesPoll)
+      unsubscribeOrdersPoll()
+      unsubscribeTablesPoll()
       unsubscribe()
       unsubscribeVis()
     }

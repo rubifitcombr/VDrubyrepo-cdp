@@ -8,7 +8,7 @@ import type { Plan } from '@/lib/plan'
 import { planTitle } from '@/lib/plan'
 import { orderIsVisibleAfterPixConfirmation } from '@/lib/store-order'
 import { createClient } from '@/lib/supabase/client'
-import { isOperationalSyncTabVisible, subscribeStoreOrdersSync } from '@/lib/store-operational-realtime.client'
+import { isOperationalSyncTabVisible, OPERATIONAL_POLL_MS_LIGHT, subscribeOperationalPolling, subscribeStoreOrdersSync } from '@/lib/store-operational-realtime.client'
 import { slugChannelSourcesForSupabaseIn } from '@/lib/slug-channel-orders'
 import {
   withHubContextHref,
@@ -105,14 +105,13 @@ export function DashboardTopBar({
       void refreshPendingCount()
     })
 
-    const poll = window.setInterval(() => {
-      if (document.visibilityState !== 'visible') return
+    const unsubscribePoll = subscribeOperationalPolling(storeId, () => {
       void refreshPendingCount()
-    }, 30_000)
+    }, { forceIntervalMs: OPERATIONAL_POLL_MS_LIGHT, runWhenConnected: true })
 
     return () => {
       disposed = true
-      window.clearInterval(poll)
+      unsubscribePoll()
       unsubscribe()
     }
   }, [storeId, slugChannelSourcesOnly])

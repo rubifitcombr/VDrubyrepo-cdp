@@ -75,8 +75,8 @@ export function DashboardAutoAcceptOrders({
 
     const orderStatusMap = lastOrderStatusRef.current
     const automationStartedAt = Date.now()
-    const automationWindowMs = 7 * 86400000
-    const automationSnapshotLimit = 100
+    const automationWindowMs = 2 * 86400000
+    const automationSnapshotLimit = 60
 
     const supabase = createClient()
     const trackPrint = printing.print_auto_on_confirm
@@ -434,7 +434,7 @@ export function DashboardAutoAcceptOrders({
         window.setInterval(() => {
           if (document.visibilityState !== 'visible') return
           scheduleAccept()
-        }, 22000)
+        }, 60_000)
       : null
 
     const pollPrint =
@@ -442,7 +442,7 @@ export function DashboardAutoAcceptOrders({
         window.setInterval(() => {
           if (document.visibilityState !== 'visible') return
           void pollPrintCatchUp()
-        }, 12000)
+        }, 30_000)
       : null
 
     const realtimeInserted = realtimeInsertedRef.current

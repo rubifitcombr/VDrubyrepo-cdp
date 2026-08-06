@@ -1,16 +1,113 @@
 'use client'
 
 /**
- * Coordenação de refetch após Realtime (item 5 do hardening de egress):
- * - Não há pull centralizado único (evita refactor grande no shell).
- * - Cada subscriber ignora eventos com aba em segundo plano (mesmo guard do polling).
- * - O bridge aumenta debounce antes de broadcast para agrupar rajadas.
+ * Coordenação de refetch após Realtime (hardening de egress PostgREST):
+ * - Com Realtime ligado, o polling de fallback quase não corre (só catch-up periódico).
+ * - Com Realtime degradado, polling mais frequente como rede de segurança.
+ * - Cada subscriber ignora eventos com aba em segundo plano.
  */
-export const OPERATIONAL_SYNC_DEBOUNCE_MS = 400
+export const OPERATIONAL_SYNC_DEBOUNCE_MS = 800
+
+/** Intervalo de fallback quando Realtime está OK (só rede de segurança). */
+export const OPERATIONAL_POLL_MS_CONNECTED = 180_000
+
+/** Polling quando Realtime falhou ou ainda não ligou. */
+export const OPERATIONAL_POLL_MS_DEGRADED = 60_000
+
+/** Contagem leve (badge pending) — query mínima. */
+export const OPERATIONAL_POLL_MS_LIGHT = 120_000
+
+const realtimeStatusByStore = new Map<string, StoreRealtimeStatusDetail['status']>()
 
 /** Só dispara fetch PostgREST quando o separador do dashboard está visível. */
 export function isOperationalSyncTabVisible(): boolean {
   return typeof document === 'undefined' || document.visibilityState === 'visible'
+}
+
+export function isStoreRealtimeConnected(storeId: string): boolean {
+  return realtimeStatusByStore.get(storeId) === 'connected'
+}
+
+export function getOperationalPollIntervalMs(storeId: string): number {
+  return isStoreRealtimeConnected(storeId)
+    ? OPERATIONAL_POLL_MS_CONNECTED
+    : OPERATIONAL_POLL_MS_DEGRADED
+}
+
+/** Regista estado Realtime (bridge) para ajustar polling em todos os painéis. */
+export function setStoreRealtimeStatus(
+  storeId: string,
+  status: StoreRealtimeStatusDetail['status']
+): void {
+  realtimeStatusByStore.set(storeId, status)
+}
+
+export function subscribeStoreRealtimeStatus(
+  storeId: string,
+  callback: (status: StoreRealtimeStatusDetail['status']) => void
+): () => void {
+  if (typeof window === 'undefined') return () => {}
+
+  const handler = (event: Event) => {
+    const detail = (event as CustomEvent<StoreRealtimeStatusDetail>).detail
+    if (detail?.storeId !== storeId) return
+    realtimeStatusByStore.set(storeId, detail.status)
+    callback(detail.status)
+  }
+  window.addEventListener(STORE_REALTIME_STATUS_EVENT, handler)
+  const current = realtimeStatusByStore.get(storeId)
+  if (current) callback(current)
+  return () => window.removeEventListener(STORE_REALTIME_STATUS_EVENT, handler)
+}
+
+/**
+ * Polling de fallback: com Realtime OK, não chama callback (eventos + visibility bastam).
+ * `forceIntervalMs` ignora Realtime (ex.: badge com query leve).
+ */
+export function subscribeOperationalPolling(
+  storeId: string,
+  callback: () => void,
+  options?: { forceIntervalMs?: number; runWhenConnected?: boolean }
+): () => void {
+  if (typeof window === 'undefined') return () => {}
+
+  let timer: ReturnType<typeof setTimeout> | null = null
+  let disposed = false
+
+  function intervalMs(): number {
+    if (options?.forceIntervalMs != null) return options.forceIntervalMs
+    return getOperationalPollIntervalMs(storeId)
+  }
+
+  function tick() {
+    if (disposed) return
+    if (!isOperationalSyncTabVisible()) {
+      schedule()
+      return
+    }
+    const connected = isStoreRealtimeConnected(storeId)
+    if (connected && options?.runWhenConnected !== true && options?.forceIntervalMs == null) {
+      schedule()
+      return
+    }
+    callback()
+    schedule()
+  }
+
+  function schedule() {
+    if (timer) clearTimeout(timer)
+    if (disposed) return
+    timer = setTimeout(tick, intervalMs())
+  }
+
+  const unsubRt = subscribeStoreRealtimeStatus(storeId, () => schedule())
+  schedule()
+
+  return () => {
+    disposed = true
+    if (timer) clearTimeout(timer)
+    unsubRt()
+  }
 }
 
 /** Catch-up quando o separador volta ao primeiro plano (eventos Realtime ignorados em background). */

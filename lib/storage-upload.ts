@@ -4,6 +4,9 @@ import { createClient } from '@/lib/supabase/client'
 
 const BUCKET = MENU_IMAGE_BUCKET
 
+/** Cache longo — ficheiros têm UUID no path (imutáveis); reduz egress do Storage. */
+const STORAGE_UPLOAD_CACHE_CONTROL = 'public, max-age=31536000, immutable'
+
 async function prepareImageFile(file: File): Promise<File> {
   try {
     return await optimizeImageFileForUpload(file)
@@ -40,7 +43,7 @@ export async function uploadProductImage(
     .from(BUCKET)
     .upload(path, toUpload, {
       contentType: contentTypeForUpload(toUpload, safeExt),
-      cacheControl: '3600',
+      cacheControl: STORAGE_UPLOAD_CACHE_CONTROL,
       upsert: false,
     })
 
@@ -76,7 +79,7 @@ export async function uploadStorefrontBanner(
     .from(BUCKET)
     .upload(path, toUpload, {
       contentType: contentTypeForUpload(toUpload, safeExt),
-      cacheControl: '3600',
+      cacheControl: STORAGE_UPLOAD_CACHE_CONTROL,
       upsert: false,
     })
 
@@ -110,7 +113,7 @@ export async function uploadMarketingCampaignImage(
     .from(BUCKET)
     .upload(path, toUpload, {
       contentType: contentTypeForUpload(toUpload, safeExt),
-      cacheControl: '3600',
+      cacheControl: STORAGE_UPLOAD_CACHE_CONTROL,
       upsert: false,
     })
 
@@ -143,7 +146,7 @@ export async function uploadStoreLogo(
     .from(BUCKET)
     .upload(path, toUpload, {
       contentType: contentTypeForUpload(toUpload, safeExt),
-      cacheControl: '3600',
+      cacheControl: STORAGE_UPLOAD_CACHE_CONTROL,
       upsert: false,
     })
 

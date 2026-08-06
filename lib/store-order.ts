@@ -28,7 +28,7 @@ export const ORDER_SELECT =
   'id, customer_name, total, status, created_at, source, delivery_address, delivery_fee, payment_method, payment_status, notes, customer_phone, items_summary, caixa_turno_id, entregador_id, entregador_nome, entrega_despachada_em, entrega_prazo_minutos, garcom_id, garcom_nome, service_fee_brl'
 
 /** Janela do pull operacional no painel (poll + Realtime) — alinhado ao SSR default. */
-export const OPERATIONAL_ORDERS_PULL_LIMIT = 250
+export const OPERATIONAL_ORDERS_PULL_LIMIT = 150
 
 /** Dias de histórico no pull automático; busca manual de pedidos antigos fica fora do poll. */
 export const OPERATIONAL_ORDERS_PULL_DAYS = 7

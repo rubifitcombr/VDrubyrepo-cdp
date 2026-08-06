@@ -4,7 +4,7 @@ import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { orderIsVisibleAfterPixConfirmation } from '@/lib/store-order'
-import { isOperationalSyncTabVisible, subscribeOperationalVisibilityRefresh, subscribeStoreOrdersSync } from '@/lib/store-operational-realtime.client'
+import { isOperationalSyncTabVisible, OPERATIONAL_POLL_MS_LIGHT, subscribeOperationalPolling, subscribeOperationalVisibilityRefresh, subscribeStoreOrdersSync } from '@/lib/store-operational-realtime.client'
 import { slugChannelSourcesForSupabaseIn } from '@/lib/slug-channel-orders'
 import {
   IconBag,
@@ -294,14 +294,13 @@ export function OperationalHubClient({
       void refreshPendingCount()
     })
 
-    const poll = window.setInterval(() => {
-      if (document.visibilityState !== 'visible') return
+    const unsubscribePoll = subscribeOperationalPolling(storeId, () => {
       void refreshPendingCount()
-    }, 30_000)
+    }, { forceIntervalMs: OPERATIONAL_POLL_MS_LIGHT, runWhenConnected: true })
 
     return () => {
       disposed = true
-      window.clearInterval(poll)
+      unsubscribePoll()
       unsubscribe()
       unsubscribeVis()
     }

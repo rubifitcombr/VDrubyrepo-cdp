@@ -17,6 +17,7 @@ import {
 import {
   isOperationalSyncTabVisible,
   notifyStoreOrdersChanged,
+  subscribeOperationalPolling,
   subscribeOperationalVisibilityRefresh,
   subscribeStoreOrdersSync,
 } from '@/lib/store-operational-realtime.client'
@@ -149,7 +150,7 @@ export function KdsClient({
       .eq('store_id', storeId)
       .in('status', [...KDS_KITCHEN_STATUSES])
       .order('created_at', { ascending: false })
-      .limit(300)
+      .limit(150)
     if (error) {
       if (/column|does not exist|42P01/i.test(error.message)) {
         setSchemaError(
@@ -184,13 +185,13 @@ export function KdsClient({
       setLiveOk(true)
     })
 
-    const poll = window.setInterval(() => {
-      if (document.visibilityState !== 'visible') return
+    const unsubscribePoll = subscribeOperationalPolling(storeId, () => {
       void pullOrders()
-    }, 20000)
+      setLiveOk(true)
+    })
 
     return () => {
-      window.clearInterval(poll)
+      unsubscribePoll()
       unsubscribe()
       unsubscribeVis()
     }

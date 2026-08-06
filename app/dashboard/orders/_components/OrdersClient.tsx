@@ -30,6 +30,7 @@ import {
 import {
   isOperationalSyncTabVisible,
   notifyStoreOrdersChanged,
+  subscribeOperationalPolling,
   subscribeOperationalVisibilityRefresh,
   subscribeStoreOrdersSync,
 } from '@/lib/store-operational-realtime.client'
@@ -731,13 +732,13 @@ function useOrdersRealtime(
       setLiveOk(true)
     })
 
-    const poll = window.setInterval(() => {
-      if (document.visibilityState !== 'visible') return
+    const unsubscribePoll = subscribeOperationalPolling(storeId, () => {
       void pullOrders()
-    }, 20000)
+      setLiveOk(true)
+    })
 
     return () => {
-      window.clearInterval(poll)
+      unsubscribePoll()
       unsubscribe()
       unsubscribeVis()
     }
@@ -1280,12 +1281,16 @@ export function OrdersClient({
       void pullSalonTables()
     })
 
-    const poll = window.setInterval(() => {
-      if (document.visibilityState === 'visible') void pullSalonTables()
-    }, 30000)
+    const unsubscribePoll = subscribeOperationalPolling(
+      storeId,
+      () => {
+        void pullSalonTables()
+      },
+      { forceIntervalMs: 120_000, runWhenConnected: true }
+    )
 
     return () => {
-      window.clearInterval(poll)
+      unsubscribePoll()
       unsubscribe()
       unsubscribeVis()
     }
