@@ -131,6 +131,8 @@ const WAITER_OPEN_STATUSES = new Set([
   'confirmed',
 ])
 
+const GARCOM_RESUME_ORDER_KEY = 'vyria:garcom-resume-order-id'
+
 function escapeHtml(raw: string): string {
   return raw
     .replaceAll('&', '&amp;')
@@ -494,6 +496,7 @@ export function WaiterClient({
   const menuSearchDesktopRef = useRef<HTMLInputElement>(null)
   const menuSearchMobileRef = useRef<HTMLInputElement>(null)
   const loadOrderRequestRef = useRef(0)
+  const resumeOrderDoneRef = useRef(false)
 
   useEffect(() => {
     setTables(initialTables)
@@ -821,6 +824,30 @@ export function WaiterClient({
     }
   }
 
+  function openOrderInGarcomPanel(order: StoreOrderRow) {
+    try {
+      sessionStorage.setItem(GARCOM_RESUME_ORDER_KEY, order.id)
+    } catch {
+      /* ignore */
+    }
+    window.location.assign('/dashboard/garcom?hub=salao')
+  }
+
+  useEffect(() => {
+    if (tablesOnlyView || !staffSalonUi || resumeOrderDoneRef.current) return
+    resumeOrderDoneRef.current = true
+    let orderId: string | null = null
+    try {
+      orderId = sessionStorage.getItem(GARCOM_RESUME_ORDER_KEY)
+      if (orderId) sessionStorage.removeItem(GARCOM_RESUME_ORDER_KEY)
+    } catch {
+      /* ignore */
+    }
+    if (!orderId?.trim()) return
+    const order = openOrders.find((o) => o.id === orderId)
+    if (order) void loadOrderEditor(order, true)
+  }, [tablesOnlyView, staffSalonUi, openOrders])
+
   function selectFreeTable(name: string, amb: string, openDrawer = true) {
     invalidateOrderEditorLoad()
     setSelectedTableKey(`${amb}::${name}`)
@@ -914,11 +941,15 @@ export function WaiterClient({
       setComandaPickerTable(tb)
       setComandaPickerOpen(true)
       setNewComandaNameDraft('')
+      setTableActionSheetOpen(false)
     } else if (agg.primary) {
+      invalidateOrderEditorLoad()
       await loadOrderEditor(agg.primary, !mobile)
     }
 
-    if (mobile) setTableActionSheetOpen(true)
+    if (mobile && agg.list.length <= 1) {
+      setTableActionSheetOpen(true)
+    }
   }
 
   function addProductDirect(product: MenuProductRow) {
@@ -987,6 +1018,7 @@ export function WaiterClient({
         setScanHint('Modo etiqueta — usa o leitor USB.')
         return
       }
+      setMenuSheetOpen(false)
       setWeighProduct(product)
       return
     }
@@ -1006,6 +1038,7 @@ export function WaiterClient({
     }
 
     if (groups.length > 0) {
+      setMenuSheetOpen(false)
       setAddonModal({ product, groups })
       return
     }
@@ -1232,7 +1265,9 @@ export function WaiterClient({
         body: JSON.stringify({
           table: table.trim(),
           sector,
-          customer_name: customerName.trim() || null,
+          customer_name:
+            customerName.trim() ||
+            (table.trim() ? `Comanda · Mesa ${table.trim()}` : null),
           notes: notes.trim() || null,
           discount_brl: discountBrl,
           garcom_id: effectiveGarcomId || null,
@@ -1284,7 +1319,9 @@ export function WaiterClient({
         body: JSON.stringify({
           table: table.trim(),
           sector,
-          customer_name: customerName.trim() || null,
+          customer_name:
+            customerName.trim() ||
+            (table.trim() ? `Comanda · Mesa ${table.trim()}` : null),
           notes: notes.trim() || null,
           discount_brl: discountBrl,
           garcom_id: effectiveGarcomId || null,
@@ -1473,7 +1510,7 @@ export function WaiterClient({
       setSuccess(
         mesaCloseMode === 'immediate'
           ? 'Pagamento registado no turno de caixa. Mesa fechada.'
-          : 'Conta enviada ao Caixa. A mesa fica livre no mapa.'
+          : 'Conta encaminhada ao Caixa. A mesa fica livre no mapa do Garçom.'
       )
     } finally {
       setBusyOrderId(null)
@@ -1778,7 +1815,7 @@ export function WaiterClient({
                     <li key={order.id}>
                       <button
                         type="button"
-                        onClick={() => void loadOrderEditor(order, true)}
+                        onClick={() => openOrderInGarcomPanel(order)}
                         className="w-full rounded-xl border border-[var(--card-border)] p-3 text-left shadow-sm transition hover:border-[var(--dash-primary)]/40"
                       >
                       <div className="flex flex-wrap items-center justify-between gap-1">
@@ -1799,6 +1836,9 @@ export function WaiterClient({
                       </p>
                       <p className="mt-2 text-sm font-bold text-[var(--dash-primary)]">
                         {money.format(Number(order.total) || 0)}
+                      </p>
+                      <p className="mt-2 text-[11px] font-semibold text-[var(--dash-primary)]">
+                        Abrir no Garçom →
                       </p>
                       </button>
                     </li>
@@ -2648,18 +2688,20 @@ export function WaiterClient({
             </div>
 
             {mesaCloseMode === 'immediate' ? (
-              hasFeature(plan, 'cashier') && !caixaTurnoOpen ? (
+              !caixaTurnoOpen ? (
                 <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
                   <p className="text-xs font-medium text-amber-900">
                     Não há turno de caixa aberto. Para receber pagamentos aqui, abre o caixa
                     primeiro.
                   </p>
-                  <Link
-                    href={CAIXA_BALCAO_HREF}
-                    className="mt-2 inline-flex text-xs font-semibold text-[var(--dash-primary)] underline"
-                  >
-                    Abrir caixa →
-                  </Link>
+                  {hasFeature(plan, 'cashier') ? (
+                    <Link
+                      href={CAIXA_BALCAO_HREF}
+                      className="mt-2 inline-flex text-xs font-semibold text-[var(--dash-primary)] underline"
+                    >
+                      Abrir caixa →
+                    </Link>
+                  ) : null}
                 </div>
               ) : null
             ) : (
@@ -2680,9 +2722,7 @@ export function WaiterClient({
                 type="button"
                 disabled={
                   busyOrderId === activeOrder.id ||
-                  (mesaCloseMode === 'immediate' &&
-                    hasFeature(plan, 'cashier') &&
-                    !caixaTurnoOpen)
+                  (mesaCloseMode === 'immediate' && !caixaTurnoOpen)
                 }
                 onClick={() => {
                   if (mesaCloseMode === 'immediate') {

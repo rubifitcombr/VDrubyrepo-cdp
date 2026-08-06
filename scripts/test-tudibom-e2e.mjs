@@ -158,7 +158,6 @@ async function main() {
 
   const waiterApis = [
     ['GET', '/api/waiter/tables'],
-    ['GET', '/api/waiter/orders/open'],
     ['POST', '/api/waiter/orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }],
     ['POST', '/api/waiter/orders/checkout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }],
   ]

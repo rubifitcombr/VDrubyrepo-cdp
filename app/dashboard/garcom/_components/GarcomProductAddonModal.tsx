@@ -66,7 +66,7 @@ export function GarcomProductAddonModal({
 
   return (
     <div
-      className="fixed inset-0 z-[90] flex items-end justify-center bg-black/45 p-0 sm:items-center sm:p-4"
+      className="fixed inset-0 z-[94] flex items-end justify-center bg-black/45 p-0 sm:items-center sm:p-4"
       role="presentation"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose()
