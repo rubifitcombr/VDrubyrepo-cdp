@@ -196,6 +196,29 @@ function buildDeliveredMessage(input: {
   return lines.join('\n')
 }
 
+function buildCancelledMessage(input: {
+  customerName: string | null
+  orderRef: string
+  storeName: string
+  tone: WhatsAppAiTone
+}): string {
+  const lines =
+    input.tone === 'formal'
+      ? [
+          greeting(input.customerName, input.tone),
+          '',
+          `O pedido *${input.orderRef}* foi *cancelado*.`,
+          `Se precisar de ajuda, contacte *${input.storeName}*.`,
+        ]
+      : [
+          greeting(input.customerName, input.tone),
+          '',
+          `Seu pedido *${input.orderRef}* foi *cancelado*.`,
+          `Qualquer dúvida, fale com a *${input.storeName}*.`,
+        ]
+  return lines.join('\n')
+}
+
 async function loadStoreName(db: SupabaseClient, storeId: string): Promise<string> {
   const { data } = await db.from('stores').select('name').eq('id', storeId).maybeSingle()
   return String((data as { name?: string } | null)?.name || 'nossa loja')
@@ -259,6 +282,24 @@ export async function notifyOrderWhatsAppStatusChange(
     orderRef: ref,
     storeName,
     tone: waConfig.ai_tone,
+  }
+
+  if (newStatus === 'cancelled' && waConfig.notify_order_preparing) {
+    const body = buildCancelledMessage(ctx)
+    await sendWithWindowFallback(
+      db,
+      storeId,
+      phone,
+      body,
+      'order_notification',
+      buildOrderNotificationTemplateParams({
+        customerName: ctx.customerName,
+        orderId: order.id,
+        statusLabel: 'cancelado',
+        menuUrl,
+      })
+    )
+    return
   }
 
   if (previousStatus === 'pending' && newStatus === 'preparing' && waConfig.notify_order_preparing) {

@@ -69,6 +69,18 @@ export function StoreOperationalRealtimeBridge({ storeId }: Props) {
         {
           event: '*',
           schema: 'public',
+          table: 'order_payments',
+          filter: `store_id=eq.${activeStoreId}`,
+        },
+        (payload) => {
+          notify('order_payments', payload.eventType)
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
           table: 'store_tables',
           filter: `store_id=eq.${activeStoreId}`,
         },

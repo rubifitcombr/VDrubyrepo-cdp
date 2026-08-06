@@ -174,20 +174,39 @@ export async function POST(request: Request) {
   }
 
   // Claim atómico: só fecha se ainda não tiver marcador de pagamento (evita duplo clique / race).
+  // Permite `delivered` sem pagamento (ex.: garçom encaminhou ao caixa com [Caixa pendente]).
   const { data: updated, error: upErr } = await supabase
     .from('orders')
     .update(updatePayload)
     .eq('store_id', storeId)
     .eq('id', orderId)
     .neq('status', 'cancelled')
-    .neq('status', 'delivered')
     .not('notes', 'ilike', `%${CAIXA_PAYMENT_CLOSE_MARKER}%`)
     .select('id, status, payment_method, notes, caixa_turno_id')
     .maybeSingle()
 
   if (!upErr && !updated) {
+    const { data: fresh } = await supabase
+      .from('orders')
+      .select('status, notes')
+      .eq('store_id', storeId)
+      .eq('id', orderId)
+      .maybeSingle()
+
+    if (fresh && orderPaymentRegisteredInCaixa(fresh.notes as string | null)) {
+      return NextResponse.json(
+        { error: 'Pagamento já registado para esta comanda.' },
+        { status: 409 }
+      )
+    }
+    if (String(fresh?.status ?? '').trim().toLowerCase() === 'cancelled') {
+      return NextResponse.json({ error: 'Comanda já encerrada.' }, { status: 409 })
+    }
     return NextResponse.json(
-      { error: 'Pagamento já registado para esta comanda.' },
+      {
+        error:
+          'Não foi possível fechar a comanda. Actualiza a lista e tenta novamente.',
+      },
       { status: 409 }
     )
   }

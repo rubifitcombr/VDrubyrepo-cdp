@@ -131,6 +131,7 @@ export type StoreRealtimeStatusDetail = {
 export type StoreOrdersSyncSource =
   | 'orders'
   | 'order_items'
+  | 'order_payments'
   | 'store_tables'
   | 'caixas_turnos'
   | 'caixa_movimentacoes'

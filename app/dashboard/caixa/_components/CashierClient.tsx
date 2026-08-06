@@ -23,6 +23,7 @@ import type { StorePrintingState } from '@/lib/store-printing'
 import type { StoreOrderRow } from '@/lib/store-order'
 import { mapStoreOrderRow, ORDER_SELECT } from '@/lib/store-order'
 import {
+  isFinanciallyClosedOrder,
   isOpenCaixaComanda,
   isPaidInCaixaTurno,
   orderPaymentRegisteredInCaixa,
@@ -39,7 +40,7 @@ import { IconPrinter } from '@/app/dashboard/_components/NavIcons'
 import { ComandaSplitPaymentModal } from './ComandaSplitPaymentModal'
 import { comandaDisplayName } from '@/lib/order-payments'
 import type { OrderPaymentLine, OrderPaymentRow } from '@/lib/order-payments'
-import { parseTableFromNotes } from '@/lib/waiter-order-notes'
+import { notesIndicateWaiterReleasedToCaixa, parseTableFromNotes } from '@/lib/waiter-order-notes'
 
 type SourceKey = 'waiter' | 'pdv' | 'menu_link'
 
@@ -494,7 +495,7 @@ function OperacaoView({
 
   /** Pedidos já recebidos — métricas de faturamento não incluem comandas em aberto. */
   const paidOrdersForMetrics = useMemo(
-    () => filteredOrders.filter((o) => !isOpenCaixaComanda(o)),
+    () => filteredOrders.filter((o) => isFinanciallyClosedOrder(o)),
     [filteredOrders]
   )
 
@@ -604,7 +605,7 @@ function OperacaoView({
 
     const unsubscribe = subscribeStoreOrdersSync(storeId, (detail) => {
       if (!isOperationalSyncTabVisible()) return
-      if (detail.source === 'orders' || detail.source === 'order_items') {
+      if (detail.source === 'orders' || detail.source === 'order_items' || detail.source === 'order_payments') {
         void pullCashierOrders()
         scheduleRefresh()
         return
@@ -1313,21 +1314,29 @@ function OperacaoView({
                   ? 'QR MESA'
                   : 'GARÇOM'
                 : 'BALCÃO'
+              const releasedByWaiter = notesIndicateWaiterReleasedToCaixa(o.notes)
               return (
                 <li
                   key={o.id}
                   className="overflow-hidden rounded-2xl border border-[var(--card-border)] bg-white shadow-sm shadow-black/[0.04]"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--card-border)] bg-[#fafafa] px-4 py-2.5">
-                    <span
-                      className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
-                        badgeWaiter
-                          ? 'bg-sky-100 text-sky-900 ring-1 ring-sky-200'
-                          : 'bg-violet-100 text-violet-900 ring-1 ring-violet-200'
-                      }`}
-                    >
-                      {badgeText}
-                    </span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span
+                        className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                          badgeWaiter
+                            ? 'bg-sky-100 text-sky-900 ring-1 ring-sky-200'
+                            : 'bg-violet-100 text-violet-900 ring-1 ring-violet-200'
+                        }`}
+                      >
+                        {badgeText}
+                      </span>
+                      {releasedByWaiter ? (
+                        <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-900 ring-1 ring-amber-200">
+                          Encaminhada pelo garçom
+                        </span>
+                      ) : null}
+                    </div>
                     <span className="text-[11px] font-medium text-[#6b7280]">
                       {dateTime.format(new Date(o.created_at))}
                     </span>

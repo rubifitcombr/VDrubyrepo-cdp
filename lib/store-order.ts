@@ -121,3 +121,32 @@ export function mapStoreOrderRow(row: Record<string, unknown>): StoreOrderRow {
           : Number(String(row.service_fee_brl).replace(',', '.')) || null,
   }
 }
+
+/** Preserva cancelamentos locais quando o pull ainda não reflectiu a API (race Realtime). */
+export function mergeOperationalOrdersPull(
+  prev: StoreOrderRow[],
+  pulled: StoreOrderRow[]
+): StoreOrderRow[] {
+  const pulledById = new Map(pulled.map((o) => [o.id, o]))
+  const merged: StoreOrderRow[] = []
+  const seen = new Set<string>()
+
+  for (const o of prev) {
+    if (String(o.status ?? '').trim().toLowerCase() !== 'cancelled') continue
+    const remote = pulledById.get(o.id)
+    if (remote && String(remote.status ?? '').trim().toLowerCase() !== 'cancelled') {
+      merged.push(o)
+      seen.add(o.id)
+    }
+  }
+
+  for (const o of pulled) {
+    if (seen.has(o.id)) continue
+    merged.push(o)
+    seen.add(o.id)
+  }
+
+  return merged.sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  )
+}

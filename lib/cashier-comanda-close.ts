@@ -28,12 +28,23 @@ export function isOpenCaixaComanda(order: {
   return !orderPaymentRegisteredInCaixa(order.notes)
 }
 
+/** Comanda com pagamento registado (marcador nas notas ou vínculo ao turno de caixa). */
+export function isFinanciallyClosedOrder(order: {
+  status?: string | null
+  notes?: string | null
+  caixa_turno_id?: string | null
+}): boolean {
+  const status = String(order.status ?? '').trim().toLowerCase()
+  if (status === 'cancelled') return false
+  if (orderPaymentRegisteredInCaixa(order.notes)) return true
+  return Boolean(String(order.caixa_turno_id ?? '').trim())
+}
+
 /** Pedido já pago no turno de caixa (alinha UI com fecho do turno no servidor). */
 export function isPaidInCaixaTurno(order: {
   status?: string | null
   notes?: string | null
+  caixa_turno_id?: string | null
 }): boolean {
-  const status = String(order.status ?? '').trim().toLowerCase()
-  if (status === 'cancelled') return false
-  return status === 'delivered' || orderPaymentRegisteredInCaixa(order.notes)
+  return isFinanciallyClosedOrder(order)
 }

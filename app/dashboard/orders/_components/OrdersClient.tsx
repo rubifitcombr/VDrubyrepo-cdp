@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import {
   ORDER_SELECT,
   OPERATIONAL_ORDERS_PULL_LIMIT,
+  mergeOperationalOrdersPull,
   mapStoreOrderRow,
   operationalOrdersPullSinceIso,
   orderIsVisibleAfterPixConfirmation,
@@ -42,6 +43,7 @@ import type { StoreEntregadorDTO } from '@/lib/entregas-types'
 import { slugChannelSourcesForSupabaseIn } from '@/lib/slug-channel-orders'
 import {
   extractUserNotes,
+  notesIndicateWaiterReleasedToCaixa,
   parseSectorFromNotes,
   parseTableFromOrder,
 } from '@/lib/waiter-order-notes'
@@ -675,6 +677,15 @@ function canPrintComandaStatus(status: string | null | undefined): boolean {
   return s === 'pending' || s === 'preparing' || s === 'ready' || s === 'confirmed'
 }
 
+/** Pedidos visíveis no kanban operacional (exclui cancelados, pagos e encaminhados ao caixa). */
+function isOperationalKanbanOrder(o: StoreOrderRow): boolean {
+  const status = String(o.status ?? '').trim().toLowerCase()
+  if (status === 'cancelled') return false
+  if (orderPaymentRegisteredInCaixa(o.notes)) return false
+  if (notesIndicateWaiterReleasedToCaixa(o.notes)) return false
+  return true
+}
+
 function useOrdersRealtime(
   storeId: string,
   initialOrders: StoreOrderRow[],
@@ -689,7 +700,7 @@ function useOrdersRealtime(
   useEffect(() => {
     const supabase = createClient()
 
-    /** Pull operacional: últimos 7 dias, max 250 — alinhado ao SSR. Histórico «Ver histórico» filtra entregues in-memory; sem busca de pedidos antigos no poll. */
+    /** Pull operacional: últimos 7 dias, max 150 — alinhado ao SSR. */
     async function pullOrders(options?: { beepOnNew?: boolean }) {
       const since = operationalOrdersPullSinceIso()
       let q = supabase
@@ -713,14 +724,20 @@ function useOrdersRealtime(
         if (hasNew) playNewOrderBeep()
       }
       seenIdsRef.current = nextIds
-      setOrders(rows)
+      setOrders((prev) => mergeOperationalOrdersPull(prev, rows))
     }
 
     void pullOrders().then(() => setLiveOk(true))
 
     const unsubscribe = subscribeStoreOrdersSync(storeId, (detail) => {
       if (!isOperationalSyncTabVisible()) return
-      if (detail.source !== 'orders' && detail.source !== 'order_items') return
+      if (
+        detail.source !== 'orders' &&
+        detail.source !== 'order_items' &&
+        detail.source !== 'order_payments'
+      ) {
+        return
+      }
       void pullOrders({
         beepOnNew: detail.source === 'orders' && detail.eventType === 'INSERT',
       })
@@ -1521,10 +1538,15 @@ export function OrdersClient({
   }, [orders])
 
   const channelFilteredOrders = useMemo(() => {
-    if (channelFilter === 'delivery') {
-      return orders.filter((o) => !isInPersonOrder(o))
-    }
-    return orders.filter((o) => isInPersonOrder(o))
+    const base =
+      channelFilter === 'delivery'
+        ? orders.filter((o) => !isInPersonOrder(o))
+        : orders.filter((o) => isInPersonOrder(o))
+    return base.filter(
+      (o) =>
+        isOperationalKanbanOrder(o) ||
+        String(o.status ?? '').trim().toLowerCase() === 'delivered'
+    )
   }, [channelFilter, orders])
 
   const counts = useMemo(() => {

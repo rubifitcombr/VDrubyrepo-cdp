@@ -1,6 +1,7 @@
 import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { isFinanciallyClosedOrder } from '@/lib/cashier-comanda-close'
 import type {
   FinancialEntryDTO,
   FinancialEntryStatus,
@@ -13,7 +14,8 @@ const SUPPLIER_SELECT =
   'id, store_id, nome, telefone, email, categoria, cnpj, observacao, created_at'
 const ENTRY_SELECT =
   'id, store_id, tipo, categoria, supplier_id, descricao, valor, vencimento, data_pagamento, status, created_at'
-const SALE_SELECT = 'id, total, created_at, source, payment_method'
+const SALE_SELECT =
+  'id, total, created_at, source, payment_method, notes, caixa_turno_id, status'
 
 function moneyNumber(v: unknown): number {
   if (typeof v === 'number' && Number.isFinite(v)) return Math.round(v * 100) / 100
@@ -140,7 +142,11 @@ export async function getFinanceiroSnapshot(
 
   if (entriesErr) throw new Error(entriesErr.message)
   // Vendas são opcionais no snapshot: se a query falhar, segue sem bloquear o financeiro.
-  const saleRows = salesErr ? [] : ((sales ?? []) as Record<string, unknown>[])
+  const saleRows = salesErr
+    ? []
+    : ((sales ?? []) as Record<string, unknown>[]).filter((row) =>
+        isFinanciallyClosedOrder(row as { status?: string; notes?: string; caixa_turno_id?: string })
+      )
 
   const entryRows = (entries ?? []) as Record<string, unknown>[]
   const supplierNames = new Map(

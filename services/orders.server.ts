@@ -1,7 +1,12 @@
 import 'server-only'
 
 import type { StoreOrderRow } from '@/lib/store-order'
-import { ORDER_SELECT, orderIsVisibleAfterPixConfirmation } from '@/lib/store-order'
+import {
+  ORDER_SELECT,
+  OPERATIONAL_ORDERS_PULL_LIMIT,
+  operationalOrdersPullSinceIso,
+  orderIsVisibleAfterPixConfirmation,
+} from '@/lib/store-order'
 import { KDS_KITCHEN_STATUSES } from '@/lib/kds-order-display'
 import { slugChannelSourcesForSupabaseIn } from '@/lib/slug-channel-orders'
 import { createClient } from '@/lib/supabase/server'
@@ -11,7 +16,7 @@ export async function getStoreOrders(
   options?: { slugChannelSourcesOnly?: boolean; limit?: number; kitchenOnly?: boolean }
 ): Promise<StoreOrderRow[]> {
   const supabase = await createClient()
-  const limit = options?.limit ?? 250
+  const limit = options?.limit ?? OPERATIONAL_ORDERS_PULL_LIMIT
   let q = supabase
     .from('orders')
     .select(ORDER_SELECT)
@@ -21,6 +26,8 @@ export async function getStoreOrders(
   }
   if (options?.kitchenOnly) {
     q = q.in('status', [...KDS_KITCHEN_STATUSES])
+  } else {
+    q = q.gte('created_at', operationalOrdersPullSinceIso())
   }
   const { data, error } = await q
     .order('created_at', { ascending: false })

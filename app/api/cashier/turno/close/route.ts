@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { gateMerchantMenuKey } from '@/lib/merchant-api-gate.server'
+import { isOpenCaixaComanda } from '@/lib/cashier-comanda-close'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
 import { getUser } from '@/services/auth.server'
 import {
@@ -67,6 +68,33 @@ export async function POST(request: Request) {
 
   if (tErr || !turnoRow) {
     return NextResponse.json({ error: 'Turno não encontrado ou já fechado.' }, { status: 404 })
+  }
+
+  const { data: openComandaRows } = await supabase
+    .from('orders')
+    .select('id, status, source, notes, caixa_turno_id')
+    .eq('store_id', storeId)
+    .in('source', ['pdv', 'waiter', 'autoatendimento'])
+    .neq('status', 'cancelled')
+
+  const openComandasCount = (openComandaRows ?? []).filter((row) =>
+    isOpenCaixaComanda(
+      row as {
+        status?: string
+        source?: string
+        notes?: string
+        caixa_turno_id?: string
+      }
+    )
+  ).length
+
+  if (openComandasCount > 0) {
+    return NextResponse.json(
+      {
+        error: `Existem ${openComandasCount} comanda(s) em aberto. Fecha-as no caixa antes de encerrar o turno.`,
+      },
+      { status: 409 }
+    )
   }
 
   const breakdown = await breakdownForTurno(supabase, storeId, turnoId)

@@ -102,7 +102,11 @@ export function resolveSalonMapTablesForOrder(
     const salonCandidates = candidates.filter((t) =>
       isDefaultSalonSector(t.ambiente)
     )
-    if (salonCandidates.length > 0) return salonCandidates
+    if (salonCandidates.length === 1) return salonCandidates
+    if (salonCandidates.length > 1) {
+      // Evita duplicar a mesma comanda em várias células do mapa.
+      return [salonCandidates[0]]
+    }
   }
 
   // Ambíguo: alinhar ao fallback do checkout (primeiro candidato) para não

@@ -18,6 +18,7 @@ import { getOpenCaixaTurno } from '@/services/caixa-turnos.server'
 import { resolveGarcomForWaiterOrder } from '@/services/store-garcons.server'
 import { insertOrderPayments } from '@/services/order-payments.server'
 import { triggerLoyaltyEarnForDeliveredOrder } from '@/services/loyalty.server'
+import { tryAutoEmitNfceForOrder } from '@/services/fiscal'
 
 type PaymentMethod = 'cash' | 'pix' | 'card' | 'split'
 
@@ -306,6 +307,8 @@ export async function POST(request: Request) {
     console.warn('[loyalty earn]', e)
   )
 
+  const fiscal = await tryAutoEmitNfceForOrder(orderId)
+
   return NextResponse.json({
     ok: true,
     mode: 'immediate',
@@ -314,5 +317,6 @@ export async function POST(request: Request) {
       lines.length > 0
         ? lines.map((l) => ({ method: l.method, amount: l.amount }))
         : undefined,
+    fiscal,
   })
 }

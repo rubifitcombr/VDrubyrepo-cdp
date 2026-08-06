@@ -11,6 +11,7 @@ import { createClient } from '@/lib/supabase/server'
 import { ORDER_SELECT, mapStoreOrderRow } from '@/lib/store-order'
 import { isSlugChannelOrderSource } from '@/lib/slug-channel-orders'
 import { triggerLoyaltyEarnForDeliveredOrder } from '@/services/loyalty.server'
+import { tryAutoEmitNfceForOrder } from '@/services/fiscal'
 
 const ALLOWED_BEFORE = new Set(['confirmed'])
 
@@ -108,7 +109,13 @@ export async function POST(req: NextRequest) {
         { status: 500 }
       )
     }
-    return NextResponse.json({ ok: true, skipped: true })
+
+    const fiscal = await tryAutoEmitNfceForOrder(orderId)
+    void triggerLoyaltyEarnForDeliveredOrder(supabase, storeId, orderId).catch((e) =>
+      console.warn('[loyalty earn]', e)
+    )
+
+    return NextResponse.json({ ok: true, skipped: true, fiscal })
   }
 
   const entId =
@@ -247,6 +254,8 @@ export async function POST(req: NextRequest) {
     console.warn('[loyalty earn]', e)
   )
 
+  const fiscal = await tryAutoEmitNfceForOrder(orderId)
+
   const { data: fresh } = await supabase
     .from('orders')
     .select(ORDER_SELECT)
@@ -257,5 +266,6 @@ export async function POST(req: NextRequest) {
     ok: true,
     order: fresh ? mapStoreOrderRow(fresh as Record<string, unknown>) : null,
     entregaId: insertedId,
+    fiscal,
   })
 }
