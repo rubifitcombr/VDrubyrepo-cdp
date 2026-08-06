@@ -244,54 +244,13 @@ function ordersOnTable(
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 }
 
-/** Comandas que o garçom autenticado pode abrir (próprias + QR/autoatendimento sem garçom). */
-function accessibleOrdersOnTable(
-  openOrders: StoreOrderRow[],
-  tableName: string,
-  amb: string,
-  configuredTables: StoreTableDTO[],
-  garcomId: string | null
-): StoreOrderRow[] {
-  const onTable = ordersOnTable(openOrders, tableName, amb, configuredTables)
-  if (!garcomId) return onTable
-  return onTable.filter((o) => !o.garcom_id || o.garcom_id === garcomId)
-}
-
-type TableCellOrders = {
-  all: StoreOrderRow[]
-  accessible: StoreOrderRow[]
-  foreignOnly: boolean
-}
-
-function tableCellOrders(
-  openOrders: StoreOrderRow[],
-  tableName: string,
-  amb: string,
-  configuredTables: StoreTableDTO[],
-  garcomId: string | null
-): TableCellOrders {
-  const all = ordersOnTable(openOrders, tableName, amb, configuredTables)
-  if (!garcomId) {
-    return { all, accessible: all, foreignOnly: false }
-  }
-  const accessible = all.filter((o) => !o.garcom_id || o.garcom_id === garcomId)
-  return {
-    all,
-    accessible,
-    foreignOnly: all.length > 0 && accessible.length === 0,
-  }
-}
-
 function tableState(
   openOrders: StoreOrderRow[],
   tableName: string,
   amb: string,
-  configuredTables: StoreTableDTO[],
-  garcomId: string | null = null
-): 'free' | 'pending_kitchen' | 'occupied' | 'foreign' {
-  const cell = tableCellOrders(openOrders, tableName, amb, configuredTables, garcomId)
-  if (cell.foreignOnly) return 'foreign'
-  const list = garcomId ? cell.accessible : cell.all
+  configuredTables: StoreTableDTO[]
+): 'free' | 'pending_kitchen' | 'occupied' {
+  const list = ordersOnTable(openOrders, tableName, amb, configuredTables)
   if (list.length === 0) return 'free'
   if (list.some((o) => (o.status || '').toLowerCase() === 'pending')) return 'pending_kitchen'
   return 'occupied'
@@ -301,11 +260,9 @@ function aggregateTable(
   openOrders: StoreOrderRow[],
   tableName: string,
   amb: string,
-  configuredTables: StoreTableDTO[],
-  garcomId: string | null = null
+  configuredTables: StoreTableDTO[]
 ) {
-  const cell = tableCellOrders(openOrders, tableName, amb, configuredTables, garcomId)
-  const list = garcomId ? cell.accessible : cell.all
+  const list = ordersOnTable(openOrders, tableName, amb, configuredTables)
   const total = list.reduce((s, o) => s + (Number(o.total) || 0), 0)
   const itemsApprox = list.reduce((s, o) => {
     const sum = (o.items_summary || '').split(';').filter((x) => x.trim()).length
@@ -325,15 +282,12 @@ function aggregateTable(
     qrCount,
     originSummary,
     primary: list[0] ?? null,
-    foreignOnly: cell.foreignOnly,
-    foreignCount: cell.foreignOnly ? cell.all.length : 0,
   }
 }
 
 function tableStateDotClass(st: ReturnType<typeof tableState>): string {
   if (st === 'free') return 'bg-emerald-500'
   if (st === 'pending_kitchen') return 'bg-sky-500'
-  if (st === 'foreign') return 'bg-zinc-400'
   return 'bg-amber-500'
 }
 
@@ -347,9 +301,6 @@ function tableStateBaseClass(st: ReturnType<typeof tableState>, interactive = fa
     return interactive
       ? 'border-sky-300 bg-gradient-to-b from-sky-50 to-white'
       : 'border-sky-400 bg-sky-50'
-  }
-  if (st === 'foreign') {
-    return 'border-zinc-300 bg-zinc-50'
   }
   return interactive
     ? 'border-amber-300 bg-gradient-to-b from-amber-50 to-white'
@@ -564,16 +515,6 @@ export function WaiterClient({
     pinSession && (garcomSessionLocked || salaoPinRequired)
       ? pinSession.garcomId
       : null
-
-  const visibleOpenOrders = useMemo(() => {
-    if (!garcomSessionLocked || !pinSession) return openOrders
-    return openOrders.filter(
-      (o) => !o.garcom_id || o.garcom_id === pinSession.garcomId
-    )
-  }, [openOrders, garcomSessionLocked, pinSession])
-
-  const mapGarcomId =
-    garcomSessionLocked && pinSession ? pinSession.garcomId : null
 
   function trocarGarcomPinSession() {
     clearGarcomPinSession(storeId)
@@ -795,7 +736,7 @@ export function WaiterClient({
   }, [storeId, pullOpenOrders, pullTables, schedulePullOpenOrders])
 
   const displayNumberById = useMemo(() => {
-    const sorted = [...visibleOpenOrders].sort(
+    const sorted = [...openOrders].sort(
       (a, b) =>
         new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
     )
@@ -804,7 +745,7 @@ export function WaiterClient({
       m.set(o.id, String(i + 1).padStart(3, '0'))
     })
     return m
-  }, [visibleOpenOrders])
+  }, [openOrders])
 
   useEffect(() => {
     const root = typeof document !== 'undefined' ? (document.documentElement as HTMLElement & {
@@ -1160,39 +1101,22 @@ export function WaiterClient({
   async function handleTablePress(tb: StoreTableDTO) {
     setError(null)
     const allOnTable = ordersOnTable(openOrders, tb.name, tb.ambiente, tables)
-    const accessibleOnTable = accessibleOrdersOnTable(
-      openOrders,
-      tb.name,
-      tb.ambiente,
-      tables,
-      mapGarcomId
-    )
-    const onlyForeignGarcom =
-      mapGarcomId != null &&
-      allOnTable.length > 0 &&
-      allOnTable.every((o) => o.garcom_id && o.garcom_id !== mapGarcomId)
     const mobile = isMobileViewport()
 
     setTable(tb.name)
     setSector(tb.ambiente)
     setSelectedTableKey(`${tb.ambiente}::${tb.name}`)
 
-    if (onlyForeignGarcom) {
-      setError(`Mesa ${tb.name} tem comanda de outro garçom.`)
-      setTableActionSheetOpen(false)
-      return
-    }
-
     if (allOnTable.length === 0) {
       selectFreeTable(tb.name, tb.ambiente, !mobile)
-    } else if (accessibleOnTable.length > 1) {
+    } else if (allOnTable.length > 1) {
       setComandaPickerTable(tb)
       setComandaPickerOpen(true)
       setNewComandaNameDraft('')
       setTableActionSheetOpen(false)
-    } else if (accessibleOnTable.length === 1) {
+    } else if (allOnTable.length === 1) {
       invalidateOrderEditorLoad()
-      await loadOrderEditor(accessibleOnTable[0], true, tb)
+      await loadOrderEditor(allOnTable[0], true, tb)
       if (mobile) {
         setTableActionSheetOpen(false)
       }
@@ -2255,7 +2179,7 @@ export function WaiterClient({
             </p>
           </div>
           <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-[#374151] ring-1 ring-[var(--card-border)]">
-            {visibleOpenOrders.length} comandas abertas
+            {openOrders.length} comandas abertas
           </span>
         </div>
 
@@ -2266,8 +2190,7 @@ export function WaiterClient({
               <p className="text-[11px] text-[#6b7280]">
                 <span className="mr-2">Livre</span>
                 <span className="mr-2">Ocupada</span>
-                <span className="mr-2">Em preparo</span>
-                <span>Outro garçom</span>
+                <span>Em preparo</span>
               </p>
             </div>
 
@@ -2284,8 +2207,8 @@ export function WaiterClient({
                     </p>
                     <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
                       {list.map((tb) => {
-                        const st = tableState(openOrders, tb.name, tb.ambiente, tables, mapGarcomId)
-                        const agg = aggregateTable(openOrders, tb.name, tb.ambiente, tables, mapGarcomId)
+                        const st = tableState(openOrders, tb.name, tb.ambiente, tables)
+                        const agg = aggregateTable(openOrders, tb.name, tb.ambiente, tables)
                         const base = tableStateBaseClass(st)
                         return (
                           <li key={tb.id}>
@@ -2300,10 +2223,6 @@ export function WaiterClient({
                               {st === 'free' ? (
                                 <span className="mt-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
                                   Livre
-                                </span>
-                              ) : st === 'foreign' ? (
-                                <span className="mt-2 rounded-full bg-zinc-200 px-2 py-0.5 text-[10px] font-bold text-zinc-700">
-                                  Outro garçom
                                 </span>
                               ) : st === 'pending_kitchen' ? (
                                 <>
@@ -2350,14 +2269,14 @@ export function WaiterClient({
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-bold text-[#1a1614]">Comandas abertas</h2>
               <span className="rounded-full bg-[#f3f4f6] px-2 py-0.5 text-xs font-bold text-[#374151]">
-                {visibleOpenOrders.length}
+                {openOrders.length}
               </span>
             </div>
-            {visibleOpenOrders.length === 0 ? (
+            {openOrders.length === 0 ? (
               <p className="mt-3 text-sm text-[#6b7280]">Sem comandas em aberto.</p>
             ) : (
               <ul className="mt-3 max-h-[calc(100dvh-14rem)] space-y-3 overflow-y-auto pr-1">
-                {visibleOpenOrders.map((order) => {
+                {openOrders.map((order) => {
                   const st = (order.status || '').toLowerCase()
                   const badgeClass =
                     st === 'pending'
@@ -2453,7 +2372,7 @@ export function WaiterClient({
             </span>
             <span className="text-[15px] font-bold tracking-tight text-[#1a1614]">Operação salão</span>
             <span className="rounded-full bg-[var(--dash-primary)]/10 px-2 py-0.5 text-[11px] font-bold text-[var(--dash-primary)]">
-              {visibleOpenOrders.length} {visibleOpenOrders.length === 1 ? 'aberto' : 'abertos'}
+              {openOrders.length} {openOrders.length === 1 ? 'aberto' : 'abertos'}
             </span>
           </div>
         </div>
@@ -2690,9 +2609,6 @@ export function WaiterClient({
                 <span className="inline-flex items-center gap-1">
                   <span className="h-2 w-2 rounded-full bg-sky-500" /> Em preparo
                 </span>
-                <span className="inline-flex items-center gap-1">
-                  <span className="h-2 w-2 rounded-full bg-zinc-400" /> Outro garçom
-                </span>
               </div>
 
               {tables.length === 0 ? (
@@ -2708,8 +2624,8 @@ export function WaiterClient({
                       </p>
                       <ul className="grid grid-cols-3 gap-2.5 sm:grid-cols-4">
                         {list.map((tb) => {
-                          const st = tableState(openOrders, tb.name, tb.ambiente, tables, mapGarcomId)
-                          const agg = aggregateTable(openOrders, tb.name, tb.ambiente, tables, mapGarcomId)
+                          const st = tableState(openOrders, tb.name, tb.ambiente, tables)
+                          const agg = aggregateTable(openOrders, tb.name, tb.ambiente, tables)
                           const sel = selectedTableKey === `${tb.ambiente}::${tb.name}`
                           const base = tableStateBaseClass(st, true)
                           const dot = tableStateDotClass(st)
@@ -2731,10 +2647,6 @@ export function WaiterClient({
                                 {st === 'free' ? (
                                   <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-700">
                                     Livre
-                                  </span>
-                                ) : st === 'foreign' ? (
-                                  <span className="rounded-full bg-zinc-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-zinc-700">
-                                    Outro garçom
                                   </span>
                                 ) : st === 'pending_kitchen' ? (
                                   <>
@@ -2893,8 +2805,8 @@ export function WaiterClient({
                     </p>
                     <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
                       {list.map((tb) => {
-                        const st = tableState(openOrders, tb.name, tb.ambiente, tables, mapGarcomId)
-                        const agg = aggregateTable(openOrders, tb.name, tb.ambiente, tables, mapGarcomId)
+                        const st = tableState(openOrders, tb.name, tb.ambiente, tables)
+                        const agg = aggregateTable(openOrders, tb.name, tb.ambiente, tables)
                         const base = tableStateBaseClass(st)
                         return (
                           <li key={tb.id}>
@@ -2909,10 +2821,6 @@ export function WaiterClient({
                               {st === 'free' ? (
                                 <span className="mt-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
                                   Livre
-                                </span>
-                              ) : st === 'foreign' ? (
-                                <span className="mt-2 rounded-full bg-zinc-200 px-2 py-0.5 text-[10px] font-bold text-zinc-700">
-                                  Outro garçom
                                 </span>
                               ) : st === 'pending_kitchen' ? (
                                 <>
@@ -2966,14 +2874,14 @@ export function WaiterClient({
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-bold text-[#1a1614]">Pedidos abertos</h2>
           <span className="rounded-full bg-[#f3f4f6] px-2 py-0.5 text-xs font-bold text-[#374151]">
-            {visibleOpenOrders.length}
+            {openOrders.length}
           </span>
         </div>
-        {visibleOpenOrders.length === 0 ? (
+        {openOrders.length === 0 ? (
           <p className="mt-3 text-sm text-[#6b7280]">Sem pedidos em aberto.</p>
         ) : (
           <ul className="mt-3 grid gap-3 md:grid-cols-3">
-            {visibleOpenOrders.map((order) => {
+            {openOrders.map((order) => {
               const st = (order.status || '').toLowerCase()
               const badgeClass =
                 st === 'pending'
@@ -3573,12 +3481,11 @@ export function WaiterClient({
         <GarcomMesaComandasPanel
           tableName={comandaPickerTable.name}
           sector={comandaPickerTable.ambiente}
-          comandas={accessibleOrdersOnTable(
+          comandas={ordersOnTable(
             openOrders,
             comandaPickerTable.name,
             comandaPickerTable.ambiente,
-            tables,
-            mapGarcomId
+            tables
           )}
           activeOrderId={activeOrderId}
           newComandaName={newComandaNameDraft}
