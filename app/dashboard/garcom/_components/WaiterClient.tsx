@@ -33,6 +33,10 @@ import {
   tableNamesMatch,
 } from '@/lib/waiter-order-notes'
 import { slugifyStoreSlug } from '@/lib/store-slug'
+import {
+  comandaNamesConflict,
+  isGenericComandaLabel,
+} from '@/lib/waiter-comanda-names'
 import { dashboardFetch } from '@/lib/dashboard-fetch.client'
 import type { StoreGarcomDTO } from '@/lib/garcons-types'
 import {
@@ -478,9 +482,7 @@ export function WaiterClient({
 
   const visibleOpenOrders = useMemo(() => {
     if (!garcomSessionLocked || !pinSession) return openOrders
-    return openOrders.filter(
-      (o) => !o.garcom_id || o.garcom_id === pinSession.garcomId
-    )
+    return openOrders.filter((o) => o.garcom_id === pinSession.garcomId)
   }, [openOrders, garcomSessionLocked, pinSession])
 
   function trocarGarcomPinSession() {
@@ -987,6 +989,22 @@ export function WaiterClient({
     const { openDrawer = true, openMenu = false, comandaName = '' } = opts
     const cleanName = name.trim()
     if (!cleanName) return
+    const existingOnTable = ordersOnTable(openOrders, cleanName, amb, tables)
+    const trimmedComandaName = comandaName.trim()
+    if (existingOnTable.length > 0) {
+      if (!trimmedComandaName) {
+        setError('Esta mesa já tem comanda aberta. Dê um nome à nova comanda.')
+        return
+      }
+      if (isGenericComandaLabel(trimmedComandaName)) {
+        setError('Use um nome próprio para distinguir a comanda (ex.: Família Silva).')
+        return
+      }
+      if (comandaNamesConflict(existingOnTable, trimmedComandaName)) {
+        setError('Já existe uma comanda com este nome nesta mesa.')
+        return
+      }
+    }
     invalidateOrderEditorLoad()
     const mobile = isMobileViewport()
     setSelectedTableKey(`${amb}::${cleanName}`)
@@ -1024,27 +1042,37 @@ export function WaiterClient({
   }
 
   async function handleTablePress(tb: StoreTableDTO) {
-    const st = tableState(visibleOpenOrders, tb.name, tb.ambiente, tables)
-    const agg = aggregateTable(visibleOpenOrders, tb.name, tb.ambiente, tables)
+    const allOnTable = ordersOnTable(openOrders, tb.name, tb.ambiente, tables)
+    const myOnTable =
+      garcomSessionLocked && pinSession
+        ? allOnTable.filter((o) => o.garcom_id === pinSession.garcomId)
+        : allOnTable
     const mobile = isMobileViewport()
 
     setTable(tb.name)
     setSector(tb.ambiente)
     setSelectedTableKey(`${tb.ambiente}::${tb.name}`)
 
-    if (st === 'free') {
+    if (allOnTable.length === 0) {
       selectFreeTable(tb.name, tb.ambiente, !mobile)
-    } else if (agg.list.length > 1) {
+    } else if (garcomSessionLocked && pinSession && myOnTable.length === 0) {
+      setError(`Mesa ${tb.name} tem comanda de outro garçom.`)
+      setTableActionSheetOpen(false)
+      return
+    } else if (myOnTable.length > 1) {
       setComandaPickerTable(tb)
       setComandaPickerOpen(true)
       setNewComandaNameDraft('')
       setTableActionSheetOpen(false)
-    } else if (agg.primary) {
+    } else if (myOnTable.length === 1) {
       invalidateOrderEditorLoad()
-      await loadOrderEditor(agg.primary, !mobile)
+      await loadOrderEditor(myOnTable[0], !mobile)
+    } else if (allOnTable.length === 1 && allOnTable[0]) {
+      invalidateOrderEditorLoad()
+      await loadOrderEditor(allOnTable[0], !mobile)
     }
 
-    if (mobile && agg.list.length <= 1) {
+    if (mobile && myOnTable.length <= 1) {
       setTableActionSheetOpen(true)
     }
   }
@@ -1482,6 +1510,13 @@ export function WaiterClient({
   })
 
   function removeProductUnit(productId: string) {
+    const unitLines = cartRef.current.filter(
+      (x) => x.productId === productId && x.unitType === 'unit'
+    )
+    if (unitLines.length > 1) {
+      setError('Vários itens deste produto no carrinho — remova pela lista de itens.')
+      return
+    }
     const prev = cartRef.current
     let removeIdx = -1
     for (let i = prev.length - 1; i >= 0; i--) {
@@ -1650,7 +1685,7 @@ export function WaiterClient({
       setError(null)
       setSuccess(null)
     }
-    const ok = await flushPersistOrder()
+    const ok = await flushPersistOrder({ waitIfInFlight: true })
     if (!silent) {
       setSaving(false)
       if (!ok) return false
@@ -1677,7 +1712,7 @@ export function WaiterClient({
       setError(null)
       setSuccess(null)
     }
-    const ok = await flushPersistOrder()
+    const ok = await flushPersistOrder({ waitIfInFlight: true })
     if (!silent) {
       setSaving(false)
       if (ok) {
@@ -1851,6 +1886,10 @@ export function WaiterClient({
       }
       if (mesaCloseMode === 'immediate' && payments && payments.length > 0) {
         body.payments = payments
+      }
+      const serviceFee = Number(order.service_fee_brl)
+      if (Number.isFinite(serviceFee) && serviceFee > 0) {
+        body.service_fee_brl = serviceFee
       }
 
       const res = await dashboardFetch('/api/waiter/orders/checkout', {
@@ -2093,8 +2132,8 @@ export function WaiterClient({
                     </p>
                     <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
                       {list.map((tb) => {
-                        const st = tableState(visibleOpenOrders, tb.name, tb.ambiente, tables)
-                        const agg = aggregateTable(visibleOpenOrders, tb.name, tb.ambiente, tables)
+                        const st = tableState(openOrders, tb.name, tb.ambiente, tables)
+                        const agg = aggregateTable(openOrders, tb.name, tb.ambiente, tables)
                         const base =
                           st === 'free'
                             ? 'border-[var(--card-border)] bg-white'
@@ -2513,8 +2552,8 @@ export function WaiterClient({
                       </p>
                       <ul className="grid grid-cols-3 gap-2.5 sm:grid-cols-4">
                         {list.map((tb) => {
-                          const st = tableState(visibleOpenOrders, tb.name, tb.ambiente, tables)
-                          const agg = aggregateTable(visibleOpenOrders, tb.name, tb.ambiente, tables)
+                          const st = tableState(openOrders, tb.name, tb.ambiente, tables)
+                          const agg = aggregateTable(openOrders, tb.name, tb.ambiente, tables)
                           const sel =
                             selectedTableKey === `${tb.ambiente}::${tb.name}` &&
                             tableNamesMatch(table, tb.name) &&
@@ -2707,8 +2746,8 @@ export function WaiterClient({
                     </p>
                     <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
                       {list.map((tb) => {
-                        const st = tableState(visibleOpenOrders, tb.name, tb.ambiente, tables)
-                        const agg = aggregateTable(visibleOpenOrders, tb.name, tb.ambiente, tables)
+                        const st = tableState(openOrders, tb.name, tb.ambiente, tables)
+                        const agg = aggregateTable(openOrders, tb.name, tb.ambiente, tables)
                         const base =
                           st === 'free'
                             ? 'border-[var(--card-border)] bg-white'

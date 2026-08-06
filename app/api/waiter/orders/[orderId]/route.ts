@@ -23,6 +23,7 @@ import {
   pricePdvLinesFromCatalog,
 } from '@/lib/pdv-price.server'
 import { adjustProductStockForOrderEdit } from '@/services/inventory.server'
+import { assertUniqueComandaNameOnTable } from '@/lib/waiter-comanda-validate.server'
 import {
   backupRowsToStockLines,
   replaceWaiterOrderItemsAtomic,
@@ -231,6 +232,18 @@ export async function PATCH(
   )
   if ('error' in garcom) {
     return NextResponse.json({ error: garcom.error }, { status: garcom.status })
+  }
+
+  const comandaCheck = await assertUniqueComandaNameOnTable(
+    supabase,
+    storeId,
+    table,
+    sector,
+    body.customer_name,
+    id
+  )
+  if ('error' in comandaCheck) {
+    return NextResponse.json({ error: comandaCheck.error }, { status: 409 })
   }
 
   const { data: backupItems, error: backupErr } = await supabase

@@ -81,23 +81,48 @@ export function parseProductAddonPicks(raw: unknown): ProductAddonPick[] {
   return out
 }
 
+export function addonGroupSelectionCount(
+  groupIndex: number,
+  groups: ProductAddonGroup[],
+  selectedQty: Record<string, number>
+): number {
+  const g = groups[groupIndex]
+  if (!g) return 0
+  return g.items.reduce(
+    (sum, _, itemIndex) => sum + (selectedQty[addonPickKey(groupIndex, itemIndex)] ?? 0),
+    0
+  )
+}
+
+export function addonGroupMinSelect(g: ProductAddonGroup): number {
+  if (g.required) {
+    const n = g.minSelect
+    return Number.isFinite(n) && (n as number) >= 1 ? Math.floor(n as number) : 1
+  }
+  const n = g.minSelect
+  return Number.isFinite(n) && (n as number) > 0 ? Math.floor(n as number) : 0
+}
+
 export function requiredAddonGroupsOk(
   groups: ProductAddonGroup[],
   selectedQty: Record<string, number>
 ): boolean {
   for (let g = 0; g < groups.length; g++) {
-    if (!groups[g]?.required) continue
-    const has = groups[g].items.some(
-      (_, i) => (selectedQty[addonPickKey(g, i)] ?? 0) > 0
-    )
-    if (!has) return false
+    const group = groups[g]
+    if (!group) continue
+    const count = addonGroupSelectionCount(g, groups, selectedQty)
+    const min = addonGroupMinSelect(group)
+    const max = addonGroupMaxSelect(group)
+    if (group.required && count < min) return false
+    if (count > max) return false
+    if (!group.required && min > 0 && count > 0 && count < min) return false
   }
   return true
 }
 
 export function addonGroupMaxSelect(g: ProductAddonGroup): number {
   const n = g.maxSelect
-  return Number.isFinite(n) && (n as number) >= 1 ? (n as number) : 1
+  return Number.isFinite(n) && (n as number) >= 1 ? Math.floor(n as number) : 1
 }
 
 /** Pré-selecção para grupos obrigatórios (ex.: Bovino incluído). */

@@ -23,6 +23,7 @@ import {
   mapPricedLinesToOrderItemRows,
   pricePdvLinesFromCatalog,
 } from '@/lib/pdv-price.server'
+import { assertUniqueComandaNameOnTable } from '@/lib/waiter-comanda-validate.server'
 import { resolveSalonTableForStore } from '@/lib/salon-table-resolve.server'
 
 type BodyItem = {
@@ -192,6 +193,17 @@ export async function POST(request: Request) {
       },
       { status: 400 }
     )
+  }
+
+  const comandaCheck = await assertUniqueComandaNameOnTable(
+    supabase,
+    storeId,
+    table,
+    sector,
+    body.customer_name
+  )
+  if ('error' in comandaCheck) {
+    return NextResponse.json({ error: comandaCheck.error }, { status: 409 })
   }
 
   const { data: order, error: orderErr } = await supabase

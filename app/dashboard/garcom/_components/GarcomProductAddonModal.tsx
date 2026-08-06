@@ -4,10 +4,12 @@ import { useEffect, useMemo, useState } from 'react'
 import type { MenuProductRow } from '@/lib/menu-product'
 import { effectiveProductPrice } from '@/lib/product-pricing'
 import {
+  addonGroupMaxSelect,
+  addonGroupMinSelect,
+  addonGroupSelectionCount,
   addonPickKey,
   addonPicksFromSelection,
   addonTotalFromPicks,
-  addonGroupMaxSelect,
   defaultRequiredAddonSelection,
   requiredAddonGroupsOk,
   type ProductAddonGroup,
@@ -80,14 +82,15 @@ export function GarcomProductAddonModal({
 
   function changeAddonQty(g: number, i: number, delta: number) {
     const k = addonPickKey(g, i)
-    const maxSelect = groupMaxSelect(groups[g] ?? { name: '', required: false, items: [] })
+    const group = groups[g] ?? { name: '', required: false, items: [] }
+    const maxSelect = groupMaxSelect(group)
+    const minSelect = addonGroupMinSelect(group)
     setSelectedQty((prev) => {
       const next = { ...prev }
       const cur = next[k] ?? 0
-      let value = Math.max(0, cur + delta)
       if (maxSelect === 1) {
         if (delta > 0) {
-          for (let j = 0; j < (groups[g]?.items.length ?? 0); j++) {
+          for (let j = 0; j < group.items.length; j++) {
             const key = addonPickKey(g, j)
             if (j === i) next[key] = 1
             else delete next[key]
@@ -97,8 +100,21 @@ export function GarcomProductAddonModal({
         }
         return next
       }
+      const groupTotal = addonGroupSelectionCount(g, groups, prev)
+      if (delta > 0 && groupTotal >= maxSelect) return prev
+      let value = Math.max(0, cur + delta)
+      if (delta > 0) {
+        value = Math.min(value, cur + (maxSelect - groupTotal))
+      }
       if (value === 0) delete next[k]
       else next[k] = value
+      if (
+        delta < 0 &&
+        group.required &&
+        addonGroupSelectionCount(g, groups, next) < minSelect
+      ) {
+        return prev
+      }
       return next
     })
   }
@@ -174,7 +190,8 @@ export function GarcomProductAddonModal({
                     )}
                     {g.required && selectedInGroup === 0 ? (
                       <span className="ml-auto text-[11px] font-medium text-amber-800">
-                        Escolha uma opção
+                        Escolha {addonGroupMinSelect(g)} opção
+                        {addonGroupMinSelect(g) > 1 ? 'ões' : ''}
                       </span>
                     ) : selectedInGroup > 0 ? (
                       <span className="ml-auto rounded-full bg-[var(--dash-primary)] px-2 py-0.5 text-[11px] font-semibold text-white">

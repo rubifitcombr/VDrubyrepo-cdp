@@ -2,6 +2,7 @@
 
 import type { StoreOrderRow } from '@/lib/store-order'
 import { comandaDisplayName } from '@/lib/order-payments'
+import { isGenericComandaLabel, normalizeComandaName } from '@/lib/waiter-comanda-names'
 import { parseTableFromNotes } from '@/lib/waiter-order-notes'
 
 const money = new Intl.NumberFormat('pt-BR', {
@@ -9,8 +10,8 @@ const money = new Intl.NumberFormat('pt-BR', {
   currency: 'BRL',
 })
 
-function normalizeComandaName(value: string): string {
-  return value.trim().toLowerCase()
+function normalizeComandaNameLocal(value: string): string {
+  return normalizeComandaName(value)
 }
 
 export function GarcomMesaComandasPanel({
@@ -35,11 +36,17 @@ export function GarcomMesaComandasPanel({
   onClose: () => void
 }) {
   const trimmedName = newComandaName.trim()
+  const requireName = comandas.length > 0
   const duplicateName =
     trimmedName.length > 0 &&
     comandas.some(
-      (o) => normalizeComandaName(comandaDisplayName(o.customer_name)) === normalizeComandaName(trimmedName)
+      (o) =>
+        normalizeComandaNameLocal(comandaDisplayName(o.customer_name)) ===
+        normalizeComandaNameLocal(trimmedName)
     )
+  const genericName = trimmedName.length > 0 && isGenericComandaLabel(trimmedName)
+  const cannotStart =
+    duplicateName || genericName || (requireName && !trimmedName)
 
   return (
     <div className="fixed inset-0 z-[88] flex items-end justify-center sm:items-center" role="dialog">
@@ -67,7 +74,7 @@ export function GarcomMesaComandasPanel({
 
         <ul className="mt-3 space-y-2">
           {comandas.map((order) => {
-            const label = comandaDisplayName(order.customer_name)
+            const label = comandaDisplayName(order.customer_name, 'Comanda')
             const sel = activeOrderId === order.id
             return (
               <li key={order.id}>
@@ -110,14 +117,24 @@ export function GarcomMesaComandasPanel({
               className="mt-1 w-full rounded-lg border border-[var(--card-border)] bg-white px-3 py-2 text-sm"
             />
           </label>
+          {requireName && !trimmedName ? (
+            <p className="mt-2 text-[11px] font-medium text-amber-800">
+              Esta mesa já tem comanda aberta — informe um nome para a nova conta.
+            </p>
+          ) : null}
           {duplicateName ? (
             <p className="mt-2 text-[11px] font-medium text-amber-800">
               Já existe uma comanda com este nome nesta mesa. Escolha outro nome.
             </p>
           ) : null}
+          {genericName ? (
+            <p className="mt-2 text-[11px] font-medium text-amber-800">
+              Use um nome próprio para distinguir a comanda (ex.: Família Silva).
+            </p>
+          ) : null}
           <button
             type="button"
-            disabled={duplicateName}
+            disabled={cannotStart}
             onClick={onStartNew}
             className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--dash-primary)] py-2.5 text-sm font-semibold text-white shadow-sm shadow-[var(--dash-primary)]/25 transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
           >
@@ -134,7 +151,7 @@ export function GarcomMesaComandasPanel({
 
 export function comandaListSubtitle(order: StoreOrderRow): string {
   const mesa = parseTableFromNotes(order.notes)
-  const name = comandaDisplayName(order.customer_name, '')
+  const name = comandaDisplayName(order.customer_name, 'Comanda')
   const parts = [mesa ? `Mesa ${mesa}` : '', name].filter(Boolean)
   return parts.join(' · ') || 'Comanda'
 }

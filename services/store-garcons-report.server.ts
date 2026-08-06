@@ -7,6 +7,10 @@ import {
   spYmdToStartUtcMsGarcons,
 } from '@/lib/garcons-report-dates'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import {
+  garcomDisambigLabel,
+  garconsNeedNameDisambiguation,
+} from '@/lib/garcom-display'
 import { listGarconsForStore } from '@/services/store-garcons.server'
 
 function round2(n: number): number {
@@ -44,6 +48,13 @@ export async function buildGarconsReport(
 
   const garcons = await listGarconsForStore(svc, storeId)
   const garconsAtivos = garcons.filter((g) => g.ativo).length
+  const disambiguateNames = garconsNeedNameDisambiguation(garcons)
+
+  function garcomReportLabel(garcomId: string, fallback: string): string {
+    const g = garcons.find((x) => x.id === garcomId)
+    if (!g) return fallback
+    return disambiguateNames ? garcomDisambigLabel(g) : g.nome
+  }
 
   const { data, error } = await svc
     .from('orders')
@@ -79,7 +90,12 @@ export async function buildGarconsReport(
   >()
 
   for (const g of garcons) {
-    byGarcom.set(g.id, { nome: g.nome, pedidos: 0, valor: 0, taxa: 0 })
+    byGarcom.set(g.id, {
+      nome: disambiguateNames ? garcomDisambigLabel(g) : g.nome,
+      pedidos: 0,
+      valor: 0,
+      taxa: 0,
+    })
   }
 
   let totalPedidos = 0
@@ -96,8 +112,12 @@ export async function buildGarconsReport(
 
     const gid = row.garcom_id?.trim() || '__sem_garcom__'
     const nome =
-      row.garcom_nome?.trim() ||
-      (gid === '__sem_garcom__' ? 'Sem garçom' : 'Garçom removido')
+      gid === '__sem_garcom__'
+        ? 'Sem garçom'
+        : garcomReportLabel(
+            gid,
+            row.garcom_nome?.trim() || 'Garçom removido'
+          )
 
     const bucket = byGarcom.get(gid) ?? {
       nome,
