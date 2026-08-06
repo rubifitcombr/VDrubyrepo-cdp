@@ -2,16 +2,28 @@
 
 import Link from 'next/link'
 import { useState } from 'react'
+import type { StoreGarcomDTO } from '@/lib/garcons-types'
+import {
+  garcomDisambigLabel,
+  garconsNeedNameDisambiguation,
+} from '@/lib/garcom-display'
+import { isGarcomPinActive } from '@/lib/garcom-pin'
 
 export function GarcomPinModal({
   onCancel,
   onConfirm,
+  garconsWithPin = [],
 }: {
   onCancel: () => void
   onConfirm: (pin: string) => boolean
+  /** Garçons com PIN activo — usado para distinguir nomes duplicados. */
+  garconsWithPin?: StoreGarcomDTO[]
 }) {
   const [pin, setPin] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const showDisambig =
+    garconsWithPin.length > 0 && garconsNeedNameDisambiguation(garconsWithPin)
+  const pinGarcons = garconsWithPin.filter((g) => isGarcomPinActive(g))
 
   function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -45,6 +57,15 @@ export function GarcomPinModal({
           Digite o PIN de 4 números do garçom para abrir o salão e filtrar as
           movimentações.
         </p>
+        {showDisambig && pinGarcons.length > 0 ? (
+          <ul className="mt-3 rounded-xl bg-[#f9fafb] px-3 py-2 text-left text-xs text-[#4b5563]">
+            {pinGarcons.map((g) => (
+              <li key={g.id} className="py-0.5">
+                {garcomDisambigLabel(g)}
+              </li>
+            ))}
+          </ul>
+        ) : null}
         <input
           type="password"
           value={pin}

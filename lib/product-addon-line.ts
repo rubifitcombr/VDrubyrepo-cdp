@@ -58,6 +58,25 @@ export function addonTotalFromPicks(picks: ProductAddonPick[]): number {
   return picks.reduce((sum, pick) => sum + pick.price * pick.quantity, 0)
 }
 
+/** Rehidrata picks guardados em `order_items.addons` (JSON). */
+export function parseProductAddonPicks(raw: unknown): ProductAddonPick[] {
+  if (!Array.isArray(raw)) return []
+  const out: ProductAddonPick[] = []
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object') continue
+    const o = entry as Record<string, unknown>
+    const groupName = typeof o.groupName === 'string' ? o.groupName.trim() : ''
+    const itemName = typeof o.itemName === 'string' ? o.itemName.trim() : ''
+    const price = Number(o.price)
+    const quantity = Number(o.quantity)
+    if (!groupName || !itemName) continue
+    if (!Number.isFinite(price) || price < 0) continue
+    if (!Number.isFinite(quantity) || quantity < 1) continue
+    out.push({ groupName, itemName, price, quantity: Math.floor(quantity) })
+  }
+  return out
+}
+
 export function requiredAddonGroupsOk(
   groups: ProductAddonGroup[],
   selectedQty: Record<string, number>

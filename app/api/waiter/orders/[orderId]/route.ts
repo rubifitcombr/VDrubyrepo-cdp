@@ -73,7 +73,7 @@ export async function GET(
 
   const { data: items, error: iErr } = await supabase
     .from('order_items')
-    .select('id, product_id, quantity, unit_price, price, name, unit_type, weight_kg, price_per_kg_snapshot')
+    .select('id, product_id, quantity, unit_price, price, name, unit_type, weight_kg, price_per_kg_snapshot, addons')
     .eq('order_id', id)
 
   if (iErr) {

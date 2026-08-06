@@ -7,6 +7,7 @@ import {
   isSalaoGarcomPinRequired,
   matchGarcomByPin,
   setGarcomPinSession,
+  isGarcomPinActive,
 } from '@/lib/garcom-pin'
 import { useSyncExternalStore, useState } from 'react'
 
@@ -50,6 +51,7 @@ export function GarcomSalaoPinGate({
 
   return (
     <GarcomPinModal
+      garconsWithPin={garcons.filter((g) => g.ativo && isGarcomPinActive(g))}
       onCancel={() => {
         window.location.assign('/dashboard')
       }}

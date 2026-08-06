@@ -36,6 +36,7 @@ export type PdvPricedLine = {
   unit_type: OrderItemUnitType
   weight_kg?: number | null
   price_per_kg?: number | null
+  addons?: CheckoutAddonPick[]
 }
 
 type AddonCatalogItem = {
@@ -234,6 +235,7 @@ export async function pricePdvLinesFromCatalog(
       unit_price: priced.unitPrice,
       name: priced.name,
       unit_type: 'unit',
+      ...(addonPicks.length > 0 ? { addons: addonPicks } : {}),
     })
   }
 
@@ -266,6 +268,7 @@ export function mapPricedLinesToOrderItemRows(
       unit_type: l.unit_type,
       weight_kg: isWeight ? l.quantity : null,
       price_per_kg_snapshot: isWeight ? l.unit_price : null,
+      addons: l.addons && l.addons.length > 0 ? l.addons : null,
     }
   })
 }

@@ -63,6 +63,32 @@ async function assertUniqueGarcomPin(
   }
 }
 
+async function assertUniqueGarcomNome(
+  svc: SupabaseClient,
+  storeId: string,
+  nome: string,
+  excludeId?: string
+): Promise<void> {
+  const normalized = nome.trim().toLowerCase()
+  if (!normalized) return
+
+  const { data, error } = await svc
+    .from('store_garcons')
+    .select('id, nome')
+    .eq('store_id', storeId)
+    .eq('ativo', true)
+
+  if (error) throw new Error(error.message)
+  const conflict = (data ?? []).find(
+    (row) =>
+      String(row.id) !== excludeId &&
+      String(row.nome ?? '').trim().toLowerCase() === normalized
+  )
+  if (conflict) {
+    throw new Error('Já existe um garçom ativo com este nome.')
+  }
+}
+
 export async function listGarconsForStore(
   svc: SupabaseClient,
   storeId: string
@@ -94,6 +120,7 @@ export async function insertGarcom(
 ): Promise<StoreGarcomDTO> {
   const pinFields = parsePinFields(input)
   await assertUniqueGarcomPin(svc, storeId, pinFields.pin)
+  await assertUniqueGarcomNome(svc, storeId, input.nome)
 
   const { data, error } = await svc
     .from('store_garcons')
@@ -142,6 +169,10 @@ export async function updateGarcom(
     row.pin = pinFields.pin
     row.pin_ativo = pinFields.pin_ativo
     await assertUniqueGarcomPin(svc, storeId, pinFields.pin, id)
+  }
+
+  if (patch.nome !== undefined) {
+    await assertUniqueGarcomNome(svc, storeId, patch.nome, id)
   }
 
   const { data, error } = await svc

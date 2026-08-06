@@ -48,6 +48,7 @@ import { PdvWeighModal } from '@/app/dashboard/pdv/_components/PdvWeighModal'
 import {
   addonTotalFromPicks,
   buildProductLineName,
+  parseProductAddonPicks,
   type ProductAddonGroup,
   type ProductAddonPick,
 } from '@/lib/product-addon-line'
@@ -115,6 +116,7 @@ type OrderItemDTO = {
   price?: number | null
   name: string
   unit_type?: OrderItemUnitType
+  addons?: unknown
 }
 
 const money = new Intl.NumberFormat('pt-BR', {
@@ -376,6 +378,10 @@ export function WaiterClient({
   const barcodeScannerEnabled =
     scaleIntegrationEnabled && resolvedScaleConfig.scale_enabled
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null)
+  const activeOrderIdRef = useRef<string | null>(null)
+  useEffect(() => {
+    activeOrderIdRef.current = activeOrderId
+  }, [activeOrderId])
   const [discountBrl, setDiscountBrl] = useState(0)
   const [discountOpen, setDiscountOpen] = useState(false)
   const [discountInput, setDiscountInput] = useState('')
@@ -526,12 +532,16 @@ export function WaiterClient({
       for (const row of prev) {
         if (byId.has(row.id)) continue
         if (!isOpenSalonMapOrder(row, configuredTables)) continue
+        if (row.id === activeOrderIdRef.current) {
+          byId.set(row.id, row)
+          continue
+        }
         if (pendingOpenOrderIdsRef.current.has(row.id)) {
           byId.set(row.id, row)
           continue
         }
         const age = now - new Date(row.created_at).getTime()
-        if (age >= 0 && age < 12_000) {
+        if (age >= 0 && age < 20_000) {
           byId.set(row.id, row)
         }
       }
@@ -762,6 +772,7 @@ export function WaiterClient({
         const unitType: OrderItemUnitType =
           it.unit_type === 'weight' ? 'weight' : 'unit'
         const qty = Number(it.quantity) || 0
+        const addons = parseProductAddonPicks(it.addons)
         return {
           lineId: newCartLineId(),
           productId: String(it.product_id),
@@ -772,6 +783,7 @@ export function WaiterClient({
               : Math.max(1, Math.floor(qty)),
           unitPrice: Number(it.unit_price ?? it.price) || 0,
           unitType,
+          ...(addons.length > 0 ? { addons } : {}),
         }
       })
       setActiveOrderId(o.id)
@@ -2208,6 +2220,7 @@ export function WaiterClient({
             total={total}
             error={error}
             success={success}
+            scanHint={scanHint}
             saving={saving}
             loadingOrder={loadingOrder}
             hasSavedOrder={hasSavedOrder}
@@ -2609,18 +2622,17 @@ export function WaiterClient({
 
             {mesaCloseMode === 'immediate' ? (
               hasFeature(plan, 'cashier') && !caixaTurnoOpen ? (
-                <div className="mt-3">
-                  <p className="text-xs text-[#6b7280]">
-                    Regista no{' '}
-                    <Link
-                      href={CAIXA_BALCAO_HREF}
-                      className="font-semibold text-[var(--dash-primary)] underline"
-                    >
-                      turno de caixa
-                    </Link>{' '}
-                    aberto (exige permissão de Caixa). Lance cada forma de pagamento até completar o
-                    total.
+                <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
+                  <p className="text-xs font-medium text-amber-900">
+                    Não há turno de caixa aberto. Para receber pagamentos aqui, abre o caixa
+                    primeiro.
                   </p>
+                  <Link
+                    href={CAIXA_BALCAO_HREF}
+                    className="mt-2 inline-flex text-xs font-semibold text-[var(--dash-primary)] underline"
+                  >
+                    Abrir caixa →
+                  </Link>
                 </div>
               ) : null
             ) : (
@@ -2639,7 +2651,12 @@ export function WaiterClient({
               </button>
               <button
                 type="button"
-                disabled={busyOrderId === activeOrder.id}
+                disabled={
+                  busyOrderId === activeOrder.id ||
+                  (mesaCloseMode === 'immediate' &&
+                    hasFeature(plan, 'cashier') &&
+                    !caixaTurnoOpen)
+                }
                 onClick={() => {
                   if (mesaCloseMode === 'immediate') {
                     setConfirmCloseOpen(false)
@@ -2885,6 +2902,7 @@ export function WaiterClient({
                 total={total}
                 error={error}
                 success={success}
+                scanHint={scanHint}
                 saving={saving}
                 loadingOrder={loadingOrder}
                 hasSavedOrder={hasSavedOrder}
@@ -3015,6 +3033,7 @@ function OrderPanelContent({
   total,
   error,
   success,
+  scanHint,
   saving,
   loadingOrder,
   hasSavedOrder,
@@ -3045,6 +3064,7 @@ function OrderPanelContent({
   total: number
   error: string | null
   success: string | null
+  scanHint: string | null
   saving: boolean
   loadingOrder: boolean
   hasSavedOrder: boolean
@@ -3264,6 +3284,9 @@ function OrderPanelContent({
           <p className="mt-2 rounded-lg bg-red-50 px-2 py-1.5 text-xs text-red-800">{error}</p>
         ) : null}
         {success ? <p className="mt-2 rounded-lg bg-emerald-50 px-2 py-1.5 text-xs text-emerald-800">{success}</p> : null}
+        {scanHint ? (
+          <p className="mt-2 rounded-lg bg-sky-50 px-2 py-1.5 text-xs text-sky-800">{scanHint}</p>
+        ) : null}
       </div>
 
       <div
