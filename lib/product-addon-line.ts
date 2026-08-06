@@ -8,6 +8,10 @@ export type ProductAddonPick = {
 export type ProductAddonGroup = {
   name: string
   required: boolean
+  /** Mínimo de itens no grupo (0 = opcional se não required). */
+  minSelect?: number
+  /** Máximo de itens no grupo (1 = escolha única, ex. tipo de carne). */
+  maxSelect?: number
   items: { name: string; price: number }[]
 }
 

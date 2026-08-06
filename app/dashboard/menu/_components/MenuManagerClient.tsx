@@ -91,6 +91,8 @@ function draftsToSaved(groups: AddonGroupDraft[]): AddonGroupSaved[] {
     .map((g) => ({
       name: g.name.trim(),
       required: g.required,
+      minSelect: g.required ? 1 : 0,
+      maxSelect: 1,
       items: g.items
         .map((it) => {
           const p = Number(it.price.replace(',', '.'))

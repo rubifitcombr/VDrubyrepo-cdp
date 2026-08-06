@@ -1029,15 +1029,28 @@ export function WaiterClient({
       try {
         groups = await fetchProductAddonTree(product.id)
         addonTreeCacheRef.current.set(product.id, groups)
-      } catch {
-        groups = []
-        addonTreeCacheRef.current.set(product.id, [])
+      } catch (err) {
+        const msg =
+          err instanceof Error ? err.message : 'Erro ao carregar adicionais.'
+        setError(
+          `Não foi possível carregar os adicionais de «${product.name}». ${msg}`
+        )
+        return
       } finally {
         setAddonLoadingProductId(null)
       }
     }
 
     if (groups.length > 0) {
+      const brokenRequired = groups.some(
+        (g) => g.required && g.items.length === 0
+      )
+      if (brokenRequired) {
+        setError(
+          `Os adicionais de «${product.name}» estão incompletos. Verifica o grupo no cardápio (Produtos).`
+        )
+        return
+      }
       setMenuSheetOpen(false)
       setAddonModal({ product, groups })
       return
