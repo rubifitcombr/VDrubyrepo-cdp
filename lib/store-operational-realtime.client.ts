@@ -13,6 +13,16 @@ export function isOperationalSyncTabVisible(): boolean {
   return typeof document === 'undefined' || document.visibilityState === 'visible'
 }
 
+/** Catch-up quando o separador volta ao primeiro plano (eventos Realtime ignorados em background). */
+export function subscribeOperationalVisibilityRefresh(callback: () => void): () => void {
+  if (typeof document === 'undefined') return () => {}
+  const onVisibility = () => {
+    if (document.visibilityState === 'visible') callback()
+  }
+  document.addEventListener('visibilitychange', onVisibility)
+  return () => document.removeEventListener('visibilitychange', onVisibility)
+}
+
 export const STORE_ORDERS_SYNC_EVENT = 'vyria-store-orders-sync'
 export const STORE_REALTIME_STATUS_EVENT = 'vyria-store-realtime-status'
 

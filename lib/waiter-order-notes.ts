@@ -12,6 +12,15 @@ export function isSalonMapOrderSource(source: string | null | undefined): boolea
 export const WAITER_PENDING_CAIXA_MARKER =
   '[Caixa pendente] Aguarda fecho pelo caixa.'
 
+/** Quando presente em `orders.notes`, o pagamento foi registado no salão (Receber agora). */
+export const GARCOM_PAYMENT_CLOSE_MARKER = '[Garçom] Recebido em '
+
+export function notesIndicateGarcomPaymentReceived(
+  notes: string | null | undefined
+): boolean {
+  return String(notes ?? '').includes(GARCOM_PAYMENT_CLOSE_MARKER)
+}
+
 export function notesIndicateWaiterReleasedToCaixa(
   notes: string | null | undefined
 ): boolean {

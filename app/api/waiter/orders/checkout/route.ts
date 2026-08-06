@@ -3,6 +3,7 @@ import { gateMerchantMenuKey } from '@/lib/merchant-api-gate.server'
 import { denyStaffWaiterPanelWrites } from '@/lib/waiter-staff-gate.server'
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
 import {
+  GARCOM_PAYMENT_CLOSE_MARKER,
   WAITER_PENDING_CAIXA_MARKER,
   notesIndicateWaiterReleasedToCaixa,
 } from '@/lib/waiter-order-notes'
@@ -136,13 +137,24 @@ export async function POST(request: Request) {
     const line = `${WAITER_PENDING_CAIXA_MARKER} (${new Date().toISOString()})`
     const notes = noteBase ? `${noteBase}\n${line}` : line
 
-    const { error: upErr } = await supabase
+    const { data: updated, error: upErr } = await supabase
       .from('orders')
-      .update({
-        notes,
-      })
+      .update({ notes })
       .eq('store_id', storeId)
       .eq('id', orderId)
+      .neq('status', 'cancelled')
+      .neq('status', 'delivered')
+      .not('notes', 'ilike', `%${WAITER_PENDING_CAIXA_MARKER}%`)
+      .not('notes', 'ilike', `%${GARCOM_PAYMENT_CLOSE_MARKER}%`)
+      .select('id')
+      .maybeSingle()
+
+    if (!upErr && !updated) {
+      return NextResponse.json(
+        { error: 'Esta comanda já foi encaminhada ao Caixa.' },
+        { status: 409 }
+      )
+    }
 
     if (upErr) {
       return NextResponse.json(
@@ -194,7 +206,7 @@ export async function POST(request: Request) {
   const paymentNote = isSplit
     ? lines.map((l) => `${l.method}:${l.amount.toFixed(2)}`).join(', ')
     : storedMethod
-  const closeLine = `[Garçom] Recebido em ${new Date().toISOString()} (${paymentNote})`
+  const closeLine = `${GARCOM_PAYMENT_CLOSE_MARKER}${new Date().toISOString()} (${paymentNote})`
   const notes = noteBase ? `${noteBase}\n${closeLine}` : closeLine
 
   const serviceFee = round2(Math.max(0, Number(body.service_fee_brl) || 0))
@@ -219,14 +231,32 @@ export async function POST(request: Request) {
     updatePayload.garcom_nome = garcom.garcom_nome
   }
 
-  const { error: upErr } = await supabase
+  const { data: updated, error: upErr } = await supabase
     .from('orders')
     .update(updatePayload)
     .eq('store_id', storeId)
     .eq('id', orderId)
+    .neq('status', 'cancelled')
+    .neq('status', 'delivered')
+    .not('notes', 'ilike', `%${GARCOM_PAYMENT_CLOSE_MARKER}%`)
+    .select('id, status, payment_method, notes, caixa_turno_id')
+    .maybeSingle()
 
-  if (upErr) {
-    const msg = upErr.message ?? ''
+  if (!upErr && !updated) {
+    return NextResponse.json({
+      ok: true,
+      mode: 'immediate',
+      orderId,
+      alreadyPaid: true,
+      payments:
+        lines.length > 0
+          ? lines.map((l) => ({ method: l.method, amount: l.amount }))
+          : undefined,
+    })
+  }
+
+  if (upErr || !updated) {
+    const msg = upErr?.message ?? ''
     if (/caixa_turno_id|column/i.test(msg)) {
       return NextResponse.json(
         {
@@ -243,24 +273,32 @@ export async function POST(request: Request) {
   }
 
   if (lines.length > 0) {
-    const payResult = await insertOrderPayments(supabase, {
-      storeId,
-      orderId,
-      turnoId: turnoAberto.id,
-      lines,
-    })
-    if (!payResult.ok) {
-      await supabase
-        .from('orders')
-        .update({
-          status: order.status,
-          payment_method: order.payment_method,
-          notes: order.notes,
-          caixa_turno_id: null,
-        })
-        .eq('store_id', storeId)
-        .eq('id', orderId)
-      return NextResponse.json({ error: payResult.error }, { status: 500 })
+    const { count: existingPayCount } = await supabase
+      .from('order_payments')
+      .select('id', { count: 'exact', head: true })
+      .eq('store_id', storeId)
+      .eq('order_id', orderId)
+
+    if ((existingPayCount ?? 0) === 0) {
+      const payResult = await insertOrderPayments(supabase, {
+        storeId,
+        orderId,
+        turnoId: turnoAberto.id,
+        lines,
+      })
+      if (!payResult.ok) {
+        await supabase
+          .from('orders')
+          .update({
+            status: order.status,
+            payment_method: order.payment_method,
+            notes: order.notes,
+            caixa_turno_id: null,
+          })
+          .eq('store_id', storeId)
+          .eq('id', orderId)
+        return NextResponse.json({ error: payResult.error }, { status: 500 })
+      }
     }
   }
 

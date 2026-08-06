@@ -464,6 +464,8 @@ export async function redeemReferralBonus(
     .eq('id', storeId)
 
   if (upStore) {
+    await svc.from('store_referral_ledger').delete().eq('redemption_id', redemption.id)
+    await svc.from('store_referral_redemptions').delete().eq('id', redemption.id)
     return { error: upStore.message ?? 'Erro ao estender assinatura.', status: 500 }
   }
 

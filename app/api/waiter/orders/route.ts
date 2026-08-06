@@ -184,6 +184,15 @@ export async function POST(request: Request) {
     table,
     sector
   )
+  if (resolvedTable.ambiguous) {
+    return NextResponse.json(
+      {
+        error:
+          'Mesa ambígua: existem várias mesas com este nome. Selecciona o setor correcto (ex.: Salão ou Varanda).',
+      },
+      { status: 400 }
+    )
+  }
 
   const { data: order, error: orderErr } = await supabase
     .from('orders')

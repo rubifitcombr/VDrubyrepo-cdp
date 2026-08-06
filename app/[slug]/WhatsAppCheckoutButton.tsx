@@ -390,13 +390,24 @@ export function WhatsAppCheckoutButton({
     }
   }
 
+  function qrTableLabel(): string {
+    return String(initialTableMesa ?? '').trim().slice(0, 42)
+  }
+
+  function restoreQrTableMesa() {
+    const label = qrTableLabel()
+    if (tableLockedFromQr && label) {
+      setTableMesa(label)
+    }
+  }
+
   function resetCheckoutModal() {
     clearCart()
     setSubmitting(false)
     setOpen(false)
     setFulfillment(null)
     setPixStep(null)
-    setTableMesa('')
+    setTableMesa(tableLockedFromQr && qrTableLabel() ? qrTableLabel() : '')
     setDineInStep(1)
     setDineInFieldErrors({})
     setDineInSuccess(null)
@@ -404,6 +415,23 @@ export function WhatsAppCheckoutButton({
     setLoyaltyRedeemPoints(0)
     setCouponInput('')
     clearCoupon()
+  }
+
+  function startAnotherQrOrder() {
+    clearCart()
+    setSubmitting(false)
+    setError(null)
+    setPixStep(null)
+    setDineInStep(1)
+    setDineInFieldErrors({})
+    setDineInSuccess(null)
+    setLoyaltyRedeemEnabled(false)
+    setLoyaltyRedeemPoints(0)
+    setCouponInput('')
+    clearCoupon()
+    restoreQrTableMesa()
+    setFulfillment('dine_in')
+    setOpen(true)
   }
 
   function finishCheckoutAfterApi(
@@ -851,7 +879,7 @@ export function WhatsAppCheckoutButton({
                           </button>
                           <button
                             type="button"
-                            onClick={resetCheckoutModal}
+                            onClick={startAnotherQrOrder}
                             className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-neutral-900 bg-white px-3 py-2 text-[12px] font-extrabold leading-tight text-neutral-950 active:bg-neutral-100"
                           >
                             ← Fazer mais pedidos

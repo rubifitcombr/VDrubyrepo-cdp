@@ -17,6 +17,7 @@ import {
 import {
   isOperationalSyncTabVisible,
   notifyStoreOrdersChanged,
+  subscribeOperationalVisibilityRefresh,
   subscribeStoreOrdersSync,
 } from '@/lib/store-operational-realtime.client'
 import {
@@ -178,6 +179,11 @@ export function KdsClient({
       setLiveOk(true)
     })
 
+    const unsubscribeVis = subscribeOperationalVisibilityRefresh(() => {
+      void pullOrders()
+      setLiveOk(true)
+    })
+
     const poll = window.setInterval(() => {
       if (document.visibilityState !== 'visible') return
       void pullOrders()
@@ -186,6 +192,7 @@ export function KdsClient({
     return () => {
       window.clearInterval(poll)
       unsubscribe()
+      unsubscribeVis()
     }
   }, [storeId, pullOrders])
 

@@ -86,6 +86,7 @@ import { updateOrderStatus } from '@/services/orders'
 import {
   isOperationalSyncTabVisible,
   notifyStoreOrdersChanged,
+  subscribeOperationalVisibilityRefresh,
   subscribeStoreOrdersSync,
 } from '@/lib/store-operational-realtime.client'
 import { buildItemsSummaryWithLineTotals } from '@/lib/print/items-summary-format'
@@ -669,6 +670,11 @@ export function WaiterClient({
       }
     })
 
+    const unsubscribeVis = subscribeOperationalVisibilityRefresh(() => {
+      void pullOpenOrders()
+      void pullTables()
+    })
+
     const ordersPoll = window.setInterval(() => {
       if (document.visibilityState === 'visible') void pullOpenOrders()
     }, 20000)
@@ -684,6 +690,7 @@ export function WaiterClient({
       window.clearInterval(ordersPoll)
       window.clearInterval(tablesPoll)
       unsubscribe()
+      unsubscribeVis()
     }
   }, [storeId, pullOpenOrders, pullTables, schedulePullOpenOrders])
 
@@ -1152,8 +1159,26 @@ export function WaiterClient({
     })
   }
 
-  async function flushPersistOrder(): Promise<boolean> {
+  function waitForPersistIdle(): Promise<void> {
+    return new Promise((resolve) => {
+      const tick = () => {
+        if (!persistInFlightRef.current) {
+          resolve()
+          return
+        }
+        window.setTimeout(tick, 40)
+      }
+      tick()
+    })
+  }
+
+  async function flushPersistOrder(options?: { waitIfInFlight?: boolean }): Promise<boolean> {
     if (persistInFlightRef.current) {
+      if (options?.waitIfInFlight) {
+        await waitForPersistIdle()
+        if (pendingPersistRef.current) await waitForPersistIdle()
+        return flushPersistOrder()
+      }
       pendingPersistRef.current = true
       return false
     }
@@ -1800,7 +1825,7 @@ export function WaiterClient({
 
   async function prepareCloseMesa(): Promise<boolean> {
     if (cartRef.current.length === 0) return true
-    const ok = await flushPersistOrder()
+    const ok = await flushPersistOrder({ waitIfInFlight: true })
     if (!ok) {
       setError('Guarda as alterações antes de fechar a mesa.')
     }

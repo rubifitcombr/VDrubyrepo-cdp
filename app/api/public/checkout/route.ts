@@ -611,6 +611,15 @@ export async function POST(req: NextRequest) {
         tableLabel,
         tableSetorHint || dineInSector
       )
+      if (resolvedTable.ambiguous) {
+        return NextResponse.json(
+          {
+            error:
+              'Mesa ambígua: existem várias mesas com este nome. Abre o QR da mesa correcta ou indica o setor (Salão, Varanda, etc.).',
+          },
+          { status: 400 }
+        )
+      }
       salonTableId = resolvedTable.tableId
       dineInSector = resolvedTable.sector
     }

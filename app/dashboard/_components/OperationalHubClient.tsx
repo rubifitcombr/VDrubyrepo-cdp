@@ -4,7 +4,7 @@ import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { orderIsVisibleAfterPixConfirmation } from '@/lib/store-order'
-import { isOperationalSyncTabVisible, subscribeStoreOrdersSync } from '@/lib/store-operational-realtime.client'
+import { isOperationalSyncTabVisible, subscribeOperationalVisibilityRefresh, subscribeStoreOrdersSync } from '@/lib/store-operational-realtime.client'
 import { slugChannelSourcesForSupabaseIn } from '@/lib/slug-channel-orders'
 import {
   IconBag,
@@ -22,10 +22,10 @@ import { GarcomPinModal } from './GarcomPinModal'
 import { HubShortcutPinModal } from './HubShortcutPinModal'
 import { dashboardFetch } from '@/lib/dashboard-fetch.client'
 import {
+  isGarcomPinActive,
   isGarcomPinSessionValid,
   isSalaoGarcomAccessPath,
   isSalaoGarcomPinRequired,
-  matchGarcomByPin,
   setGarcomPinSession,
 } from '@/lib/garcom-pin'
 import type { StoreGarcomDTO } from '@/lib/garcons-types'
@@ -212,6 +212,8 @@ export function OperationalHubClient({
   )
   const [hubPinError, setHubPinError] = useState<string | null>(null)
   const [hubPinVerifying, setHubPinVerifying] = useState(false)
+  const [garcomPinError, setGarcomPinError] = useState<string | null>(null)
+  const [garcomPinVerifying, setGarcomPinVerifying] = useState(false)
   const [livePendingOrders, setLivePendingOrders] = useState(pendingOrders)
 
   useEffect(() => {
@@ -288,6 +290,10 @@ export function OperationalHubClient({
       void refreshPendingCount()
     })
 
+    const unsubscribeVis = subscribeOperationalVisibilityRefresh(() => {
+      void refreshPendingCount()
+    })
+
     const poll = window.setInterval(() => {
       if (document.visibilityState !== 'visible') return
       void refreshPendingCount()
@@ -297,6 +303,7 @@ export function OperationalHubClient({
       disposed = true
       window.clearInterval(poll)
       unsubscribe()
+      unsubscribeVis()
     }
   }, [storeId, slugChannelSourcesOnly])
 
@@ -335,12 +342,37 @@ export function OperationalHubClient({
   function confirmPin(pin: string) {
     if (!pendingShortcut) return false
     if (pendingShortcut.kind === 'garcom') {
-      const garcom = matchGarcomByPin(garcons, pin)
-      if (!garcom) return false
-      setGarcomPinSession(storeId, garcom)
-      navigateToShortcut(pendingShortcut.href)
-      setPendingShortcut(null)
-      return true
+      if (garcomPinVerifying) return false
+      setGarcomPinVerifying(true)
+      setGarcomPinError(null)
+      void dashboardFetch('/api/waiter/pin/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin }),
+      })
+        .then(async (res) => {
+          const json = (await res.json().catch(() => ({}))) as {
+            error?: string
+            garcom?: { id: string; nome: string }
+          }
+          if (!res.ok || !json.garcom) {
+            setGarcomPinError(json.error || 'PIN inválido.')
+            return
+          }
+          const garcom = garcons.find((g) => g.id === json.garcom!.id)
+          if (!garcom) {
+            setGarcomPinError('Garçom não encontrado.')
+            return
+          }
+          setGarcomPinSession(storeId, garcom)
+          navigateToShortcut(pendingShortcut.href)
+          setPendingShortcut(null)
+          setGarcomPinError(null)
+        })
+        .finally(() => {
+          setGarcomPinVerifying(false)
+        })
+      return false
     }
     if (hubPinVerifying) return false
     setHubPinVerifying(true)
@@ -521,8 +553,14 @@ export function OperationalHubClient({
       ) : null}
       {pendingShortcut?.kind === 'garcom' ? (
         <GarcomPinModal
-          onCancel={() => setPendingShortcut(null)}
+          garconsWithPin={garcons.filter((g) => g.ativo && isGarcomPinActive(g))}
+          onCancel={() => {
+            setPendingShortcut(null)
+            setGarcomPinError(null)
+          }}
           onConfirm={confirmPin}
+          externalError={garcomPinError}
+          verifying={garcomPinVerifying}
         />
       ) : null}
     </>

@@ -30,6 +30,7 @@ import {
 import {
   isOperationalSyncTabVisible,
   notifyStoreOrdersChanged,
+  subscribeOperationalVisibilityRefresh,
   subscribeStoreOrdersSync,
 } from '@/lib/store-operational-realtime.client'
 import { isDeliveryFlowOrder } from '@/lib/order-status-transitions'
@@ -725,6 +726,11 @@ function useOrdersRealtime(
       setLiveOk(true)
     })
 
+    const unsubscribeVis = subscribeOperationalVisibilityRefresh(() => {
+      void pullOrders()
+      setLiveOk(true)
+    })
+
     const poll = window.setInterval(() => {
       if (document.visibilityState !== 'visible') return
       void pullOrders()
@@ -733,6 +739,7 @@ function useOrdersRealtime(
     return () => {
       window.clearInterval(poll)
       unsubscribe()
+      unsubscribeVis()
     }
   }, [storeId, slugChannelSourcesOnly])
 
@@ -1269,6 +1276,10 @@ export function OrdersClient({
       if (detail.source === 'store_tables') void pullSalonTables()
     })
 
+    const unsubscribeVis = subscribeOperationalVisibilityRefresh(() => {
+      void pullSalonTables()
+    })
+
     const poll = window.setInterval(() => {
       if (document.visibilityState === 'visible') void pullSalonTables()
     }, 30000)
@@ -1276,6 +1287,7 @@ export function OrdersClient({
     return () => {
       window.clearInterval(poll)
       unsubscribe()
+      unsubscribeVis()
     }
   }, [storeId])
   const [channelFilter, setChannelFilter] = useState<ChannelFilter>(() =>

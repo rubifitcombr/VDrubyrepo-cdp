@@ -108,7 +108,23 @@ export function StoreOperationalRealtimeBridge({ storeId }: Props) {
           )
           return
         }
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        if (status === 'CLOSED') {
+          window.dispatchEvent(
+            new CustomEvent<StoreRealtimeStatusDetail>(STORE_REALTIME_STATUS_EVENT, {
+              detail: { storeId: activeStoreId, status: 'degraded' },
+            })
+          )
+          return
+        }
+        if (status === 'TIMED_OUT') {
+          window.dispatchEvent(
+            new CustomEvent<StoreRealtimeStatusDetail>(STORE_REALTIME_STATUS_EVENT, {
+              detail: { storeId: activeStoreId, status: 'degraded' },
+            })
+          )
+          return
+        }
+        if (status === 'CHANNEL_ERROR') {
           window.dispatchEvent(
             new CustomEvent<StoreRealtimeStatusDetail>(STORE_REALTIME_STATUS_EVENT, {
               detail: { storeId: activeStoreId, status: 'error' },

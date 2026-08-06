@@ -25,12 +25,14 @@ import { mapStoreOrderRow, ORDER_SELECT } from '@/lib/store-order'
 import {
   isOpenCaixaComanda,
   isPaidInCaixaTurno,
+  orderPaymentRegisteredInCaixa,
 } from '@/lib/cashier-comanda-close'
 import { isPdvWaiterComandaSource } from '@/lib/cashier-pro-delivery-scope'
 import { createClient } from '@/lib/supabase/client'
 import {
   isOperationalSyncTabVisible,
   notifyStoreOrdersChanged,
+  subscribeOperationalVisibilityRefresh,
   subscribeStoreOrdersSync,
 } from '@/lib/store-operational-realtime.client'
 import { IconPrinter } from '@/app/dashboard/_components/NavIcons'
@@ -53,7 +55,7 @@ function orderStatusRank(status: string | null | undefined): number {
   return 0
 }
 
-/** Evita que router.refresh() reverta fechos locais ainda não refletidos no SSR. */
+/** Evita que router.refresh() ou realtime revertam fechos locais ainda não refletidos no servidor. */
 function mergeStoreOrdersFromServer(
   prev: StoreOrderRow[],
   incoming: StoreOrderRow[]
@@ -62,6 +64,11 @@ function mergeStoreOrdersFromServer(
   return incoming.map((o) => {
     const local = prevById.get(o.id)
     if (!local) return o
+    const localPaid = orderPaymentRegisteredInCaixa(local.notes)
+    const serverPaid = orderPaymentRegisteredInCaixa(o.notes)
+    if (localPaid && !serverPaid) {
+      return { ...o, ...local }
+    }
     if (orderStatusRank(local.status) > orderStatusRank(o.status)) {
       return { ...o, ...local }
     }
@@ -304,7 +311,7 @@ function OperacaoView({
     if (caixaProDeliveryOnly) {
       rows = rows.filter((o) => !isPdvWaiterComandaSource(o.source))
     }
-    setOrders(rows)
+    setOrders((prev) => mergeStoreOrdersFromServer(prev, rows))
 
     const activeTurnoId = turno?.status === 'aberto' ? turno.id : null
     if (!activeTurnoId) {
@@ -605,9 +612,14 @@ function OperacaoView({
       scheduleRefresh()
     })
 
+    const unsubscribeVis = subscribeOperationalVisibilityRefresh(() => {
+      void pullCashierOrders()
+    })
+
     return () => {
       if (refreshTimer) window.clearTimeout(refreshTimer)
       unsubscribe()
+      unsubscribeVis()
     }
   }, [storeId, router, reloadEntregas, pullCashierOrders])
 
