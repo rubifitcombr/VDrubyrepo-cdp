@@ -23,6 +23,7 @@ import {
 } from '@/lib/presencial-table-orders'
 import {
   buildSalonSelfServiceUrl,
+  buildWaiterNotes,
   extractUserNotes,
   isSalonMapOrderSource,
   orderMatchesSalonTable,
@@ -87,6 +88,17 @@ import {
   notifyStoreOrdersChanged,
   subscribeStoreOrdersSync,
 } from '@/lib/store-operational-realtime.client'
+import { buildItemsSummaryWithLineTotals } from '@/lib/print/items-summary-format'
+
+type EditorSnapshot = {
+  table: string
+  sector: string
+  customerName: string
+  notes: string
+  discountBrl: number
+  cart: CartLine[]
+  garcomId: string | null
+}
 
 type CartLine = {
   lineId: string
@@ -386,9 +398,20 @@ export function WaiterClient({
     activeOrderIdRef.current = activeOrderId
   }, [activeOrderId])
   const autoSaveSkipRef = useRef(0)
-  const persistOrderTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const persistInFlightRef = useRef(false)
+  const pendingPersistRef = useRef(false)
   const skipNextAutoSaveRef = useRef(false)
+  const cartRef = useRef<CartLine[]>([])
+  const optimisticOrderIdRef = useRef<string | null>(null)
+  const editorSnapshotRef = useRef<EditorSnapshot>({
+    table: '',
+    sector: 'Salão',
+    customerName: '',
+    notes: '',
+    discountBrl: 0,
+    cart: [],
+    garcomId: null,
+  })
   const [discountBrl, setDiscountBrl] = useState(0)
   const [discountOpen, setDiscountOpen] = useState(false)
   const [discountInput, setDiscountInput] = useState('')
@@ -754,6 +777,19 @@ export function WaiterClient({
     [cart]
   )
 
+  useEffect(() => {
+    cartRef.current = cart
+    editorSnapshotRef.current = {
+      table,
+      sector,
+      customerName,
+      notes,
+      discountBrl,
+      cart,
+      garcomId: effectiveGarcomId,
+    }
+  }, [table, sector, customerName, notes, discountBrl, cart, effectiveGarcomId])
+
   const isOutOfStock = useCallback(
     (productId: string) =>
       Object.prototype.hasOwnProperty.call(stockQuantityByProductId, productId) &&
@@ -849,6 +885,7 @@ export function WaiterClient({
       setCustomerName(o.customer_name?.trim() || '')
       setNotes(extractUserNotes(o.notes))
       setCart(lines)
+      cartRef.current = lines
       setDiscountBrl(parseDiscountFromNotes(o.notes))
       setDiscountOpen(false)
       skipNextAutoSaveRef.current = true
@@ -899,6 +936,8 @@ export function WaiterClient({
     setDiscountBrl(0)
     setDiscountOpen(false)
     autoSaveSkipRef.current += 1
+    cartRef.current = []
+    optimisticOrderIdRef.current = null
     setCenterTab('map')
     if (openDrawer) setOrderDrawerOpen(true)
   }
@@ -947,6 +986,8 @@ export function WaiterClient({
     setDiscountBrl(0)
     setDiscountOpen(false)
     autoSaveSkipRef.current += 1
+    cartRef.current = []
+    optimisticOrderIdRef.current = null
     setError(null)
     setSuccess(
       comandaName.trim()
@@ -993,21 +1034,228 @@ export function WaiterClient({
     }
   }
 
+  function buildPayloadFromSnapshot(snapshot: EditorSnapshot) {
+    const tableLabel = snapshot.table.trim()
+    return {
+      table: tableLabel,
+      sector: snapshot.sector,
+      customer_name:
+        snapshot.customerName.trim() ||
+        (tableLabel ? `Comanda · Mesa ${tableLabel}` : null),
+      notes: snapshot.notes.trim() || null,
+      discount_brl: snapshot.discountBrl,
+      garcom_id: snapshot.garcomId,
+      items: snapshot.cart.map((line) => ({
+        product_id: line.productId,
+        quantity: line.quantity,
+        unit_price: line.unitPrice,
+        name: line.name,
+        unit_type: line.unitType,
+        addons: line.addons,
+      })),
+    }
+  }
+
+  function buildOptimisticOrderRow(snapshot: EditorSnapshot, orderId: string): StoreOrderRow {
+    const tableLabel = snapshot.table.trim()
+    const itemLines = snapshot.cart.map((line) => ({
+      quantity: line.quantity,
+      name: line.name,
+      unit_price: line.unitPrice,
+      unit_type: line.unitType,
+    }))
+    const gross = snapshot.cart.reduce(
+      (sum, line) => sum + line.quantity * line.unitPrice,
+      0
+    )
+    const total = Math.max(
+      0,
+      Math.round((gross - snapshot.discountBrl) * 100) / 100
+    )
+    const orderNotes = buildWaiterNotes(
+      tableLabel,
+      snapshot.sector,
+      snapshot.notes.trim(),
+      snapshot.discountBrl
+    )
+    return {
+      id: orderId,
+      customer_name:
+        snapshot.customerName.trim() ||
+        (tableLabel ? `Comanda · Mesa ${tableLabel}` : null),
+      total,
+      status: 'pending',
+      source: 'waiter',
+      created_at: new Date().toISOString(),
+      notes: orderNotes,
+      items_summary: buildItemsSummaryWithLineTotals(itemLines),
+      garcom_id: snapshot.garcomId,
+      garcom_nome: null,
+    }
+  }
+
+  function upsertOptimisticOpenOrder(snapshot: EditorSnapshot) {
+    const tableLabel = snapshot.table.trim()
+    if (!tableLabel || snapshot.cart.length === 0) return
+
+    let orderId = activeOrderIdRef.current
+    if (!orderId) {
+      if (!optimisticOrderIdRef.current) {
+        optimisticOrderIdRef.current = `optimistic-${crypto.randomUUID()}`
+      }
+      orderId = optimisticOrderIdRef.current
+    }
+
+    const row = buildOptimisticOrderRow(snapshot, orderId)
+    setSelectedTableKey(`${snapshot.sector}::${tableLabel}`)
+    setOpenOrders((prev) => {
+      const dropIds = new Set<string>([orderId])
+      if (optimisticOrderIdRef.current) dropIds.add(optimisticOrderIdRef.current)
+      return sortOpenOrders([
+        row,
+        ...prev.filter((o) => !dropIds.has(o.id) && o.id !== row.id),
+      ])
+    })
+  }
+
+  async function flushPersistOrder() {
+    if (persistInFlightRef.current) {
+      pendingPersistRef.current = true
+      return
+    }
+    if (skipNextAutoSaveRef.current) {
+      skipNextAutoSaveRef.current = false
+      return
+    }
+
+    const snapshot = editorSnapshotRef.current
+    if (!snapshot.table.trim() || snapshot.cart.length === 0) return
+
+    persistInFlightRef.current = true
+    setAutoSaving(true)
+    try {
+      const payload = buildPayloadFromSnapshot(snapshot)
+      const orderId = activeOrderIdRef.current
+
+      if (orderId) {
+        const res = await dashboardFetch(`/api/waiter/orders/${orderId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+        const json = (await res.json().catch(() => ({}))) as {
+          error?: string
+          order?: StoreOrderRow
+        }
+        if (!res.ok) {
+          setError(json.error || 'Erro ao guardar.')
+          return
+        }
+        if (json.order) {
+          const row = json.order as StoreOrderRow
+          setOpenOrders((prev) =>
+            sortOpenOrders(
+              [row, ...prev.filter((o) => o.id !== row.id && !o.id.startsWith('optimistic-'))]
+            )
+          )
+          notifyStoreOrdersChanged(storeId, {
+            eventType: 'UPDATE',
+            source: 'order_items',
+          })
+        }
+        return
+      }
+
+      const res = await dashboardFetch('/api/waiter/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const json = (await res.json().catch(() => ({}))) as {
+        error?: string
+        order?: StoreOrderRow
+      }
+      if (!res.ok) {
+        setError(json.error || 'Erro ao registar.')
+        return
+      }
+      if (json.order) {
+        const row = json.order as StoreOrderRow
+        const staleId = optimisticOrderIdRef.current
+        optimisticOrderIdRef.current = null
+        pendingOpenOrderIdsRef.current.add(row.id)
+        window.setTimeout(() => {
+          pendingOpenOrderIdsRef.current.delete(row.id)
+        }, 20_000)
+        setActiveOrderId(row.id)
+        activeOrderIdRef.current = row.id
+        skipNextAutoSaveRef.current = true
+        autoSaveSkipRef.current += 1
+        setOpenOrders((prev) =>
+          sortOpenOrders([
+            row,
+            ...prev.filter(
+              (o) => o.id !== row.id && o.id !== staleId && !o.id.startsWith('optimistic-')
+            ),
+          ])
+        )
+        notifyStoreOrdersChanged(storeId, {
+          eventType: 'INSERT',
+          source: 'order_items',
+        })
+      }
+    } finally {
+      persistInFlightRef.current = false
+      setAutoSaving(false)
+      if (pendingPersistRef.current) {
+        pendingPersistRef.current = false
+        void flushPersistOrder()
+      }
+    }
+  }
+
+  function commitCart(nextCart: CartLine[]) {
+    cartRef.current = nextCart
+    setCart(nextCart)
+    setError(null)
+    setSuccess(null)
+    const tableLabel = table.trim()
+    if (!tableLabel) {
+      if (nextCart.length > 0) {
+        setError('Seleciona uma mesa no mapa antes de lançar produtos.')
+      }
+      return
+    }
+    if (nextCart.length === 0) return
+    const snapshot: EditorSnapshot = {
+      table: tableLabel,
+      sector,
+      customerName,
+      notes,
+      discountBrl,
+      cart: nextCart,
+      garcomId: effectiveGarcomId,
+    }
+    editorSnapshotRef.current = snapshot
+    upsertOptimisticOpenOrder(snapshot)
+    void flushPersistOrder()
+  }
+
   function addProductDirect(product: MenuProductRow) {
     const price = effectiveProductPrice(product, 'dine_in')
-    setCart((prev) => {
-      const i = prev.findIndex(
-        (x) =>
-          x.productId === product.id &&
-          x.unitType === 'unit' &&
-          !x.addons?.length
-      )
-      if (i >= 0) {
-        const next = [...prev]
-        next[i] = { ...next[i], quantity: next[i].quantity + 1 }
-        return next
-      }
-      return [
+    const prev = cartRef.current
+    const i = prev.findIndex(
+      (x) =>
+        x.productId === product.id &&
+        x.unitType === 'unit' &&
+        !x.addons?.length
+    )
+    let next: CartLine[]
+    if (i >= 0) {
+      next = [...prev]
+      next[i] = { ...next[i], quantity: next[i].quantity + 1 }
+    } else {
+      next = [
         ...prev,
         {
           lineId: newCartLineId(),
@@ -1018,9 +1266,8 @@ export function WaiterClient({
           unitType: 'unit',
         },
       ]
-    })
-    setError(null)
-    setSuccess(null)
+    }
+    commitCart(next)
   }
 
   function addProductWithAddons(
@@ -1031,8 +1278,8 @@ export function WaiterClient({
     const basePrice = effectiveProductPrice(product, 'dine_in')
     const unitPrice = basePrice + addonTotalFromPicks(picks)
     const name = buildProductLineName(product.name, picks, lineNotes)
-    setCart((prev) => [
-      ...prev,
+    commitCart([
+      ...cartRef.current,
       {
         lineId: newCartLineId(),
         productId: product.id,
@@ -1043,8 +1290,6 @@ export function WaiterClient({
         addons: picks.length ? picks : undefined,
       },
     ])
-    setError(null)
-    setSuccess(null)
   }
 
   async function addProduct(product: MenuProductRow) {
@@ -1106,8 +1351,8 @@ export function WaiterClient({
       setError('Preço por kg inválido para este produto.')
       return
     }
-    setCart((prev) => [
-      ...prev,
+    commitCart([
+      ...cartRef.current,
       {
         lineId: newCartLineId(),
         productId: product.id,
@@ -1117,8 +1362,6 @@ export function WaiterClient({
         unitType: 'weight',
       },
     ])
-    setError(null)
-    setSuccess(null)
   }
 
   const handleBarcodeScan = useCallback(
@@ -1151,32 +1394,32 @@ export function WaiterClient({
   })
 
   function removeProductUnit(productId: string) {
-    setCart((prev) => {
-      let removeIdx = -1
-      for (let i = prev.length - 1; i >= 0; i--) {
-        const x = prev[i]
-        if (x.productId === productId && x.unitType === 'unit') {
-          removeIdx = i
-          break
-        }
+    const prev = cartRef.current
+    let removeIdx = -1
+    for (let i = prev.length - 1; i >= 0; i--) {
+      const x = prev[i]
+      if (x.productId === productId && x.unitType === 'unit') {
+        removeIdx = i
+        break
       }
-      if (removeIdx < 0) return prev
-      const next = [...prev]
-      const line = next[removeIdx]
-      const q = line.quantity - 1
-      if (q <= 0) return next.filter((x) => x.lineId !== line.lineId)
+    }
+    if (removeIdx < 0) return
+    const next = [...prev]
+    const line = next[removeIdx]
+    const q = line.quantity - 1
+    commitCart(q <= 0 ? next.filter((x) => x.lineId !== line.lineId) : (() => {
       next[removeIdx] = { ...line, quantity: q }
       return next
-    })
+    })())
   }
 
   function setLineQty(lineId: string, qty: number) {
     if (qty <= 0) {
-      setCart((prev) => prev.filter((x) => x.lineId !== lineId))
+      commitCart(cartRef.current.filter((x) => x.lineId !== lineId))
       return
     }
-    setCart((prev) =>
-      prev.map((x) => {
+    commitCart(
+      cartRef.current.map((x) => {
         if (x.lineId !== lineId) return x
         if (x.unitType === 'weight') return { ...x, quantity: qty }
         return { ...x, quantity: Math.floor(qty) }
@@ -1303,54 +1546,6 @@ export function WaiterClient({
     }
   }
 
-  const showTransientSaveError = useCallback((msg: string) => {
-    setError(msg)
-    window.setTimeout(() => {
-      setError((prev) => (prev === msg ? null : prev))
-    }, 6000)
-  }, [])
-
-  const buildOrderSavePayload = useCallback(() => {
-    const tableLabel = table.trim()
-    return {
-      table: tableLabel,
-      sector,
-      customer_name:
-        customerName.trim() ||
-        (tableLabel ? `Comanda · Mesa ${tableLabel}` : null),
-      notes: notes.trim() || null,
-      discount_brl: discountBrl,
-      garcom_id: effectiveGarcomId || null,
-      items: cart.map((line) => ({
-        product_id: line.productId,
-        quantity: line.quantity,
-        unit_price: line.unitPrice,
-        name: line.name,
-        unit_type: line.unitType,
-        addons: line.addons,
-      })),
-    }
-  }, [table, sector, customerName, notes, discountBrl, effectiveGarcomId, cart])
-
-  function applySavedOrderToState(row: StoreOrderRow) {
-    pendingOpenOrderIdsRef.current.add(row.id)
-    window.setTimeout(() => {
-      pendingOpenOrderIdsRef.current.delete(row.id)
-    }, 20_000)
-    setActiveOrderId(row.id)
-    skipNextAutoSaveRef.current = true
-    autoSaveSkipRef.current += 1
-    if (isOpenSalonMapOrder(row, tablesRef.current)) {
-      setOpenOrders((prev) =>
-        sortOpenOrders([row, ...prev.filter((o) => o.id !== row.id)])
-      )
-    } else {
-      setOpenOrders((prev) => prev.map((x) => (x.id === row.id ? row : x)))
-    }
-    schedulePullOpenOrders(800)
-    notifyStoreOrdersChanged(storeId, { eventType: 'INSERT', source: 'order_items' })
-  }
-
   async function submitNewOrder(opts?: { silent?: boolean; keepOpen?: boolean }) {
     const silent = opts?.silent === true
     const keepOpen = opts?.keepOpen !== false
@@ -1358,44 +1553,22 @@ export function WaiterClient({
       if (!silent) setError('Informe a mesa.')
       return false
     }
-    if (cart.length === 0) {
+    if (cartRef.current.length === 0) {
       if (!silent) setError('Adiciona ao menos um item.')
       return false
     }
-    if (persistInFlightRef.current) return false
-    persistInFlightRef.current = true
-    if (silent) setAutoSaving(true)
-    else {
+    if (!silent) {
       setSaving(true)
       setError(null)
       setSuccess(null)
     }
-    try {
-      const res = await dashboardFetch('/api/waiter/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(buildOrderSavePayload()),
-      })
-      const json = (await res.json().catch(() => ({}))) as { error?: string; order?: StoreOrderRow }
-      if (!res.ok) {
-        const err = json.error || 'Erro ao registar.'
-        if (!silent) setError(err)
-        else showTransientSaveError(err)
-        return false
-      }
-      if (!silent) {
-        setSuccess('Pedido registado.')
-      }
-      if (json.order) {
-        applySavedOrderToState(json.order as StoreOrderRow)
-        if (!keepOpen) returnToTableMap()
-      }
-      return true
-    } finally {
-      persistInFlightRef.current = false
-      if (silent) setAutoSaving(false)
-      else setSaving(false)
+    await flushPersistOrder()
+    if (!silent) {
+      setSaving(false)
+      if (activeOrderIdRef.current) setSuccess('Pedido registado.')
     }
+    if (!keepOpen && activeOrderIdRef.current) returnToTableMap()
+    return Boolean(activeOrderIdRef.current)
   }
 
   async function saveExistingOrder(opts?: { silent?: boolean }) {
@@ -1404,84 +1577,29 @@ export function WaiterClient({
       if (!silent) setError('Mesa ou comanda inválida.')
       return false
     }
-    if (cart.length === 0) {
+    if (cartRef.current.length === 0) {
       if (!silent) setError('Adiciona ao menos um item para guardar.')
       return false
     }
-    if (persistInFlightRef.current) return false
-    persistInFlightRef.current = true
-    if (silent) setAutoSaving(true)
-    else {
+    if (!silent) {
       setSaving(true)
       setError(null)
       setSuccess(null)
     }
-    try {
-      const res = await dashboardFetch(`/api/waiter/orders/${activeOrderId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(buildOrderSavePayload()),
-      })
-      const json = (await res.json().catch(() => ({}))) as { error?: string; order?: StoreOrderRow }
-      if (!res.ok) {
-        const err = json.error || 'Erro ao guardar.'
-        if (!silent) setError(err)
-        else showTransientSaveError(err)
-        return false
-      }
-      if (!silent) setSuccess('Alterações guardadas.')
-      if (json.order) {
-        const row = json.order as StoreOrderRow
-        setOpenOrders((prev) => prev.map((x) => (x.id === row.id ? row : x)))
-        autoSaveSkipRef.current += 1
-        notifyStoreOrdersChanged(storeId, { eventType: 'UPDATE', source: 'order_items' })
-      }
-      return true
-    } finally {
-      persistInFlightRef.current = false
-      if (silent) setAutoSaving(false)
-      else setSaving(false)
+    await flushPersistOrder()
+    if (!silent) {
+      setSaving(false)
+      setSuccess('Alterações guardadas.')
     }
+    return true
   }
 
   useEffect(() => {
-    if (loadingOrder || saving || persistInFlightRef.current) return
-    if (!table.trim() || cart.length === 0) return
-    if (skipNextAutoSaveRef.current) {
-      skipNextAutoSaveRef.current = false
-      return
-    }
-
-    const skip = autoSaveSkipRef.current
-    if (persistOrderTimerRef.current) clearTimeout(persistOrderTimerRef.current)
-    const delayMs = activeOrderId ? 700 : 1100
-    persistOrderTimerRef.current = setTimeout(() => {
-      persistOrderTimerRef.current = null
-      if (autoSaveSkipRef.current !== skip) return
-      if (activeOrderIdRef.current) {
-        void saveExistingOrder({ silent: true })
-      } else {
-        void submitNewOrder({ silent: true, keepOpen: true })
-      }
-    }, delayMs)
-
-    return () => {
-      if (persistOrderTimerRef.current) {
-        clearTimeout(persistOrderTimerRef.current)
-        persistOrderTimerRef.current = null
-      }
-    }
-  }, [
-    cart,
-    activeOrderId,
-    table,
-    sector,
-    customerName,
-    notes,
-    discountBrl,
-    loadingOrder,
-    saving,
-  ])
+    if (loadingOrder || skipNextAutoSaveRef.current) return
+    if (!activeOrderId || !table.trim() || cart.length === 0) return
+    upsertOptimisticOpenOrder(editorSnapshotRef.current)
+    void flushPersistOrder()
+  }, [customerName, notes, discountBrl, sector])
 
   async function advanceOrder(order: StoreOrderRow) {
     const current = order.status || 'pending'
