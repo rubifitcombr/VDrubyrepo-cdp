@@ -4,6 +4,13 @@ import { MenuImage } from '@/app/_components/MenuImage'
 import { useEffect, useMemo, useState } from 'react'
 import type { CartAddonPick } from '@/app/context/CartContext'
 import { useCart } from '@/app/context/CartContext'
+import {
+  addonGroupMaxSelect,
+  addonPickKey,
+  defaultRequiredAddonSelection,
+  requiredAddonGroupsOk,
+  type ProductAddonGroup,
+} from '@/lib/product-addon-line'
 import type { StorefrontMenuProduct } from './storefront-menu-types'
 
 const money = new Intl.NumberFormat('pt-BR', {
@@ -11,14 +18,10 @@ const money = new Intl.NumberFormat('pt-BR', {
   currency: 'BRL',
 })
 
-type AddonGroup = {
-  name: string
-  required: boolean
-  items: { name: string; price: number }[]
-}
+type AddonGroup = ProductAddonGroup
 
 function pickKey(g: number, i: number) {
-  return `${g}:${i}`
+  return addonPickKey(g, i)
 }
 
 function buildLineName(
@@ -67,6 +70,7 @@ export function ProductDetailModal({
   const { addItem } = useCart()
   const [groups, setGroups] = useState<AddonGroup[]>([])
   const [loadingAddons, setLoadingAddons] = useState(true)
+  const [addonLoadError, setAddonLoadError] = useState<string | null>(null)
   const [selectedQty, setSelectedQty] = useState<Record<string, number>>({})
   const [notes, setNotes] = useState('')
   const [qty, setQty] = useState(1)
@@ -76,16 +80,30 @@ export function ProductDetailModal({
     let cancelled = false
     async function load() {
       setLoadingAddons(true)
+      setAddonLoadError(null)
       try {
         const res = await fetch(
           `/api/public/product-addons?productId=${encodeURIComponent(product.id)}`
         )
-        const data = (await res.json()) as { groups?: AddonGroup[] }
-        if (!cancelled && Array.isArray(data.groups)) {
-          setGroups(data.groups)
+        const data = (await res.json()) as {
+          groups?: AddonGroup[]
+          error?: string
+        }
+        if (!cancelled) {
+          if (!res.ok) {
+            setGroups([])
+            setAddonLoadError(data.error || 'Não foi possível carregar as opções.')
+          } else if (Array.isArray(data.groups)) {
+            setGroups(data.groups)
+          } else {
+            setGroups([])
+          }
         }
       } catch {
-        if (!cancelled) setGroups([])
+        if (!cancelled) {
+          setGroups([])
+          setAddonLoadError('Não foi possível carregar as opções.')
+        }
       } finally {
         if (!cancelled) setLoadingAddons(false)
       }
@@ -95,6 +113,11 @@ export function ProductDetailModal({
       cancelled = true
     }
   }, [product.id])
+
+  useEffect(() => {
+    setSelectedQty(defaultRequiredAddonSelection(groups))
+    setGroupQuery({})
+  }, [product.id, groups])
 
   useEffect(() => {
     const prev = document.body.style.overflow
@@ -122,24 +145,45 @@ export function ProductDetailModal({
 
   const unitTotal = product.price + addonTotal
 
-  const requiredOk = useMemo(() => {
-    for (let g = 0; g < groups.length; g++) {
-      if (!groups[g]?.required) continue
-      const has = groups[g].items.some(
-        (_, i) => (selectedQty[pickKey(g, i)] ?? 0) > 0
-      )
-      if (!has) return false
-    }
-    return true
-  }, [groups, selectedQty])
+  const requiredOk = useMemo(
+    () => requiredAddonGroupsOk(groups, selectedQty),
+    [groups, selectedQty]
+  )
 
-  const canAdd = storeOpen && requiredOk && !loadingAddons
+  const canAdd = storeOpen && requiredOk && !loadingAddons && !addonLoadError
+
+  function selectSingleAddon(gi: number, ii: number) {
+    setSelectedQty((prev) => {
+      const next = { ...prev }
+      const g = groups[gi]
+      if (!g) return prev
+      for (let j = 0; j < g.items.length; j++) {
+        const k = pickKey(gi, j)
+        if (j === ii) next[k] = 1
+        else delete next[k]
+      }
+      return next
+    })
+  }
 
   function changeAddonQty(g: number, i: number, delta: number) {
     const k = pickKey(g, i)
+    const maxSelect = addonGroupMaxSelect(groups[g] ?? { name: '', required: false, items: [] })
     setSelectedQty((prev) => {
       const next = { ...prev }
       const cur = next[k] ?? 0
+      if (maxSelect === 1) {
+        if (delta > 0) {
+          for (let j = 0; j < (groups[g]?.items.length ?? 0); j++) {
+            const key = pickKey(g, j)
+            if (j === i) next[key] = 1
+            else delete next[key]
+          }
+        } else {
+          delete next[k]
+        }
+        return next
+      }
       const value = Math.max(0, cur + delta)
       if (value === 0) delete next[k]
       else next[k] = value
@@ -261,10 +305,13 @@ export function ProductDetailModal({
 
           {loadingAddons ? (
             <p className="mt-4 text-sm text-neutral-500">A carregar opções…</p>
+          ) : addonLoadError ? (
+            <p className="mt-4 text-sm font-medium text-amber-800">{addonLoadError}</p>
           ) : groups.length > 0 ? (
             <div className="mt-5 space-y-3">
               {groups.map((g, gi) => {
                 const q = (groupQuery[gi] ?? '').trim().toLowerCase()
+                const singleSelect = addonGroupMaxSelect(g) === 1
                 const selectedInGroup = g.items.reduce(
                   (sum, _it, ii) => sum + (selectedQty[pickKey(gi, ii)] ?? 0),
                   0
@@ -294,7 +341,11 @@ export function ProductDetailModal({
                           Opcional
                         </span>
                       )}
-                      {selectedInGroup > 0 ? (
+                      {g.required && selectedInGroup === 0 ? (
+                        <span className="ml-auto text-[11px] font-medium text-amber-800">
+                          Escolha uma opção
+                        </span>
+                      ) : selectedInGroup > 0 ? (
                         <span className="ml-auto rounded-full bg-neutral-900 px-2 py-0.5 text-[11px] font-semibold text-white">
                           {selectedInGroup} selecionado{selectedInGroup > 1 ? 's' : ''}
                         </span>
@@ -321,45 +372,89 @@ export function ProductDetailModal({
                           const active = selectedCount > 0
                           return (
                             <li key={pickKey(gi, ii)}>
-                              <div
-                                className={`flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2.5 text-left text-sm transition-colors ${
-                                  active
-                                    ? 'border-2 bg-white'
-                                    : 'border border-transparent hover:bg-white/80'
-                                }`}
-                                style={active ? { borderColor: theme.primary } : undefined}
-                              >
-                                <span className="font-medium text-neutral-900 pr-2">
-                                  {it.name}
-                                  {it.price > 0 ? (
-                                    <span className="ml-1 text-xs font-normal text-neutral-500">
-                                      (+{money.format(it.price)})
-                                    </span>
-                                  ) : null}
-                                </span>
-                                <div className="inline-flex shrink-0 items-center rounded-full border border-neutral-200 bg-white">
-                                  <button
-                                    type="button"
-                                    onClick={() => changeAddonQty(gi, ii, -1)}
-                                    disabled={!active}
-                                    className="rounded-l-full px-2.5 py-1 text-base font-bold text-neutral-700 transition-colors active:bg-neutral-200 disabled:opacity-35"
-                                    aria-label={`Remover ${it.name}`}
-                                  >
-                                    −
-                                  </button>
-                                  <span className="min-w-6 text-center text-xs font-semibold tabular-nums text-neutral-800">
-                                    {selectedCount}
+                              {singleSelect ? (
+                                <button
+                                  type="button"
+                                  onClick={() => selectSingleAddon(gi, ii)}
+                                  className={`flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2.5 text-left text-sm transition-colors ${
+                                    active
+                                      ? 'border-2 bg-white'
+                                      : 'border border-transparent hover:bg-white/80'
+                                  }`}
+                                  style={active ? { borderColor: theme.primary } : undefined}
+                                >
+                                  <span className="pr-2 font-medium text-neutral-900">
+                                    {it.name}
+                                    {it.price > 0 ? (
+                                      <span className="ml-1 text-xs font-normal text-neutral-500">
+                                        (+{money.format(it.price)})
+                                      </span>
+                                    ) : (
+                                      <span className="ml-1 text-xs font-normal text-neutral-500">
+                                        (incluído)
+                                      </span>
+                                    )}
                                   </span>
-                                  <button
-                                    type="button"
-                                    onClick={() => changeAddonQty(gi, ii, 1)}
-                                    className="rounded-r-full px-2.5 py-1 text-base font-bold text-neutral-700 transition-colors active:bg-neutral-200"
-                                    aria-label={`Adicionar ${it.name}`}
+                                  <span
+                                    className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${
+                                      active ? 'text-white' : 'border-neutral-300 bg-white'
+                                    }`}
+                                    style={
+                                      active
+                                        ? {
+                                            borderColor: theme.primary,
+                                            backgroundColor: theme.primary,
+                                          }
+                                        : undefined
+                                    }
+                                    aria-hidden
                                   >
-                                    +
-                                  </button>
+                                    {active ? (
+                                      <span className="h-2 w-2 rounded-full bg-white" />
+                                    ) : null}
+                                  </span>
+                                </button>
+                              ) : (
+                                <div
+                                  className={`flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2.5 text-left text-sm transition-colors ${
+                                    active
+                                      ? 'border-2 bg-white'
+                                      : 'border border-transparent hover:bg-white/80'
+                                  }`}
+                                  style={active ? { borderColor: theme.primary } : undefined}
+                                >
+                                  <span className="font-medium text-neutral-900 pr-2">
+                                    {it.name}
+                                    {it.price > 0 ? (
+                                      <span className="ml-1 text-xs font-normal text-neutral-500">
+                                        (+{money.format(it.price)})
+                                      </span>
+                                    ) : null}
+                                  </span>
+                                  <div className="inline-flex shrink-0 items-center rounded-full border border-neutral-200 bg-white">
+                                    <button
+                                      type="button"
+                                      onClick={() => changeAddonQty(gi, ii, -1)}
+                                      disabled={!active}
+                                      className="rounded-l-full px-2.5 py-1 text-base font-bold text-neutral-700 transition-colors active:bg-neutral-200 disabled:opacity-35"
+                                      aria-label={`Remover ${it.name}`}
+                                    >
+                                      −
+                                    </button>
+                                    <span className="min-w-6 text-center text-xs font-semibold tabular-nums text-neutral-800">
+                                      {selectedCount}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => changeAddonQty(gi, ii, 1)}
+                                      className="rounded-r-full px-2.5 py-1 text-base font-bold text-neutral-700 transition-colors active:bg-neutral-200"
+                                      aria-label={`Adicionar ${it.name}`}
+                                    >
+                                      +
+                                    </button>
+                                  </div>
                                 </div>
-                              </div>
+                              )}
                             </li>
                           )
                         })}
@@ -408,6 +503,11 @@ export function ProductDetailModal({
         </div>
 
         <div className="shrink-0 border-t border-neutral-200 bg-white p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-[0_-4px_24px_rgba(0,0,0,0.06)] sm:rounded-b-2xl sm:pb-4">
+          {!requiredOk && groups.length > 0 && !loadingAddons ? (
+            <p className="mb-2 text-center text-xs font-medium text-amber-800">
+              Complete as opções obrigatórias para adicionar ao carrinho.
+            </p>
+          ) : null}
           <button
             type="button"
             disabled={!canAdd}

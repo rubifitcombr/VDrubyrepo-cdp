@@ -49,6 +49,7 @@ import {
   addonTotalFromPicks,
   buildProductLineName,
   parseProductAddonPicks,
+  inferAddonPicksFromLineName,
   type ProductAddonGroup,
   type ProductAddonPick,
 } from '@/lib/product-addon-line'
@@ -788,14 +789,45 @@ export function WaiterClient({
         return
       }
       const o = json.order ?? order
-      const lines = (json.items ?? []).map((it) => {
+      const rawItems = json.items ?? []
+      const productIds = [
+        ...new Set(
+          rawItems
+            .map((it) => String(it.product_id ?? '').trim())
+            .filter(Boolean)
+        ),
+      ]
+      const addonByProduct = new Map<string, ProductAddonGroup[]>()
+      await Promise.all(
+        productIds.map(async (pid) => {
+          let groups = addonTreeCacheRef.current.get(pid)
+          if (!groups) {
+            try {
+              groups = await fetchProductAddonTree(pid)
+              addonTreeCacheRef.current.set(pid, groups)
+            } catch {
+              groups = []
+            }
+          }
+          addonByProduct.set(pid, groups)
+        })
+      )
+
+      const lines = rawItems.map((it) => {
         const unitType: OrderItemUnitType =
           it.unit_type === 'weight' ? 'weight' : 'unit'
         const qty = Number(it.quantity) || 0
-        const addons = parseProductAddonPicks(it.addons)
+        const productId = String(it.product_id)
+        let addons = parseProductAddonPicks(it.addons)
+        if (!addons.length) {
+          addons = inferAddonPicksFromLineName(
+            String(it.name || ''),
+            addonByProduct.get(productId) ?? []
+          )
+        }
         return {
           lineId: newCartLineId(),
-          productId: String(it.product_id),
+          productId,
           name: String(it.name || 'Item'),
           quantity:
             unitType === 'weight'
@@ -1111,17 +1143,20 @@ export function WaiterClient({
 
   function removeProductUnit(productId: string) {
     setCart((prev) => {
-      const i = prev.findIndex(
-        (x) =>
-          x.productId === productId &&
-          x.unitType === 'unit' &&
-          !x.addons?.length
-      )
-      if (i < 0) return prev
+      let removeIdx = -1
+      for (let i = prev.length - 1; i >= 0; i--) {
+        const x = prev[i]
+        if (x.productId === productId && x.unitType === 'unit') {
+          removeIdx = i
+          break
+        }
+      }
+      if (removeIdx < 0) return prev
       const next = [...prev]
-      const q = next[i].quantity - 1
-      if (q <= 0) return next.filter((x) => x.lineId !== next[i].lineId)
-      next[i] = { ...next[i], quantity: q }
+      const line = next[removeIdx]
+      const q = line.quantity - 1
+      if (q <= 0) return next.filter((x) => x.lineId !== line.lineId)
+      next[removeIdx] = { ...line, quantity: q }
       return next
     })
   }

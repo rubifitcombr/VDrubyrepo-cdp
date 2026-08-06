@@ -94,3 +94,55 @@ export function requiredAddonGroupsOk(
   }
   return true
 }
+
+export function addonGroupMaxSelect(g: ProductAddonGroup): number {
+  const n = g.maxSelect
+  return Number.isFinite(n) && (n as number) >= 1 ? (n as number) : 1
+}
+
+/** Pré-selecção para grupos obrigatórios (ex.: Bovino incluído). */
+export function defaultRequiredAddonSelection(
+  groups: ProductAddonGroup[]
+): Record<string, number> {
+  const initial: Record<string, number> = {}
+  for (let gi = 0; gi < groups.length; gi++) {
+    const g = groups[gi]
+    if (!g?.required || g.items.length === 0) continue
+    const defaultIdx = g.items.findIndex((it) => it.price === 0)
+    const idx = defaultIdx >= 0 ? defaultIdx : 0
+    initial[addonPickKey(gi, idx)] = 1
+  }
+  return initial
+}
+
+/**
+ * Rehidrata picks a partir do nome da linha («Simples [Frango]») quando
+ * `order_items.addons` ainda não foi gravado (comandas antigas).
+ */
+export function inferAddonPicksFromLineName(
+  lineName: string,
+  groups: ProductAddonGroup[]
+): ProductAddonPick[] {
+  const bracket = lineName.match(/\s\[([^\]]+)\]/)
+  if (!bracket || !groups.length) return []
+  const tokens = bracket[1].split(',').map((s) => s.trim()).filter(Boolean)
+  const picks: ProductAddonPick[] = []
+  for (const token of tokens) {
+    const m = token.match(/^(.+?)(?:\sx(\d+))?$/i)
+    const itemName = (m?.[1] ?? token).trim()
+    const quantity = m?.[2] ? Math.max(1, parseInt(m[2], 10)) : 1
+    for (const g of groups) {
+      const it = g.items.find((i) => i.name === itemName)
+      if (it) {
+        picks.push({
+          groupName: g.name,
+          itemName: it.name,
+          price: it.price,
+          quantity,
+        })
+        break
+      }
+    }
+  }
+  return picks
+}

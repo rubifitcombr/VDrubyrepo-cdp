@@ -7,6 +7,8 @@ import {
   addonPickKey,
   addonPicksFromSelection,
   addonTotalFromPicks,
+  addonGroupMaxSelect,
+  defaultRequiredAddonSelection,
   requiredAddonGroupsOk,
   type ProductAddonGroup,
   type ProductAddonPick,
@@ -33,15 +35,7 @@ export function GarcomProductAddonModal({
   const [groupQuery, setGroupQuery] = useState<Record<number, string>>({})
 
   useEffect(() => {
-    const initial: Record<string, number> = {}
-    for (let gi = 0; gi < groups.length; gi++) {
-      const g = groups[gi]
-      if (!g?.required || g.items.length === 0) continue
-      const defaultIdx = g.items.findIndex((it) => it.price === 0)
-      const idx = defaultIdx >= 0 ? defaultIdx : 0
-      initial[addonPickKey(gi, idx)] = 1
-    }
-    setSelectedQty(initial)
+    setSelectedQty(defaultRequiredAddonSelection(groups))
     setNotes('')
     setGroupQuery({})
   }, [product.id, groups])
@@ -67,8 +61,7 @@ export function GarcomProductAddonModal({
   )
 
   function groupMaxSelect(g: ProductAddonGroup): number {
-    const n = g.maxSelect
-    return Number.isFinite(n) && (n as number) >= 1 ? (n as number) : 1
+    return addonGroupMaxSelect(g)
   }
 
   function selectSingleAddon(gi: number, ii: number) {

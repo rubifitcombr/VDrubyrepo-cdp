@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
   const supabase = createPublicAnonClient()
   const { data: groups, error: gErr } = await supabase
     .from('addon_groups')
-    .select('id, name, required, sort_order')
+    .select('id, name, required, min_select, max_select, sort_order')
     .eq('product_id', productId)
     .order('sort_order', { ascending: true })
 
@@ -66,12 +66,27 @@ export async function GET(req: NextRequest) {
   }
 
   const out = (
-    groups as { id: string; name: string; required: boolean }[]
-  ).map((g) => ({
-    name: g.name,
-    required: !!g.required,
-    items: byGroup.get(g.id) ?? [],
-  }))
+    groups as {
+      id: string
+      name: string
+      required: boolean
+      min_select?: number | null
+      max_select?: number | null
+    }[]
+  )
+    .map((g) => {
+      const minSelect = Number(g.min_select)
+      const maxSelect = Number(g.max_select)
+      return {
+        name: g.name,
+        required: !!g.required,
+        minSelect: Number.isFinite(minSelect) && minSelect >= 0 ? minSelect : 0,
+        maxSelect:
+          Number.isFinite(maxSelect) && maxSelect >= 1 ? maxSelect : 1,
+        items: byGroup.get(g.id) ?? [],
+      }
+    })
+    .filter((g) => g.items.length > 0 || !g.required)
 
   return NextResponse.json({ groups: out })
 }

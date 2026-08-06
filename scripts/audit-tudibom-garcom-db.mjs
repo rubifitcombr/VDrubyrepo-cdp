@@ -80,6 +80,49 @@ async function main() {
   const { count: addonGroups } = await sb.from('addon_groups').select('id', { count: 'exact', head: true }).in('product_id', productIds.slice(0, 200))
   pass(`Grupos de adicionais: ${addonGroups ?? 0}`)
 
+  const { data: addonGroupRows } = await sb
+    .from('addon_groups')
+    .select('id, product_id, name, required')
+    .in('product_id', productIds.slice(0, 200))
+  const groupIds = (addonGroupRows ?? []).map((g) => g.id)
+  const { data: addonItemRows } = groupIds.length
+    ? await sb.from('addon_items').select('group_id').in('group_id', groupIds)
+    : { data: [] }
+  const itemCountByGroup = new Map()
+  for (const row of addonItemRows ?? []) {
+    itemCountByGroup.set(row.group_id, (itemCountByGroup.get(row.group_id) ?? 0) + 1)
+  }
+  const brokenRequired = (addonGroupRows ?? []).filter(
+    (g) => g.required && !(itemCountByGroup.get(g.id) > 0)
+  )
+  if (brokenRequired.length > 0) {
+    warn(
+      `${brokenRequired.length} grupo(s) obrigatório(s) sem itens (ex.: produto inactivo)`
+    )
+  } else {
+    pass('Grupos obrigatórios com itens OK')
+  }
+
+  let legacyAddonLines = 0
+  for (const o of orders) {
+    const { data: items } = await sb
+      .from('order_items')
+      .select('name, product_id, addons')
+      .eq('order_id', o.id)
+    for (const it of items ?? []) {
+      const hasBracket = /\s\[[^\]]+\]/.test(String(it.name ?? ''))
+      const addons = Array.isArray(it.addons) ? it.addons : []
+      if (hasBracket && addons.length === 0) legacyAddonLines++
+    }
+  }
+  if (legacyAddonLines > 0) {
+    warn(
+      `${legacyAddonLines} linha(s) com carne no nome mas sem JSON addons (rehidrata ao abrir comanda)`
+    )
+  } else {
+    pass('Linhas de pedido com addons JSON consistentes')
+  }
+
   const { data: turno } = await sb.from('caixa_turnos').select('id').eq('store_id', STORE_ID).is('fechado_em', null).maybeSingle()
   turno ? pass('Turno de caixa: aberto') : warn('Turno de caixa: fechado (Receber agora bloqueado até abrir)')
 
