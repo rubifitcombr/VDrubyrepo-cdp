@@ -2,7 +2,7 @@
 
 import type { StoreOrderRow } from '@/lib/store-order'
 import { comandaDisplayName } from '@/lib/order-payments'
-import { isGenericComandaLabel, normalizeComandaName } from '@/lib/waiter-comanda-names'
+import { isGenericComandaLabel, normalizeComandaName, salonComandaPickerLabel } from '@/lib/waiter-comanda-names'
 import { parseTableFromNotes } from '@/lib/waiter-order-notes'
 
 const money = new Intl.NumberFormat('pt-BR', {
@@ -23,6 +23,7 @@ export function GarcomMesaComandasPanel({
   onNewComandaNameChange,
   onSelect,
   onStartNew,
+  onCancel,
   onClose,
 }: {
   tableName: string
@@ -33,6 +34,7 @@ export function GarcomMesaComandasPanel({
   onNewComandaNameChange: (v: string) => void
   onSelect: (order: StoreOrderRow) => void
   onStartNew: () => void
+  onCancel?: (order: StoreOrderRow) => void
   onClose: () => void
 }) {
   const trimmedName = newComandaName.trim()
@@ -74,29 +76,42 @@ export function GarcomMesaComandasPanel({
 
         <ul className="mt-3 space-y-2">
           {comandas.map((order) => {
-            const label = comandaDisplayName(order.customer_name, 'Comanda')
+            const label = salonComandaPickerLabel(order)
             const sel = activeOrderId === order.id
             return (
               <li key={order.id}>
-                <button
-                  type="button"
-                  onClick={() => onSelect(order)}
-                  className={`w-full rounded-xl border p-3 text-left transition ${
+                <div
+                  className={`rounded-xl border p-3 transition ${
                     sel
                       ? 'border-[var(--dash-primary)] bg-[var(--dash-primary)]/5 ring-2 ring-[var(--dash-primary)]/20'
-                      : 'border-[var(--card-border)] bg-white hover:border-[var(--dash-primary)]/40'
+                      : 'border-[var(--card-border)] bg-white'
                   }`}
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-bold text-[#1a1614]">{label}</p>
-                    <p className="text-sm font-bold text-[var(--dash-primary)]">
-                      {money.format(Number(order.total) || 0)}
+                  <button
+                    type="button"
+                    onClick={() => onSelect(order)}
+                    className="w-full text-left"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-bold text-[#1a1614]">{label}</p>
+                      <p className="text-sm font-bold text-[var(--dash-primary)]">
+                        {money.format(Number(order.total) || 0)}
+                      </p>
+                    </div>
+                    <p className="mt-1 line-clamp-2 text-xs text-[#6b7280]">
+                      {order.items_summary || 'Sem itens'}
                     </p>
-                  </div>
-                  <p className="mt-1 line-clamp-2 text-xs text-[#6b7280]">
-                    {order.items_summary || 'Sem itens'}
-                  </p>
-                </button>
+                  </button>
+                  {onCancel ? (
+                    <button
+                      type="button"
+                      onClick={() => onCancel(order)}
+                      className="mt-2 text-[11px] font-semibold text-red-600 hover:text-red-700"
+                    >
+                      Cancelar comanda
+                    </button>
+                  ) : null}
+                </div>
               </li>
             )
           })}
@@ -151,7 +166,7 @@ export function GarcomMesaComandasPanel({
 
 export function comandaListSubtitle(order: StoreOrderRow): string {
   const mesa = parseTableFromNotes(order.notes)
-  const name = comandaDisplayName(order.customer_name, 'Comanda')
+  const name = salonComandaPickerLabel(order)
   const parts = [mesa ? `Mesa ${mesa}` : '', name].filter(Boolean)
   return parts.join(' · ') || 'Comanda'
 }

@@ -37,7 +37,6 @@ import {
   comandaNamesConflict,
   isGenericComandaLabel,
 } from '@/lib/waiter-comanda-names'
-import { dashboardFetch } from '@/lib/dashboard-fetch.client'
 import type { StoreGarcomDTO } from '@/lib/garcons-types'
 import {
   clearGarcomPinSession,
@@ -85,6 +84,7 @@ import {
 } from '@/lib/print-agent-client'
 import type { StorePrintingState } from '@/lib/store-printing'
 import { IconPrinter } from '@/app/dashboard/_components/NavIcons'
+import { dashboardFetch } from '@/lib/dashboard-fetch.client'
 import { updateStore } from '@/services/store'
 import { updateOrderStatus } from '@/services/orders'
 import {
@@ -252,7 +252,11 @@ function tableState(
 ): 'free' | 'pending_kitchen' | 'occupied' {
   const list = ordersOnTable(openOrders, tableName, amb, configuredTables)
   if (list.length === 0) return 'free'
-  if (list.some((o) => (o.status || '').toLowerCase() === 'pending')) return 'pending_kitchen'
+  const hasKitchenPipeline = list.some((o) => {
+    const s = String(o.status ?? '').trim().toLowerCase()
+    return s === 'pending' || s === 'preparing' || s === 'ready'
+  })
+  if (hasKitchenPipeline) return 'pending_kitchen'
   return 'occupied'
 }
 
@@ -608,6 +612,7 @@ export function WaiterClient({
 
       const now = Date.now()
       for (const row of prev) {
+        if (String(row.status ?? '').trim().toLowerCase() === 'cancelled') continue
         if (byId.has(row.id)) continue
         if (row.id.startsWith('optimistic-')) {
           byId.set(row.id, row)
@@ -1825,6 +1830,31 @@ export function WaiterClient({
     setOpenOrders((prev) => prev.map((x) => (x.id === order.id ? { ...x, status: 'confirmed' } : x)))
   }
 
+  async function cancelSalonComanda(order: StoreOrderRow) {
+    const label = comandaDisplayName(order.customer_name, `Mesa ${parseTableFromNotes(order.notes) || '?'}`)
+    if (
+      typeof window !== 'undefined' &&
+      !window.confirm(`Cancelar a comanda «${label}»? Esta acção não pode ser desfeita.`)
+    ) {
+      return
+    }
+    setBusyOrderId(order.id)
+    setError(null)
+    setSuccess(null)
+    const { error: upError } = await updateOrderStatus(order.id, 'cancelled', { storeId })
+    setBusyOrderId(null)
+    if (upError) {
+      setError(upError.message)
+      return
+    }
+    setOpenOrders((prev) => prev.filter((o) => o.id !== order.id))
+    pendingOpenOrderIdsRef.current.delete(order.id)
+    notifyStoreOrdersChanged(storeId, { eventType: 'UPDATE' })
+    if (activeOrderIdRef.current === order.id) returnToTableMap()
+    setSuccess('Comanda cancelada.')
+    schedulePullOpenOrders(400)
+  }
+
   function printSavedOrderTicket(order: StoreOrderRow) {
     const orderRef =
       displayNumberById.get(order.id) ?? order.id.replace(/-/g, '').slice(0, 8)
@@ -2760,6 +2790,10 @@ export function WaiterClient({
             onOpenMenu={openMenuForOrder}
             onPrint={printComanda}
             onConfirmClose={() => void openConfirmCloseMesa()}
+            onCancelComanda={
+              activeOrder ? () => void cancelSalonComanda(activeOrder) : undefined
+            }
+            cancelBusy={activeOrder ? busyOrderId === activeOrder.id : false}
             sticky
           />
         </aside>
@@ -3437,6 +3471,10 @@ export function WaiterClient({
                 onOpenMenu={openMenuForOrder}
                 onPrint={printComanda}
                 onConfirmClose={() => void openConfirmCloseMesa()}
+                onCancelComanda={
+                  activeOrder ? () => void cancelSalonComanda(activeOrder) : undefined
+                }
+                cancelBusy={activeOrder ? busyOrderId === activeOrder.id : false}
                 sticky={false}
               />
             </div>
@@ -3503,6 +3541,7 @@ export function WaiterClient({
               comandaName: newComandaNameDraft,
             })
           }}
+          onCancel={(order) => void cancelSalonComanda(order)}
           onClose={() => {
             setComandaPickerOpen(false)
             setComandaPickerTable(null)
@@ -3568,6 +3607,8 @@ function OrderPanelContent({
   onOpenMenu,
   onPrint,
   onConfirmClose,
+  onCancelComanda,
+  cancelBusy = false,
   sticky,
 }: {
   table: string
@@ -3600,6 +3641,8 @@ function OrderPanelContent({
   onOpenMenu: () => void
   onPrint: () => void
   onConfirmClose: () => void
+  onCancelComanda?: () => void
+  cancelBusy?: boolean
   sticky: boolean
 }) {
   const showEmpty = !table.trim() && cart.length === 0 && !hasSavedOrder
@@ -3865,6 +3908,16 @@ function OrderPanelContent({
                     Imprimir comanda
                   </button>
                 </div>
+                {onCancelComanda ? (
+                  <button
+                    type="button"
+                    disabled={saving || cancelBusy}
+                    onClick={onCancelComanda}
+                    className="mt-2 w-full rounded-xl border border-red-200 bg-red-50 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-100 disabled:opacity-50"
+                  >
+                    {cancelBusy ? 'A cancelar…' : 'Cancelar comanda'}
+                  </button>
+                ) : null}
               </>
             ) : (
               <>
