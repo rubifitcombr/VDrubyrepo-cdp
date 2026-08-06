@@ -1,3 +1,5 @@
+import { parsePaymentLinesFromCloseNote } from '@/lib/parse-payment-close-note'
+
 /** Normaliza método de pagamento para agregação no caixa. */
 export function normalizeCaixaPayment(
   v: string | null | undefined
@@ -63,7 +65,12 @@ function addToBreakdown(
 
 /** Pedidos já fechados no turno (entregues e vinculados ao turno). */
 export function aggregateTurnClosedOrders(
-  rows: Array<{ id?: string; total: unknown; payment_method?: string | null }>,
+  rows: Array<{
+    id?: string
+    total: unknown
+    payment_method?: string | null
+    notes?: string | null
+  }>,
   splitPayments: SplitPaymentRow[] = []
 ): CaixaPaymentBreakdown {
   const out = emptyBreakdown()
@@ -88,6 +95,17 @@ export function aggregateTurnClosedOrders(
     }
 
     if (method === 'split') {
+      const fromNotes = parsePaymentLinesFromCloseNote(
+        o.notes,
+        Number(o.total) || 0
+      )
+      if (fromNotes.length > 0) {
+        out.pedidosFechados += 1
+        for (const line of fromNotes) {
+          addToBreakdown(out, line.amount, line.method)
+        }
+        continue
+      }
       // Split sem linhas em order_payments (sync atrasado ou legado): usa total da comanda.
       const total = Number(o.total) || 0
       if (total > 0) {
