@@ -7,4 +7,6 @@ export type StorefrontMenuProduct = {
   price: number
   originalPrice: number | null
   popular: boolean
+  /** true quando há linha de stock e quantity <= 0 */
+  outOfStock: boolean
 }

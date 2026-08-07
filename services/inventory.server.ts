@@ -24,12 +24,24 @@ export async function getProductStocksForStore(
     { quantity: number; lowStockAlert: number | null; updatedAt: string | null }
   >
 > {
+  const supabase = await createClient()
+  return getProductStocksForStoreClient(supabase, storeId)
+}
+
+export async function getProductStocksForStoreClient(
+  db: SupabaseClient,
+  storeId: string
+): Promise<
+  Map<
+    string,
+    { quantity: number; lowStockAlert: number | null; updatedAt: string | null }
+  >
+> {
   const map = new Map<
     string,
     { quantity: number; lowStockAlert: number | null; updatedAt: string | null }
   >()
-  const supabase = await createClient()
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from('store_product_stock')
     .select('product_id, quantity, low_stock_alert, updated_at')
     .eq('store_id', storeId)
@@ -60,11 +72,9 @@ export async function getProductStocksForStore(
   return map
 }
 
-export async function decrementProductStockForLines(
-  db: SupabaseClient,
-  storeId: string,
+function aggregateStockLineTotals(
   lines: Array<{ product_id: string; quantity: number; name?: string }>
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Map<string, { qty: number; name: string }> {
   const totals = new Map<string, { qty: number; name: string }>()
   for (const line of lines) {
     const pid = String(line.product_id ?? '').trim()
@@ -77,8 +87,73 @@ export async function decrementProductStockForLines(
       name: line.name?.trim() || prev?.name || 'produto',
     })
   }
+  return totals
+}
 
-  for (const [productId, { qty, name }] of totals) {
+/** Valida disponibilidade antes de criar pedido (leitura; decremento atómico vem a seguir). */
+export async function validateProductStockForLines(
+  db: SupabaseClient,
+  storeId: string,
+  lines: Array<{ product_id: string; quantity: number; name?: string }>
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  for (const [productId, { qty, name }] of aggregateStockLineTotals(lines)) {
+    const { data: row, error } = await db
+      .from('store_product_stock')
+      .select('quantity')
+      .eq('store_id', storeId)
+      .eq('product_id', productId)
+      .maybeSingle()
+
+    if (error) {
+      return { ok: false, error: error.message || 'Erro ao validar estoque.' }
+    }
+    if (!row) continue
+
+    const available = Math.max(0, Number(row.quantity) || 0)
+    if (available < qty) {
+      return {
+        ok: false,
+        error: `Estoque insuficiente para "${name}".`,
+      }
+    }
+  }
+
+  return { ok: true }
+}
+
+/** Repõe stock dos itens de um pedido cancelado (só linhas com registo de stock). */
+export async function restoreOrderItemsStock(
+  db: SupabaseClient,
+  storeId: string,
+  orderId: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { data: items, error } = await db
+    .from('order_items')
+    .select('product_id, quantity')
+    .eq('order_id', orderId)
+
+  if (error) {
+    return { ok: false, error: error.message || 'Erro ao ler itens do pedido.' }
+  }
+
+  const lines = (items ?? [])
+    .map((row) => ({
+      product_id: String(row.product_id ?? '').trim(),
+      quantity: Math.max(0, Number(row.quantity) || 0),
+    }))
+    .filter((line) => line.product_id && line.quantity > 0)
+
+  if (lines.length === 0) return { ok: true }
+
+  return incrementProductStockForLines(db, storeId, lines)
+}
+
+export async function decrementProductStockForLines(
+  db: SupabaseClient,
+  storeId: string,
+  lines: Array<{ product_id: string; quantity: number; name?: string }>
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  for (const [productId, { qty, name }] of aggregateStockLineTotals(lines)) {
     const { data: row } = await db
       .from('store_product_stock')
       .select('quantity')

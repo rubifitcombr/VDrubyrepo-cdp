@@ -26,6 +26,7 @@ import {
   type MenuProductRow,
 } from '@/lib/menu-product'
 import { filterPublicMenuProducts } from '@/lib/weighable-product'
+import { isMenuProductOutOfStock } from '@/lib/product-stock-menu'
 import { resolveStoreTheme } from '@/lib/store-theme'
 import { storePixCheckoutEnabled } from '@/lib/pix/key'
 import { tryCreateServiceRoleClient } from '@/lib/supabase/service-role.server'
@@ -37,6 +38,7 @@ import type { PublicLoyaltyProgram } from '@/lib/loyalty/types'
 import { notFound, redirect } from 'next/navigation'
 import { StorefrontMenuClient } from './StorefrontMenuClient'
 import type { StorefrontMenuProduct } from './storefront-menu-types'
+import { getProductStocksForStoreClient } from '@/services/inventory.server'
 
 type Props = {
   params: Promise<{ slug: string }>
@@ -227,11 +229,22 @@ export default async function StorefrontPage({ params, searchParams }: Props) {
   const priceChannel: ProductPriceChannel = selfServiceFromQr
     ? 'dine_in'
     : 'delivery'
+
+  const stockByProductId = new Map<string, number>()
+  const stockReader = tryCreateServiceRoleClient()
+  if (stockReader) {
+    const stockMap = await getProductStocksForStoreClient(stockReader, s.id)
+    for (const [productId, row] of stockMap) {
+      stockByProductId.set(productId, row.quantity)
+    }
+  }
+
   const menuProducts: StorefrontMenuProduct[] = list.map((p) => {
     const eff = effectiveProductPrice(p, priceChannel)
     const promo = hasActivePromotion(p, priceChannel)
     const base = baseProductPriceForChannel(p, priceChannel)
     const originalPrice = promo ? base : null
+    const stockQty = stockByProductId.get(p.id)
     return {
       id: p.id,
       name: p.name,
@@ -241,6 +254,7 @@ export default async function StorefrontPage({ params, searchParams }: Props) {
       price: eff,
       originalPrice,
       popular: promo,
+      outOfStock: isMenuProductOutOfStock(stockQty),
     }
   })
   const canShowLocation = planTier(storePlan) >= planTier('GROWTH')

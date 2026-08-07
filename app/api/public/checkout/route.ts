@@ -71,6 +71,10 @@ import {
   type MenuProductRow,
 } from '@/lib/menu-product'
 import { filterPublicMenuProducts, isSoldByWeight } from '@/lib/weighable-product'
+import {
+  decrementProductStockForLines,
+  validateProductStockForLines,
+} from '@/services/inventory.server'
 
 type CheckoutLine = {
   productId: string
@@ -655,6 +659,24 @@ export async function POST(req: NextRequest) {
       .toLowerCase()
     const isPixPayment = paymentNorm === 'pix'
 
+    const stockLines = pricedItems.map((l) => ({
+      product_id: l.productId,
+      quantity: l.quantity,
+      name: l.name,
+    }))
+
+    const stockValidation = await validateProductStockForLines(
+      checkoutDb,
+      String(storeRow.id),
+      stockLines
+    )
+    if (!stockValidation.ok) {
+      return NextResponse.json(
+        { error: friendlyOrderItemsError(stockValidation.error) },
+        { status: 409 }
+      )
+    }
+
     const storeMetaEarly = storeRow as Record<string, unknown>
     const checkoutPlanEarly = effectiveStorePlan(readStorePlano(storeMetaEarly))
     if (isPixPayment && !hasPixCheckout(checkoutPlanEarly)) {
@@ -722,6 +744,20 @@ export async function POST(req: NextRequest) {
     }
 
     const order = { id: created.orderId }
+
+    const stockResult = await decrementProductStockForLines(
+      checkoutDb,
+      String(storeRow.id),
+      stockLines
+    )
+    if (!stockResult.ok) {
+      await checkoutDb.from('order_items').delete().eq('order_id', order.id)
+      await checkoutDb.from('orders').delete().eq('id', order.id)
+      return NextResponse.json(
+        { error: friendlyOrderItemsError(stockResult.error) },
+        { status: 409 }
+      )
+    }
 
     if (couponPromotionId && promoCouponCode) {
       void recordCouponRedemption(checkoutDb, {

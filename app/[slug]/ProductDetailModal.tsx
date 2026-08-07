@@ -150,7 +150,8 @@ export function ProductDetailModal({
     [groups, selectedQty]
   )
 
-  const canAdd = storeOpen && requiredOk && !loadingAddons && !addonLoadError
+  const canAdd =
+    storeOpen && !product.outOfStock && requiredOk && !loadingAddons && !addonLoadError
 
   function selectSingleAddon(gi: number, ii: number) {
     setSelectedQty((prev) => {
@@ -518,7 +519,9 @@ export function ProductDetailModal({
             }}
           >
             {storeOpen
-              ? `Adicionar ao carrinho · ${money.format(unitTotal * qty)}`
+              ? product.outOfStock
+                ? 'Produto esgotado'
+                : `Adicionar ao carrinho · ${money.format(unitTotal * qty)}`
               : 'Pedidos indisponíveis no momento'}
           </button>
         </div>

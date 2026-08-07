@@ -564,7 +564,7 @@ export function StorefrontMenuClient({
   }
 
   function incrementProduct(product: StorefrontMenuProduct) {
-    if (!storeOpen) return
+    if (!storeOpen || product.outOfStock) return
     const existing = items.find(
       (item) => item.productId === product.id && !item.addons?.length
     )
@@ -927,6 +927,7 @@ export function StorefrontMenuClient({
                         ? discountPercent(p.originalPrice, p.price)
                         : 0
                     const qtyInCart = productQuantity(p.id)
+                    const productDisabled = !storeOpen || p.outOfStock
                     return (
                       <li key={p.id} className="first:pt-0">
                         <div
@@ -941,14 +942,22 @@ export function StorefrontMenuClient({
                           }}
                           className={
                             autoMode
-                              ? 'grid w-full grid-cols-[3.75rem_minmax(0,1fr)_auto] items-center gap-2.5 py-2.5 text-left transition-colors active:bg-neutral-50'
-                              : 'flex w-full gap-3 py-4 text-left first:pt-3 transition-colors active:bg-neutral-100'
+                              ? `grid w-full grid-cols-[3.75rem_minmax(0,1fr)_auto] items-center gap-2.5 py-2.5 text-left transition-colors active:bg-neutral-50 ${p.outOfStock ? 'opacity-70' : ''}`
+                              : `flex w-full gap-3 py-4 text-left first:pt-3 transition-colors active:bg-neutral-100 ${p.outOfStock ? 'opacity-70' : ''}`
                           }
                         >
                           <div className={autoMode ? 'order-2 min-w-0 flex-1' : 'min-w-0 flex-1'}>
                             <h3 className={autoMode ? 'text-xs font-bold leading-snug text-neutral-950' : 'text-[15px] font-bold leading-snug text-neutral-900'}>
                               {p.name}
                             </h3>
+                            {p.outOfStock ? (
+                              <p
+                                className={autoMode ? 'mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-700' : 'mt-1 text-xs font-semibold uppercase tracking-wide text-red-700'}
+                                data-testid={`storefront-out-of-stock-${p.id}`}
+                              >
+                                Esgotado
+                              </p>
+                            ) : null}
                             {p.description ? (
                               <p className={autoMode ? 'mt-0.5 line-clamp-1 text-[10px] leading-snug text-neutral-600' : 'mt-1 line-clamp-3 text-[13px] leading-relaxed text-neutral-500'}>
                                 {p.description}
@@ -1018,7 +1027,7 @@ export function StorefrontMenuClient({
                                 </span>
                                 <button
                                   type="button"
-                                  disabled={!storeOpen}
+                                  disabled={productDisabled}
                                   onClick={(e) => {
                                     e.stopPropagation()
                                     incrementProduct(p)
@@ -1063,7 +1072,7 @@ export function StorefrontMenuClient({
                                   </span>
                                 <button
                                   type="button"
-                                  disabled={!storeOpen}
+                                  disabled={productDisabled}
                                   onClick={(e) => {
                                     e.stopPropagation()
                                     incrementProduct(p)
@@ -1078,7 +1087,7 @@ export function StorefrontMenuClient({
                               ) : (
                                 <button
                                   type="button"
-                                  disabled={!storeOpen}
+                                  disabled={productDisabled}
                                   onClick={(e) => {
                                     e.stopPropagation()
                                     incrementProduct(p)

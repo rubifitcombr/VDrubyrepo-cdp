@@ -9,6 +9,7 @@ import {
 import { requireLojistaAtivoApi } from '@/lib/require-lojista-ativo-api.server'
 import { tryAutoCancelNfceForOrder, tryAutoEmitNfceForOrder } from '@/services/fiscal'
 import { triggerLoyaltyEarnForDeliveredOrder, reverseLoyaltyRedeemForCancelledOrder } from '@/services/loyalty.server'
+import { restoreOrderItemsStock } from '@/services/inventory.server'
 import { notifyOrderWhatsAppStatusChange } from '@/services/order-whatsapp-notifications.server'
 
 export const dynamic = 'force-dynamic'
@@ -157,6 +158,10 @@ export async function POST(req: NextRequest) {
 
     // Pedido já cancelado: tenta NFC-e sem bloquear a recusa.
     if (newStatus === 'cancelled') {
+      const stockRestore = await restoreOrderItemsStock(supabase, storeId, orderId)
+      if (!stockRestore.ok) {
+        console.warn('[orders/status] stock restore:', stockRestore.error)
+      }
       void reverseLoyaltyRedeemForCancelledOrder(supabase, storeId, orderId).catch((e) =>
         console.warn('[loyalty redeem reverse]', e)
       )
