@@ -1,6 +1,10 @@
 'use client'
 
 import { dashboardFetch } from '@/lib/dashboard-fetch.client'
+import {
+  buildInventorySaveItems,
+  inventoryRowHasDraftChanges,
+} from '@/lib/inventory-save-payload'
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
@@ -9,6 +13,7 @@ type Row = {
   name: string
   category: string | null
   active: boolean
+  hasStockControl: boolean
   quantity: number
   lowStockAlert: number | null
   updatedAt: string | null
@@ -40,6 +45,18 @@ export function InventoryClient({ initialRows }: { initialRows: Row[] }) {
   )
   const [page, setPage] = useState(1)
   const pageSize = 25
+  const [touchedProductIds, setTouchedProductIds] = useState<Set<string>>(
+    () => new Set()
+  )
+
+  const markTouched = useCallback((productId: string) => {
+    setTouchedProductIds((prev) => {
+      if (prev.has(productId)) return prev
+      const next = new Set(prev)
+      next.add(productId)
+      return next
+    })
+  }, [])
 
   useEffect(() => {
     setRows(initialRows)
@@ -51,6 +68,7 @@ export function InventoryClient({ initialRows }: { initialRows: Row[] }) {
       }
     }
     setDrafts(o)
+    setTouchedProductIds(new Set())
   }, [initialRows])
 
   const sorted = useMemo(() => {
@@ -74,7 +92,7 @@ export function InventoryClient({ initialRows }: { initialRows: Row[] }) {
           : Math.max(0, Math.floor(parseFloat(d.low.replace(',', '.')) || 0))
       if (!r.active) {
         inactive += 1
-      } else if (qty <= 0) {
+      } else if (r.hasStockControl && qty <= 0) {
         out += 1
       } else if (lowNum != null && lowNum > 0 && qty <= lowNum) {
         low += 1
@@ -92,7 +110,7 @@ export function InventoryClient({ initialRows }: { initialRows: Row[] }) {
         !d || d.low.trim() === ''
           ? null
           : Math.max(0, Math.floor(parseFloat(d.low.replace(',', '.')) || 0))
-      const isOut = r.active && qty <= 0
+      const isOut = r.active && r.hasStockControl && qty <= 0
       const isLow = r.active && lowNum != null && lowNum > 0 && qty > 0 && qty <= lowNum
       const isOk = r.active && !isOut && !isLow
 
@@ -131,27 +149,25 @@ export function InventoryClient({ initialRows }: { initialRows: Row[] }) {
   }, [page, totalPages])
 
   const dirty = useMemo(() => {
-    for (const r of rows) {
-      const d = drafts[r.productId]
-      if (!d) continue
-      const qty = Math.max(0, Math.floor(parseFloat(d.quantity.replace(',', '.')) || 0))
-      const low =
-        d.low.trim() === '' ? null : Math.max(0, Math.floor(parseFloat(d.low.replace(',', '.')) || 0))
-      if (qty !== r.quantity || low !== r.lowStockAlert) return true
+    for (const productId of touchedProductIds) {
+      const row = rows.find((r) => r.productId === productId)
+      if (!row) continue
+      if (inventoryRowHasDraftChanges(row, drafts[productId])) return true
     }
     return false
-  }, [rows, drafts])
+  }, [rows, drafts, touchedProductIds])
 
   const updateDraft = useCallback(
     (productId: string, patch: Partial<Draft>) => {
       setSuccess(false)
       setError(null)
+      markTouched(productId)
       setDrafts((prev) => ({
         ...prev,
         [productId]: { ...prev[productId], ...patch },
       }))
     },
-    []
+    [markTouched]
   )
 
   const save = useCallback(async () => {
@@ -159,23 +175,8 @@ export function InventoryClient({ initialRows }: { initialRows: Row[] }) {
     setSuccess(false)
     setSaving(true)
     try {
-      const items = rows.map((r) => {
-        const d = drafts[r.productId] ?? {
-          quantity: '0',
-          low: '',
-        }
-        const qty = Math.max(0, Math.floor(parseFloat(d.quantity.replace(',', '.')) || 0))
-        const lowRaw = d.low.trim()
-        const low =
-          lowRaw === ''
-            ? null
-            : Math.max(0, Math.floor(parseFloat(lowRaw.replace(',', '.')) || 0))
-        return {
-          product_id: r.productId,
-          quantity: qty,
-          low_stock_alert: low,
-        }
-      })
+      const items = buildInventorySaveItems(rows, drafts, touchedProductIds)
+      if (items.length === 0) return
 
       const res = await dashboardFetch('/api/inventory', {
         method: 'PUT',
@@ -197,8 +198,11 @@ export function InventoryClient({ initialRows }: { initialRows: Row[] }) {
         return
       }
       setSuccess(true)
+      const savedIds = new Set(items.map((item) => item.product_id))
+      const nowIso = new Date().toISOString()
       setRows((prev) =>
         prev.map((r) => {
+          if (!savedIds.has(r.productId)) return r
           const d = drafts[r.productId]
           if (!d) return r
           const qty = Math.max(0, Math.floor(parseFloat(d.quantity.replace(',', '.')) || 0))
@@ -206,16 +210,28 @@ export function InventoryClient({ initialRows }: { initialRows: Row[] }) {
             d.low.trim() === ''
               ? null
               : Math.max(0, Math.floor(parseFloat(d.low.replace(',', '.')) || 0))
-          return { ...r, quantity: qty, lowStockAlert: low }
+          return {
+            ...r,
+            hasStockControl: true,
+            quantity: qty,
+            lowStockAlert: low,
+            updatedAt: nowIso,
+          }
         })
       )
+      setTouchedProductIds((prev) => {
+        const next = new Set(prev)
+        for (const id of savedIds) next.delete(id)
+        return next
+      })
       window.setTimeout(() => setSuccess(false), 4000)
     } finally {
       setSaving(false)
     }
-  }, [drafts, rows])
+  }, [drafts, rows, touchedProductIds])
 
   const applyLowAlertToAll = useCallback(() => {
+    const touched = new Set<string>()
     setDrafts((prev) => {
       const next = { ...prev }
       for (const r of rows) {
@@ -223,10 +239,14 @@ export function InventoryClient({ initialRows }: { initialRows: Row[] }) {
         if (!base.low.trim()) {
           const suggested = Math.max(1, Math.ceil((Number(base.quantity) || 0) * 0.2))
           next[r.productId] = { ...base, low: String(suggested) }
+          touched.add(r.productId)
         }
       }
       return next
     })
+    if (touched.size > 0) {
+      setTouchedProductIds((prev) => new Set([...prev, ...touched]))
+    }
     setSuccess(false)
     setError(null)
   }, [rows])
@@ -240,6 +260,7 @@ export function InventoryClient({ initialRows }: { initialRows: Row[] }) {
       }
     }
     setDrafts(o)
+    setTouchedProductIds(new Set())
     setSuccess(false)
     setError(null)
   }, [rows])
@@ -395,6 +416,8 @@ export function InventoryClient({ initialRows }: { initialRows: Row[] }) {
                     <td className="px-2 py-3">
                       {!r.active ? (
                         <span className="text-xs text-zinc-400">Inativo</span>
+                      ) : !r.hasStockControl ? (
+                        <span className="text-xs text-zinc-500">Ilimitado</span>
                       ) : warn ? (
                         <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900">
                           Baixo

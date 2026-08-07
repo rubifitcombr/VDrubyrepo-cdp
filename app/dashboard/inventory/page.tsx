@@ -39,6 +39,7 @@ export default async function InventoryPage() {
       name: p.name,
       category: p.category,
       active: p.active !== false,
+      hasStockControl: s !== undefined,
       quantity: s?.quantity ?? 0,
       lowStockAlert: s?.lowStockAlert ?? null,
       updatedAt: s?.updatedAt ?? null,
