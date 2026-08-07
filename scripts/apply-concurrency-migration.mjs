@@ -38,8 +38,12 @@ if (!url) {
   process.exit(1)
 }
 
-const migration = readFileSync(
+const migrationReferral = readFileSync(
   resolve(root, 'supabase/migrations/20260807140000_concurrency_referral_loyalty_unique.sql'),
+  'utf8'
+)
+const migrationWaiterComanda = readFileSync(
+  resolve(root, 'supabase/migrations/20260807190000_waiter_salon_comanda_unique.sql'),
   'utf8'
 )
 
@@ -50,6 +54,7 @@ const client = new Client({
 
 console.log('A aplicar migração de concorrência…')
 await client.connect()
-await client.query(migration)
+await client.query(migrationReferral)
+await client.query(migrationWaiterComanda)
 await client.end()
 console.log('Migração aplicada.')

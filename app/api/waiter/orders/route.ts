@@ -226,6 +226,21 @@ export async function POST(request: Request) {
     .single()
 
   if (orderErr || !order?.id) {
+    if (
+      orderErr &&
+      (orderErr.code === '23505' ||
+        /orders_salon_open_comanda_name_uidx|duplicate key value/i.test(
+          orderErr.message ?? ''
+        ))
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            'Já existe uma comanda com este nome nesta mesa. Escolha outro nome.',
+        },
+        { status: 409 }
+      )
+    }
     if (isSupabaseRlsViolation(orderErr?.message)) {
       return NextResponse.json(
         {

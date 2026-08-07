@@ -1118,6 +1118,35 @@ export function WaiterClient({
     if (openMenu) openMenuForOrder()
   }
 
+  function promptNewComandaForTable(name = table, amb = sector) {
+    const cleanName = name.trim()
+    if (!cleanName) return
+    const existingOnTable = ordersOnTable(openOrders, cleanName, amb, tables)
+    if (existingOnTable.length > 0) {
+      const match =
+        tables.find(
+          (t) =>
+            tableNamesMatch(t.name, cleanName) &&
+            String(t.ambiente ?? '').trim().toLowerCase() ===
+              amb.trim().toLowerCase()
+        ) ?? null
+      setComandaPickerTable(
+        match ?? {
+          id: '',
+          name: cleanName,
+          ambiente: amb,
+          sort_order: 0,
+          active: true,
+        }
+      )
+      setComandaPickerOpen(true)
+      setNewComandaNameDraft('')
+      setTableActionSheetOpen(false)
+      return
+    }
+    startNewOrderForTable(cleanName, amb, { openMenu: true })
+  }
+
   async function handleTablePress(tb: StoreTableDTO) {
     setError(null)
     const allOnTable = ordersOnTable(openOrders, tb.name, tb.ambiente, tables)
@@ -2836,7 +2865,7 @@ export function WaiterClient({
             hasSavedOrder={hasSavedOrder}
             onSubmitNew={submitNewOrder}
             onSaveExisting={saveExistingOrder}
-            onStartNewForTable={() => startNewOrderForTable(table, sector, { openMenu: true })}
+            onStartNewForTable={() => promptNewComandaForTable(table, sector)}
             onOpenMenu={openMenuForOrder}
             onPrint={printComanda}
             onConfirmClose={() => void openConfirmCloseMesa()}
@@ -3518,7 +3547,7 @@ export function WaiterClient({
                 hasSavedOrder={hasSavedOrder}
                 onSubmitNew={submitNewOrder}
                 onSaveExisting={saveExistingOrder}
-                onStartNewForTable={() => startNewOrderForTable(table, sector, { openMenu: true })}
+                onStartNewForTable={() => promptNewComandaForTable(table, sector)}
                 onOpenMenu={openMenuForOrder}
                 onPrint={printComanda}
                 onConfirmClose={() => void openConfirmCloseMesa()}
