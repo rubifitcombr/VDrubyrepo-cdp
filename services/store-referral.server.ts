@@ -5,7 +5,6 @@ import { addDaysIso, todayIsoLocal } from '@/lib/contract-pricing'
 import {
   REFERRAL_POINTS_PER_ACTIVATION,
   REFERRAL_POINTS_TO_REDEEM,
-  REFERRAL_POINTS_VALIDITY_DAYS,
   REFERRAL_REDEEM_BONUS_DAYS,
 } from '@/lib/referral/constants'
 import {
@@ -15,6 +14,11 @@ import {
 import { getSiteMetadataBase } from '@/lib/site-metadata'
 import { parsePlan } from '@/lib/plan'
 import { readStorePlano } from '@/lib/store-columns'
+import { isPostgresUniqueViolation } from '@/lib/postgres-errors'
+import { awardReferralOnStoreActivation } from '@/lib/referral-award-on-activation'
+import { getOrCreateReferralAccount } from '@/lib/store-referral-account'
+
+export { awardReferralOnStoreActivation }
 
 export type ReferralLedgerRow = {
   id: string
@@ -43,16 +47,6 @@ export type ReferralDashboardData = {
   referrals: ReferralListItem[]
   redemptions_count: number
   missing_schema: boolean
-}
-
-const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-
-function generateReferralCode(): string {
-  let out = ''
-  for (let i = 0; i < 8; i++) {
-    out += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]!
-  }
-  return out
 }
 
 function normalizeReferralCodeInput(raw: unknown): string | null {
@@ -99,42 +93,7 @@ export function buildReferralRegisterUrl(code: string): string {
   return `${base}/register?ref=${encodeURIComponent(code)}`
 }
 
-export async function getOrCreateReferralAccount(
-  svc: SupabaseClient,
-  storeId: string
-): Promise<{ referral_code: string } | { error: string; missing_schema?: boolean }> {
-  const { data: existing, error: exErr } = await svc
-    .from('store_referral_accounts')
-    .select('referral_code')
-    .eq('store_id', storeId)
-    .maybeSingle()
-
-  if (exErr) {
-    if (isMissingSchemaError(exErr.message ?? '')) {
-      return { error: 'Schema de indicações em falta.', missing_schema: true }
-    }
-    return { error: exErr.message ?? 'Erro ao ler código de indicação.' }
-  }
-  if (existing?.referral_code) {
-    return { referral_code: String(existing.referral_code) }
-  }
-
-  for (let attempt = 0; attempt < 8; attempt++) {
-    const code = generateReferralCode()
-    const { error: insErr } = await svc.from('store_referral_accounts').insert({
-      store_id: storeId,
-      referral_code: code,
-    })
-    if (!insErr) return { referral_code: code }
-    if (!/unique|duplicate/i.test(insErr.message ?? '')) {
-      if (isMissingSchemaError(insErr.message ?? '')) {
-        return { error: 'Schema de indicações em falta.', missing_schema: true }
-      }
-      return { error: insErr.message ?? 'Erro ao criar código.' }
-    }
-  }
-  return { error: 'Não foi possível gerar código único.' }
-}
+export { getOrCreateReferralAccount }
 
 export async function resolveReferrerStoreIdByCode(
   svc: SupabaseClient,
@@ -196,60 +155,6 @@ export async function attachReferralToNewStore(
 
   if (refErr && !/unique|duplicate/i.test(refErr.message ?? '')) {
     console.warn('[referral] store_referrals insert:', refErr.message)
-  }
-}
-
-export async function awardReferralOnStoreActivation(
-  svc: SupabaseClient,
-  activatedStoreId: string
-): Promise<void> {
-  const { data: store, error: stErr } = await svc
-    .from('stores')
-    .select('id, referred_by_store_id, name')
-    .eq('id', activatedStoreId)
-    .maybeSingle()
-
-  if (stErr || !store) return
-  const referrerId = String((store as { referred_by_store_id?: string }).referred_by_store_id ?? '').trim()
-  if (!referrerId) return
-
-  const { data: referral, error: refErr } = await svc
-    .from('store_referrals')
-    .select('id, status, referral_code')
-    .eq('referred_store_id', activatedStoreId)
-    .eq('referrer_store_id', referrerId)
-    .maybeSingle()
-
-  if (refErr || !referral?.id) return
-  if (String(referral.status) === 'activated') return
-
-  const now = new Date().toISOString()
-  const expiresAt = new Date()
-  expiresAt.setUTCDate(expiresAt.getUTCDate() + REFERRAL_POINTS_VALIDITY_DAYS)
-
-  const { error: upRef } = await svc
-    .from('store_referrals')
-    .update({ status: 'activated', activated_at: now })
-    .eq('id', referral.id)
-    .eq('status', 'pending')
-
-  if (upRef) {
-    console.warn('[referral] activate row:', upRef.message)
-    return
-  }
-
-  await getOrCreateReferralAccount(svc, referrerId)
-
-  const { error: ledErr } = await svc.from('store_referral_ledger').insert({
-    store_id: referrerId,
-    delta: REFERRAL_POINTS_PER_ACTIVATION,
-    reason: 'referral_activated',
-    referral_id: referral.id,
-    expires_at: expiresAt.toISOString(),
-  })
-
-  if (ledErr) {
-    console.warn('[referral] ledger earn:', ledErr.message)
   }
 }
 
@@ -387,40 +292,44 @@ export async function redeemReferralBonus(
     }
   }
 
-  const now = new Date().toISOString()
-  const { data: lockedStore, error: lockErr } = await svc
-    .from('stores')
-    .update({ plano_atualizado_em: now })
-    .eq('id', storeId)
-    .select('plano_vence_em, plano, plan')
-    .single()
-
-  if (lockErr || !lockedStore) {
-    return { error: lockErr?.message ?? 'Erro ao reservar resgate.', status: 500 }
-  }
-
-  const { data: ledgerAfterLock, error: ledErr2 } = await svc
-    .from('store_referral_ledger')
-    .select('id, delta, reason, expires_at, created_at')
+  const { data: accountBefore } = await svc
+    .from('store_referral_accounts')
+    .select('points_balance')
     .eq('store_id', storeId)
+    .maybeSingle()
 
-  if (ledErr2) {
+  const balanceBefore = Number(
+    (accountBefore as { points_balance?: number } | null)?.points_balance ?? 0
+  )
+  if (balanceBefore < REFERRAL_POINTS_TO_REDEEM) {
     return {
-      error: ledErr2.message ?? 'Erro ao ler pontos.',
-      status: 503,
-    }
-  }
-
-  const availableLocked = computeAvailablePoints((ledgerAfterLock ?? []) as ReferralLedgerRow[])
-  if (availableLocked < REFERRAL_POINTS_TO_REDEEM) {
-    return {
-      error: `Precisas de ${REFERRAL_POINTS_TO_REDEEM} pontos para resgatar (tens ${availableLocked}).`,
+      error: `Precisas de ${REFERRAL_POINTS_TO_REDEEM} pontos para resgatar (tens ${balanceBefore}).`,
       status: 400,
     }
   }
 
+  const nextBalance = balanceBefore - REFERRAL_POINTS_TO_REDEEM
+  const { data: claimedAccount, error: claimErr } = await svc
+    .from('store_referral_accounts')
+    .update({ points_balance: nextBalance })
+    .eq('store_id', storeId)
+    .gte('points_balance', REFERRAL_POINTS_TO_REDEEM)
+    .select('points_balance')
+    .maybeSingle()
+
+  if (claimErr) {
+    return { error: claimErr.message ?? 'Erro ao reservar resgate.', status: 500 }
+  }
+
+  if (!claimedAccount) {
+    return {
+      error: 'Saldo insuficiente ou resgate já em curso. Actualiza e tenta de novo.',
+      status: 409,
+    }
+  }
+
   const today = todayIsoLocal()
-  const rawCur = lockedStore.plano_vence_em
+  const rawCur = storeRow.plano_vence_em
   const cur =
     typeof rawCur === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(rawCur.trim())
       ? rawCur.trim()
@@ -440,6 +349,10 @@ export async function redeemReferralBonus(
     .single()
 
   if (redErr || !redemption?.id) {
+    await svc
+      .from('store_referral_accounts')
+      .update({ points_balance: balanceBefore })
+      .eq('store_id', storeId)
     return { error: redErr?.message ?? 'Erro ao registar resgate.', status: 500 }
   }
 
@@ -452,9 +365,15 @@ export async function redeemReferralBonus(
   })
 
   if (ledInsErr) {
+    await svc.from('store_referral_redemptions').delete().eq('id', redemption.id)
+    await svc
+      .from('store_referral_accounts')
+      .update({ points_balance: balanceBefore })
+      .eq('store_id', storeId)
     return { error: ledInsErr.message ?? 'Erro ao debitar pontos.', status: 500 }
   }
 
+  const now = new Date().toISOString()
   const { error: upStore } = await svc
     .from('stores')
     .update({
@@ -466,6 +385,10 @@ export async function redeemReferralBonus(
   if (upStore) {
     await svc.from('store_referral_ledger').delete().eq('redemption_id', redemption.id)
     await svc.from('store_referral_redemptions').delete().eq('id', redemption.id)
+    await svc
+      .from('store_referral_accounts')
+      .update({ points_balance: balanceBefore })
+      .eq('store_id', storeId)
     return { error: upStore.message ?? 'Erro ao estender assinatura.', status: 500 }
   }
 

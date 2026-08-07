@@ -6,10 +6,12 @@ import { ORDER_SELECT, mapStoreOrderRow } from '@/lib/store-order'
 import {
   buildWaiterNotes,
   extractUserNotes,
+  GARCOM_PAYMENT_CLOSE_MARKER,
   isSalonMapOrderSource,
   notesIndicateWaiterReleasedToCaixa,
   parseSectorFromNotes,
   parseTableFromNotes,
+  WAITER_PENDING_CAIXA_MARKER,
 } from '@/lib/waiter-order-notes'
 import { getUser } from '@/services/auth.server'
 import { createClient } from '@/lib/supabase/server'
@@ -367,7 +369,7 @@ export async function PATCH(
     }
   }
 
-  const { error: upErr } = await supabase
+  const { data: updated, error: upErr } = await supabase
     .from('orders')
     .update({
       customer_name: body.customer_name?.trim() || null,
@@ -380,6 +382,23 @@ export async function PATCH(
     })
     .eq('id', id)
     .eq('store_id', storeId)
+    .in('status', [...EDITABLE])
+    .neq('status', 'cancelled')
+    .neq('status', 'delivered')
+    .not('notes', 'ilike', `%${WAITER_PENDING_CAIXA_MARKER}%`)
+    .not('notes', 'ilike', `%${GARCOM_PAYMENT_CLOSE_MARKER}%`)
+    .select('id')
+    .maybeSingle()
+
+  if (!upErr && !updated) {
+    return NextResponse.json(
+      {
+        error:
+          'Esta comanda já foi encaminhada ao Caixa ou encerrada e não pode ser editada.',
+      },
+      { status: 409 }
+    )
+  }
 
   if (upErr) {
     return NextResponse.json({ error: upErr.message }, { status: 500 })

@@ -195,10 +195,10 @@ export async function markEntregasAsSettled(
   storeId: string,
   entregaIds: string[],
   movimentacaoId: string
-): Promise<void> {
-  if (entregaIds.length === 0) return
+): Promise<number> {
+  if (entregaIds.length === 0) return 0
   const now = new Date().toISOString()
-  const { error } = await svc
+  const { data, error } = await svc
     .from('entregas')
     .update({
       acerto_movimentacao_id: movimentacaoId,
@@ -206,8 +206,11 @@ export async function markEntregasAsSettled(
     })
     .eq('store_id', storeId)
     .in('id', entregaIds)
+    .is('acertado_em', null)
+    .select('id')
 
   if (error && !/column.*does not exist/i.test(error.message)) {
     throw new Error(error.message)
   }
+  return data?.length ?? 0
 }

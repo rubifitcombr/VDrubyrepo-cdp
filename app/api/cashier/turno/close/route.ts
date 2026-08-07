@@ -116,7 +116,7 @@ export async function POST(request: Request) {
 
   const now = new Date().toISOString()
 
-  const { error: upErr } = await supabase
+  const { error: upErr, data: updatedRows } = await supabase
     .from('caixas_turnos')
     .update({
       fechado_em: now,
@@ -137,6 +137,7 @@ export async function POST(request: Request) {
     .eq('id', turnoId)
     .eq('store_id', storeId)
     .eq('status', 'aberto')
+    .select('id')
 
   if (upErr) {
     if (/relation|does not exist|schema cache|42P01/i.test(upErr.message ?? '')) {
@@ -151,6 +152,13 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { error: upErr.message ?? 'Não foi possível fechar o turno.' },
       { status: 500 }
+    )
+  }
+
+  if (!updatedRows?.length) {
+    return NextResponse.json(
+      { error: 'Turno já foi fechado noutro painel. Actualiza e tenta de novo.' },
+      { status: 409 }
     )
   }
 

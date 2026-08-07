@@ -111,7 +111,23 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  await markEntregasAsSettled(supabase, storeId, entregaIds, String(mov.id))
+  const settledCount = await markEntregasAsSettled(
+    supabase,
+    storeId,
+    entregaIds,
+    String(mov.id)
+  )
+
+  if (settledCount !== entregaIds.length) {
+    await supabase.from('caixa_movimentacoes').delete().eq('id', mov.id).eq('store_id', storeId)
+    return NextResponse.json(
+      {
+        error:
+          'Uma ou mais entregas já foram acertadas noutro painel. Actualiza e tenta de novo.',
+      },
+      { status: 409 }
+    )
+  }
 
   return NextResponse.json({
     ok: true,

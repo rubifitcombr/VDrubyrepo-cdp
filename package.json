@@ -10,7 +10,8 @@
     "lint": "eslint",
     "test:master": "node scripts/test-master-release.mjs",
     "test:sync": "npm run build && playwright test e2e/sync",
-    "test:sync:stable": "npm run build && bash scripts/run-sync-tests-3x.sh"
+    "test:sync:stable": "npm run build && bash scripts/run-sync-tests-3x.sh",
+    "test:concurrency": "npm run build && node scripts/apply-concurrency-migration.mjs && playwright test -c playwright.concurrency.config.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.0",
@@ -44,6 +45,7 @@
     "dotenv": "^17.4.2",
     "eslint": "^9",
     "eslint-config-next": "16.2.2",
+    "pg": "^8.22.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

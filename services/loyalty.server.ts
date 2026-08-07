@@ -1,39 +1,27 @@
 import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { getOrCreateLoyaltyConfig, normalizeLoyaltyConfigRow } from '@/lib/loyalty-config'
+import {
+  earnLoyaltyForDeliveredOrder,
+  normalizePhoneE164,
+} from '@/lib/loyalty-earn-delivered-order'
 import type {
   CustomerLoyaltyBalance,
   LoyaltyAccountRow,
-  LoyaltyDeliveredEarnResult,
   LoyaltyLedgerRow,
   LoyaltySummary,
   PublicLoyaltyProgram,
   StoreLoyaltyConfig,
 } from '@/lib/loyalty/types'
 import {
-  calculateEarnPoints,
   calculateMaxRedeemablePoints,
   resolveRedeemPoints,
 } from '@/lib/loyalty/utils'
 import { sendLoyaltyDeliveredWhatsAppNotification } from '@/services/loyalty-whatsapp.server'
 
-export function normalizePhoneE164(raw: string): string {
-  return raw.replace(/\D/g, '')
-}
-
-function normalizeConfigRow(row: Record<string, unknown>): StoreLoyaltyConfig {
-  return {
-    store_id: String(row.store_id),
-    enabled: row.enabled === true,
-    points_per_real: Number(row.points_per_real ?? 1),
-    min_redeem_points: Number(row.min_redeem_points ?? 100),
-    redeem_cents_per_point: Number(row.redeem_cents_per_point ?? 1),
-    welcome_bonus_points: Number(row.welcome_bonus_points ?? 0),
-    whatsapp_balance_enabled: row.whatsapp_balance_enabled !== false,
-    created_at: String(row.created_at || ''),
-    updated_at: String(row.updated_at || ''),
-  }
-}
+export { earnLoyaltyForDeliveredOrder, normalizePhoneE164 }
+export { getOrCreateLoyaltyConfig }
 
 function normalizeAccountRow(row: Record<string, unknown>): LoyaltyAccountRow {
   return {
@@ -64,30 +52,6 @@ function normalizeLedgerRow(row: Record<string, unknown>): LoyaltyLedgerRow {
   }
 }
 
-export async function getOrCreateLoyaltyConfig(
-  db: SupabaseClient,
-  storeId: string
-): Promise<StoreLoyaltyConfig> {
-  const { data } = await db
-    .from('store_loyalty_config')
-    .select('*')
-    .eq('store_id', storeId)
-    .maybeSingle()
-
-  if (data) return normalizeConfigRow(data as Record<string, unknown>)
-
-  const { data: inserted, error } = await db
-    .from('store_loyalty_config')
-    .insert({ store_id: storeId })
-    .select('*')
-    .single()
-
-  if (error || !inserted) {
-    throw new Error(error?.message || 'Falha ao criar configuração de fidelidade.')
-  }
-  return normalizeConfigRow(inserted as Record<string, unknown>)
-}
-
 export async function updateLoyaltyConfig(
   db: SupabaseClient,
   storeId: string,
@@ -114,7 +78,7 @@ export async function updateLoyaltyConfig(
   if (error || !data) {
     throw new Error(error?.message || 'Falha ao atualizar fidelidade.')
   }
-  return normalizeConfigRow(data as Record<string, unknown>)
+  return normalizeLoyaltyConfigRow(data as Record<string, unknown>)
 }
 
 export async function listLoyaltyAccounts(
@@ -239,65 +203,6 @@ export async function getCustomerLoyaltyBalance(
     min_redeem_points: config.min_redeem_points,
     redeem_cents_per_point: config.redeem_cents_per_point,
   }
-}
-
-async function maybeAwardWelcomeBonus(
-  db: SupabaseClient,
-  input: {
-    store_id: string
-    customer_phone: string
-    customer_name: string | null | undefined
-    config: StoreLoyaltyConfig
-    accountRow: Record<string, unknown> | null
-  }
-): Promise<number> {
-  const bonus = Math.floor(input.config.welcome_bonus_points)
-  if (!input.config.enabled || bonus <= 0) return 0
-
-  const { data: existingWelcome } = await db
-    .from('loyalty_ledger')
-    .select('id')
-    .eq('store_id', input.store_id)
-    .eq('customer_phone', input.customer_phone)
-    .eq('kind', 'welcome')
-    .maybeSingle()
-
-  if (existingWelcome) return 0
-
-  const currentBalance = input.accountRow
-    ? Number((input.accountRow as { points_balance?: number }).points_balance ?? 0)
-    : 0
-  const now = new Date().toISOString()
-
-  await db.from('loyalty_accounts').upsert(
-    {
-      store_id: input.store_id,
-      customer_phone: input.customer_phone,
-      customer_name:
-        input.customer_name?.trim() ||
-        (input.accountRow as { customer_name?: string } | null)?.customer_name ||
-        null,
-      points_balance: currentBalance + bonus,
-      lifetime_earned:
-        Number((input.accountRow as { lifetime_earned?: number } | null)?.lifetime_earned ?? 0) +
-        bonus,
-      lifetime_redeemed: Number(
-        (input.accountRow as { lifetime_redeemed?: number } | null)?.lifetime_redeemed ?? 0
-      ),
-      updated_at: now,
-    },
-    { onConflict: 'store_id,customer_phone' }
-  )
-
-  await db.from('loyalty_ledger').insert({
-    store_id: input.store_id,
-    customer_phone: input.customer_phone,
-    kind: 'welcome',
-    points_delta: bonus,
-    note: 'Bónus de boas-vindas',
-  })
-
-  return bonus
 }
 
 export async function adjustLoyaltyPoints(
@@ -498,129 +403,6 @@ export async function redeemLoyaltyPointsForCheckout(
   if (ledgerErr) throw new Error(ledgerErr.message)
 
   return { points, discount_brl: discountBrl }
-}
-
-/** Credita pontos após pedido entregue (fidelidade activa). */
-export async function earnLoyaltyForDeliveredOrder(
-  db: SupabaseClient,
-  input: {
-    store_id: string
-    order_id: string
-    customer_phone: string | null | undefined
-    customer_name: string | null | undefined
-    order_total: number
-    order_created_at?: string
-    points_per_real?: number | null
-  }
-): Promise<LoyaltyDeliveredEarnResult | null> {
-  const phone = normalizePhoneE164(String(input.customer_phone || ''))
-  if (!phone) return null
-
-  const config = await getOrCreateLoyaltyConfig(db, input.store_id)
-  if (!config.enabled) return null
-
-  const { data: existingEarn } = await db
-    .from('loyalty_ledger')
-    .select('id')
-    .eq('store_id', input.store_id)
-    .eq('order_id', input.order_id)
-    .eq('kind', 'earn')
-    .maybeSingle()
-
-  if (existingEarn) return null
-
-  const rate =
-    input.points_per_real != null && Number.isFinite(Number(input.points_per_real))
-      ? Number(input.points_per_real)
-      : config.points_per_real
-
-  const points =
-    input.order_total > 0 ? calculateEarnPoints(input.order_total, rate) : 0
-
-  if (points <= 0 && config.welcome_bonus_points <= 0) return null
-
-  const { data: accountRow } = await db
-    .from('loyalty_accounts')
-    .select('*')
-    .eq('store_id', input.store_id)
-    .eq('customer_phone', phone)
-    .maybeSingle()
-
-  const welcomeBonus = await maybeAwardWelcomeBonus(db, {
-    store_id: input.store_id,
-    customer_phone: phone,
-    customer_name: input.customer_name,
-    config,
-    accountRow: (accountRow as Record<string, unknown> | null) ?? null,
-  })
-
-  if (points > 0) {
-    const { data: freshAccount } = await db
-      .from('loyalty_accounts')
-      .select('*')
-      .eq('store_id', input.store_id)
-      .eq('customer_phone', phone)
-      .maybeSingle()
-
-    const currentBalance = freshAccount
-      ? Number((freshAccount as { points_balance?: number }).points_balance ?? 0)
-      : 0
-    const nextBalance = currentBalance + points
-    const now = new Date().toISOString()
-
-    await db.from('loyalty_accounts').upsert(
-      {
-        store_id: input.store_id,
-        customer_phone: phone,
-        customer_name:
-          input.customer_name?.trim() ||
-          (freshAccount as { customer_name?: string } | null)?.customer_name ||
-          null,
-        points_balance: nextBalance,
-        lifetime_earned:
-          Number((freshAccount as { lifetime_earned?: number } | null)?.lifetime_earned ?? 0) +
-          points,
-        lifetime_redeemed: Number(
-          (freshAccount as { lifetime_redeemed?: number } | null)?.lifetime_redeemed ?? 0
-        ),
-        last_order_at: input.order_created_at || now,
-        updated_at: now,
-      },
-      { onConflict: 'store_id,customer_phone' }
-    )
-
-    await db.from('loyalty_ledger').insert({
-      store_id: input.store_id,
-      customer_phone: phone,
-      kind: 'earn',
-      points_delta: points,
-      order_id: input.order_id,
-      note: 'Pedido entregue',
-    })
-  }
-
-  if (points <= 0 && welcomeBonus <= 0) return null
-
-  const { data: finalAccount } = await db
-    .from('loyalty_accounts')
-    .select('points_balance, customer_name')
-    .eq('store_id', input.store_id)
-    .eq('customer_phone', phone)
-    .maybeSingle()
-
-  return {
-    customer_phone: phone,
-    customer_name:
-      input.customer_name?.trim() ||
-      (finalAccount as { customer_name?: string } | null)?.customer_name ||
-      null,
-    points_earned: points,
-    welcome_bonus: welcomeBonus,
-    new_balance: Number(
-      (finalAccount as { points_balance?: number } | null)?.points_balance ?? 0
-    ),
-    order_ref: `#${input.order_id.slice(0, 8).toUpperCase()}`,
-  }
 }
 
 /** Estorna pontos resgatados quando um pedido é cancelado. */
