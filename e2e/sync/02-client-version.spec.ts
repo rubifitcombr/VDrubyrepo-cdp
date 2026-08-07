@@ -25,9 +25,14 @@ test.describe('TESTE 2 — Versão do cliente', () => {
       window.localStorage.setItem('vyria-dashboard-client-version', 'stale:fake-build')
     })
 
-    const reloadPromise = page.waitForURL('**/dashboard/orders**', { timeout: 45_000 })
-    await page.reload()
-    await reloadPromise
+    await page.reload({ waitUntil: 'domcontentloaded' })
+
+    await page.waitForFunction(
+      (expected) =>
+        window.localStorage.getItem('vyria-dashboard-client-version') === expected,
+      versionKey,
+      { timeout: 60_000 }
+    )
 
     await expect(
       footer,

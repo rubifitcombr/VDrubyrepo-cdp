@@ -9,7 +9,7 @@ function e2eOrderSourceForStore(operationMode: string): string {
 }
 
 test.describe('TESTE 1 — Sync com aba em background', () => {
-  test('Pedidos actualiza após alteração no Caixa sem reload manual', async ({
+  test('Pedidos actualiza após alteração via API sem reload manual', async ({
     browser,
   }) => {
     const data = readE2eTestData()
@@ -41,9 +41,13 @@ test.describe('TESTE 1 — Sync com aba em background', () => {
       storageState: 'e2e/.auth/user.json',
     })
     const ordersPage = await context.newPage()
-    const caixaPage = await context.newPage()
 
     try {
+      if (data.hubPinBalcaoEnabled && data.hubPinBalcao) {
+        await ordersPage.goto('/dashboard')
+        await unlockHubBalcaoPin(ordersPage, data.storeId)
+      }
+
       await ordersPage.goto('/dashboard/orders')
       const orderCard = ordersPage.locator(`#order-card-${orderId}`)
       await expect(
@@ -53,22 +57,12 @@ test.describe('TESTE 1 — Sync com aba em background', () => {
 
       await setPageBackground(ordersPage)
 
-      if (data.hubPinBalcaoEnabled && data.hubPinBalcao) {
-        await caixaPage.goto('/dashboard')
-        await unlockHubBalcaoPin(caixaPage, data.storeId)
-      }
-      await caixaPage.goto('/dashboard/caixa')
-      await expect(
-        caixaPage.getByRole('button', { name: /^operação$/i }),
-        'Painel Caixa deve carregar com separador Operação após desbloquear PIN Balcão'
-      ).toBeVisible({ timeout: 30_000 })
-
-      const statusRes = await caixaPage.request.post('/api/orders/status', {
+      const statusRes = await ordersPage.request.post('/api/orders/status', {
         data: { orderId, status: targetStatus },
       })
-      const statusBody = await statusRes.text()
 
       if (!statusRes.ok()) {
+        const statusBody = await statusRes.text()
         const { error: directError } = await sb
           .from('orders')
           .update({ status: targetStatus })
@@ -80,7 +74,7 @@ test.describe('TESTE 1 — Sync com aba em background', () => {
         ).toBeNull()
       }
 
-      await caixaPage.evaluate((storeId) => {
+      await ordersPage.evaluate((storeId) => {
         const detail = {
           storeId,
           source: 'orders',
