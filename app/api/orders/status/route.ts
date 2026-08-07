@@ -104,7 +104,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const { error: upErr, count } = await supabase
+    const { error: upErr, data: updatedRows } = await supabase
       .from('orders')
       .update({ status: newStatus })
       .eq('id', orderId)
@@ -129,7 +129,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    if (!count) {
+    if (!updatedRows?.length) {
       return NextResponse.json(
         { error: 'O estado do pedido mudou noutro painel. Actualiza e tenta de novo.' },
         { status: 409 }

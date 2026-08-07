@@ -143,26 +143,43 @@ export async function POST(req: NextRequest) {
         entrega_prazo_minutos: prazoMinutos,
       }
 
-  let { error: upErr } = await supabase
+  let upErr: { message?: string } | null = null
+  let updatedRows: { id: string }[] | null = null
+
+  const primaryUpdate = await supabase
     .from('orders')
     .update(updatePayload)
     .eq('id', orderId)
     .eq('store_id', storeId)
     .eq('status', current)
+    .select('id')
 
-  if (upErr && /column.*does not exist/i.test(upErr.message)) {
-    ;({ error: upErr } = await supabase
+  upErr = primaryUpdate.error
+  updatedRows = primaryUpdate.data
+
+  if (upErr && /column.*does not exist/i.test(upErr.message ?? '')) {
+    const fallbackUpdate = await supabase
       .from('orders')
       .update({ status: 'confirmed' })
       .eq('id', orderId)
       .eq('store_id', storeId)
-      .eq('status', current))
+      .eq('status', current)
+      .select('id')
+    upErr = fallbackUpdate.error
+    updatedRows = fallbackUpdate.data
   }
 
   if (upErr) {
     return NextResponse.json(
       { error: upErr.message ?? 'Não foi possível despachar o pedido.' },
       { status: 500 }
+    )
+  }
+
+  if (!updatedRows?.length) {
+    return NextResponse.json(
+      { error: 'O estado do pedido mudou noutro painel. Actualiza e tenta de novo.' },
+      { status: 409 }
     )
   }
 

@@ -96,17 +96,25 @@ export async function POST(req: NextRequest) {
   }
 
   if (skip) {
-    const { error: upErr } = await supabase
+    const { error: upErr, data: updatedRows } = await supabase
       .from('orders')
       .update({ status: 'delivered' })
       .eq('id', orderId)
       .eq('store_id', storeId)
       .eq('status', current)
+      .select('id')
 
     if (upErr) {
       return NextResponse.json(
         { error: upErr.message ?? 'Não foi possível atualizar o pedido.' },
         { status: 500 }
+      )
+    }
+
+    if (!updatedRows?.length) {
+      return NextResponse.json(
+        { error: 'O estado do pedido mudou noutro painel. Actualiza e tenta de novo.' },
+        { status: 409 }
       )
     }
 
@@ -225,12 +233,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: msg }, { status: 500 })
   }
 
-  const { error: upErr } = await supabase
+  const { error: upErr, data: updatedRows } = await supabase
     .from('orders')
     .update({ status: 'delivered' })
     .eq('id', orderId)
     .eq('store_id', storeId)
     .eq('status', current)
+    .select('id')
 
   if (upErr) {
     if (insertedId) {
@@ -243,6 +252,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       { error: upErr.message ?? 'Não foi possível marcar o pedido como entregue.' },
       { status: 500 }
+    )
+  }
+
+  if (!updatedRows?.length) {
+    if (insertedId) {
+      try {
+        await deleteEntregaById(supabase, storeId, insertedId)
+      } catch {
+        /* ignore */
+      }
+    }
+    return NextResponse.json(
+      { error: 'O estado do pedido mudou noutro painel. Actualiza e tenta de novo.' },
+      { status: 409 }
     )
   }
 

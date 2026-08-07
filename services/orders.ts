@@ -1,22 +1,4 @@
-import { createClient } from '@/lib/supabase/client'
 import { notifyStoreOrdersChanged } from '@/lib/store-operational-realtime.client'
-import type { StoreOrderRow } from '@/lib/store-order'
-import { ORDER_SELECT, orderIsVisibleAfterPixConfirmation } from '@/lib/store-order'
-
-export async function getStoreOrders(storeId: string): Promise<StoreOrderRow[]> {
-  const supabase = createClient()
-  const { data, error } = await supabase
-    .from('orders')
-    .select(ORDER_SELECT)
-    .eq('store_id', storeId)
-    .order('created_at', { ascending: false })
-
-  if (error) {
-    console.error('[orders]', error.message)
-    return []
-  }
-  return ((data as StoreOrderRow[]) ?? []).filter(orderIsVisibleAfterPixConfirmation)
-}
 
 export async function updateOrderStatus(
   orderId: string,
