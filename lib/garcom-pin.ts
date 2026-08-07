@@ -3,9 +3,15 @@ import type { StoreGarcomDTO } from '@/lib/garcons-types'
 export type GarcomPinSession = {
   garcomId: string
   nome: string
+  /** Epoch ms — sessão expira após 12h sem novo PIN. */
+  expiresAt: number
 }
 
 const SESSION_PREFIX = 'vyria-garcom-session:'
+export const GARCOM_PIN_SESSION_SYNC_EVENT = 'vyria-garcom-pin-session-sync'
+
+/** Sessão PIN do garçom — renovada a cada login por PIN. */
+export const GARCOM_PIN_SESSION_TTL_MS = 12 * 60 * 60 * 1000
 
 export function normalizeGarcomPin(raw: unknown): string {
   return String(raw ?? '')
@@ -34,18 +40,59 @@ export function matchGarcomByPin(
   return garconsWithActivePin(garcons).find((g) => g.pin === normalized) ?? null
 }
 
+/** Chave de persistência — localStorage partilhado entre abas do mesmo browser. */
 export function garcomPinSessionStorageKey(storeId: string): string {
   return `${SESSION_PREFIX}${storeId}`
+}
+
+export const garcomPinSessionKey = garcomPinSessionStorageKey
+
+function notifyGarcomPinSessionChanged(storeId: string): void {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(
+    new CustomEvent(GARCOM_PIN_SESSION_SYNC_EVENT, { detail: { storeId } })
+  )
+}
+
+function parseGarcomPinSession(raw: string): GarcomPinSession | null {
+  try {
+    const parsed = JSON.parse(raw) as Partial<GarcomPinSession>
+    if (!parsed?.garcomId || !parsed?.nome) return null
+    const expiresAt =
+      typeof parsed.expiresAt === 'number' && Number.isFinite(parsed.expiresAt)
+        ? parsed.expiresAt
+        : Date.now() + GARCOM_PIN_SESSION_TTL_MS
+    if (expiresAt <= Date.now()) return null
+    return {
+      garcomId: parsed.garcomId,
+      nome: parsed.nome,
+      expiresAt,
+    }
+  } catch {
+    return null
+  }
 }
 
 export function getGarcomPinSession(storeId: string): GarcomPinSession | null {
   if (!storeId || typeof window === 'undefined') return null
   try {
-    const raw = window.sessionStorage.getItem(garcomPinSessionStorageKey(storeId))
+    const key = garcomPinSessionKey(storeId)
+    let raw = window.localStorage.getItem(key)
+    if (!raw) {
+      const legacy = window.sessionStorage.getItem(key)
+      if (legacy) {
+        window.localStorage.setItem(key, legacy)
+        window.sessionStorage.removeItem(key)
+        raw = legacy
+      }
+    }
     if (!raw) return null
-    const parsed = JSON.parse(raw) as GarcomPinSession
-    if (!parsed?.garcomId || !parsed?.nome) return null
-    return parsed
+    const session = parseGarcomPinSession(raw)
+    if (!session) {
+      window.localStorage.removeItem(key)
+      return null
+    }
+    return session
   } catch {
     return null
   }
@@ -54,10 +101,13 @@ export function getGarcomPinSession(storeId: string): GarcomPinSession | null {
 export function setGarcomPinSession(storeId: string, garcom: StoreGarcomDTO): void {
   if (!storeId || typeof window === 'undefined') return
   try {
-    window.sessionStorage.setItem(
-      garcomPinSessionStorageKey(storeId),
-      JSON.stringify({ garcomId: garcom.id, nome: garcom.nome } satisfies GarcomPinSession)
-    )
+    const payload: GarcomPinSession = {
+      garcomId: garcom.id,
+      nome: garcom.nome,
+      expiresAt: Date.now() + GARCOM_PIN_SESSION_TTL_MS,
+    }
+    window.localStorage.setItem(garcomPinSessionKey(storeId), JSON.stringify(payload))
+    notifyGarcomPinSessionChanged(storeId)
   } catch {
     /* ignore */
   }
@@ -66,7 +116,8 @@ export function setGarcomPinSession(storeId: string, garcom: StoreGarcomDTO): vo
 export function clearGarcomPinSession(storeId: string): void {
   if (!storeId || typeof window === 'undefined') return
   try {
-    window.sessionStorage.removeItem(garcomPinSessionStorageKey(storeId))
+    window.localStorage.removeItem(garcomPinSessionKey(storeId))
+    notifyGarcomPinSessionChanged(storeId)
   } catch {
     /* ignore */
   }

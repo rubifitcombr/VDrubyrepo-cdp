@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { isOperationalSyncTabVisible, subscribeStoreOrdersSync } from '@/lib/store-operational-realtime.client'
+import { subscribeOperationalVisibilityRefresh, subscribeStoreOrdersSync } from '@/lib/store-operational-realtime.client'
 
 export function useCaixaTurnoOpen(
   storeId: string,
@@ -28,10 +28,15 @@ export function useCaixaTurnoOpen(
   useEffect(() => {
     void refresh()
     const unsubscribe = subscribeStoreOrdersSync(storeId, (detail) => {
-      if (!isOperationalSyncTabVisible()) return
       if (detail.source === 'caixas_turnos') void refresh()
     })
-    return unsubscribe
+    const unsubscribeVis = subscribeOperationalVisibilityRefresh(() => {
+      void refresh()
+    })
+    return () => {
+      unsubscribe()
+      unsubscribeVis()
+    }
   }, [storeId, refresh])
 
   return open

@@ -15,7 +15,6 @@ import {
   orderTicketVariantFromSource,
 } from '@/lib/order-print-window'
 import {
-  isOperationalSyncTabVisible,
   notifyStoreOrdersChanged,
   subscribeOperationalPolling,
   subscribeOperationalVisibilityRefresh,
@@ -174,7 +173,6 @@ export function KdsClient({
     void pullOrders()
 
     const unsubscribe = subscribeStoreOrdersSync(storeId, (detail) => {
-      if (!isOperationalSyncTabVisible()) return
       if (detail.source !== 'orders' && detail.source !== 'order_items') return
       void pullOrders()
       setLiveOk(true)

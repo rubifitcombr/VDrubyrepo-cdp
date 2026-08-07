@@ -1,27 +1,32 @@
 'use client'
 
 /**
- * Coordenação de refetch após Realtime (hardening de egress PostgREST):
- * - Com Realtime ligado, o polling de fallback quase não corre (só catch-up periódico).
- * - Com Realtime degradado, polling mais frequente como rede de segurança.
- * - Cada subscriber ignora eventos com aba em segundo plano.
+ * Coordenação de refetch após Realtime:
+ * - Dados operacionais sincronizam sempre (aba visível ou em background).
+ * - `shouldThrottleOperationalUiEffects` limita apenas beeps/banners, não pulls.
+ * - Ao voltar o foco, `subscribeOperationalVisibilityRefresh` força refetch imediato.
  */
 export const OPERATIONAL_SYNC_DEBOUNCE_MS = 800
 
-/** Intervalo de fallback quando Realtime está OK (só rede de segurança). */
-export const OPERATIONAL_POLL_MS_CONNECTED = 180_000
+/** Fallback periódico com Realtime ligado (redundância). */
+export const OPERATIONAL_POLL_MS_CONNECTED = 30_000
 
-/** Polling quando Realtime falhou ou ainda não ligou. */
-export const OPERATIONAL_POLL_MS_DEGRADED = 60_000
+/** Fallback quando Realtime degradado — prioriza consistência. */
+export const OPERATIONAL_POLL_MS_DEGRADED = 12_000
 
-/** Contagem leve (badge pending) — query mínima. */
-export const OPERATIONAL_POLL_MS_LIGHT = 120_000
+/** Contagem leve (badge pending). */
+export const OPERATIONAL_POLL_MS_LIGHT = 60_000
 
 const realtimeStatusByStore = new Map<string, StoreRealtimeStatusDetail['status']>()
 
-/** Só dispara fetch PostgREST quando o separador do dashboard está visível. */
+/** @deprecated Use shouldThrottleOperationalUiEffects — não bloqueie sync de dados. */
 export function isOperationalSyncTabVisible(): boolean {
-  return typeof document === 'undefined' || document.visibilityState === 'visible'
+  return !shouldThrottleOperationalUiEffects()
+}
+
+/** Throttle só para efeitos de UI (som, animações), nunca para fetch de dados. */
+export function shouldThrottleOperationalUiEffects(): boolean {
+  return typeof document !== 'undefined' && document.visibilityState !== 'visible'
 }
 
 export function isStoreRealtimeConnected(storeId: string): boolean {
@@ -61,8 +66,8 @@ export function subscribeStoreRealtimeStatus(
 }
 
 /**
- * Polling de fallback: com Realtime OK, não chama callback (eventos + visibility bastam).
- * `forceIntervalMs` ignora Realtime (ex.: badge com query leve).
+ * Polling de fallback periódico — roda sempre (visível ou em background).
+ * `forceIntervalMs` fixa o intervalo (ex.: badge com query leve).
  */
 export function subscribeOperationalPolling(
   storeId: string,
@@ -81,15 +86,6 @@ export function subscribeOperationalPolling(
 
   function tick() {
     if (disposed) return
-    if (!isOperationalSyncTabVisible()) {
-      schedule()
-      return
-    }
-    const connected = isStoreRealtimeConnected(storeId)
-    if (connected && options?.runWhenConnected !== true && options?.forceIntervalMs == null) {
-      schedule()
-      return
-    }
     callback()
     schedule()
   }
@@ -110,7 +106,7 @@ export function subscribeOperationalPolling(
   }
 }
 
-/** Catch-up quando o separador volta ao primeiro plano (eventos Realtime ignorados em background). */
+/** Refetch imediato quando o separador volta ao primeiro plano. */
 export function subscribeOperationalVisibilityRefresh(callback: () => void): () => void {
   if (typeof document === 'undefined') return () => {}
   const onVisibility = () => {

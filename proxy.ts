@@ -183,9 +183,18 @@ export async function proxy(request: NextRequest) {
     request.cookies.get(IMPERSONATION_ACTIVE_COOKIE)?.value
   )
 
-  const merchantShell = p.startsWith('/dashboard') || p.startsWith('/planos')
+  /**
+   * IMPERSONAÇÃO / MODO ADMIN — não confundir com lojista normal.
+   * `skipMerchantGates` é true quando:
+   * - Utilizador Vyria em modo admin (`vyria_panel_mode=admin`), ou
+   * - Cookie de impersonação activo (admin a ver painel como lojista).
+   * Nestes casos: contrato anual, lojista inactivo e gates de API merchant
+   * são ignorados. O plano efectivo continua a vir da loja impersonada.
+   */
   const skipMerchantGates =
     !!user && (vyriaInAdminMode || Boolean(impersonating))
+
+  const merchantShell = p.startsWith('/dashboard') || p.startsWith('/planos')
 
   async function gateFor(pathname: string): Promise<LojistaGateResult> {
     if (!user || skipMerchantGates) return { ok: true }

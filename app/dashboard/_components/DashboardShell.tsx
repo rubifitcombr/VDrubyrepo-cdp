@@ -28,6 +28,7 @@ import {
 } from '@/lib/hub-shortcut-pin'
 import { HubPinAccessGate } from './HubPinAccessGate'
 import { OperationalRealtimeStatusBanner } from './OperationalRealtimeStatusBanner'
+import { DashboardVersionFooter } from './DashboardVersionFooter'
 import { DashboardLogoutButton } from './DashboardLogoutButton'
 import { ImpersonationBanner } from './ImpersonationBanner'
 import { DashboardPlanGuard } from './DashboardPlanGuard'
@@ -577,6 +578,7 @@ export function DashboardShell({
           >
             {!isOperationalHub && !isCompactHubWindow ? <InstallAppBanner /> : null}
             {mainInner}
+            {!isOperationalHub ? <DashboardVersionFooter /> : null}
           </main>
         </div>
       </div>

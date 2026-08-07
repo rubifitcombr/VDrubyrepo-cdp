@@ -4,8 +4,9 @@ import {
   fetchPublicStoreForSlugPage,
   normalizePublicSlugSegment,
 } from '@/lib/store-public-slug.server'
+import { effectiveStorePlan } from '@/lib/effective-plan.server'
 import { readStorePlano } from '@/lib/store-columns'
-import { hasFeature, parsePlan, planTier } from '@/lib/plan'
+import { hasFeature, planTier } from '@/lib/plan'
 import { publicDineInCheckoutAllowed } from '@/lib/salao-attendance'
 import {
   isDeliveryPipelineEnabled,
@@ -216,7 +217,7 @@ export default async function StorefrontPage({ params, searchParams }: Props) {
   )
     .trim()
     .slice(0, 42)
-  const storePlan = parsePlan(readStorePlano(s as Record<string, unknown>))
+  const storePlan = effectiveStorePlan(readStorePlano(s as Record<string, unknown>))
   const selfServiceFromQr =
     autoFlag === '1' &&
     planTier(storePlan) >= planTier('GROWTH') &&

@@ -7,8 +7,9 @@ import {
   rateLimitResponse,
 } from '@/lib/rate-limit.server'
 import { fetchPublicStoreForSlugPage } from '@/lib/store-public-slug.server'
+import { effectiveStorePlan } from '@/lib/effective-plan.server'
 import { readStorePlano } from '@/lib/store-columns'
-import { hasFeature, parsePlan } from '@/lib/plan'
+import { hasFeature } from '@/lib/plan'
 import {
   getCustomerLoyaltyBalance,
   getOrCreateLoyaltyConfig,
@@ -52,7 +53,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Loja não encontrada.' }, { status: 404 })
     }
 
-    const plan = parsePlan(readStorePlano(store as Record<string, unknown>))
+    const plan = effectiveStorePlan(readStorePlano(store as Record<string, unknown>))
     if (!hasFeature(plan, 'loyalty')) {
       return NextResponse.json({ program: null, balance: null })
     }

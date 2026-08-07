@@ -40,3 +40,11 @@ export function effectiveDashboardPlan(
 
   return fromStore
 }
+
+/**
+ * Plano efectivo da loja em rotas públicas (checkout, cardápio, fidelidade).
+ * Sem email de utilizador — em produção equivale a `parsePlan` do registo da loja.
+ */
+export function effectiveStorePlan(rawStorePlan: unknown): Plan {
+  return effectiveDashboardPlan(null, rawStorePlan)
+}

@@ -4,12 +4,14 @@ import { GarcomPinModal } from '@/app/dashboard/_components/GarcomPinModal'
 import type { StoreGarcomDTO } from '@/lib/garcons-types'
 import { dashboardFetch } from '@/lib/dashboard-fetch.client'
 import {
+  GARCOM_PIN_SESSION_SYNC_EVENT,
+  garcomPinSessionKey,
   isGarcomPinSessionValid,
   isSalaoGarcomPinRequired,
   setGarcomPinSession,
   isGarcomPinActive,
 } from '@/lib/garcom-pin'
-import { useSyncExternalStore, useState } from 'react'
+import { useEffect, useSyncExternalStore, useState } from 'react'
 
 function useIsClient() {
   return useSyncExternalStore(
@@ -17,6 +19,34 @@ function useIsClient() {
     () => true,
     () => false
   )
+}
+
+/** Reage a alterações de sessão PIN noutras abas (localStorage). */
+function useGarcomPinSessionRevision(storeId: string): number {
+  const [revision, setRevision] = useState(0)
+
+  useEffect(() => {
+    if (!storeId || typeof window === 'undefined') return
+
+    const bump = () => setRevision((n) => n + 1)
+
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === garcomPinSessionKey(storeId)) bump()
+    }
+    const onSync = (event: Event) => {
+      const detail = (event as CustomEvent<{ storeId?: string }>).detail
+      if (!detail?.storeId || detail.storeId === storeId) bump()
+    }
+
+    window.addEventListener('storage', onStorage)
+    window.addEventListener(GARCOM_PIN_SESSION_SYNC_EVENT, onSync)
+    return () => {
+      window.removeEventListener('storage', onStorage)
+      window.removeEventListener(GARCOM_PIN_SESSION_SYNC_EVENT, onSync)
+    }
+  }, [storeId])
+
+  return revision
 }
 
 export function GarcomSalaoPinGate({
@@ -33,9 +63,13 @@ export function GarcomSalaoPinGate({
   const [unlocked, setUnlocked] = useState(false)
   const [pinError, setPinError] = useState<string | null>(null)
   const [verifying, setVerifying] = useState(false)
+  const pinSessionRevision = useGarcomPinSessionRevision(storeId)
 
   const sessionValid =
-    isClient && pinRequired && isGarcomPinSessionValid(storeId, garcons)
+    isClient &&
+    pinRequired &&
+    pinSessionRevision >= 0 &&
+    isGarcomPinSessionValid(storeId, garcons)
   const allowed = !pinRequired || unlocked || sessionValid
 
   if (!isClient) {
@@ -103,7 +137,10 @@ export function GarcomSessionBadge({
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span className="inline-flex items-center gap-1.5 rounded-full bg-[#eff6ff] px-3 py-1.5 text-xs font-semibold text-[#1d4ed8]">
+      <span
+        data-testid="garcom-session-badge"
+        className="inline-flex items-center gap-1.5 rounded-full bg-[#eff6ff] px-3 py-1.5 text-xs font-semibold text-[#1d4ed8]"
+      >
         Garçom: {nome}
       </span>
       {onTrocar ? (

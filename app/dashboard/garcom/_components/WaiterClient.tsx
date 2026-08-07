@@ -88,13 +88,21 @@ import { dashboardFetch } from '@/lib/dashboard-fetch.client'
 import { updateStore } from '@/services/store'
 import { updateOrderStatus } from '@/services/orders'
 import {
-  isOperationalSyncTabVisible,
+  shouldThrottleOperationalUiEffects,
   notifyStoreOrdersChanged,
   subscribeOperationalPolling,
   subscribeOperationalVisibilityRefresh,
   subscribeStoreOrdersSync,
 } from '@/lib/store-operational-realtime.client'
 import { buildItemsSummaryWithLineTotals } from '@/lib/print/items-summary-format'
+import {
+  isOperationalActionInFlight,
+  operationalActionKey,
+} from '@/lib/operational-action-flight.client'
+import {
+  OPERATIONAL_OVERLAY_CONFIRM_FAIL_MESSAGE,
+  OPERATIONAL_OVERLAY_SAFETY_MS,
+} from '@/lib/operational-sync-reconcile'
 
 type EditorSnapshot = {
   table: string
@@ -150,8 +158,8 @@ const WAITER_OPEN_STATUSES = new Set([
   'confirmed',
 ])
 
-/** Comandas recém-criadas podem demorar um instante a aparecer no pull. */
-const WAITER_PENDING_CREATE_RETAIN_MS = 8_000
+/** @deprecated Retenção por acção em voo — ver operational-action-flight. */
+const WAITER_PENDING_CREATE_RETAIN_MS = OPERATIONAL_OVERLAY_SAFETY_MS
 
 const GARCOM_RESUME_ORDER_KEY = 'vyria:garcom-resume-order-id'
 
@@ -448,6 +456,7 @@ export function WaiterClient({
   const skipNextAutoSaveRef = useRef(false)
   const cartRef = useRef<CartLine[]>([])
   const optimisticOrderIdRef = useRef<string | null>(null)
+  const optimisticOrderTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const persistContextKeyRef = useRef('')
   const createRequestIdRef = useRef<string | null>(null)
   const editorSnapshotRef = useRef<EditorSnapshot>({
@@ -614,11 +623,18 @@ export function WaiterClient({
       for (const row of prev) {
         if (String(row.status ?? '').trim().toLowerCase() === 'cancelled') continue
         if (byId.has(row.id)) continue
+        const actionKey = operationalActionKey('waiter-order', row.id)
         if (row.id.startsWith('optimistic-')) {
-          byId.set(row.id, row)
+          if (isOperationalActionInFlight(actionKey)) {
+            byId.set(row.id, row)
+          }
           continue
         }
         if (pendingOpenOrderIdsRef.current.has(row.id)) {
+          if (isOperationalActionInFlight(actionKey)) {
+            byId.set(row.id, row)
+            continue
+          }
           const created = new Date(row.created_at).getTime()
           if (Number.isFinite(created) && now - created < WAITER_PENDING_CREATE_RETAIN_MS) {
             byId.set(row.id, row)
@@ -701,7 +717,6 @@ export function WaiterClient({
     void pullTables()
 
     const unsubscribe = subscribeStoreOrdersSync(storeId, (detail) => {
-      if (!isOperationalSyncTabVisible()) return
       if (detail.source === 'store_tables') {
         void pullTables()
         schedulePullOpenOrders(500)
@@ -1211,7 +1226,27 @@ export function WaiterClient({
     )
   }
 
+  function clearOptimisticOrderExpiry() {
+    if (optimisticOrderTimeoutRef.current) {
+      clearTimeout(optimisticOrderTimeoutRef.current)
+      optimisticOrderTimeoutRef.current = null
+    }
+  }
+
+  function scheduleOptimisticSafetyWatch(orderId: string) {
+    clearOptimisticOrderExpiry()
+    optimisticOrderTimeoutRef.current = setTimeout(() => {
+      optimisticOrderTimeoutRef.current = null
+      const key = operationalActionKey('waiter-order', orderId)
+      if (!isOperationalActionInFlight(key)) return
+      setError(OPERATIONAL_OVERLAY_CONFIRM_FAIL_MESSAGE)
+      removeOptimisticOpenOrders()
+      schedulePullOpenOrders(0)
+    }, OPERATIONAL_OVERLAY_SAFETY_MS)
+  }
+
   function removeOptimisticOpenOrders() {
+    clearOptimisticOrderExpiry()
     const staleId = optimisticOrderIdRef.current
     optimisticOrderIdRef.current = null
     setOpenOrders((prev) =>
@@ -1241,6 +1276,9 @@ export function WaiterClient({
         ...prev.filter((o) => !dropIds.has(o.id) && o.id !== row.id),
       ])
     })
+    if (orderId.startsWith('optimistic-')) {
+      scheduleOptimisticSafetyWatch(orderId)
+    }
   }
 
   function waitForPersistIdle(): Promise<void> {
@@ -1285,12 +1323,17 @@ export function WaiterClient({
     try {
       const payload = buildPayloadFromSnapshot(snapshot)
       const orderId = activeOrderIdRef.current
+      const actionOrderId = orderId ?? optimisticOrderIdRef.current
+      const actionKey = actionOrderId
+        ? operationalActionKey('waiter-order', actionOrderId)
+        : undefined
 
       if (orderId) {
         const res = await dashboardFetch(`/api/waiter/orders/${orderId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
+          operationalActionKey: actionKey,
         })
         const json = (await res.json().catch(() => ({}))) as {
           error?: string
@@ -1336,6 +1379,7 @@ export function WaiterClient({
           ...payload,
           client_request_id: ensureCreateRequestId(),
         }),
+        operationalActionKey: actionKey,
       })
       const json = (await res.json().catch(() => ({}))) as {
         error?: string
@@ -1357,6 +1401,7 @@ export function WaiterClient({
         const row = json.order as StoreOrderRow
         const staleId = optimisticOrderIdRef.current
         optimisticOrderIdRef.current = null
+        clearOptimisticOrderExpiry()
         createRequestIdRef.current = null
         if (!isOpenSalonMapOrder(row, tablesRef.current)) {
           setOpenOrders((prev) =>
@@ -1368,9 +1413,6 @@ export function WaiterClient({
           return true
         }
         pendingOpenOrderIdsRef.current.add(row.id)
-        window.setTimeout(() => {
-          pendingOpenOrderIdsRef.current.delete(row.id)
-        }, 20_000)
         setActiveOrderId(row.id)
         activeOrderIdRef.current = row.id
         syncPersistContextKey()
@@ -2646,7 +2688,7 @@ export function WaiterClient({
                   Ainda não há mesas configuradas. Usa «Configurar mesas» ou «Nova mesa avulsa».
                 </p>
               ) : (
-                <div className="mt-4 space-y-6">
+                <div className="mt-4 space-y-6" data-testid="garcom-table-map">
                   {Array.from(tablesByAmbiente.entries()).map(([amb, list]) => (
                     <div key={amb}>
                       <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[#9ca3af]">

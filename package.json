@@ -8,7 +8,9 @@
     "build:clean": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\" && next build",
     "start": "next start",
     "lint": "eslint",
-    "test:master": "node scripts/test-master-release.mjs"
+    "test:master": "node scripts/test-master-release.mjs",
+    "test:sync": "npm run build && playwright test e2e/sync",
+    "test:sync:stable": "npm run build && bash scripts/run-sync-tests-3x.sh"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.0",
@@ -30,6 +32,7 @@
     "web-push": "^3.6.7"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/node-cron": "^3.0.11",
@@ -38,6 +41,7 @@
     "@types/react-dom": "^19",
     "@types/web-bluetooth": "^0.0.21",
     "@types/web-push": "^3.6.4",
+    "dotenv": "^17.4.2",
     "eslint": "^9",
     "eslint-config-next": "16.2.2",
     "tailwindcss": "^4",

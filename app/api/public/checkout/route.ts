@@ -10,7 +10,8 @@ import {
   evaluateDeliveryForCustomer,
   type StoreDeliveryConfig,
 } from '@/lib/delivery-zone.server'
-import { hasFeature, hasOrderPipelineAutomations, hasPixCheckout, parsePlan } from '@/lib/plan'
+import { hasFeature, hasOrderPipelineAutomations, hasPixCheckout } from '@/lib/plan'
+import { effectiveStorePlan } from '@/lib/effective-plan.server'
 import { readStorePlano } from '@/lib/store-columns'
 import { publicDineInCheckoutAllowed } from '@/lib/salao-attendance'
 import {
@@ -437,7 +438,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const plan = parsePlan(readStorePlano(storeRow as Record<string, unknown>))
+    const plan = effectiveStorePlan(readStorePlano(storeRow as Record<string, unknown>))
     if (fulfillment === 'dine_in') {
       if (!publicDineInCheckoutAllowed(plan, storeRow as Record<string, unknown>)) {
         return NextResponse.json(
@@ -654,7 +655,7 @@ export async function POST(req: NextRequest) {
     const isPixPayment = paymentNorm === 'pix'
 
     const storeMetaEarly = storeRow as Record<string, unknown>
-    const checkoutPlanEarly = parsePlan(readStorePlano(storeMetaEarly))
+    const checkoutPlanEarly = effectiveStorePlan(readStorePlano(storeMetaEarly))
     if (isPixPayment && !hasPixCheckout(checkoutPlanEarly)) {
       return NextResponse.json(
         {
@@ -762,7 +763,7 @@ export async function POST(req: NextRequest) {
     }
 
     const storeMeta = storeRow as Record<string, unknown>
-    const checkoutPlan = parsePlan(readStorePlano(storeMeta))
+    const checkoutPlan = effectiveStorePlan(readStorePlano(storeMeta))
     const checkoutAutomations = parseAutomationsFromStore(storeMeta)
 
     if (

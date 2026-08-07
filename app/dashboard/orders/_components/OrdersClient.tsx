@@ -6,7 +6,6 @@ import { createClient } from '@/lib/supabase/client'
 import {
   ORDER_SELECT,
   OPERATIONAL_ORDERS_PULL_LIMIT,
-  mergeOperationalOrdersPull,
   mapStoreOrderRow,
   operationalOrdersPullSinceIso,
   orderIsVisibleAfterPixConfirmation,
@@ -29,12 +28,25 @@ import {
   tryReconnectKnownBluetoothPrinter,
 } from '@/lib/bluetooth-print-client'
 import {
-  isOperationalSyncTabVisible,
+  shouldThrottleOperationalUiEffects,
   notifyStoreOrdersChanged,
   subscribeOperationalPolling,
   subscribeOperationalVisibilityRefresh,
   subscribeStoreOrdersSync,
 } from '@/lib/store-operational-realtime.client'
+import {
+  type PendingOrderOverlay,
+  OPERATIONAL_OVERLAY_CONFIRM_FAIL_MESSAGE,
+  clearPendingOrderOverlay,
+  reconcileOrdersWithPendingOverlays,
+  registerPendingOrderOverlay,
+} from '@/lib/operational-sync-reconcile'
+import {
+  beginOperationalAction,
+  endOperationalAction,
+  isOperationalActionInFlight,
+  operationalActionKey,
+} from '@/lib/operational-action-flight.client'
 import { isDeliveryFlowOrder } from '@/lib/order-status-transitions'
 import { updateOrderStatus } from '@/services/orders'
 import { dashboardFetch } from '@/lib/dashboard-fetch.client'
@@ -686,16 +698,39 @@ function isOperationalKanbanOrder(o: StoreOrderRow): boolean {
   return true
 }
 
+function orderOverlayStatusRank(status: string | null | undefined): number {
+  const s = String(status ?? '').trim().toLowerCase()
+  if (s === 'delivered' || s === 'cancelled') return 2
+  if (s === 'ready') return 1
+  return 0
+}
+
+function shouldKeepOperationalOrderOverlay(
+  serverRow: StoreOrderRow,
+  overlay: StoreOrderRow
+): boolean {
+  const overlayStatus = String(overlay.status ?? '').trim().toLowerCase()
+  const serverStatus = String(serverRow.status ?? '').trim().toLowerCase()
+  if (overlayStatus === serverStatus) return false
+  if (overlayStatus === 'cancelled' && serverStatus !== 'cancelled') return true
+  return (
+    orderOverlayStatusRank(overlay.status) >
+    orderOverlayStatusRank(serverRow.status)
+  )
+}
+
 function useOrdersRealtime(
   storeId: string,
   initialOrders: StoreOrderRow[],
-  slugChannelSourcesOnly: boolean
+  slugChannelSourcesOnly: boolean,
+  onSafetyExpired?: (orderId: string) => void
 ) {
   const [orders, setOrders] = useState<StoreOrderRow[]>(initialOrders)
   const [liveOk, setLiveOk] = useState(false)
   const seenIdsRef = useRef<Set<string>>(
     new Set(initialOrders.map((o) => o.id))
   )
+  const pendingOrderOverlaysRef = useRef<Map<string, PendingOrderOverlay>>(new Map())
 
   useEffect(() => {
     const supabase = createClient()
@@ -724,13 +759,24 @@ function useOrdersRealtime(
         if (hasNew) playNewOrderBeep()
       }
       seenIdsRef.current = nextIds
-      setOrders((prev) => mergeOperationalOrdersPull(prev, rows))
+      setOrders(() =>
+        reconcileOrdersWithPendingOverlays(
+          rows,
+          pendingOrderOverlaysRef.current,
+          shouldKeepOperationalOrderOverlay,
+          {
+            isActionInFlight: isOperationalActionInFlight,
+            onSafetyExpired: onSafetyExpired
+              ? (orderId) => onSafetyExpired(orderId)
+              : undefined,
+          }
+        )
+      )
     }
 
     void pullOrders().then(() => setLiveOk(true))
 
     const unsubscribe = subscribeStoreOrdersSync(storeId, (detail) => {
-      if (!isOperationalSyncTabVisible()) return
       if (
         detail.source !== 'orders' &&
         detail.source !== 'order_items' &&
@@ -738,9 +784,11 @@ function useOrdersRealtime(
       ) {
         return
       }
-      void pullOrders({
-        beepOnNew: detail.source === 'orders' && detail.eventType === 'INSERT',
-      })
+      const beepOnNew =
+        !shouldThrottleOperationalUiEffects() &&
+        detail.source === 'orders' &&
+        detail.eventType === 'INSERT'
+      void pullOrders({ beepOnNew })
       setLiveOk(true)
     })
 
@@ -759,9 +807,9 @@ function useOrdersRealtime(
       unsubscribe()
       unsubscribeVis()
     }
-  }, [storeId, slugChannelSourcesOnly])
+  }, [storeId, slugChannelSourcesOnly, onSafetyExpired])
 
-  return { orders, setOrders, liveOk }
+  return { orders, setOrders, liveOk, pendingOrderOverlaysRef }
 }
 
 type OrderCardActions = {
@@ -1255,10 +1303,15 @@ export function OrdersClient({
   const showDeliveryChannel = ordersDeliveryChannelVisible(operationMode)
   const showPresencialChannel = ordersPresencialChannelVisible(operationMode)
   const [salonTables, setSalonTables] = useState<SalonMapTableRef[]>(initialSalonTables)
-  const { orders, setOrders, liveOk } = useOrdersRealtime(
+  const flashWaNoticeRef = useRef<(message: string) => void>(() => {})
+  const { orders, setOrders, liveOk, pendingOrderOverlaysRef } = useOrdersRealtime(
     storeId,
     initialOrders,
-    slugChannelSourcesOnly
+    slugChannelSourcesOnly,
+    (orderId) => {
+      clearPendingOrderOverlay(pendingOrderOverlaysRef.current, orderId)
+      flashWaNoticeRef.current(OPERATIONAL_OVERLAY_CONFIRM_FAIL_MESSAGE)
+    }
   )
   useEffect(() => {
     setOrders(initialOrders)
@@ -1290,7 +1343,6 @@ export function OrdersClient({
     void pullSalonTables()
 
     const unsubscribe = subscribeStoreOrdersSync(storeId, (detail) => {
-      if (!isOperationalSyncTabVisible()) return
       if (detail.source === 'store_tables') void pullSalonTables()
     })
 
@@ -1624,6 +1676,7 @@ export function OrdersClient({
       waNoticeTimerRef.current = null
     }, 5000)
   }
+  flashWaNoticeRef.current = flashWaNotice
 
   function printComanda(o: StoreOrderRow) {
     const orderRef =
@@ -1723,16 +1776,53 @@ export function OrdersClient({
     const orderBefore = orders.find((o) => o.id === orderId)
     const presencial =
       options?.presencial ?? Boolean(orderBefore && isInPersonOrder(orderBefore))
+    const actionKey = operationalActionKey('orders-status', orderId)
+    const orderAfter = orderBefore ? { ...orderBefore, status } : null
+
+    beginOperationalAction(actionKey)
+    if (orderAfter) {
+      registerPendingOrderOverlay(
+        pendingOrderOverlaysRef.current,
+        orderId,
+        orderAfter,
+        actionKey
+      )
+      setOrders((prev) =>
+        prev.map((o) => (o.id === orderId ? { ...o, status } : o))
+      )
+    }
+
     setBusyId(orderId)
-    const { error, fiscal } = await updateOrderStatus(orderId, status, { storeId })
-    setBusyId(null)
+    let error: Error | null = null
+    let fiscal:
+      | {
+          attempted: boolean
+          skipped: boolean
+          ok: boolean
+          status?: string
+          motivo?: string
+        }
+      | undefined
+    try {
+      const result = await updateOrderStatus(orderId, status, { storeId })
+      error = result.error
+      fiscal = result.fiscal
+    } finally {
+      endOperationalAction(actionKey)
+      setBusyId(null)
+    }
+
     if (error) {
+      clearPendingOrderOverlay(pendingOrderOverlaysRef.current, orderId)
+      if (orderBefore) {
+        setOrders((prev) =>
+          prev.map((o) => (o.id === orderId ? orderBefore : o))
+        )
+      }
       alert(error.message)
       return
     }
-    setOrders((prev) =>
-      prev.map((o) => (o.id === orderId ? { ...o, status } : o))
-    )
+
     notifyStoreOrdersChanged(storeId, { eventType: 'UPDATE' })
     if (status === 'cancelled' && fiscal?.attempted) {
       const cancelledLabel = presencial ? 'Comanda cancelada' : 'Pedido cancelado'

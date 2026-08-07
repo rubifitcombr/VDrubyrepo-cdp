@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { aggregateTurnClosedOrders } from '@/lib/caixa-payments'
 import type { CaixaMovimentacaoDTO, CaixaTurnoDTO } from '@/lib/caixa-types'
 import { openCaixaTurnoEscPosPrint } from '@/lib/caixa-print-window'
@@ -31,7 +31,6 @@ import {
 import { isPdvWaiterComandaSource } from '@/lib/cashier-pro-delivery-scope'
 import { createClient } from '@/lib/supabase/client'
 import {
-  isOperationalSyncTabVisible,
   notifyStoreOrdersChanged,
   subscribeOperationalVisibilityRefresh,
   subscribeStoreOrdersSync,
@@ -41,6 +40,17 @@ import { ComandaSplitPaymentModal } from './ComandaSplitPaymentModal'
 import { comandaDisplayName } from '@/lib/order-payments'
 import type { OrderPaymentLine, OrderPaymentRow } from '@/lib/order-payments'
 import { notesIndicateWaiterReleasedToCaixa, parseTableFromNotes } from '@/lib/waiter-order-notes'
+import {
+  type PendingOrderOverlay,
+  OPERATIONAL_OVERLAY_CONFIRM_FAIL_MESSAGE,
+  clearPendingOrderOverlay,
+  reconcileOrdersWithPendingOverlays,
+  registerPendingOrderOverlay,
+} from '@/lib/operational-sync-reconcile'
+import {
+  isOperationalActionInFlight,
+  operationalActionKey,
+} from '@/lib/operational-action-flight.client'
 
 type SourceKey = 'waiter' | 'pdv' | 'menu_link'
 
@@ -56,25 +66,33 @@ function orderStatusRank(status: string | null | undefined): number {
   return 0
 }
 
-/** Evita que router.refresh() ou realtime revertam fechos locais ainda não refletidos no servidor. */
-function mergeStoreOrdersFromServer(
-  prev: StoreOrderRow[],
-  incoming: StoreOrderRow[]
+function shouldKeepCashierOrderOverlay(
+  serverRow: StoreOrderRow,
+  overlay: StoreOrderRow
+): boolean {
+  const localPaid = orderPaymentRegisteredInCaixa(overlay.notes)
+  const serverPaid = orderPaymentRegisteredInCaixa(serverRow.notes)
+  if (localPaid && !serverPaid) return true
+  if (orderStatusRank(overlay.status) > orderStatusRank(serverRow.status)) return true
+  return false
+}
+
+function reconcileCashierOrdersFromServer(
+  serverRows: StoreOrderRow[],
+  overlays: Map<string, PendingOrderOverlay>,
+  onSafetyExpired?: (orderId: string) => void
 ): StoreOrderRow[] {
-  const prevById = new Map(prev.map((o) => [o.id, o]))
-  return incoming.map((o) => {
-    const local = prevById.get(o.id)
-    if (!local) return o
-    const localPaid = orderPaymentRegisteredInCaixa(local.notes)
-    const serverPaid = orderPaymentRegisteredInCaixa(o.notes)
-    if (localPaid && !serverPaid) {
-      return { ...o, ...local }
+  return reconcileOrdersWithPendingOverlays(
+    serverRows,
+    overlays,
+    shouldKeepCashierOrderOverlay,
+    {
+      isActionInFlight: isOperationalActionInFlight,
+      onSafetyExpired: onSafetyExpired
+        ? (orderId) => onSafetyExpired(orderId)
+        : undefined,
     }
-    if (orderStatusRank(local.status) > orderStatusRank(o.status)) {
-      return { ...o, ...local }
-    }
-    return o
-  })
+  )
 }
 
 const FinanceiroView = dynamic(
@@ -240,6 +258,8 @@ function OperacaoView({
 }: CashierClientProps) {
   const router = useRouter()
   const [orders, setOrders] = useState(initialOrders)
+  const pendingOrderOverlaysRef = useRef<Map<string, PendingOrderOverlay>>(new Map())
+  const onOverlaySafetyExpiredRef = useRef<(orderId: string) => void>(() => {})
   const [turno, setTurno] = useState<CaixaTurnoDTO | null>(initialTurno)
   const [historico, setHistorico] = useState(initialHistorico)
   const [movMap, setMovMap] = useState(initialMovimentacoesPorTurno)
@@ -312,7 +332,13 @@ function OperacaoView({
     if (caixaProDeliveryOnly) {
       rows = rows.filter((o) => !isPdvWaiterComandaSource(o.source))
     }
-    setOrders((prev) => mergeStoreOrdersFromServer(prev, rows))
+    setOrders(() =>
+      reconcileCashierOrdersFromServer(
+        rows,
+        pendingOrderOverlaysRef.current,
+        (orderId) => onOverlaySafetyExpiredRef.current(orderId)
+      )
+    )
 
     const activeTurnoId = turno?.status === 'aberto' ? turno.id : null
     if (!activeTurnoId) {
@@ -341,7 +367,9 @@ function OperacaoView({
   }, [initialTurnoSplitPayments])
 
   useEffect(() => {
-    setOrders((prev) => mergeStoreOrdersFromServer(prev, initialOrders))
+    setOrders(() =>
+      reconcileCashierOrdersFromServer(initialOrders, pendingOrderOverlaysRef.current)
+    )
   }, [initialOrders])
   useEffect(() => {
     setTurno(initialTurno)
@@ -366,6 +394,14 @@ function OperacaoView({
     setToast(msg)
     window.setTimeout(() => setToast(null), 4500)
   }, [])
+
+  useEffect(() => {
+    onOverlaySafetyExpiredRef.current = (orderId: string) => {
+      clearPendingOrderOverlay(pendingOrderOverlaysRef.current, orderId)
+      showToast(OPERATIONAL_OVERLAY_CONFIRM_FAIL_MESSAGE)
+      void pullCashierOrders()
+    }
+  }, [pullCashierOrders, showToast])
 
   const displayNumberById = useMemo(() => {
     const sorted = [...orders].sort(
@@ -604,7 +640,6 @@ function OperacaoView({
     }
 
     const unsubscribe = subscribeStoreOrdersSync(storeId, (detail) => {
-      if (!isOperationalSyncTabVisible()) return
       if (detail.source === 'orders' || detail.source === 'order_items' || detail.source === 'order_payments') {
         void pullCashierOrders()
         scheduleRefresh()
@@ -768,6 +803,22 @@ function OperacaoView({
   async function closeComanda(order: StoreOrderRow, payments: OrderPaymentLine[]) {
     setCashierError(null)
     setClosingOrderId(order.id)
+    const actionKey = operationalActionKey('caixa-close', order.id)
+    const optimisticClosed: StoreOrderRow = {
+      ...order,
+      status: 'delivered',
+      payment_method:
+        payments.length === 1 ? payments[0]!.method : 'split',
+    }
+    registerPendingOrderOverlay(
+      pendingOrderOverlaysRef.current,
+      order.id,
+      optimisticClosed,
+      actionKey
+    )
+    setOrders((prev) =>
+      prev.map((o) => (o.id === order.id ? optimisticClosed : o))
+    )
     try {
       const body = { orderId: order.id, payments }
 
@@ -775,6 +826,7 @@ function OperacaoView({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
+        operationalActionKey: actionKey,
       })
       const json = (await res.json().catch(() => ({}))) as {
         error?: string
@@ -795,22 +847,31 @@ function OperacaoView({
       }
       if (!res.ok) {
         const err = json.error || 'Não foi possível fechar a comanda.'
+        clearPendingOrderOverlay(pendingOrderOverlaysRef.current, order.id)
+        setOrders((prev) =>
+          prev.map((o) => (o.id === order.id ? order : o))
+        )
         setCashierError(err)
         showToast(err)
         return
       }
+      const updated: StoreOrderRow = {
+        ...order,
+        status: json.order?.status || 'delivered',
+        payment_method:
+          json.order?.payment_method ||
+          (payments.length === 1 ? payments[0]!.method : 'split'),
+        notes: json.order?.notes ?? order.notes,
+        caixa_turno_id: json.order?.caixa_turno_id ?? turno?.id ?? order.caixa_turno_id,
+      }
+      registerPendingOrderOverlay(
+        pendingOrderOverlaysRef.current,
+        order.id,
+        updated,
+        actionKey
+      )
       setOrders((prev) =>
-        prev.map((o) =>
-          o.id === order.id
-            ? {
-                ...o,
-                status: json.order?.status || 'delivered',
-                payment_method: json.order?.payment_method || (payments.length === 1 ? payments[0]!.method : 'split'),
-                notes: json.order?.notes ?? o.notes,
-                caixa_turno_id: json.order?.caixa_turno_id ?? turno?.id ?? o.caixa_turno_id,
-              }
-            : o
-        )
+        prev.map((o) => (o.id === order.id ? updated : o))
       )
       if (json.payments?.length) {
         setTurnoSplitPayments((prev) => [

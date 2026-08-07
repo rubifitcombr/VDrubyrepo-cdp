@@ -72,6 +72,7 @@ export function GarcomPinModal({
           </ul>
         ) : null}
         <input
+          data-testid="garcom-pin-input"
           type="password"
           value={pin}
           onChange={(e) => {
@@ -97,6 +98,7 @@ export function GarcomPinModal({
             Voltar
           </Link>
           <button
+            data-testid="garcom-pin-submit"
             type="submit"
             disabled={pin.length !== 4 || verifying}
             className="flex-1 rounded-xl bg-[var(--dash-primary)] py-2.5 text-sm font-semibold text-white disabled:opacity-50"

@@ -5,9 +5,9 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { EntregadoresManagePanel } from '@/app/dashboard/entregadores/_components/EntregadoresManagePanel'
 import { dashboardFetch } from '@/lib/dashboard-fetch.client'
 import {
-  isOperationalSyncTabVisible,
   notifyStoreOrdersChanged,
   subscribeOperationalPolling,
+  subscribeOperationalVisibilityRefresh,
   subscribeStoreOrdersSync,
 } from '@/lib/store-operational-realtime.client'
 import type {
@@ -134,11 +134,16 @@ export function EntregadoresOpsClient({ storeId }: { storeId: string }) {
   useEffect(() => {
     if (!storeId) return
     const unsubscribe = subscribeStoreOrdersSync(storeId, (detail) => {
-      if (!isOperationalSyncTabVisible()) return
       if (detail.source !== 'orders' && detail.source !== 'order_items') return
       void loadOps(true)
     })
-    return unsubscribe
+    const unsubscribeVis = subscribeOperationalVisibilityRefresh(() => {
+      void loadOps(true)
+    })
+    return () => {
+      unsubscribe()
+      unsubscribeVis()
+    }
   }, [storeId, loadOps])
 
   const onRouteIds = useMemo(
