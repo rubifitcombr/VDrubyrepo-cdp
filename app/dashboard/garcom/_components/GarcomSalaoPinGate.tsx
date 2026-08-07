@@ -4,14 +4,13 @@ import { GarcomPinModal } from '@/app/dashboard/_components/GarcomPinModal'
 import type { StoreGarcomDTO } from '@/lib/garcons-types'
 import { dashboardFetch } from '@/lib/dashboard-fetch.client'
 import {
-  GARCOM_PIN_SESSION_SYNC_EVENT,
-  garcomPinSessionKey,
+  isGarcomPinActive,
   isGarcomPinSessionValid,
   isSalaoGarcomPinRequired,
   setGarcomPinSession,
-  isGarcomPinActive,
 } from '@/lib/garcom-pin'
-import { useEffect, useSyncExternalStore, useState } from 'react'
+import { useGarcomPinSessionRevision } from '@/lib/use-garcom-pin-session-revision'
+import { useSyncExternalStore, useState } from 'react'
 
 function useIsClient() {
   return useSyncExternalStore(
@@ -19,34 +18,6 @@ function useIsClient() {
     () => true,
     () => false
   )
-}
-
-/** Reage a alterações de sessão PIN noutras abas (localStorage). */
-function useGarcomPinSessionRevision(storeId: string): number {
-  const [revision, setRevision] = useState(0)
-
-  useEffect(() => {
-    if (!storeId || typeof window === 'undefined') return
-
-    const bump = () => setRevision((n) => n + 1)
-
-    const onStorage = (event: StorageEvent) => {
-      if (event.key === garcomPinSessionKey(storeId)) bump()
-    }
-    const onSync = (event: Event) => {
-      const detail = (event as CustomEvent<{ storeId?: string }>).detail
-      if (!detail?.storeId || detail.storeId === storeId) bump()
-    }
-
-    window.addEventListener('storage', onStorage)
-    window.addEventListener(GARCOM_PIN_SESSION_SYNC_EVENT, onSync)
-    return () => {
-      window.removeEventListener('storage', onStorage)
-      window.removeEventListener(GARCOM_PIN_SESSION_SYNC_EVENT, onSync)
-    }
-  }, [storeId])
-
-  return revision
 }
 
 export function GarcomSalaoPinGate({
@@ -60,7 +31,6 @@ export function GarcomSalaoPinGate({
 }) {
   const isClient = useIsClient()
   const pinRequired = isSalaoGarcomPinRequired(garcons)
-  const [unlocked, setUnlocked] = useState(false)
   const [pinError, setPinError] = useState<string | null>(null)
   const [verifying, setVerifying] = useState(false)
   const pinSessionRevision = useGarcomPinSessionRevision(storeId)
@@ -70,7 +40,7 @@ export function GarcomSalaoPinGate({
     pinRequired &&
     pinSessionRevision >= 0 &&
     isGarcomPinSessionValid(storeId, garcons)
-  const allowed = !pinRequired || unlocked || sessionValid
+  const allowed = !pinRequired || sessionValid
 
   if (!isClient) {
     return (
@@ -115,7 +85,6 @@ export function GarcomSalaoPinGate({
               return
             }
             setGarcomPinSession(storeId, garcom)
-            setUnlocked(true)
           })
           .finally(() => {
             setVerifying(false)

@@ -92,6 +92,17 @@ export function getGarcomPinSession(storeId: string): GarcomPinSession | null {
       window.localStorage.removeItem(key)
       return null
     }
+    try {
+      const parsed = JSON.parse(raw) as Partial<GarcomPinSession>
+      if (
+        typeof parsed.expiresAt !== 'number' ||
+        !Number.isFinite(parsed.expiresAt)
+      ) {
+        window.localStorage.setItem(key, JSON.stringify(session))
+      }
+    } catch {
+      /* ignore */
+    }
     return session
   } catch {
     return null

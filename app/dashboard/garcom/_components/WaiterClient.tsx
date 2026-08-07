@@ -46,6 +46,7 @@ import {
   isSalaoGarcomPinRequired,
 } from '@/lib/garcom-pin'
 import { GarcomSessionBadge } from '@/app/dashboard/garcom/_components/GarcomSalaoPinGate'
+import { useGarcomPinSessionRevision } from '@/lib/use-garcom-pin-session-revision'
 import { GarcomMesaComandasPanel, comandaListSubtitle } from '@/app/dashboard/garcom/_components/GarcomMesaComandasPanel'
 import { GarcomProductAddonModal } from '@/app/dashboard/garcom/_components/GarcomProductAddonModal'
 import { ComandaSplitPaymentModal } from '@/app/dashboard/caixa/_components/ComandaSplitPaymentModal'
@@ -516,12 +517,12 @@ export function WaiterClient({
     initialGarcons.filter((g) => g.ativo)
   )
 
-  const [pinSessionTick, setPinSessionTick] = useState(0)
+  const pinSessionRevision = useGarcomPinSessionRevision(storeId)
   const pinSession = useMemo(() => {
-    void pinSessionTick
+    void pinSessionRevision
     if (!isGarcomPinSessionValid(storeId, garcons)) return null
     return getGarcomPinSession(storeId)
-  }, [storeId, pinSessionTick, garcons])
+  }, [storeId, garcons, pinSessionRevision])
   const salaoPinRequired = isSalaoGarcomPinRequired(garcons)
   const garcomSessionLocked = salaoPinRequired && !!pinSession
   // Usa a sessão PIN assim que existir (layout já validou); não esperar o fetch client.
@@ -532,8 +533,6 @@ export function WaiterClient({
 
   function trocarGarcomPinSession() {
     clearGarcomPinSession(storeId)
-    setPinSessionTick((n) => n + 1)
-    // Força o gate a pedir PIN de novo (sessionStorage limpo + remount via key).
     window.location.assign('/dashboard/garcom')
   }
 
