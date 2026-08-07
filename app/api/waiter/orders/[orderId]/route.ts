@@ -31,6 +31,10 @@ import {
   replaceWaiterOrderItemsAtomic,
   type OrderItemBackupRow,
 } from '@/services/waiter-order-items.server'
+import {
+  claimWaiterSalonOrderForEdit,
+  WAITER_SALON_EDITABLE_STATUSES,
+} from '@/lib/waiter-order-edit-guard.server'
 
 type BodyItem = {
   product_id: string
@@ -45,7 +49,39 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100
 }
 
-const EDITABLE = new Set(['pending', 'preparing', 'ready', 'confirmed'])
+const EDITABLE = new Set<string>(WAITER_SALON_EDITABLE_STATUSES)
+
+async function rollbackWaiterPatchItemsAndStock(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  storeId: string,
+  orderId: string,
+  backupRows: OrderItemBackupRow[],
+  cleanItems: Array<{ product_id: string; quantity: number; name: string }>
+): Promise<void> {
+  await supabase.from('order_items').delete().eq('order_id', orderId)
+  if (backupRows.length) {
+    await supabase.from('order_items').insert(
+      backupRows.map((item) => ({
+        order_id: orderId,
+        product_id: item.product_id,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        price: item.price,
+        name: item.name,
+        unit_type: item.unit_type,
+        weight_kg: item.weight_kg,
+        price_per_kg_snapshot: item.price_per_kg_snapshot,
+        addons: item.addons,
+      }))
+    )
+  }
+  await adjustProductStockForOrderEdit(
+    supabase,
+    storeId,
+    backupRowsToStockLines(cleanItems),
+    backupRowsToStockLines(backupRows)
+  ).catch(() => undefined)
+}
 
 export async function GET(
   _req: Request,
@@ -248,6 +284,11 @@ export async function PATCH(
     return NextResponse.json({ error: comandaCheck.error }, { status: 409 })
   }
 
+  const claim = await claimWaiterSalonOrderForEdit(supabase, id, storeId)
+  if (!claim.ok) {
+    return NextResponse.json({ error: claim.error }, { status: claim.status })
+  }
+
   const { data: backupItems, error: backupErr } = await supabase
     .from('order_items')
     .select(
@@ -391,6 +432,17 @@ export async function PATCH(
     .maybeSingle()
 
   if (!upErr && !updated) {
+    await rollbackWaiterPatchItemsAndStock(
+      supabase,
+      storeId,
+      id,
+      backupRows,
+      cleanItems.map((line) => ({
+        product_id: line.product_id,
+        quantity: line.quantity,
+        name: line.name,
+      }))
+    )
     return NextResponse.json(
       {
         error:

@@ -11,6 +11,11 @@ import { tryAutoCancelNfceForOrder, tryAutoEmitNfceForOrder } from '@/services/f
 import { triggerLoyaltyEarnForDeliveredOrder, reverseLoyaltyRedeemForCancelledOrder } from '@/services/loyalty.server'
 import { restoreOrderItemsStock } from '@/services/inventory.server'
 import { notifyOrderWhatsAppStatusChange } from '@/services/order-whatsapp-notifications.server'
+import {
+  isSalonMapOrderSource,
+  notesIndicateWaiterReleasedToCaixa,
+} from '@/lib/waiter-order-notes'
+import { isWaiterSalonOrderEditable } from '@/lib/waiter-order-edit-guard.server'
 
 export const dynamic = 'force-dynamic'
 
@@ -85,6 +90,35 @@ export async function POST(req: NextRequest) {
     const current = typeof order.status === 'string' ? order.status : ''
     if (current === newStatus) {
       return NextResponse.json({ ok: true })
+    }
+
+    if (
+      isSalonMapOrderSource(order.source as string | null) &&
+      notesIndicateWaiterReleasedToCaixa(order.notes as string | null) &&
+      newStatus !== 'cancelled'
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            'Esta comanda está no Caixa para pagamento e não pode ser alterada pelo Garçom.',
+        },
+        { status: 409 }
+      )
+    }
+
+    if (
+      isSalonMapOrderSource(order.source as string | null) &&
+      newStatus !== 'cancelled' &&
+      !isWaiterSalonOrderEditable({
+        status: current,
+        notes: order.notes as string | null,
+        source: order.source as string | null,
+      })
+    ) {
+      return NextResponse.json(
+        { error: 'Este pedido já não pode ser editado.' },
+        { status: 409 }
+      )
     }
 
     if (

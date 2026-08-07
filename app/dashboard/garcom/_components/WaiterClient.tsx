@@ -30,6 +30,7 @@ import {
   parseDiscountFromNotes,
   parseSectorFromNotes,
   parseTableFromNotes,
+  notesIndicateWaiterReleasedToCaixa,
   tableNamesMatch,
 } from '@/lib/waiter-order-notes'
 import { slugifyStoreSlug } from '@/lib/store-slug'
@@ -1843,6 +1844,10 @@ export function WaiterClient({
   }, [customerName, notes, discountBrl, sector])
 
   async function advanceOrder(order: StoreOrderRow) {
+    if (notesIndicateWaiterReleasedToCaixa(order.notes)) {
+      setError('Esta comanda está no Caixa para pagamento e não pode ser alterada.')
+      return
+    }
     const current = order.status || 'pending'
     const next =
       current === 'pending'
@@ -1862,6 +1867,10 @@ export function WaiterClient({
   }
 
   async function confirmToTable(order: StoreOrderRow) {
+    if (notesIndicateWaiterReleasedToCaixa(order.notes)) {
+      setError('Esta comanda está no Caixa para pagamento e não pode ser alterada.')
+      return
+    }
     setBusyOrderId(order.id)
     const { error: upError } = await updateOrderStatus(order.id, 'confirmed', { storeId })
     setBusyOrderId(null)
@@ -2959,6 +2968,7 @@ export function WaiterClient({
           <ul className="mt-3 grid gap-3 md:grid-cols-3">
             {openOrders.map((order) => {
               const st = (order.status || '').toLowerCase()
+              const atCaixa = notesIndicateWaiterReleasedToCaixa(order.notes)
               const badgeClass =
                 st === 'pending'
                   ? 'bg-amber-100 text-amber-900 ring-amber-200'
@@ -2992,7 +3002,7 @@ export function WaiterClient({
                     {nextPrep ? (
                       <button
                         type="button"
-                        disabled={busyOrderId === order.id}
+                        disabled={busyOrderId === order.id || atCaixa}
                         onClick={() => void advanceOrder(order)}
                         className="rounded-lg border border-[var(--card-border)] bg-zinc-50 py-1.5 text-xs font-semibold text-[#1a1614] hover:bg-zinc-100 disabled:opacity-50"
                       >
@@ -3002,7 +3012,7 @@ export function WaiterClient({
                     {st === 'ready' ? (
                       <button
                         type="button"
-                        disabled={busyOrderId === order.id}
+                        disabled={busyOrderId === order.id || atCaixa}
                         onClick={() => void confirmToTable(order)}
                         className="rounded-lg border border-emerald-200 bg-emerald-50 py-1.5 text-xs font-semibold text-emerald-900 disabled:opacity-50"
                       >
