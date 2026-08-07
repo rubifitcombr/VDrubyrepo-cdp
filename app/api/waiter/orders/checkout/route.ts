@@ -7,6 +7,7 @@ import {
   WAITER_PENDING_CAIXA_MARKER,
   notesIndicateWaiterReleasedToCaixa,
 } from '@/lib/waiter-order-notes'
+import { rollbackWaiterOrderCloseClaim } from '@/lib/order-payment-close-rollback'
 import {
   parseOrderPaymentLines,
   validatePaymentLines,
@@ -288,16 +289,13 @@ export async function POST(request: Request) {
         lines,
       })
       if (!payResult.ok) {
-        await supabase
-          .from('orders')
-          .update({
-            status: order.status,
-            payment_method: order.payment_method,
-            notes: order.notes,
-            caixa_turno_id: null,
-          })
-          .eq('store_id', storeId)
-          .eq('id', orderId)
+        await rollbackWaiterOrderCloseClaim(supabase, storeId, orderId, {
+          status: String(order.status ?? ''),
+          payment_method:
+            order.payment_method != null ? String(order.payment_method) : null,
+          notes: order.notes != null ? String(order.notes) : null,
+          caixa_turno_id: null,
+        })
         return NextResponse.json({ error: payResult.error }, { status: 500 })
       }
     }

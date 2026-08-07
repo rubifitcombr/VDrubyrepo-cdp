@@ -48,6 +48,7 @@ import {
 } from '@/lib/business-hours'
 import { insertPublicCheckoutOrder } from '@/services/public-checkout-order.server'
 import { issueCheckoutAccessToken } from '@/lib/checkout-access-token.server'
+import { acceptPublicOrderIfPending } from '@/lib/public-order-auto-accept'
 import { createPublicCheckoutDbClient } from '@/lib/supabase/public-checkout-db.server'
 import {
   notifyOrderWhatsAppReceived,
@@ -766,6 +767,7 @@ export async function POST(req: NextRequest) {
     const checkoutPlan = effectiveStorePlan(readStorePlano(storeMeta))
     const checkoutAutomations = parseAutomationsFromStore(storeMeta)
 
+    let orderAutoAccepted = false
     if (
       !isPixPayment &&
       checkoutAutomations.auto_accept_orders &&
@@ -773,12 +775,11 @@ export async function POST(req: NextRequest) {
     ) {
       const manualClosed = storeMeta.manual_closed === true
       if (!manualClosed) {
-        await checkoutDb
-          .from('orders')
-          .update({ status: 'preparing' })
-          .eq('id', order.id)
-          .eq('store_id', String(storeRow.id))
-          .eq('status', 'pending')
+        orderAutoAccepted = await acceptPublicOrderIfPending(
+          checkoutDb,
+          String(storeRow.id),
+          String(order.id)
+        )
       }
     }
 
@@ -793,7 +794,8 @@ export async function POST(req: NextRequest) {
       !isPixPayment &&
       checkoutAutomations.auto_accept_orders &&
       hasOrderPipelineAutomations(checkoutPlan) &&
-      storeMeta.manual_closed !== true
+      storeMeta.manual_closed !== true &&
+      orderAutoAccepted
 
     if (autoAccepted) {
       void notifyOrderWhatsAppStatusChange(

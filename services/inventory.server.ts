@@ -2,6 +2,9 @@ import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
+import { incrementProductStockForLines } from '@/lib/inventory-increment-stock'
+
+export { incrementProductStockForLines }
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100
@@ -111,42 +114,6 @@ export async function decrementProductStockForLines(
   return { ok: true }
 }
 
-export async function incrementProductStockForLines(
-  db: SupabaseClient,
-  storeId: string,
-  lines: Array<{ product_id: string; quantity: number }>
-): Promise<void> {
-  const totals = new Map<string, number>()
-  for (const line of lines) {
-    const pid = String(line.product_id ?? '').trim()
-    if (!pid) continue
-    const qty = Math.max(0, Number(line.quantity) || 0)
-    if (qty <= 0) continue
-    totals.set(pid, (totals.get(pid) ?? 0) + qty)
-  }
-
-  const now = new Date().toISOString()
-  for (const [productId, qty] of totals) {
-    const { data: row } = await db
-      .from('store_product_stock')
-      .select('quantity')
-      .eq('store_id', storeId)
-      .eq('product_id', productId)
-      .maybeSingle()
-
-    if (!row) continue
-
-    await db
-      .from('store_product_stock')
-      .update({
-        quantity: Math.max(0, (Number(row.quantity) || 0) + qty),
-        updated_at: now,
-      })
-      .eq('store_id', storeId)
-      .eq('product_id', productId)
-  }
-}
-
 export async function adjustProductStockForOrderEdit(
   db: SupabaseClient,
   storeId: string,
@@ -190,9 +157,10 @@ export async function adjustProductStockForOrderEdit(
       ])
       if (!dec.ok) return dec
     } else {
-      await incrementProductStockForLines(db, storeId, [
+      const inc = await incrementProductStockForLines(db, storeId, [
         { product_id: productId, quantity: -delta },
       ])
+      if (!inc.ok) return inc
     }
   }
 

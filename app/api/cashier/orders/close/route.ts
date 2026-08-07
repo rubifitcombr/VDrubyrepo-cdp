@@ -3,10 +3,8 @@ import {
   caixaProDeliveryOnlyScope,
   isPdvWaiterComandaSource,
 } from '@/lib/cashier-pro-delivery-scope'
-import {
-  CAIXA_PAYMENT_CLOSE_MARKER,
-  orderPaymentRegisteredInCaixa,
-} from '@/lib/cashier-comanda-close'
+import { CAIXA_PAYMENT_CLOSE_MARKER, orderPaymentRegisteredInCaixa } from '@/lib/cashier-comanda-close'
+import { rollbackCashierOrderCloseClaim } from '@/lib/order-payment-close-rollback'
 import { gateMerchantMenuKey } from '@/lib/merchant-api-gate.server'
 import { parseOperationModeFromStore } from '@/lib/merchant-operation-mode'
 import {
@@ -259,16 +257,13 @@ export async function POST(request: Request) {
       lines,
     })
     if (!payResult.ok) {
-      await supabase
-        .from('orders')
-        .update({
-          status: order.status,
-          payment_method: order.payment_method,
-          notes: order.notes,
-          caixa_turno_id: null,
-        })
-        .eq('store_id', storeId)
-        .eq('id', orderId)
+      await rollbackCashierOrderCloseClaim(supabase, storeId, orderId, {
+        status: String(order.status ?? ''),
+        payment_method:
+          order.payment_method != null ? String(order.payment_method) : null,
+        notes: order.notes != null ? String(order.notes) : null,
+        caixa_turno_id: null,
+      })
       return NextResponse.json({ error: payResult.error }, { status: 500 })
     }
   }
@@ -299,16 +294,13 @@ export async function POST(request: Request) {
         .eq('store_id', storeId)
         .eq('order_id', orderId)
     }
-    await supabase
-      .from('orders')
-      .update({
-        status: order.status,
-        payment_method: order.payment_method,
-        notes: order.notes,
-        caixa_turno_id: null,
-      })
-      .eq('store_id', storeId)
-      .eq('id', orderId)
+    await rollbackCashierOrderCloseClaim(supabase, storeId, orderId, {
+      status: String(order.status ?? ''),
+      payment_method:
+        order.payment_method != null ? String(order.payment_method) : null,
+      notes: order.notes != null ? String(order.notes) : null,
+      caixa_turno_id: null,
+    })
 
     return NextResponse.json(
       {
