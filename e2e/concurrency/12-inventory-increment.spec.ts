@@ -1,6 +1,7 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from './test-with-teardown'
 import { incrementProductStockForLines } from '../../lib/inventory-increment-stock'
 import { E2E_STORE_ID, getSupabaseAdmin } from './helpers'
+import { trackProductStockClearOnTeardown } from './teardown'
 
 test.describe('Suspeito #12 — incremento de estoque', () => {
   test('dois incrementos concorrentes: stock reflecte ambas as quantidades', async () => {
@@ -17,6 +18,7 @@ test.describe('Suspeito #12 — incremento de estoque', () => {
     expect(product?.id).toBeTruthy()
 
     const productId = String(product!.id)
+    trackProductStockClearOnTeardown(productId)
     const baseQty = 10
 
     const { error: stockErr } = await sb.from('store_product_stock').upsert(

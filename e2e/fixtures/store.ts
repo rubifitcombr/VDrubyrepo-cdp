@@ -1,5 +1,10 @@
-export const E2E_STORE_ID = 'e472b84e-32c1-4a9d-87fc-756b874f793a'
-export const E2E_STORE_SLUG = 'tudibom'
+import { getE2eStoreConfig } from './store-config'
+
+const { storeId, slug } = getE2eStoreConfig()
+
+/** Loja dedicada de teste — nunca cliente real (ver e2e/README.md). */
+export const E2E_STORE_ID = storeId
+export const E2E_STORE_SLUG = slug
 
 export type E2eGarcomPin = {
   id: string

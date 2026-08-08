@@ -1,9 +1,10 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from './test-with-teardown'
 import { execSync } from 'child_process'
 import path from 'path'
 import { awardReferralOnStoreActivation } from '@/lib/referral-award-on-activation'
 import { REFERRAL_POINTS_PER_ACTIVATION } from '../../lib/referral/constants'
 import { E2E_STORE_ID, getSupabaseAdmin } from './helpers'
+import { trackReferralActivationForTeardown } from './teardown'
 
 test.describe('Grupo B #3 — referral activation', () => {
   test.beforeAll(() => {
@@ -66,6 +67,11 @@ test.describe('Grupo B #3 — referral activation', () => {
       .maybeSingle()
 
     const ptsBefore = Number(balanceBefore?.points_balance ?? 0)
+    trackReferralActivationForTeardown({
+      referredStoreId,
+      referralId: referral!.id,
+      restoreBalance: ptsBefore,
+    })
 
     await Promise.all([
       awardReferralOnStoreActivation(sb, referredStoreId),

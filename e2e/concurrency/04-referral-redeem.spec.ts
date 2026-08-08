@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from './test-with-teardown'
 import { execSync } from 'child_process'
 import path from 'path'
 import { REFERRAL_POINTS_TO_REDEEM } from '../../lib/referral/constants'
@@ -8,6 +8,7 @@ import {
   getSupabaseAdmin,
   readE2eTestData,
 } from './helpers'
+import { trackReferralRedeemForTeardown, trackReferralRedemptionForTeardown } from './teardown'
 
 test.describe('Grupo B #4 — referral redeem', () => {
   test.beforeAll(() => {
@@ -60,6 +61,10 @@ test.describe('Grupo B #4 — referral redeem', () => {
 
     expect(ledgerInsErr).toBeNull()
     expect(ledgerRow?.id).toBeTruthy()
+    trackReferralRedeemForTeardown({
+      ledgerId: ledgerRow!.id,
+      restoreBalance: previousBalance,
+    })
 
     const { error: balanceErr } = await sb
       .from('store_referral_accounts')
@@ -123,6 +128,7 @@ test.describe('Grupo B #4 — referral redeem', () => {
 
     const redemptionId = redemptionRows?.[0]?.id
     if (redemptionId) {
+      trackReferralRedemptionForTeardown(redemptionId)
       await sb.from('store_referral_ledger').delete().eq('redemption_id', redemptionId)
       await sb.from('store_referral_redemptions').delete().eq('id', redemptionId)
     }

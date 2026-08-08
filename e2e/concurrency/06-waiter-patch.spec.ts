@@ -1,10 +1,11 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from './test-with-teardown'
 import {
   countStatus,
   E2E_STORE_ID,
   getSupabaseAdmin,
   readE2eTestData,
 } from './helpers'
+import { trackOrderForTeardown } from './teardown'
 import { WAITER_PENDING_CAIXA_MARKER } from '../../lib/waiter-order-notes'
 
 test.describe('Grupo A #6 — garçom PATCH comanda', () => {
@@ -39,6 +40,7 @@ test.describe('Grupo A #6 — garçom PATCH comanda', () => {
       notes,
     })
     expect(insErr).toBeNull()
+    trackOrderForTeardown(orderId)
 
     const { error: itemErr } = await sb.from('order_items').insert({
       order_id: orderId,

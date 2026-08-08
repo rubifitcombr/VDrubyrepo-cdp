@@ -1,8 +1,9 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from './test-with-teardown'
 import { execSync } from 'child_process'
 import path from 'path'
 import { earnLoyaltyForDeliveredOrder } from '../../lib/loyalty-earn-delivered-order'
 import { E2E_STORE_ID, getSupabaseAdmin } from './helpers'
+import { trackLoyaltyTestForTeardown } from './teardown'
 
 test.describe('Grupo B #5 — loyalty earn', () => {
   test.beforeAll(() => {
@@ -42,6 +43,7 @@ test.describe('Grupo B #5 — loyalty earn', () => {
       payment_method: 'cash',
     })
     expect(orderErr).toBeNull()
+    trackLoyaltyTestForTeardown(orderId, phone)
 
     await Promise.all([
       earnLoyaltyForDeliveredOrder(sb, {

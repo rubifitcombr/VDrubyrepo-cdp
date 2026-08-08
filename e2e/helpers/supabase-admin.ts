@@ -1,31 +1,36 @@
-import { readFileSync } from 'fs'
+import { readFileSync, existsSync } from 'fs'
 import path from 'path'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { E2E_STORE_ID, E2E_STORE_SLUG } from '../fixtures/store'
+import { loadE2eEnvFiles } from '../fixtures/store-config'
 import { parsePlan } from '../../lib/plan'
 import { publicDineInCheckoutAllowed } from '../../lib/salao-attendance'
 
 function loadEnvLocal(): Record<string, string> {
+  loadE2eEnvFiles()
   const out: Record<string, string> = {}
-  try {
-    const raw = readFileSync(path.resolve(process.cwd(), '.env.local'), 'utf8')
-    for (const line of raw.split('\n')) {
-      const t = line.trim()
-      if (!t || t.startsWith('#')) continue
-      const i = t.indexOf('=')
-      if (i < 0) continue
-      const k = t.slice(0, i).trim()
-      let v = t.slice(i + 1).trim()
-      if (
-        (v.startsWith('"') && v.endsWith('"')) ||
-        (v.startsWith("'") && v.endsWith("'"))
-      ) {
-        v = v.slice(1, -1)
+  const files = ['.env.local', '.env.test']
+  for (const name of files) {
+    try {
+      const raw = readFileSync(path.resolve(process.cwd(), name), 'utf8')
+      for (const line of raw.split('\n')) {
+        const t = line.trim()
+        if (!t || t.startsWith('#')) continue
+        const i = t.indexOf('=')
+        if (i < 0) continue
+        const k = t.slice(0, i).trim()
+        let v = t.slice(i + 1).trim()
+        if (
+          (v.startsWith('"') && v.endsWith('"')) ||
+          (v.startsWith("'") && v.endsWith("'"))
+        ) {
+          v = v.slice(1, -1)
+        }
+        out[k] = v
       }
-      out[k] = v
+    } catch {
+      /* optional */
     }
-  } catch {
-    /* optional */
   }
   return out
 }

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from './test-with-teardown'
 import {
   buildPublicCheckoutBody,
   clearProductStock,
@@ -10,6 +10,7 @@ import {
   getSupabaseAdmin,
   E2E_STORE_ID,
 } from './helpers'
+import { trackOrderForTeardown, trackProductStockClearOnTeardown } from './teardown'
 
 test.describe('Stock público — cancelamento', () => {
   test('dois cancelamentos concorrentes repõem stock apenas uma vez', async ({
@@ -19,6 +20,7 @@ test.describe('Stock público — cancelamento', () => {
     const body = buildPublicCheckoutBody(product)
     const sb = getSupabaseAdmin()
     let orderId: string | null = null
+    trackProductStockClearOnTeardown(product.productId)
 
     try {
       await setProductStockQuantity(product.productId, 1)
@@ -28,6 +30,7 @@ test.describe('Stock público — cancelamento', () => {
       const checkoutJson = (await checkoutRes.json()) as { orderId?: string }
       orderId = checkoutJson.orderId ? String(checkoutJson.orderId) : null
       expect(orderId).toBeTruthy()
+      trackOrderForTeardown(orderId)
       expect(await readProductStockQuantity(product.productId)).toBe(0)
 
       const cancelResponses = await Promise.all([

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from './test-with-teardown'
 import { E2E_STORE_SLUG } from '../fixtures/store'
 import {
   buildPublicCheckoutBody,
@@ -8,6 +8,7 @@ import {
   readProductStockQuantity,
   setProductStockQuantity,
 } from './helpers'
+import { trackOrderForTeardown, trackProductStockClearOnTeardown } from './teardown'
 
 test.describe('Stock público — cardápio', () => {
   test('produto esgotado fica visível e desabilitado; 2 checkouts concorrentes do último item', async ({
@@ -15,6 +16,7 @@ test.describe('Stock público — cardápio', () => {
     request,
   }) => {
     const product = await pickActiveCheckoutProduct()
+    trackProductStockClearOnTeardown(product.productId)
 
     try {
       await setProductStockQuantity(product.productId, 0)
@@ -36,6 +38,10 @@ test.describe('Stock público — cardápio', () => {
       const conflictCount = [first, second].filter((r) => r.status() === 409).length
       expect(okCount).toBe(1)
       expect(conflictCount).toBe(1)
+
+      const success = first.ok() ? first : second
+      const okJson = (await success.json()) as { orderId?: string }
+      trackOrderForTeardown(okJson.orderId ?? null)
 
       const failed = first.ok() ? second : first
       const failJson = (await failed.json()) as { error?: string }

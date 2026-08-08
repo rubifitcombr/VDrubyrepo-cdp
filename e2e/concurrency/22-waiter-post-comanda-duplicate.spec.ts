@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from './test-with-teardown'
 import {
   countOkResponses,
   countStatus,
@@ -6,6 +6,7 @@ import {
   getSupabaseAdmin,
   readE2eTestData,
 } from './helpers'
+import { trackOrderForTeardown } from './teardown'
 
 test.describe('Grupo 3 — comanda duplicada no POST garçom', () => {
   test('dois POST concorrentes com mesmo nome na mesa: só um sucesso', async ({
@@ -78,6 +79,12 @@ test.describe('Grupo 3 — comanda duplicada no POST garçom', () => {
     expect(countOkResponses(responses)).toBe(1)
     expect(countStatus(responses, 409)).toBe(1)
 
+    const success = responses.find((r) => r.ok())
+    if (success) {
+      const okJson = (await success.json()) as { orderId?: string; id?: string }
+      trackOrderForTeardown(okJson.orderId ?? okJson.id ?? null)
+    }
+
     const failed = responses.find((r) => r.status() === 409)
     const failJson = (await failed!.json()) as { error?: string }
     expect(String(failJson.error ?? '')).toMatch(/comanda|nome|mesa/i)
@@ -86,15 +93,12 @@ test.describe('Grupo 3 — comanda duplicada no POST garçom', () => {
       .from('orders')
       .select('id')
       .eq('store_id', E2E_STORE_ID)
-      .eq('salon_table_id', storeTable!.id)
       .ilike('customer_name', comandaName)
       .in('status', ['pending', 'preparing', 'ready', 'confirmed'])
 
     expect((openRows ?? []).length).toBe(1)
-
     for (const row of openRows ?? []) {
-      await sb.from('order_items').delete().eq('order_id', row.id)
-      await sb.from('orders').delete().eq('id', row.id)
+      trackOrderForTeardown(row.id)
     }
   })
 })

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from './test-with-teardown'
 import {
   clearProductStock,
   E2E_STORE_ID,
@@ -6,6 +6,10 @@ import {
   readProductStockQuantity,
   setProductStockQuantity,
 } from './helpers'
+import {
+  trackOrderForTeardown,
+  trackProductStockClearOnTeardown,
+} from './teardown'
 import {
   notesIndicateWaiterReleasedToCaixa,
   WAITER_PENDING_CAIXA_MARKER,
@@ -24,6 +28,7 @@ async function setupSalonOrder(sb: ReturnType<typeof getSupabaseAdmin>, product:
   const notes = `Mesa: ${tableLabel}\nSetor: Salão`
 
   await setProductStockQuantity(product.product_id, 5)
+  trackProductStockClearOnTeardown(product.product_id)
 
   const { error: insErr } = await sb.from('orders').insert({
     id: orderId,
@@ -36,6 +41,7 @@ async function setupSalonOrder(sb: ReturnType<typeof getSupabaseAdmin>, product:
     notes,
   })
   expect(insErr).toBeNull()
+  trackOrderForTeardown(orderId)
 
   const { error: itemErr } = await sb.from('order_items').insert({
     order_id: orderId,
@@ -223,6 +229,7 @@ test.describe('Grupo 1 — PATCH garçom vs handoff/cancel', () => {
       notes,
     })
     expect(insErr).toBeNull()
+    trackOrderForTeardown(orderId)
 
     const [advanceRes, confirmRes] = await Promise.all([
       request.post('/api/orders/status', {

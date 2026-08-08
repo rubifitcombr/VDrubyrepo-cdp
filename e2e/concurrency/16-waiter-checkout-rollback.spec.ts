@@ -1,7 +1,8 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from './test-with-teardown'
 import { rollbackWaiterOrderCloseClaim } from '../../lib/order-payment-close-rollback'
 import { GARCOM_PAYMENT_CLOSE_MARKER } from '../../lib/waiter-order-notes'
 import { E2E_STORE_ID, getSupabaseAdmin } from './helpers'
+import { trackOrderForTeardown } from './teardown'
 
 test.describe('Suspeito #16 — rollback fecho comanda (garçom)', () => {
   test('dois rollbacks concorrentes: só um reverte o claim de pagamento', async () => {
@@ -23,6 +24,7 @@ test.describe('Suspeito #16 — rollback fecho comanda (garçom)', () => {
       caixa_turno_id: null,
     })
     expect(insErr).toBeNull()
+    trackOrderForTeardown(orderId)
 
     const patch = {
       status: 'preparing',

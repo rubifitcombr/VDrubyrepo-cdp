@@ -1,6 +1,7 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from './test-with-teardown'
 import { acceptPublicOrderIfPending } from '../../lib/public-order-auto-accept'
 import { E2E_STORE_ID, getSupabaseAdmin } from './helpers'
+import { trackOrderForTeardown } from './teardown'
 
 test.describe('Suspeito #7 — checkout público auto-aceite', () => {
   test('duas aceitações concorrentes: só uma transição pending→preparing', async () => {
@@ -18,6 +19,7 @@ test.describe('Suspeito #7 — checkout público auto-aceite', () => {
       delivery_address: 'Rua Teste 99',
     })
     expect(insErr).toBeNull()
+    trackOrderForTeardown(orderId)
 
     const [first, second] = await Promise.all([
       acceptPublicOrderIfPending(sb, E2E_STORE_ID, orderId),

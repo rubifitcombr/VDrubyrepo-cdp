@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from './test-with-teardown'
 import {
   countOkResponses,
   countStatus,
@@ -8,6 +8,11 @@ import {
   readE2eTestData,
   withStoreOperationMode,
 } from './helpers'
+import {
+  trackCaixaMovimentacaoForTeardown,
+  trackEntregaForTeardown,
+  trackOrderForTeardown,
+} from './teardown'
 
 test.describe('Grupo A #2 — acerto de entregador', () => {
   test('duas requisições concorrentes: só uma acerta a entrega', async ({ request }) => {
@@ -31,6 +36,8 @@ test.describe('Grupo A #2 — acerto de entregador', () => {
         delivery_address: 'Rua Teste 1',
       })
       expect(orderErr).toBeNull()
+      trackOrderForTeardown(orderId)
+      trackEntregaForTeardown(entregaId)
 
       const { error: entregaErr } = await sb.from('entregas').insert({
         id: entregaId,
@@ -70,6 +77,7 @@ test.describe('Grupo A #2 — acerto de entregador', () => {
 
       expect(entrega?.acertado_em).toBeTruthy()
       expect(entrega?.acerto_movimentacao_id).toBeTruthy()
+      trackCaixaMovimentacaoForTeardown(entrega!.acerto_movimentacao_id!)
 
       const { count: movForEntrega } = await sb
         .from('caixa_movimentacoes')

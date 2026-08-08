@@ -7,7 +7,7 @@ import { loginOwnerViaMagicLink } from '../helpers/auth'
 const authFile = path.join(process.cwd(), 'e2e/.auth/user.json')
 const testDataFile = path.join(process.cwd(), 'e2e/.auth/test-data.json')
 
-setup('autenticar lojista Tudibom via magic link', async ({ page, baseURL }) => {
+setup('autenticar lojista E2E via magic link', async ({ page, baseURL }) => {
   mkdirSync(path.dirname(authFile), { recursive: true })
 
   const testData = await loadE2eTestData()

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from './test-with-teardown'
 import {
   buildPublicCheckoutBody,
   clearProductStock,
@@ -9,6 +9,7 @@ import {
   readProductStockQuantity,
   setProductStockQuantity,
 } from './helpers'
+import { trackOrderForTeardown, trackProductStockClearOnTeardown } from './teardown'
 
 test.describe('Stock público — checkout', () => {
   test('dois checkouts concorrentes do último item: só um sucesso', async ({
@@ -16,6 +17,7 @@ test.describe('Stock público — checkout', () => {
   }) => {
     const product = await pickActiveCheckoutProduct()
     const body = buildPublicCheckoutBody(product)
+    trackProductStockClearOnTeardown(product.productId)
 
     try {
       await setProductStockQuantity(product.productId, 1)
@@ -32,6 +34,12 @@ test.describe('Stock público — checkout', () => {
         )
       }
       expect(countStatus(responses, 409)).toBe(1)
+
+      const success = responses.find((r) => r.ok())
+      if (success) {
+        const okJson = (await success.json()) as { orderId?: string }
+        trackOrderForTeardown(okJson.orderId ?? null)
+      }
 
       const failed = responses.find((r) => r.status() === 409)
       expect(failed).toBeTruthy()

@@ -3,6 +3,7 @@ node_modules
 out
 .env*
 !.env.example
+!.env.test.example
 .migration-export
 supabase/.temp
 *.log

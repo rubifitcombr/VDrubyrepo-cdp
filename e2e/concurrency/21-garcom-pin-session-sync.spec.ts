@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from './test-with-teardown'
 import { readE2eTestData } from '../helpers/test-data'
 import {
   readGarcomSessionName,
