@@ -11,6 +11,7 @@
     "test:master": "node scripts/test-master-release.mjs",
     "e2e:provision": "node scripts/provision-e2e-test-store.mjs",
     "e2e:audit-damage": "node scripts/audit-e2e-historical-damage.mjs",
+    "e2e:correction-report": "node scripts/e2e-correction-report.mjs",
     "test:sync": "node scripts/ensure-e2e-test-env.mjs && npm run build && playwright test e2e/sync",
     "test:sync:stable": "node scripts/ensure-e2e-test-env.mjs && npm run build && bash scripts/run-sync-tests-3x.sh",
     "test:concurrency": "node scripts/ensure-e2e-test-env.mjs && npm run build && node scripts/apply-concurrency-migration.mjs && playwright test -c playwright.concurrency.config.ts"

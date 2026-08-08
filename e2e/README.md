@@ -72,6 +72,9 @@ Specs em `e2e/concurrency/` usam `test-with-teardown.ts` — `afterEach` cancela
 
 # Auditoria de dano histórico (pedidos de teste em lojas reais)
 npm run e2e:audit-damage
+
+# Relatório CSV de correção por loja e dia (ex.: caso o lojista pergunte)
+npm run e2e:correction-report -- --store tudibom --date 2026-08-07
 ```
 
 ## Arquivos importantes
